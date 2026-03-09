@@ -15,12 +15,18 @@ def load_host_config() -> dict:
     if _host_config is not None:
         return _host_config
 
-    config_path = Path(__file__).parent.parent.parent.parent / "config" / "hosts.yaml"
-    if config_path.exists():
-        with open(config_path) as f:
-            _host_config = yaml.safe_load(f) or {}
-    else:
-        _host_config = {}
+    # Support both local dev (relative to project root) and Docker (/config volume)
+    candidates = [
+        Path("/config/hosts.yaml"),
+        Path(__file__).parent.parent.parent.parent / "config" / "hosts.yaml",
+    ]
+    for config_path in candidates:
+        if config_path.exists():
+            with open(config_path) as f:
+                _host_config = yaml.safe_load(f) or {}
+            return _host_config
+
+    _host_config = {}
     return _host_config
 
 
