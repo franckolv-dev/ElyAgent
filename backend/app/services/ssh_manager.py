@@ -26,7 +26,7 @@ def load_host_config() -> dict:
 
 def is_command_allowed(host_name: str, command: str) -> bool:
     config = load_host_config()
-    hosts = config.get("hosts", {})
+    hosts = config.get("hosts") or {}
     host = hosts.get(host_name)
     if not host:
         return False
@@ -49,7 +49,7 @@ def is_command_allowed(host_name: str, command: str) -> bool:
 
 def execute_ssh_command(host_name: str, command: str) -> tuple[int, str, str]:
     config = load_host_config()
-    hosts = config.get("hosts", {})
+    hosts = config.get("hosts") or {}
     host = hosts.get(host_name)
     if not host:
         raise ValueError(f"Unknown host: {host_name}")

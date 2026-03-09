@@ -10,7 +10,7 @@ router = APIRouter()
 @router.get("/")
 async def list_hosts(user: User = Depends(get_current_user)):
     config = load_host_config()
-    hosts = config.get("hosts", {})
+    hosts = config.get("hosts") or {}
     return {
         name: {
             "hostname": h.get("hostname"),
