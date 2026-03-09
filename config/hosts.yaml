@@ -1,0 +1,25 @@
+# SSH Host Definitions
+# Each host has a whitelist of allowed commands
+hosts:
+  # Example: local machine
+  # localhost:
+  #   hostname: 127.0.0.1
+  #   port: 22
+  #   username: user
+  #   key_file: ~/.ssh/id_rsa
+  #   allowed_commands:
+  #     - "ls *"
+  #     - "cat *"
+  #     - "df -h"
+  #     - "free -m"
+  #     - "uptime"
+  #     - "systemctl status *"
+  #     - "docker ps"
+  #     - "docker logs *"
+  #   blocked_patterns:
+  #     - "rm -rf"
+  #     - "dd if="
+  #     - "mkfs"
+  #     - "> /dev/"
+  #     - "chmod 777"
+  #     - "passwd"

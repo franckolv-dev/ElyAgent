@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cyber-green: #00ff41;
+  --color-cyber-green-dim: #00cc33;
+  --color-cyber-cyan: #00e5ff;
+  --color-cyber-blue: #0066ff;
+  --color-cyber-red: #ff0040;
+  --color-cyber-purple: #bf00ff;
+  --color-cyber-yellow: #ffea00;
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #12121a;
+  --color-bg-tertiary: #1a1a2e;
+  --color-bg-card: #16162a;
+  --color-border-dim: #1e1e3a;
+  --color-border-glow: #00ff4133;
+  --color-text-primary: #e0e0f0;
+  --color-text-secondary: #8888aa;
+  --color-text-muted: #555577;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    background-color: #00ff4133;
+    color: var(--color-cyber-green);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg-primary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-dim);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-cyber-green-dim);
+  }
+}
+
+@layer utilities {
+  .glow-green {
+    box-shadow: 0 0 15px #00ff4122, 0 0 30px #00ff4111, inset 0 0 15px #00ff4108;
+  }
+
+  .glow-green-text {
+    text-shadow: 0 0 10px #00ff4166, 0 0 20px #00ff4133;
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 15px #00e5ff22, 0 0 30px #00e5ff11;
+  }
+
+  .glow-border {
+    border-color: #00ff4133;
+    box-shadow: 0 0 8px #00ff4111;
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .scanline {
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 255, 65, 0.015) 2px,
+      rgba(0, 255, 65, 0.015) 4px
+    );
+    pointer-events: none;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 3s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}

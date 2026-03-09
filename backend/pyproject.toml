@@ -1,0 +1,32 @@
+[project]
+name = "cyber-entity-backend"
+version = "0.1.0"
+description = "Cyber-Entity AI Agent Backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "websockets>=14.0",
+    "python-jose[cryptography]>=3.3.0",
+    "pwdlib[argon2]>=0.2.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "aiosqlite>=0.21.0",
+    "alembic>=1.14.0",
+    "langchain-anthropic>=0.3.0",
+    "langgraph>=0.4.0",
+    "langchain-core>=0.3.0",
+    "paramiko>=3.5.0",
+    "pyyaml>=6.0",
+    "slowapi>=0.1.9",
+    "structlog>=24.0.0",
+    "pydantic-settings>=2.7.0",
+    "python-multipart>=0.0.18",
+    "httpx>=0.28.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
