@@ -5,6 +5,7 @@ POST /tts/speak  {"text": "Bonjour", "voice": "fr-FR-DeniseNeural"}
 """
 import io
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -27,6 +28,34 @@ class TTSRequest(BaseModel):
     voice: str = DEFAULT_VOICE
 
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown syntax so TTS reads natural spoken French."""
+    # Code blocks (``` ... ```)
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    # Inline code (`code`)
+    text = re.sub(r"`[^`]+`", "", text)
+    # Headers (## Title → Title)
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Bold/italic (***x***, **x**, *x*, __x__, _x_)
+    text = re.sub(r"\*{1,3}(.+?)\*{1,3}", r"\1", text)
+    text = re.sub(r"_{1,3}(.+?)_{1,3}", r"\1", text)
+    # Horizontal rules
+    text = re.sub(r"^[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
+    # Links [label](url) → label
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    # Images ![alt](url) → ""
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", text)
+    # Bullet list markers (- item / * item / • item)
+    text = re.sub(r"^[\-\*\•]\s+", "", text, flags=re.MULTILINE)
+    # Numbered list markers (1. item → item)
+    text = re.sub(r"^\d+\.\s+", "", text, flags=re.MULTILINE)
+    # Blockquotes (> text)
+    text = re.sub(r"^>\s+", "", text, flags=re.MULTILINE)
+    # Collapse multiple blank lines into one
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _require_edge_tts() -> None:
     if not _EDGE_TTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="TTS service unavailable")
@@ -39,7 +68,10 @@ async def speak(req: TTSRequest):
         raise HTTPException(status_code=400, detail="Empty text")
 
     try:
-        communicate = edge_tts.Communicate(req.text, req.voice)
+        clean_text = _strip_markdown(req.text)
+        if not clean_text:
+            raise HTTPException(status_code=400, detail="Empty text after markdown cleanup")
+        communicate = edge_tts.Communicate(clean_text, req.voice)
         buf = io.BytesIO()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
