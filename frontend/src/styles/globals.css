@@ -62,6 +62,9 @@
   .glow-green-text {
     text-shadow: 0 0 10px #00ff4166, 0 0 20px #00ff4133;
   }
+  .glow-cyan-text {
+    text-shadow: 0 0 10px #00e5ff88, 0 0 22px #00e5ff44;
+  }
 
   .glow-cyan {
     box-shadow: 0 0 15px #00e5ff22, 0 0 30px #00e5ff11;

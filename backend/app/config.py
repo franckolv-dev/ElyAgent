@@ -1,5 +1,6 @@
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -23,9 +24,20 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     frontend_url: str = "http://localhost:3000"
+    backend_url: str = "http://localhost:8000"
 
     # Rate Limiting
     rate_limit: str = "60/minute"
+
+    # Qdrant vector memory
+    qdrant_url: str = "http://localhost:6333"
+
+    # ntfy push notifications (Android HITL)
+    ntfy_url: str = ""        # e.g. https://ntfy.sh  or http://ntfy:80
+    ntfy_topic: str = "cyberentity"
+
+    # TTS
+    tts_voice: str = "fr-FR-DeniseNeural"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

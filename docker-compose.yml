@@ -1,5 +1,6 @@
 services:
 
+  # ── AI Agent Backend ──────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
@@ -9,11 +10,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Persistent database
       - ./data/db:/app/data
-      # SSH config and hosts (editable without rebuild)
       - ./config:/config:ro
-      # SSH keys (read-only)
       - ${SSH_KEYS_PATH:-~/.ssh}:/root/.ssh:ro
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -27,19 +25,27 @@ services:
       - REFRESH_TOKEN_EXPIRE_DAYS=7
       - DATABASE_URL=sqlite+aiosqlite:////app/data/cyberentity.db
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:8000}
       - RATE_LIMIT=60/minute
+      - QDRANT_URL=http://qdrant:6333
+      - NTFY_URL=${NTFY_URL:-http://ntfy:80}
+      - NTFY_TOPIC=${NTFY_TOPIC:-cyberentity}
+      - TTS_VOICE=${TTS_VOICE:-fr-FR-DeniseNeural}
+    depends_on:
+      qdrant:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     networks:
       - cyberentity-net
     extra_hosts:
-      # Allow backend to reach host machine (for Ollama or local services)
       - "host.docker.internal:host-gateway"
 
+  # ── Next.js Frontend ──────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -57,9 +63,50 @@ services:
     networks:
       - cyberentity-net
 
+  # ── Qdrant vector database (local memory + security rules) ────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: cyberentity-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/6333"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - cyberentity-net
+
+  # ── ntfy push notification server (Android HITL) ─────────────────────
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    container_name: cyberentity-ntfy
+    restart: unless-stopped
+    command: serve
+    ports:
+      - "7070:80"
+    volumes:
+      - ntfy-data:/var/lib/ntfy
+    environment:
+      - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:7070}
+      - NTFY_BEHIND_PROXY=false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/v1/health | grep -q ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - cyberentity-net
+
 networks:
   cyberentity-net:
     driver: bridge
 
 volumes:
-  db-data:
+  qdrant-data:
+  ntfy-data:

@@ -27,10 +27,15 @@ export interface Conversation {
 }
 
 export interface WSMessage {
-  type: "start" | "message" | "error" | "stream";
+  type: "start" | "message" | "error" | "stream" | "hitl_pending" | "hitl_resolved";
   content?: string;
   role?: string;
   conversation_id?: string;
+  // HITL fields
+  action_id?: string;
+  description?: string;
+  decision?: string;
+  reason?: string;
 }
 
 export interface SSHHost {
