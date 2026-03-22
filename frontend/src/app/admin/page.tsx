@@ -32,7 +32,7 @@ function OAuthConfigPanel() {
   const [values, setValues] = useState<Record<string, string>>({
     google_client_id: "",
     google_client_secret: "",
-    google_redirect_uri: "http://localhost:8000/google/callback",
+    google_redirect_uri: "http://localhost:8000/api/google/callback",
   });
   const [show, setShow] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});

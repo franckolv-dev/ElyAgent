@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # Google OAuth2 (optionnel — laisser vide pour désactiver)
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_redirect_uri: str = "http://localhost:8000/google/callback"
+    google_redirect_uri: str = "http://localhost:8000/api/google/callback"
 
     model_config = {
         "env_file": ".env",
