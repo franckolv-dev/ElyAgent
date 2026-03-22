@@ -215,8 +215,9 @@ export function AvatarScene({ state }: { state: AvatarState }) {
   return (
     <Canvas
       camera={{ position: [0, -0.18, 3.1], fov: 38 }}
-      gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       style={{ background: "#060c16" }}
+      onCreated={({ scene }) => { scene.background = new THREE.Color("#060c16"); }}
       dpr={[1, 1.5]}
     >
       <FaceModel state={state} />
