@@ -12,20 +12,23 @@ _PATTERNS: dict[str, str] = {
 }
 
 # Tool names that always require human validation
+# Only truly destructive or irreversible actions belong here
 ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "ssh_execute",
     "gmail_send_email",
-    "calendar_create_event",
 })
 
-# Keywords that flag an action as needing validation
+# Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation
+# These are checked against the display_args JSON, not the tool name
 _CRITICAL_KEYWORDS: frozenset[str] = frozenset({
+    # Destructive operations
     "delete", "remove", "drop", "purge", "wipe", "truncate",
-    "send", "mail", "email", "smtp",
-    "pay", "payment", "virement", "achat", "buy", "purchase",
-    "supprimer", "effacer", "envoyer", "payer",
+    "supprimer", "effacer",
     "rm -rf", "format", "mkfs",
     "chmod 777", "chown root",
+    # Financial
+    "pay", "payment", "virement", "buy", "purchase",
+    "payer", "achat",
 })
 
 

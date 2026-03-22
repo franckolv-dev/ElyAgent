@@ -1,8 +1,9 @@
+import asyncio
 import json
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy import select
 
 from app.agent.graph import build_agent_graph
@@ -66,7 +67,6 @@ async def websocket_chat(websocket: WebSocket):
             await websocket.accept()
             await websocket.close(code=4001, reason="User not found")
             return
-        google_credentials = user.google_credentials
 
     await websocket.accept()
     ws_registry.register(user_id, websocket)
@@ -82,6 +82,11 @@ async def websocket_chat(websocket: WebSocket):
             conversation_id = msg.get("conversation_id") or conversation_id
 
             async with async_session() as db:
+                # Re-read user on each message to pick up latest google_credentials
+                u_result = await db.execute(select(User).where(User.id == user_id))
+                fresh_user = u_result.scalar_one_or_none()
+                google_credentials = fresh_user.google_credentials if fresh_user else None
+
                 if not conversation_id:
                     conv = Conversation(user_id=user_id, title=user_content[:50])
                     db.add(conv)
@@ -99,6 +104,27 @@ async def websocket_chat(websocket: WebSocket):
             sf = _filters.setdefault(conversation_id, SecurityFilter())
             clean_content = sf.anonymize(user_content)
 
+            # Load conversation history (last 20 exchanges = 40 messages max)
+            async with async_session() as db:
+                hist_result = await db.execute(
+                    select(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .order_by(Message.created_at.asc())
+                )
+                history_rows = hist_result.scalars().all()
+
+            # Build LangChain message list from DB history (exclude the just-saved user msg)
+            _MAX_HISTORY = 40
+            history_msgs = []
+            for row in history_rows[:-1]:  # skip current user message already saved
+                if row.role == "user":
+                    history_msgs.append(HumanMessage(content=sf.anonymize(row.content)))
+                elif row.role == "assistant":
+                    history_msgs.append(AIMessage(content=row.content))
+            # Keep only last _MAX_HISTORY messages to stay within context limits
+            history_msgs = history_msgs[-_MAX_HISTORY:]
+            history_msgs.append(HumanMessage(content=clean_content))
+
             agent = get_agent()
             await websocket.send_text(json.dumps({
                 "type": "start",
@@ -106,7 +132,7 @@ async def websocket_chat(websocket: WebSocket):
             }))
 
             invoke_result = await agent.ainvoke({
-                "messages": [HumanMessage(content=clean_content)],
+                "messages": history_msgs,
                 "user_id": user_id,
                 "conversation_id": conversation_id,
                 "google_credentials": google_credentials or "",
@@ -148,7 +174,57 @@ async def websocket_chat(websocket: WebSocket):
             pass  # Socket may already be closed; swallow the secondary error
     finally:
         ws_registry.unregister(user_id)
-        # Evict the filter for the current conversation to avoid unbounded growth.
-        # A new filter will be created if the user reconnects to the same conversation.
+        # On disconnect: summarize conversation into long-term memory
         if conversation_id:
-            _filters.pop(conversation_id, None)
+            asyncio.create_task(
+                _summarize_conversation(conversation_id, user_id)
+            )
+        _filters.pop(conversation_id, None) if conversation_id else None
+
+
+async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
+    """Generate a semantic summary of the conversation and store it in Qdrant.
+
+    Called on WebSocket disconnect so it doesn't block the main loop.
+    Only summarizes if there are at least 4 messages (2 exchanges).
+    """
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.asc())
+            )
+            msgs = result.scalars().all()
+
+        if len(msgs) < 4:
+            return  # Too short to summarize
+
+        # Build a compact transcript (last 30 messages max)
+        transcript = "\n".join(
+            f"{'Utilisateur' if m.role == 'user' else 'ELY'}: {m.content[:300]}"
+            for m in msgs[-30:]
+        )
+
+        from app.services.llm_provider import get_llm
+        llm = get_llm()
+        summary_prompt = (
+            "Résume en 3 à 6 phrases les informations importantes apprises sur l'utilisateur "
+            "dans cette conversation : ses préférences, habitudes, événements mentionnés, "
+            "personnes importantes, contexte de vie et de travail. "
+            "Formule au présent ('L'utilisateur a un chien nommé...', 'Il travaille sur...', etc.).\n\n"
+            f"Conversation :\n{transcript}"
+        )
+        response = await llm.ainvoke([{"role": "user", "content": summary_prompt}])
+        summary = response.content.strip()
+
+        if summary:
+            memory = get_memory_manager()
+            await memory.store_memory(
+                content=summary,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+            logger.info("Conversation %s summarized into long-term memory", conversation_id)
+    except Exception as exc:
+        logger.warning("Failed to summarize conversation %s: %s", conversation_id, exc)

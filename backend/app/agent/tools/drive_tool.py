@@ -1,7 +1,9 @@
 """Google Drive tools for ELY agent — read-only by default."""
 from __future__ import annotations
 
-from langchain_core.tools import tool
+from typing import Annotated
+
+from langchain_core.tools import tool, InjectedToolArg
 
 
 def _get_drive_service(user_google_credentials_json: str | None):
@@ -15,14 +17,13 @@ def _get_drive_service(user_google_credentials_json: str | None):
 
 @tool
 async def drive_list_files(
-    user_google_credentials_json: str,
     query: str = "",
     max_results: int = 10,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List files in Google Drive.
 
     Args:
-        user_google_credentials_json: Google credentials JSON (injected by agent context)
         query: Drive search query (e.g. 'name contains "rapport"', 'mimeType="application/pdf"')
         max_results: Number of files to return (default 10)
     """
@@ -60,11 +61,13 @@ async def drive_list_files(
 
 
 @tool
-async def drive_read_file(user_google_credentials_json: str, file_id: str) -> str:
+async def drive_read_file(
+    file_id: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
     """Read the text content of a Google Drive file (Docs, text files).
 
     Args:
-        user_google_credentials_json: Google credentials JSON (injected by agent context)
         file_id: The file ID returned by drive_list_files
     """
     service = _get_drive_service(user_google_credentials_json)
@@ -72,11 +75,9 @@ async def drive_read_file(user_google_credentials_json: str, file_id: str) -> st
         return "Google non connecté."
 
     try:
-        # Get file metadata
         meta = service.files().get(fileId=file_id, fields="name,mimeType").execute()
         mime = meta.get("mimeType", "")
 
-        # Export Google Docs as plain text
         if "google-apps.document" in mime:
             content = service.files().export(fileId=file_id, mimeType="text/plain").execute()
             return f"Contenu de '{meta['name']}':\n\n{content.decode('utf-8', errors='replace')[:4000]}"

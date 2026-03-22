@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/google/callback"
 
+    # Telegram bot (optionnel — configurer via Admin ou .env)
+    telegram_bot_token: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

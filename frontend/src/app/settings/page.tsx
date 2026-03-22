@@ -75,7 +75,7 @@ export default function SettingsPage() {
 
   // Check Google connection status
   useEffect(() => {
-    authFetch(`${API_URL}/google/status`)
+    authFetch(`${API_URL}/api/google/status`)
       .then((r) => r.json())
       .then((d) => setGoogleConnected(d.connected))
       .catch(() => setGoogleConnected(false));
@@ -92,11 +92,13 @@ export default function SettingsPage() {
   const handleGoogleConnect = async () => {
     setGoogleLoading(true);
     try {
-      const res = await authFetch(`${API_URL}/google/auth-url`);
-      const { url } = await res.json();
-      window.location.href = url;
-    } catch {
-      alert("Erreur lors de la connexion Google. Vérifiez que GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET sont configurés dans le .env.");
+      const res = await authFetch(`${API_URL}/api/google/auth-url`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Erreur serveur ${res.status}`);
+      if (!data.url) throw new Error("URL de connexion Google non reçue du serveur");
+      window.location.href = data.url;
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erreur lors de la connexion Google.");
     } finally {
       setGoogleLoading(false);
     }
@@ -105,7 +107,7 @@ export default function SettingsPage() {
   const handleGoogleDisconnect = async () => {
     setGoogleLoading(true);
     try {
-      await authFetch(`${API_URL}/google/disconnect`, { method: "DELETE" });
+      await authFetch(`${API_URL}/api/google/disconnect`, { method: "DELETE" });
       setGoogleConnected(false);
     } finally {
       setGoogleLoading(false);
@@ -290,7 +292,7 @@ export default function SettingsPage() {
                     <li>Aller sur <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">console.cloud.google.com</a></li>
                     <li>Créer un projet → API &amp; Services → Identifiants</li>
                     <li>Créer un ID client OAuth 2.0 (application Web)</li>
-                    <li>Ajouter l'URI de redirection : <code className="text-cyber-cyan">http://localhost:8000/google/callback</code></li>
+                    <li>Ajouter l'URI de redirection : <code className="text-cyber-cyan">http://localhost:8000/api/google/callback</code></li>
                     <li>Renseigner le Client ID et Secret dans <a href="/admin" className="text-cyber-cyan hover:underline">Admin → OAuth Google</a> (sans redémarrage)</li>
                     <li>Revenir ici et cliquer sur "Connecter mon compte Google"</li>
                   </ol>

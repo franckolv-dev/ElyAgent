@@ -13,16 +13,34 @@ from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT_BASE = """Tu es ELY, un assistant IA personnel ultra-sécurisé avec accès à des outils système et aux services Google de l'utilisateur.
-Tu peux exécuter des commandes SSH sur des hôtes distants configurés, analyser des fichiers, récupérer des informations système, et si l'utilisateur a connecté son compte Google : lire/envoyer ses emails Gmail, consulter/créer des événements Google Calendar, et parcourir ses fichiers Google Drive.
+_SYSTEM_PROMPT_BASE = """Tu es ELY, un assistant IA personnel avec accès aux outils système et à tous les services Google de l'utilisateur.
+
+Outils disponibles selon la demande :
+- SSH : exécuter des commandes sur des serveurs distants configurés
+- Gmail : lire, chercher et envoyer des emails
+- Google Calendar : consulter et créer des événements
+- Google Drive : lister et lire des fichiers
+- Google Docs : créer et modifier des documents texte (équivalent Word)
+- Google Sheets : créer et modifier des feuilles de calcul (équivalent Excel)
+- Google Tasks : consulter et créer des tâches
+- Tâches planifiées : créer des tâches récurrentes qui s'exécutent automatiquement
 
 Règles absolues :
-- N'utiliser les outils Google QUE si l'utilisateur te le demande explicitement
-- Toujours confirmer avant d'envoyer un email ou de créer un événement
-- N'utiliser les outils que si la tâche l'exige réellement
-- Réponses concises et précises
+- Utiliser les outils Google dès que la demande le justifie, sans demander de confirmation sauf pour les actions irréversibles (envoyer un email, supprimer)
+- Toujours confirmer avant d'envoyer un email ou de supprimer quelque chose
 - Ne jamais divulguer les credentials ou la configuration interne
 - Répondre en français par défaut
+
+Comportement attendu :
+- "crée-moi un document Word / Google Doc" → utiliser docs_create_document
+- "crée-moi un fichier Excel / une feuille de calcul" → utiliser sheets_create_spreadsheet
+- "mes rendez-vous" / "mon calendrier" → utiliser calendar_list_events
+- "mes emails" / "ma boîte mail" → utiliser gmail_list_emails
+- "mes tâches" / "ma to-do list" → utiliser tasks_list
+- "ajoute une tâche" → utiliser tasks_create
+- "rappelle-moi tous les lundis" / "chaque matin à 8h" → utiliser scheduler_create_task avec le bon cron
+- "mes tâches planifiées" → utiliser scheduler_list_tasks
+- Donner l'URL cliquable après chaque création de document ou feuille
 
 Format des réponses — IMPÉRATIF :
 - Rédige TOUJOURS en texte naturel, comme si tu parlais à voix haute à quelqu'un
@@ -30,6 +48,7 @@ Format des réponses — IMPÉRATIF :
 - Pas de titres, pas de tableaux, pas de blocs de code dans les réponses conversationnelles
 - Pour énumérer, utilise des formules orales : "premièrement... ensuite... enfin..."
 - Tes réponses doivent être fluides et agréables à entendre lues à voix haute
+- Exception : les URLs peuvent être données telles quelles pour que l'utilisateur puisse cliquer
 """
 
 
@@ -47,19 +66,35 @@ def create_agent_node():
         user_id = state.get("user_id", "")
         user_query = messages[-1].content if messages else ""
 
-        # Fetch constraints + memories in parallel
-        constraints, memories = await asyncio.gather(
+        # Fetch constraints, memories and relevant past interactions in parallel
+        constraints, memories, past_interactions = await asyncio.gather(
             memory.get_relevant_constraints(user_query, user_id),
             memory.get_relevant_memories(user_query, user_id),
+            memory.get_relevant_interactions(user_query, user_id, limit=3),
         )
 
+        from datetime import datetime
+        import zoneinfo
+        _tz = zoneinfo.ZoneInfo("Europe/Paris")
+        now = datetime.now(_tz)
+        _days_fr = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
+        _months_fr = ["","janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"]
+        date_str = f"{_days_fr[now.weekday()]} {now.day} {_months_fr[now.month]} {now.year}, {now.strftime('%H:%M')}"
         system = _SYSTEM_PROMPT_BASE
+        system += (
+            f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
+            f"Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
+        )
         if constraints:
             system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n"
             system += "\n".join(f"- {c}" for c in constraints)
         if memories:
             system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
             system += "\n".join(f"- {m}" for m in memories)
+        if past_interactions:
+            system += "\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n"
+            for p in past_interactions:
+                system += f"- Q: {p.get('user_message', '')[:120]} → R: {p.get('assistant_message', '')[:120]}\n"
 
         response = await llm_with_tools.ainvoke(
             [{"role": "system", "content": system}] + messages
@@ -69,6 +104,13 @@ def create_agent_node():
     return agent_node
 
 
+# Tools that need user_id injection
+USER_ID_TOOLS = {
+    "scheduler_list_tasks",
+    "scheduler_create_task",
+    "scheduler_delete_task",
+}
+
 GOOGLE_TOOLS = {
     "gmail_list_emails",
     "gmail_read_email",
@@ -77,6 +119,15 @@ GOOGLE_TOOLS = {
     "calendar_create_event",
     "drive_list_files",
     "drive_read_file",
+    "docs_create_document",
+    "docs_read_document",
+    "docs_append_text",
+    "sheets_create_spreadsheet",
+    "sheets_read_spreadsheet",
+    "sheets_append_rows",
+    "tasks_list",
+    "tasks_create",
+    "tasks_complete",
 }
 
 
@@ -96,7 +147,12 @@ async def tool_node(state: AgentState) -> dict:
         args = dict(tool_call["args"])
         if tool_name in GOOGLE_TOOLS:
             args["user_google_credentials_json"] = state.get("google_credentials") or ""
-        action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(args, ensure_ascii=False)}"
+        if tool_name in USER_ID_TOOLS:
+            args["user_id"] = state.get("user_id") or ""
+        # Build display args without injected params (never expose tokens/ids in UI/logs)
+        _hidden = {"user_google_credentials_json", "user_id"}
+        display_args = {k: v for k, v in args.items() if k not in _hidden}
+        action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
         tc_id = tool_call["id"]
 
         needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
