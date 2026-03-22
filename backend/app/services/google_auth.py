@@ -1,9 +1,14 @@
-"""Google OAuth2 helpers — handles the authorization flow and token refresh."""
+"""Google OAuth2 helpers — handles the authorization flow and token refresh.
+
+Credential priority (for client_id / client_secret):
+  1. system_config table (set via admin UI)
+  2. GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars / config.py
+  3. Raise ValueError → Google not configured
+"""
 from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 
 from app.config import get_settings
 
@@ -17,30 +22,45 @@ SCOPES = [
 ]
 
 
-def get_flow():
-    """Build an OAuth2 flow from settings."""
-    from google_auth_oauthlib.flow import Flow
-    s = get_settings()
-    if not s.google_client_id or not s.google_client_secret:
-        raise ValueError("Google OAuth2 credentials not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)")
+async def _get_oauth_client() -> tuple[str, str, str]:
+    """Return (client_id, client_secret, redirect_uri) — DB overrides env."""
+    from app.services.system_config import get_config
 
+    s = get_settings()
+    client_id    = await get_config("google_client_id",     fallback=s.google_client_id)
+    client_secret = await get_config("google_client_secret", fallback=s.google_client_secret)
+    redirect_uri  = await get_config("google_redirect_uri",  fallback=s.google_redirect_uri)
+
+    if not client_id or not client_secret:
+        raise ValueError(
+            "Google OAuth2 non configuré. "
+            "Renseignez les credentials dans Admin → Configuration OAuth."
+        )
+    return client_id, client_secret, redirect_uri
+
+
+async def get_flow():
+    """Build an OAuth2 Flow (async — reads credentials from DB)."""
+    from google_auth_oauthlib.flow import Flow
+
+    client_id, client_secret, redirect_uri = await _get_oauth_client()
     client_config = {
         "web": {
-            "client_id": s.google_client_id,
-            "client_secret": s.google_client_secret,
+            "client_id": client_id,
+            "client_secret": client_secret,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [s.google_redirect_uri],
+            "redirect_uris": [redirect_uri],
         }
     }
     flow = Flow.from_client_config(client_config, scopes=SCOPES)
-    flow.redirect_uri = s.google_redirect_uri
+    flow.redirect_uri = redirect_uri
     return flow
 
 
-def build_auth_url(state: str) -> str:
+async def build_auth_url(state: str) -> str:
     """Generate the Google authorization URL."""
-    flow = get_flow()
+    flow = await get_flow()
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
@@ -50,9 +70,9 @@ def build_auth_url(state: str) -> str:
     return auth_url
 
 
-def exchange_code(code: str) -> dict:
+async def exchange_code(code: str) -> dict:
     """Exchange authorization code for tokens."""
-    flow = get_flow()
+    flow = await get_flow()
     flow.fetch_token(code=code)
     creds = flow.credentials
     return {
