@@ -19,6 +19,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/tasks",
 ]
 
 
@@ -58,8 +61,13 @@ async def get_flow():
     return flow
 
 
-async def build_auth_url(state: str) -> str:
-    """Generate the Google authorization URL."""
+async def build_auth_url(state: str) -> tuple[str, str | None]:
+    """Generate the Google authorization URL.
+
+    Returns (auth_url, code_verifier).  code_verifier is non-None when the
+    library added PKCE automatically (google-auth-oauthlib >= 1.x); it must
+    be stored and passed back to exchange_code().
+    """
     flow = await get_flow()
     auth_url, _ = flow.authorization_url(
         access_type="offline",
@@ -67,13 +75,18 @@ async def build_auth_url(state: str) -> str:
         prompt="consent",
         state=state,
     )
-    return auth_url
+    # google-auth-oauthlib ≥ 1.0 automatically adds PKCE; grab the verifier.
+    code_verifier: str | None = getattr(flow, "code_verifier", None)
+    return auth_url, code_verifier
 
 
-async def exchange_code(code: str) -> dict:
+async def exchange_code(code: str, code_verifier: str | None = None) -> dict:
     """Exchange authorization code for tokens."""
     flow = await get_flow()
-    flow.fetch_token(code=code)
+    fetch_kwargs: dict = {"code": code}
+    if code_verifier:
+        fetch_kwargs["code_verifier"] = code_verifier
+    flow.fetch_token(**fetch_kwargs)
     creds = flow.credentials
     return {
         "token": creds.token,

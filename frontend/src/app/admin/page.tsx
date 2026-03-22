@@ -7,7 +7,7 @@ import { Header } from "@/components/layout/Header";
 import { api } from "@/lib/api";
 import { authFetch } from "@/lib/auth";
 import type { AuditLog } from "@/lib/types";
-import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle } from "lucide-react";
+import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle, Send } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -121,6 +121,104 @@ function OAuthConfigPanel() {
   );
 }
 
+// ── Telegram config ──────────────────────────────────────────────────────────
+
+const TELEGRAM_FIELDS = [
+  { key: "telegram_bot_token", label: "Bot Token", is_secret: true, description: "Token du bot Telegram (obtenu via @BotFather)" },
+];
+
+function TelegramConfigPanel() {
+  const [values, setValues] = useState<Record<string, string>>({ telegram_bot_token: "" });
+  const [show, setShow] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState<Record<string, boolean>>({});
+
+  const handleSave = async (key: string, isSecret: boolean, description: string) => {
+    if (!values[key]) return;
+    setSaving((s) => ({ ...s, [key]: true }));
+    try {
+      await authFetch(`${API_URL}/admin/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value: values[key], is_secret: isSecret, description }),
+      });
+      setSaved((s) => ({ ...s, [key]: true }));
+      setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 2000);
+    } catch {
+      alert(`Erreur lors de la sauvegarde de ${key}`);
+    } finally {
+      setSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
+
+  const handleDelete = async (key: string) => {
+    await authFetch(`${API_URL}/admin/config/${key}`, { method: "DELETE" });
+    setValues((v) => ({ ...v, [key]: "" }));
+  };
+
+  return (
+    <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4 max-w-xl">
+      <div className="text-xs text-text-muted space-y-1">
+        <p>Connectez ELY à <strong className="text-text-primary">Telegram</strong> pour envoyer des messages à votre assistant depuis n'importe où.</p>
+        <p className="text-[11px]">
+          1. Parler à&nbsp;
+          <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">@BotFather</a>
+          &nbsp;→ /newbot → copier le token
+        </p>
+        <p className="text-[11px]">
+          2. Coller le token ci-dessous et sauvegarder
+        </p>
+        <p className="text-[11px]">
+          3. Redémarrer le backend puis envoyer <code className="text-cyber-cyan">/link identifiant motdepasse</code> au bot
+        </p>
+      </div>
+
+      <div className="space-y-3 pt-1">
+        {TELEGRAM_FIELDS.map(({ key, label, is_secret, description }) => (
+          <div key={key} className="space-y-1">
+            <label className="text-[11px] text-text-muted uppercase tracking-wider">{label}</label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={is_secret && !show[key] ? "password" : "text"}
+                  value={values[key]}
+                  onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+                  placeholder={is_secret ? "••••••••" : description}
+                  className="w-full bg-bg-primary border border-border-dim rounded px-3 py-2 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-cyber-cyan/40 pr-8"
+                />
+                {is_secret && (
+                  <button
+                    type="button"
+                    onClick={() => setShow((s) => ({ ...s, [key]: !s[key] }))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                  >
+                    {show[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => handleSave(key, is_secret, description)}
+                disabled={saving[key] || !values[key]}
+                className="px-2.5 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-40 flex items-center gap-1 text-[11px]"
+              >
+                {saved[key] ? <CheckCircle className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                {saved[key] ? "OK" : "Sauver"}
+              </button>
+              <button
+                onClick={() => handleDelete(key)}
+                className="px-2 py-1.5 rounded border border-border-dim text-text-muted hover:text-cyber-red hover:border-cyber-red/30 transition-all"
+                title="Supprimer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main admin page ───────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -128,7 +226,7 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"users" | "audit" | "oauth">("audit");
+  const [tab, setTab] = useState<"users" | "audit" | "oauth" | "telegram">("audit");
 
   const load = async () => {
     setLoading(true);
@@ -179,6 +277,7 @@ export default function AdminPage() {
                 { id: "audit", label: "Audit Logs",   icon: Terminal  },
                 { id: "users", label: "Utilisateurs", icon: Users     },
                 { id: "oauth", label: "OAuth Google", icon: Settings2 },
+                { id: "telegram", label: "Telegram",    icon: Send     },
               ] as const).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -196,7 +295,9 @@ export default function AdminPage() {
             </div>
 
             {/* Content */}
-            {tab === "oauth" ? (
+            {tab === "telegram" ? (
+              <TelegramConfigPanel />
+            ) : tab === "oauth" ? (
               <OAuthConfigPanel />
             ) : loading ? (
               <div className="text-sm text-text-muted py-8 text-center">Chargement...</div>

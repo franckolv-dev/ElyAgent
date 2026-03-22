@@ -1,7 +1,12 @@
 """Google Calendar tools for ELY agent."""
 from __future__ import annotations
 
-from langchain_core.tools import tool
+import logging
+from typing import Annotated
+
+from langchain_core.tools import tool, InjectedToolArg
+
+logger = logging.getLogger(__name__)
 
 
 def _get_calendar_service(user_google_credentials_json: str | None):
@@ -15,15 +20,14 @@ def _get_calendar_service(user_google_credentials_json: str | None):
 
 @tool
 async def calendar_list_events(
-    user_google_credentials_json: str,
     max_results: int = 10,
     time_min: str = "",
     time_max: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List upcoming events from Google Calendar.
 
     Args:
-        user_google_credentials_json: Google credentials JSON (injected by agent context)
         max_results: Number of events to return (default 10)
         time_min: Start time filter in ISO 8601 format (e.g. '2025-01-01T00:00:00Z'), defaults to now
         time_max: End time filter in ISO 8601 format
@@ -70,17 +74,16 @@ async def calendar_list_events(
 
 @tool
 async def calendar_create_event(
-    user_google_credentials_json: str,
     title: str,
     start_datetime: str,
     end_datetime: str,
     description: str = "",
     location: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create an event in Google Calendar. ALWAYS confirm with user before creating.
 
     Args:
-        user_google_credentials_json: Google credentials JSON (injected by agent context)
         title: Event title
         start_datetime: Start in ISO 8601 format (e.g. '2025-06-15T14:00:00+02:00')
         end_datetime: End in ISO 8601 format
@@ -102,7 +105,15 @@ async def calendar_create_event(
         if location:
             event["location"] = location
 
+        logger.info("Creating calendar event: %s at %s → %s", title, start_datetime, end_datetime)
         created = service.events().insert(calendarId="primary", body=event).execute()
-        return f"Événement créé: {created.get('summary')} le {start_datetime} (ID: {created.get('id')})"
+        logger.info("Calendar event created: ID=%s, link=%s", created.get("id"), created.get("htmlLink"))
+        return (
+            f"Événement créé avec succès : '{created.get('summary')}'\n"
+            f"Date : {start_datetime}\n"
+            f"Lien : {created.get('htmlLink', 'N/A')}\n"
+            f"ID : {created.get('id')}"
+        )
     except Exception as e:
+        logger.error("Failed to create calendar event: %s", e)
         return f"Erreur création événement: {e}"

@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database import init_db
 from app.models import system_config as _  # ensure SystemConfig table is registered
+from app.models import scheduled_task as __  # ensure ScheduledTask table is registered
 from app.routers import auth, chat, hosts, admin, health
-from app.routers import validation, tts
+from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
@@ -16,7 +17,19 @@ from app.services.memory_manager import get_memory_manager
 async def lifespan(app: FastAPI):
     await init_db()
     await get_memory_manager().init_collections()
+
+    # Start Telegram bot if configured
+    from app.channels.telegram_bot import start_telegram_bot, stop_telegram_bot
+    await start_telegram_bot()
+
+    # Start scheduled tasks
+    from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
+    await load_and_schedule_tasks()
+
     yield
+
+    await stop_scheduler()
+    await stop_telegram_bot()
 
 
 app = FastAPI(
@@ -49,3 +62,4 @@ app.include_router(admin.router, prefix="/admin", tags=["admin"])
 app.include_router(validation.router)
 app.include_router(tts.router)
 app.include_router(google_router.router, prefix="/api")
+app.include_router(scheduler_router.router, prefix="/scheduler", tags=["scheduler"])

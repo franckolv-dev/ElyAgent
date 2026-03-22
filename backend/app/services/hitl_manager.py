@@ -54,8 +54,14 @@ class HITLManager:
         self,
         description: str,
         user_id: str,
+        channel: str = "web",
     ) -> tuple[str, str | None]:
-        """Pause execution and wait for the user's Android decision.
+        """Pause execution and wait for the user's decision.
+
+        Sends validation request to ALL available channels:
+        - Web UI via WebSocket
+        - Telegram via inline keyboard (if user has linked account)
+        - ntfy push notification (if configured)
 
         Returns a (decision, reason) tuple where decision is one of:
         ``"allow"``, ``"deny"``, ``"ban"``.
@@ -64,13 +70,18 @@ class HITLManager:
         pending = _PendingAction(action_id=action_id, description=description, user_id=user_id)
         self._pending[action_id] = pending
 
-        await self._notify_frontend(user_id, action_id, description, "hitl_pending")
-        await self._send_ntfy(action_id, description)
+        # Notify ALL available channels in parallel
+        await asyncio.gather(
+            self._notify_frontend(user_id, action_id, description, "hitl_pending"),
+            self._send_ntfy(action_id, description),
+            self._send_telegram(user_id, action_id, description),
+            return_exceptions=True,
+        )
 
         try:
             await asyncio.wait_for(pending.event.wait(), timeout=TIMEOUT_SECONDS)
         except asyncio.TimeoutError:
-            logger.info("HITL action %s timed out", action_id)
+            logger.info("HITL action %s timed out — auto-denied", action_id)
             pending.decision = "deny"
             pending.reason = "timeout"
 
@@ -120,6 +131,41 @@ class HITLManager:
                 await client.post(f"{settings.ntfy_url}/{topic}", content=description, headers=headers)
         except Exception as exc:
             logger.warning("Failed to send ntfy notification: %s", exc)
+
+    async def _send_telegram(self, user_id: str, action_id: str, description: str) -> None:
+        """Send HITL validation as Telegram inline keyboard if user has linked account."""
+        try:
+            from app.channels.telegram_bot import _bot_app, _linked_users
+            if not _bot_app:
+                return
+
+            # Find Telegram ID for this user
+            tg_id = None
+            for tid, uid in _linked_users.items():
+                if uid == user_id:
+                    tg_id = tid
+                    break
+
+            if not tg_id:
+                return
+
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Autoriser", callback_data=f"hitl:allow:{action_id}"),
+                    InlineKeyboardButton("❌ Refuser", callback_data=f"hitl:deny:{action_id}"),
+                ],
+                [
+                    InlineKeyboardButton("🚫 Interdire définitivement", callback_data=f"hitl:ban:{action_id}"),
+                ],
+            ]
+            await _bot_app.bot.send_message(
+                chat_id=tg_id,
+                text=f"⚠️ Validation requise :\n\n{description[:3000]}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except Exception as exc:
+            logger.warning("Failed to send Telegram HITL: %s", exc)
 
     async def _notify_frontend(
         self,

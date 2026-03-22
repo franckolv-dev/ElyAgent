@@ -29,6 +29,8 @@ dependencies = [
     "google-api-python-client>=2.150.0",
     "google-auth-oauthlib>=1.2.0",
     "google-auth-httplib2>=0.2.0",
+    "python-telegram-bot>=21.0",
+    "APScheduler>=3.10",
 ]
 
 [tool.hatch.build.targets.wheel]

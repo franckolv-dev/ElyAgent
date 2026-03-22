@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import base64
 from email.mime.text import MIMEText
+from typing import Annotated
 
-from langchain_core.tools import tool
+from langchain_core.tools import tool, InjectedToolArg
 
 
 def _get_gmail_service(user_google_credentials_json: str | None):
@@ -17,11 +18,14 @@ def _get_gmail_service(user_google_credentials_json: str | None):
 
 
 @tool
-async def gmail_list_emails(user_google_credentials_json: str, max_results: int = 10, query: str = "") -> str:
+async def gmail_list_emails(
+    max_results: int = 10,
+    query: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
     """List recent emails from Gmail inbox.
 
     Args:
-        user_google_credentials_json: Google credentials JSON (injected by agent context)
         max_results: Number of emails to return (default 10, max 50)
         query: Gmail search query (e.g. 'from:boss@company.com', 'subject:invoice', 'is:unread')
     """
@@ -61,11 +65,13 @@ async def gmail_list_emails(user_google_credentials_json: str, max_results: int 
 
 
 @tool
-async def gmail_read_email(user_google_credentials_json: str, email_id: str) -> str:
+async def gmail_read_email(
+    email_id: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
     """Read the full content of a specific email.
 
     Args:
-        user_google_credentials_json: Google credentials JSON (injected by agent context)
         email_id: The email ID returned by gmail_list_emails
     """
     service = _get_gmail_service(user_google_credentials_json)
@@ -76,7 +82,6 @@ async def gmail_read_email(user_google_credentials_json: str, email_id: str) -> 
         msg = service.users().messages().get(userId="me", id=email_id, format="full").execute()
         headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
 
-        # Extract body
         body = ""
         payload = msg.get("payload", {})
         if "body" in payload and payload["body"].get("data"):
@@ -99,11 +104,15 @@ async def gmail_read_email(user_google_credentials_json: str, email_id: str) -> 
 
 
 @tool
-async def gmail_send_email(user_google_credentials_json: str, to: str, subject: str, body: str) -> str:
+async def gmail_send_email(
+    to: str,
+    subject: str,
+    body: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
     """Send an email via Gmail. ALWAYS ask user confirmation before sending.
 
     Args:
-        user_google_credentials_json: Google credentials JSON (injected by agent context)
         to: Recipient email address
         subject: Email subject
         body: Email body (plain text)

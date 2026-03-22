@@ -22,8 +22,8 @@ from app.services.google_auth import build_auth_url, exchange_code
 
 router = APIRouter(prefix="/google", tags=["google"])
 
-# state → user_id (short-lived, in-memory is fine for single-server)
-_pending_states: dict[str, str] = {}
+# state → {"user_id": str, "code_verifier": str | None}
+_pending_states: dict[str, dict] = {}
 
 
 @router.get("/auth-url")
@@ -31,8 +31,8 @@ async def get_auth_url(current_user: User = Depends(get_current_user)):
     """Generate Google OAuth URL for the current user."""
     try:
         state = secrets.token_urlsafe(32)
-        _pending_states[state] = current_user.id
-        url = await build_auth_url(state)
+        url, code_verifier = await build_auth_url(state)
+        _pending_states[state] = {"user_id": current_user.id, "code_verifier": code_verifier}
         return {"url": url}
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -41,12 +41,15 @@ async def get_auth_url(current_user: User = Depends(get_current_user)):
 @router.get("/callback")
 async def oauth_callback(code: str, state: str):
     """Google redirects here after user consent. Stores tokens per user in DB."""
-    user_id = _pending_states.pop(state, None)
-    if not user_id:
+    pending = _pending_states.pop(state, None)
+    if not pending:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
 
+    user_id = pending["user_id"]
+    code_verifier = pending.get("code_verifier")
+
     try:
-        creds_dict = await exchange_code(code)
+        creds_dict = await exchange_code(code, code_verifier=code_verifier)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to exchange code: {e}")
 

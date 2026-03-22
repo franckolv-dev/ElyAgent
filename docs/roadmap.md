@@ -1,0 +1,86 @@
+# ELY Agent — Roadmap
+
+## Analyse comparative : ELY vs OpenClaw (330K stars, MIT)
+
+### Ce qu'OpenClaw fait exceptionnellement bien
+
+| Fonctionnalité | OpenClaw | ELY | Priorité |
+|---|---|---|---|
+| Multi-canal (Telegram, WhatsApp, Signal, Slack, Discord, iMessage...) | 20+ canaux | Web uniquement | **P1** |
+| Tâches planifiées (cron) | 76 fichiers, sub-agents | Aucun | **P2** |
+| Mémoire hybride (vecteur + FTS + décroissance temporelle) | SQLite-vec + multi-provider embeddings | Qdrant (vecteur seul) | **P3** |
+| Architecture de plugins/skills | 52 skills découplés | Outils en dur | **P4** |
+| Contrôle navigateur (Playwright/CDP) | 133 fichiers | Aucun | **P5** |
+| Apps natives (macOS, iOS, Android) | Swift + Kotlin | Tailscale web | Futur |
+| Multi-session / sub-agents | Oui | Non | Futur |
+
+### Ce qu'ELY fait et qu'OpenClaw ne fait PAS (ou mal)
+
+| Fonctionnalité | ELY | OpenClaw |
+|---|---|---|
+| **Sécurité** (HITL, anonymisation, contraintes apprises) | Architecture sécurisée par design | 288 alertes de sécurité GitHub |
+| **Google Workspace natif** (Gmail, Calendar, Docs, Sheets, Tasks, Drive) | Intégration complète | Skills séparés, partiel |
+| **Mémoire évolutive** (résumés auto + profil utilisateur) | Oui, Qdrant + summarisation | Fichier-centrique |
+| **TTS natif** | Oui (edge-tts) | Plugin séparé |
+| **HITL avec apprentissage** | Contraintes de sécurité persistantes | Approval simple |
+
+---
+
+## Plan d'implémentation
+
+### Phase 1 — Bot Telegram (canal alternatif)
+**Statut : EN COURS**
+
+- [ ] Bot Telegram via `python-telegram-bot` (async)
+- [ ] Whitelist de Telegram user IDs liés aux comptes ELY
+- [ ] Routage vers le même agent graph (mêmes outils, mêmes filtres)
+- [ ] HITL via boutons inline Telegram (Approve / Deny / Ban)
+- [ ] Configuration du bot token via Admin UI (pas .env)
+- [ ] Support voix (messages vocaux → transcription → agent)
+
+### Phase 2 — Tâches planifiées (cron)
+**Statut : À FAIRE**
+
+- [ ] Modèle DB `scheduled_tasks` (user_id, cron_expression, prompt, channel, enabled)
+- [ ] Service cron en background (APScheduler ou custom)
+- [ ] Exécution de prompt planifié via l'agent
+- [ ] Livraison des résultats sur le canal d'origine (web, Telegram)
+- [ ] UI de gestion des tâches (créer, modifier, activer/désactiver)
+- [ ] Commandes naturelles : "rappelle-moi tous les lundis de..."
+
+### Phase 3 — Recherche hybride mémoire
+**Statut : À FAIRE**
+
+- [ ] SQLite FTS5 en complément de Qdrant
+- [ ] Recherche hybride : score sémantique + score mots-clés
+- [ ] Décroissance temporelle (les souvenirs récents pèsent plus)
+- [ ] Multi-provider embeddings avec fallback (fastembed → Mistral → OpenAI)
+- [ ] Extraction automatique de faits structurés (profil utilisateur)
+
+### Phase 4 — Architecture de plugins/skills
+**Statut : À FAIRE**
+
+- [ ] Interface `Skill` standard (nom, description, outils, scopes)
+- [ ] Chargement dynamique des skills depuis un dossier
+- [ ] Registre de skills (activés/désactivés par utilisateur)
+- [ ] SDK pour créer des skills tiers
+- [ ] Skills empaquetés : météo, actualités, traduction, etc.
+
+### Phase 5 — Contrôle navigateur
+**Statut : À FAIRE**
+
+- [ ] Intégration Playwright headless
+- [ ] Outil `browser_navigate`, `browser_screenshot`, `browser_fill`, `browser_click`
+- [ ] Sandboxing (profil Chrome isolé, pas d'accès aux cookies utilisateur)
+- [ ] Extraction de contenu web structuré
+- [ ] Cas d'usage : remplir un formulaire, scraper une page, comparer des prix
+
+---
+
+## Objectifs long terme
+
+- **WhatsApp** via WhatsApp Business API
+- **App Android native** (Kotlin) avec push notifications
+- **Multi-agent** : ELY peut déléguer des sous-tâches à des agents spécialisés
+- **Marketplace de skills** communautaire
+- **Dashboard analytics** : usage, coûts LLM, interactions par jour

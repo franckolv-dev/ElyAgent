@@ -18,3 +18,4 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     google_credentials: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    telegram_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
