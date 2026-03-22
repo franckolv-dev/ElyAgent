@@ -49,7 +49,7 @@ export default function AdminPage() {
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-cyber-green" />
+                <Shield className="w-4 h-4 text-cyber-cyan" />
                 <h1 className="text-sm font-medium text-text-primary">Administration</h1>
               </div>
               <button
@@ -78,7 +78,7 @@ export default function AdminPage() {
                   onClick={() => setTab(id)}
                   className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs transition-all ${
                     tab === id
-                      ? "bg-cyber-green/10 text-cyber-green border border-cyber-green/20"
+                      ? "bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20"
                       : "text-text-muted hover:text-text-secondary"
                   }`}
                 >
@@ -123,7 +123,7 @@ export default function AdminPage() {
                           </td>
                           <td className="px-4 py-2.5">
                             {log.result_code !== null ? (
-                              <span className={log.result_code === 0 ? "text-cyber-green" : "text-cyber-red"}>
+                              <span className={log.result_code === 0 ? "text-cyber-cyan" : "text-cyber-red"}>
                                 [{log.result_code}]
                               </span>
                             ) : "—"}
@@ -162,7 +162,7 @@ export default function AdminPage() {
                         </td>
                         <td className="px-4 py-2.5">
                           <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                            u.is_active ? "text-cyber-green" : "text-cyber-red"
+                            u.is_active ? "text-cyber-cyan" : "text-cyber-red"
                           }`}>
                             {u.is_active ? "active" : "disabled"}
                           </span>

@@ -22,7 +22,7 @@ export function GlowOrb({ className = "" }: { className?: string }) {
 export function CyberBorder({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`relative p-[1px] rounded-lg overflow-hidden ${className}`}>
-      <div className="absolute inset-0 bg-gradient-to-r from-cyber-green/20 via-cyber-cyan/20 to-cyber-green/20 rounded-lg" />
+      <div className="absolute inset-0 bg-gradient-to-r from-cyber-cyan/20 via-cyber-blue/20 to-cyber-cyan/20 rounded-lg" />
       <div className="relative bg-bg-card rounded-lg">{children}</div>
     </div>
   );

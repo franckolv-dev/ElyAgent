@@ -17,22 +17,19 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   const [hitlAction, setHitlAction] = useState<{ id: string; description: string } | null>(null);
   const ttsRef = useRef<TTSPlayer | null>(null);
 
-  // Initialise TTS player once
   useEffect(() => {
     ttsRef.current = new TTSPlayer((s) => {
-      if (s === "playing") setAvatarState("speaking");
+      if (s === "playing")      setAvatarState("speaking");
       else if (s === "loading") setAvatarState("thinking");
-      else setAvatarState("idle");
+      else                      setAvatarState("idle");
     });
     return () => ttsRef.current?.stop();
   }, []);
 
-  // Keep TTS enabled flag in sync
   useEffect(() => {
     ttsRef.current?.setEnabled(ttsEnabled);
   }, [ttsEnabled]);
 
-  // React to WebSocket messages
   useEffect(() => {
     if (!wsMessage) return;
 
@@ -40,40 +37,28 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       setAvatarState("thinking");
       return;
     }
-
     if (wsMessage.type === "hitl_pending") {
       setAvatarState("alert");
-      setHitlAction({
-        id: wsMessage.action_id ?? "",
-        description: wsMessage.description ?? "",
-      });
+      setHitlAction({ id: wsMessage.action_id ?? "", description: wsMessage.description ?? "" });
       return;
     }
-
     if (wsMessage.type === "hitl_resolved") {
       setHitlAction(null);
       setAvatarState("idle");
       return;
     }
-
     if (wsMessage.type === "message" && wsMessage.role === "assistant") {
       setHitlAction(null);
-      if (ttsEnabled && wsMessage.content) {
-        ttsRef.current?.speak(wsMessage.content);
-      } else {
-        setAvatarState("idle");
-      }
+      if (ttsEnabled && wsMessage.content) ttsRef.current?.speak(wsMessage.content);
+      else setAvatarState("idle");
     }
-
-    if (wsMessage.type === "error") {
-      setAvatarState("idle");
-    }
+    if (wsMessage.type === "error") setAvatarState("idle");
   }, [wsMessage, ttsEnabled]);
 
   return (
-    <div className="flex flex-col items-center gap-3 w-64 shrink-0">
-      {/* Avatar */}
-      <div className="w-60 h-72 relative">
+    <div className="flex flex-col items-center gap-3 w-full">
+      {/* Avatar canvas — fills available width */}
+      <div className="w-full" style={{ aspectRatio: "5/6" }}>
         <CyberpunkAvatar state={avatarState} className="w-full h-full" />
       </div>
 
@@ -98,8 +83,8 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
         onClick={() => setTtsEnabled((v) => !v)}
         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs border transition-all ${
           ttsEnabled
-            ? "border-cyber-green/30 text-cyber-green hover:bg-cyber-green/5"
-            : "border-border-dim text-text-muted hover:border-cyber-green/20"
+            ? "border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5"
+            : "border-border-dim text-text-muted hover:border-cyber-cyan/20"
         }`}
       >
         {ttsEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}

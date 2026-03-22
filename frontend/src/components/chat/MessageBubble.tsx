@@ -19,18 +19,18 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
       transition={{ duration: 0.2 }}
       className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
     >
-      {/* Avatar */}
+      {/* Avatar icon */}
       <div
         className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
           isUser
             ? "bg-cyber-blue/10 border border-cyber-blue/30"
-            : "bg-cyber-green/10 border border-cyber-green/30"
+            : "bg-cyber-cyan/10 border border-cyber-cyan/30"
         }`}
       >
         {isUser ? (
           <User className="w-3.5 h-3.5 text-cyber-blue" />
         ) : (
-          <Bot className="w-3.5 h-3.5 text-cyber-green" />
+          <Bot className="w-3.5 h-3.5 text-cyber-cyan" />
         )}
       </div>
 
@@ -45,7 +45,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
         <pre className="whitespace-pre-wrap font-mono text-sm break-words">
           {message.content}
           {isStreaming && (
-            <span className="inline-block w-2 h-4 bg-cyber-green ml-0.5 animate-pulse" />
+            <span className="inline-block w-2 h-4 bg-cyber-cyan ml-0.5 animate-pulse" />
           )}
         </pre>
       </div>

@@ -31,7 +31,7 @@ export default function DashboardPage() {
             {/* Stats row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: "Hosts", value: hostEntries.length, icon: Server, color: "cyber-green" },
+                { label: "Hosts", value: hostEntries.length, icon: Server, color: "cyber-cyan" },
                 { label: "Commands Today", value: logs.filter(l => l.action === "ssh_command").length, icon: Terminal, color: "cyber-cyan" },
                 { label: "Recent Actions", value: logs.length, icon: Clock, color: "cyber-blue" },
                 { label: "Blocked", value: logs.filter(l => l.result_code !== 0 && l.result_code !== null).length, icon: AlertCircle, color: "cyber-red" },
@@ -59,14 +59,14 @@ export default function DashboardPage() {
                 <div className="bg-bg-secondary border border-dashed border-border-dim rounded-lg p-8 text-center">
                   <Server className="w-6 h-6 text-text-muted mx-auto mb-2" />
                   <p className="text-sm text-text-muted">No hosts configured yet.</p>
-                  <p className="text-xs text-text-muted mt-1">Edit <code className="text-cyber-green">config/hosts.yaml</code> to add SSH hosts.</p>
+                  <p className="text-xs text-text-muted mt-1">Edit <code className="text-cyber-cyan">config/hosts.yaml</code> to add SSH hosts.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                   {hostEntries.map(([name, host]) => (
                     <div key={name} className="bg-bg-secondary border border-border-dim rounded-lg p-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <div className="w-2 h-2 rounded-full bg-cyber-green animate-pulse-slow" />
+                        <div className="w-2 h-2 rounded-full bg-cyber-cyan animate-pulse-slow" />
                         <span className="text-sm font-medium text-text-primary">{name}</span>
                       </div>
                       <div className="space-y-1 text-xs text-text-muted">
@@ -80,7 +80,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex justify-between">
                           <span>Allowed commands</span>
-                          <span className="text-cyber-green">{host.allowed_commands.length}</span>
+                          <span className="text-cyber-cyan">{host.allowed_commands.length}</span>
                         </div>
                       </div>
                     </div>
@@ -115,7 +115,7 @@ export default function DashboardPage() {
                         <code className="text-text-primary truncate flex-1">{log.command}</code>
                       )}
                       {log.result_code !== null && (
-                        <span className={log.result_code === 0 ? "text-cyber-green" : "text-cyber-red"}>
+                        <span className={log.result_code === 0 ? "text-cyber-cyan" : "text-cyber-red"}>
                           [{log.result_code}]
                         </span>
                       )}

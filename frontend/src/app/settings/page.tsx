@@ -26,7 +26,7 @@ export default function SettingsPage() {
             {/* LLM Provider */}
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <Cpu className="w-4 h-4 text-cyber-green" />
+                <Cpu className="w-4 h-4 text-cyber-cyan" />
                 <h2 className="text-sm font-medium text-text-primary">LLM Provider</h2>
               </div>
               <div className="space-y-2">
@@ -36,7 +36,7 @@ export default function SettingsPage() {
                     onClick={() => setActiveProvider(p.id)}
                     className={`w-full flex items-center justify-between p-4 rounded-lg border text-left transition-all ${
                       activeProvider === p.id
-                        ? "bg-cyber-green/5 border-cyber-green/30 text-text-primary"
+                        ? "bg-cyber-cyan/5 border-cyber-cyan/30 text-text-primary"
                         : "bg-bg-secondary border-border-dim text-text-secondary hover:border-text-muted"
                     }`}
                   >
@@ -46,7 +46,7 @@ export default function SettingsPage() {
                     </div>
                     <span className={`text-[10px] px-2 py-0.5 rounded border ${
                       activeProvider === p.id
-                        ? "bg-cyber-green/10 border-cyber-green/30 text-cyber-green"
+                        ? "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan"
                         : "bg-bg-primary border-border-dim text-text-muted"
                     }`}>
                       Tier {p.tier}
@@ -56,14 +56,14 @@ export default function SettingsPage() {
               </div>
               <p className="text-xs text-text-muted mt-3 flex items-start gap-1.5">
                 <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                Switch provider in <code className="text-cyber-green">config/providers.yaml</code> or via the <code className="text-cyber-green">ACTIVE_LLM_PROVIDER</code> env variable.
+                Switch provider in <code className="text-cyber-cyan">config/providers.yaml</code> or via the <code className="text-cyber-cyan">ACTIVE_LLM_PROVIDER</code> env variable.
               </p>
             </section>
 
             {/* API Keys info */}
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <Key className="w-4 h-4 text-cyber-green" />
+                <Key className="w-4 h-4 text-cyber-cyan" />
                 <h2 className="text-sm font-medium text-text-primary">API Keys</h2>
               </div>
               <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
@@ -80,19 +80,19 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-text-muted mt-2">Set these in <code className="text-cyber-green">backend/.env</code> (copy from <code className="text-cyber-green">.env.example</code>)</p>
+              <p className="text-xs text-text-muted mt-2">Set these in <code className="text-cyber-cyan">backend/.env</code> (copy from <code className="text-cyber-cyan">.env.example</code>)</p>
             </section>
 
             {/* SSH Hosts */}
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <Server className="w-4 h-4 text-cyber-green" />
+                <Server className="w-4 h-4 text-cyber-cyan" />
                 <h2 className="text-sm font-medium text-text-primary">SSH Hosts</h2>
               </div>
               <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
                 <p className="text-xs text-text-muted">
                   Configure SSH hosts and their command whitelists in{" "}
-                  <code className="text-cyber-green">config/hosts.yaml</code>.
+                  <code className="text-cyber-cyan">config/hosts.yaml</code>.
                   Each host requires an explicit list of allowed commands — the agent cannot execute
                   arbitrary commands.
                 </p>
