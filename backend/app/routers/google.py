@@ -1,4 +1,9 @@
-"""Google OAuth2 endpoints — connect/disconnect Google services."""
+"""Google OAuth2 endpoints — connect/disconnect Google services.
+
+Each user has their own google_credentials stored in the users table.
+The OAuth app credentials (client_id/secret) are shared and stored in
+system_config (set via admin UI) or .env as fallback.
+"""
 from __future__ import annotations
 
 import json
@@ -17,18 +22,17 @@ from app.services.google_auth import build_auth_url, exchange_code
 
 router = APIRouter(prefix="/google", tags=["google"])
 
-# In-memory store for state tokens (maps state → user_id)
-# In production, use Redis or DB-backed storage
+# state → user_id (short-lived, in-memory is fine for single-server)
 _pending_states: dict[str, str] = {}
 
 
 @router.get("/auth-url")
 async def get_auth_url(current_user: User = Depends(get_current_user)):
-    """Generate Google OAuth URL. Frontend redirects user here."""
+    """Generate Google OAuth URL for the current user."""
     try:
         state = secrets.token_urlsafe(32)
         _pending_states[state] = current_user.id
-        url = build_auth_url(state)
+        url = await build_auth_url(state)
         return {"url": url}
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -36,13 +40,13 @@ async def get_auth_url(current_user: User = Depends(get_current_user)):
 
 @router.get("/callback")
 async def oauth_callback(code: str, state: str):
-    """Google redirects here after user consent. Stores tokens in DB."""
+    """Google redirects here after user consent. Stores tokens per user in DB."""
     user_id = _pending_states.pop(state, None)
     if not user_id:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
 
     try:
-        creds_dict = exchange_code(code)
+        creds_dict = await exchange_code(code)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to exchange code: {e}")
 
@@ -54,15 +58,13 @@ async def oauth_callback(code: str, state: str):
         user.google_credentials = json.dumps(creds_dict)
         await db.commit()
 
-    # Redirect to settings page after successful connection
     s = get_settings()
-    frontend = s.frontend_url
-    return RedirectResponse(url=f"{frontend}/settings?google=connected")
+    return RedirectResponse(url=f"{s.frontend_url}/settings?google=connected")
 
 
 @router.get("/status")
 async def get_status(current_user: User = Depends(get_current_user)):
-    """Check if the current user has connected Google."""
+    """Check Google connection status for the current user."""
     return {"connected": current_user.google_credentials is not None}
 
 
@@ -71,7 +73,20 @@ async def disconnect(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Revoke and remove stored Google credentials."""
+    """Remove stored Google credentials for the current user."""
     current_user.google_credentials = None
     await db.commit()
     return {"message": "Google disconnected"}
+
+
+@router.get("/app-config-status")
+async def app_config_status():
+    """Whether the shared Google OAuth app credentials are configured.
+    Does not require authentication — used by the settings page to show
+    setup instructions only when needed.
+    """
+    from app.services.system_config import get_config as gc
+    s = get_settings()
+    has_id     = bool(await gc("google_client_id",     fallback=s.google_client_id))
+    has_secret = bool(await gc("google_client_secret", fallback=s.google_client_secret))
+    return {"configured": has_id and has_secret}

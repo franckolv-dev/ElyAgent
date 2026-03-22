@@ -290,12 +290,9 @@ export default function SettingsPage() {
                     <li>Aller sur <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">console.cloud.google.com</a></li>
                     <li>Créer un projet → API &amp; Services → Identifiants</li>
                     <li>Créer un ID client OAuth 2.0 (application Web)</li>
-                    <li>Ajouter l'URI de redirection autorisée : <code className="text-cyber-cyan">http://localhost:8000/google/callback</code></li>
-                    <li>Copier le Client ID et Secret dans <code className="text-cyber-cyan">.env</code> :<br/>
-                      <code className="text-cyber-cyan">GOOGLE_CLIENT_ID=…</code><br/>
-                      <code className="text-cyber-cyan">GOOGLE_CLIENT_SECRET=…</code>
-                    </li>
-                    <li>Redémarrer le backend (<code className="text-cyber-cyan">./start.sh restart</code>)</li>
+                    <li>Ajouter l'URI de redirection : <code className="text-cyber-cyan">http://localhost:8000/google/callback</code></li>
+                    <li>Renseigner le Client ID et Secret dans <a href="/admin" className="text-cyber-cyan hover:underline">Admin → OAuth Google</a> (sans redémarrage)</li>
+                    <li>Revenir ici et cliquer sur "Connecter mon compte Google"</li>
                   </ol>
                 </details>
               </div>

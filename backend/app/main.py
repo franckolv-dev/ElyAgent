@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
+from app.models import system_config as _  # ensure SystemConfig table is registered
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts
 from app.routers import google as google_router
