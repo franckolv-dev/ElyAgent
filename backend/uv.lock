@@ -515,6 +515,7 @@ dependencies = [
     { name = "httpx" },
     { name = "langchain-anthropic" },
     { name = "langchain-core" },
+    { name = "langchain-mistralai" },
     { name = "langgraph" },
     { name = "paramiko" },
     { name = "pwdlib", extra = ["argon2"] },
@@ -540,6 +541,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "langchain-anthropic", specifier = ">=0.3.0" },
     { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langchain-mistralai", specifier = ">=1.1.1" },
     { name = "langgraph", specifier = ">=0.4.0" },
     { name = "paramiko", specifier = ">=3.5.0" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.2.0" },
@@ -974,6 +976,15 @@ http2 = [
 ]
 
 [[package]]
+name = "httpx-sse"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/4c/751061ffa58615a32c31b2d82e8482be8dd4a89154f003147acee90f2be9/httpx_sse-0.4.3.tar.gz", hash = "sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d", size = 15943, upload-time = "2025-10-10T21:48:22.271Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc", size = 8960, upload-time = "2025-10-10T21:48:21.158Z" },
+]
+
+[[package]]
 name = "huggingface-hub"
 version = "1.7.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1140,6 +1151,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1d/93/36226f593df52b871fc24d494c274f3a6b2ac76763a2806e7d35611634a1/langchain_core-1.2.17.tar.gz", hash = "sha256:54aa267f3311e347fb2e50951fe08e53761cebfb999ab80e6748d70525bbe872", size = 836130, upload-time = "2026-03-02T22:47:55.846Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/90/073f33ab383a62908eca7ea699586dfea280e77182176e33199c80ddf22a/langchain_core-1.2.17-py3-none-any.whl", hash = "sha256:bf6bd6ce503874e9c2da1669a69383e967c3de1ea808921d19a9a6bff1a9fbbe", size = 502727, upload-time = "2026-03-02T22:47:54.537Z" },
+]
+
+[[package]]
+name = "langchain-mistralai"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "httpx-sse" },
+    { name = "langchain-core" },
+    { name = "pydantic" },
+    { name = "tokenizers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a8/07/cdfcfed8dc680634ae470868aecb9ac48f953302b13c0bb119f6ee96e1be/langchain_mistralai-1.1.1.tar.gz", hash = "sha256:2430dd6c5e714252ce58bdf9453da4e1f2c694e239dde7e9c4d488a6d1ef2368", size = 143032, upload-time = "2025-12-12T22:11:54.594Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2f/96/67e029665e9c348a2f17d1a681dc139631a6d8241b7a8d8e6ee69ff70a4b/langchain_mistralai-1.1.1-py3-none-any.whl", hash = "sha256:47839fc69c879bad4ff60133f238c15574416c2dcd850121621a7e9de45800c1", size = 19439, upload-time = "2025-12-12T22:11:53.546Z" },
 ]
 
 [[package]]

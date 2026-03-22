@@ -25,6 +25,7 @@ dependencies = [
     "qdrant-client>=1.9.0",
     "fastembed>=0.3.0",
     "edge-tts>=7.0.0",
+    "langchain-mistralai>=1.1.1",
 ]
 
 [tool.hatch.build.targets.wheel]
