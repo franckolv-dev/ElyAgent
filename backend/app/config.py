@@ -39,7 +39,12 @@ class Settings(BaseSettings):
     # TTS
     tts_voice: str = "fr-FR-DeniseNeural"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "env_ignore_empty": True,   # empty shell vars don't override .env values
+        "extra": "ignore",          # ignore unknown env vars (e.g. NEXT_PUBLIC_*, SSH_KEYS_PATH)
+    }
 
 
 @lru_cache

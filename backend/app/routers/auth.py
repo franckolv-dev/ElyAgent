@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -20,9 +20,9 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username or email already exists")
 
-    # First user becomes admin
-    count = await db.execute(select(User))
-    is_first = count.scalars().first() is None
+    # First user becomes admin — use COUNT to avoid loading all rows
+    count_result = await db.execute(select(func.count(User.id)))
+    is_first = count_result.scalar_one() == 0
 
     user = User(
         username=req.username,

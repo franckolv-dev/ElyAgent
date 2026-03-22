@@ -41,15 +41,35 @@ class SecurityFilter:
     # ------------------------------------------------------------------ #
 
     def anonymize(self, text: str) -> str:
-        """Replace sensitive values with opaque placeholders."""
+        """Replace sensitive values with opaque placeholders.
+
+        Each unique sensitive value is mapped to exactly one placeholder.
+        re.finditer is called on the *current* result string so that already-
+        substituted tokens are not matched again by subsequent iterations.
+        A reverse set (_seen) provides O(1) duplicate detection.
+        """
         result = text
+        # Build a reverse lookup from real-value → existing placeholder so
+        # the same value seen again in a new message reuses the same token.
+        _seen: dict[str, str] = {v: k for k, v in self._vault.items()}
+
         for label, pattern in _PATTERNS.items():
+            # Collect all unique matches first, then replace, to avoid
+            # mutating `result` mid-iteration over positions.
+            found: list[str] = []
             for match in re.finditer(pattern, result, re.IGNORECASE):
                 original = match.group(0)
-                if original in self._vault.values():
+                if original not in found:
+                    found.append(original)
+
+            for original in found:
+                if original in _seen:
+                    # Already have a placeholder; ensure it is substituted
+                    result = result.replace(original, _seen[original])
                     continue
                 placeholder = f"[{label}_{self._counter}]"
                 self._vault[placeholder] = original
+                _seen[original] = placeholder
                 self._counter += 1
                 result = result.replace(original, placeholder)
         return result

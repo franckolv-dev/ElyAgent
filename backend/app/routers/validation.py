@@ -36,12 +36,22 @@ async def deny_action(action_id: str, reason: str = Body(default=None, embed=Tru
 async def ban_action(
     action_id: str,
     reason: str = Body(default=None, embed=True),
-    user_id: str = Body(..., embed=True),
-    description: str = Body(..., embed=True),
+    user_id: str = Body(default=None, embed=True),
+    description: str = Body(default=None, embed=True),
 ):
-    """Refuse and permanently memorise a security rule derived from this action."""
-    rule = f"INTERDICTION PERMANENTE: {description}"
+    """Refuse and permanently memorise a security rule derived from this action.
+
+    When called from ntfy (empty body), the constraint is stored via the
+    pending action's own description so no body params are required.
+    """
+    hitl = get_hitl_manager()
+    # Fallback: read description / user_id from the pending action itself
+    pending = hitl._pending.get(action_id)
+    actual_desc = description or (pending.description if pending else action_id)
+    actual_user = user_id or (pending.user_id if pending else "")
+
+    rule = f"INTERDICTION PERMANENTE: {actual_desc}"
     if reason:
         rule += f" — Raison: {reason}"
-    await get_memory_manager().store_constraint(rule, user_id)
+    await get_memory_manager().store_constraint(rule, actual_user)
     return await _resolve(action_id, "ban", reason)

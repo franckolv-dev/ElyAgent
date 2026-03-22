@@ -10,9 +10,6 @@ from app.routers import validation, tts
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 
-settings = get_settings()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -28,7 +25,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=[get_settings().frontend_url],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

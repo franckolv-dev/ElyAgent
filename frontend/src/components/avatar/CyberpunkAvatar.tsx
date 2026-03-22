@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Component, Suspense, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 
 export type AvatarState = "idle" | "thinking" | "speaking" | "alert" | "listening";
@@ -28,6 +28,52 @@ const LABEL: Record<AvatarState, string> = {
   listening: "LISTENING",
 };
 
+// ── WebGL error boundary — shows a CSS fallback when GPU is unavailable ─────
+class WebGLErrorBoundary extends Component<
+  { color: string; label: string; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+
+  render() {
+    if (this.state.failed) {
+      const { color, label } = this.props;
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-[#060c16]">
+          {/* CSS wireframe fallback — concentric hexagons */}
+          <div className="relative w-24 h-24 mb-3">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="absolute inset-0 rounded-full border animate-pulse"
+                style={{
+                  borderColor: `${color}${["66", "44", "22"][i]}`,
+                  transform: `scale(${1 - i * 0.22})`,
+                  animationDelay: `${i * 0.4}s`,
+                }}
+              />
+            ))}
+            <div
+              className="absolute inset-0 flex items-center justify-center text-[10px] font-mono"
+              style={{ color }}
+            >
+              ELY
+            </div>
+          </div>
+          <p className="text-[9px] font-mono opacity-40" style={{ color }}>
+            WebGL indisponible
+          </p>
+          <p className="text-[8px] font-mono opacity-25 mt-0.5" style={{ color }}>
+            {label}
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Main exported component ─────────────────────────────────────────────────
 export function CyberpunkAvatar({
   state = "idle",
@@ -45,10 +91,12 @@ export function CyberpunkAvatar({
       className={`relative bg-[#060c16] overflow-hidden rounded-lg ${className}`}
       style={{ minHeight: minimal ? 0 : 280 }}
     >
-      {/* Three.js canvas */}
-      <Suspense fallback={<div className="w-full h-full bg-[#060c16]" />}>
-        <AvatarScene state={state} />
-      </Suspense>
+      {/* Three.js canvas — with WebGL error boundary */}
+      <WebGLErrorBoundary color={color} label={LABEL[state]}>
+        <Suspense fallback={<div className="w-full h-full bg-[#060c16]" />}>
+          <AvatarScene state={state} />
+        </Suspense>
+      </WebGLErrorBoundary>
 
       {/* HUD overlay — hidden in minimal mode */}
       {!minimal && (

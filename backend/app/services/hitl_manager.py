@@ -17,7 +17,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -36,10 +36,10 @@ class _PendingAction:
     event: asyncio.Event = field(default_factory=asyncio.Event)
     decision: str = "deny"       # "allow" | "deny" | "ban"
     reason: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def expired(self) -> bool:
-        return datetime.utcnow() > self.created_at + timedelta(seconds=TIMEOUT_SECONDS)
+        return datetime.now(timezone.utc) > self.created_at + timedelta(seconds=TIMEOUT_SECONDS)
 
 
 class HITLManager:

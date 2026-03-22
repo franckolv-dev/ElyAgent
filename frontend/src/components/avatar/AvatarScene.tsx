@@ -147,11 +147,14 @@ function FaceModel({ state }: { state: AvatarState }) {
       }
     });
     if (!geo) throw new Error("No mesh found in avatar GLB");
+    // TypeScript cannot track mutations inside traverse's callback, so it
+    // narrows `geo` to `never` after the null-check.  Cast it back.
+    const safeGeo = geo as THREE.BufferGeometry;
 
-    geo.computeVertexNormals();
-    geo.computeBoundingBox();
-    const center = geo.boundingBox!.getCenter(new THREE.Vector3());
-    geo.translate(-center.x, -center.y, -center.z);
+    safeGeo.computeVertexNormals();
+    safeGeo.computeBoundingBox();
+    const center = safeGeo.boundingBox!.getCenter(new THREE.Vector3());
+    safeGeo.translate(-center.x, -center.y, -center.z);
 
     const mat = new THREE.ShaderMaterial({
       uniforms: {
@@ -168,7 +171,7 @@ function FaceModel({ state }: { state: AvatarState }) {
       side:           THREE.DoubleSide,
     });
 
-    return { geometry: geo, material: mat };
+    return { geometry: safeGeo, material: mat };
   }, [gltf.scene]);
 
   useFrame(({ clock }) => {

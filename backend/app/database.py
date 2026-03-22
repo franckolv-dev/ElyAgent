@@ -3,14 +3,18 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
 
-settings = get_settings()
-
-engine = create_async_engine(settings.database_url, echo=False)
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
 
 class Base(DeclarativeBase):
     pass
+
+
+# Engine and session factory are module-level singletons.
+# get_settings() uses lru_cache so Settings is only constructed once;
+# pydantic-settings reads .env at that moment, which happens when this
+# module is first imported (during the uvicorn startup sequence, after
+# the working directory is already correct).
+engine = create_async_engine(get_settings().database_url, echo=False)
+async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def get_db() -> AsyncSession:

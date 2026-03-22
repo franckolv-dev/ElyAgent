@@ -3,10 +3,12 @@ from langchain_core.language_models import BaseChatModel
 
 from app.config import get_settings
 
-settings = get_settings()
-
 
 def get_llm() -> BaseChatModel:
+    # Settings are read inside the function so that the .env file is always
+    # fully loaded before we access any values (avoids module-import-time
+    # race when the working directory is not yet set).
+    settings = get_settings()
     provider = settings.active_llm_provider
     model = settings.active_llm_model
 

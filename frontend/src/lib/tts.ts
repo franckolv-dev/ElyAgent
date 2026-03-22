@@ -1,3 +1,5 @@
+import { getAccessToken } from "./auth";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type TTSState = "idle" | "loading" | "playing" | "error";
@@ -26,7 +28,8 @@ export class TTSPlayer {
     this.onStateChange("loading");
 
     try {
-      const token = localStorage.getItem("access_token");
+      // Use the shared helper so the correct localStorage key is always used
+      const token = getAccessToken();
       const res = await fetch(`${API_URL}/tts/speak`, {
         method: "POST",
         headers: {

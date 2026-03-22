@@ -1,4 +1,5 @@
 import json
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import HumanMessage
@@ -11,6 +12,8 @@ from app.models.conversation import Conversation, Message
 from app.models.user import User
 from app.services.security_filter import SecurityFilter
 from app.services import ws_registry
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,17 +33,28 @@ def get_agent():
 
 @router.websocket("/chat")
 async def websocket_chat(websocket: WebSocket):
+    # NOTE: websocket.accept() MUST be called before websocket.close().
+    # Calling close() on an unaccepted WebSocket raises a protocol error
+    # which manifests as an immediate disconnect in the logs.
+    # All auth rejections must therefore accept first, then close.
+
     token = websocket.query_params.get("token")
     if not token:
+        await websocket.accept()
         await websocket.close(code=4001, reason="Missing token")
         return
 
     payload = decode_token(token)
     if not payload or payload.get("type") != "access":
+        await websocket.accept()
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     user_id = payload.get("sub")
+    if not user_id:
+        await websocket.accept()
+        await websocket.close(code=4001, reason="Invalid token payload")
+        return
 
     async with async_session() as db:
         result = await db.execute(
@@ -48,11 +62,14 @@ async def websocket_chat(websocket: WebSocket):
         )
         user = result.scalar_one_or_none()
         if not user:
+            await websocket.accept()
             await websocket.close(code=4001, reason="User not found")
             return
 
     await websocket.accept()
     ws_registry.register(user_id, websocket)
+
+    conversation_id: str | None = None
 
     try:
         while True:
@@ -60,14 +77,14 @@ async def websocket_chat(websocket: WebSocket):
             msg = json.loads(data)
 
             user_content = msg.get("content", "")
-            conversation_id = msg.get("conversation_id")
+            conversation_id = msg.get("conversation_id") or conversation_id
 
             async with async_session() as db:
                 if not conversation_id:
                     conv = Conversation(user_id=user_id, title=user_content[:50])
                     db.add(conv)
                     await db.flush()
-                    conversation_id = conv.id
+                    conversation_id = str(conv.id)
                     await db.commit()
 
                 user_msg = Message(
@@ -86,13 +103,13 @@ async def websocket_chat(websocket: WebSocket):
                 "conversation_id": conversation_id,
             }))
 
-            result = await agent.ainvoke({
+            invoke_result = await agent.ainvoke({
                 "messages": [HumanMessage(content=clean_content)],
                 "user_id": user_id,
                 "conversation_id": conversation_id,
             })
 
-            ai_content = result["messages"][-1].content
+            ai_content = invoke_result["messages"][-1].content
             # Restore real values in the response
             ai_content = sf.deanonymize(ai_content)
 
@@ -111,9 +128,13 @@ async def websocket_chat(websocket: WebSocket):
             }))
 
     except WebSocketDisconnect:
-        pass
+        logger.debug("WebSocket disconnected for user %s", user_id)
     except Exception as e:
-        await websocket.send_text(json.dumps({"type": "error", "content": str(e)}))
+        logger.exception("Unexpected error in WebSocket handler for user %s", user_id)
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "content": str(e)}))
+        except Exception:
+            pass  # Socket may already be closed; swallow the secondary error
     finally:
         ws_registry.unregister(user_id)
         # Evict the filter for the current conversation to avoid unbounded growth.
