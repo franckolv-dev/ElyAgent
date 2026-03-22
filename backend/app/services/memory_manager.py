@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 _COLLECTION_MEMORIES = "memories"
 _COLLECTION_CONSTRAINTS = "security_constraints"
+_COLLECTION_INTERACTIONS = "interactions"
 _VECTOR_DIM = 384  # all-MiniLM-L6-v2 output dimension
 
 
@@ -53,7 +54,7 @@ class MemoryManager:
         try:
             from qdrant_client.models import Distance, VectorParams
             existing = {c.name for c in self.client.get_collections().collections}
-            for name in (_COLLECTION_MEMORIES, _COLLECTION_CONSTRAINTS):
+            for name in (_COLLECTION_MEMORIES, _COLLECTION_CONSTRAINTS, _COLLECTION_INTERACTIONS):
                 if name not in existing:
                     self.client.create_collection(
                         name,
@@ -130,6 +131,37 @@ class MemoryManager:
             return [h.payload["content"] for h in hits]
         except Exception as exc:
             logger.warning("Failed to fetch memories: %s", exc)
+            return []
+
+    # ------------------------------------------------------------------ #
+    # Interaction history                                                  #
+    # ------------------------------------------------------------------ #
+
+    async def store_interaction(self, user_msg: str, assistant_msg: str, user_id: str, conversation_id: str) -> None:
+        """Store a complete interaction (user query + assistant response) for future semantic retrieval."""
+        try:
+            content = f"Question: {user_msg}\nRéponse: {assistant_msg}"
+            self._upsert(
+                _COLLECTION_INTERACTIONS,
+                self._embed(user_msg),  # embed the user query for semantic search
+                {
+                    "user_message": user_msg,
+                    "assistant_message": assistant_msg,
+                    "content": content,
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
+                },
+            )
+        except Exception as exc:
+            logger.warning("Failed to store interaction: %s", exc)
+
+    async def get_relevant_interactions(self, query: str, user_id: str, limit: int = 3) -> list[dict]:
+        """Retrieve past interactions semantically similar to the current query."""
+        try:
+            hits = self._search(_COLLECTION_INTERACTIONS, self._embed(query), user_id, limit, 0.55)
+            return [h.payload for h in hits]
+        except Exception as exc:
+            logger.warning("Failed to fetch interactions: %s", exc)
             return []
 
 

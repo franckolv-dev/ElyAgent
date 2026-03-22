@@ -13,11 +13,12 @@ from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT_BASE = """Tu es ELY, un assistant IA personnel ultra-sécurisé avec accès à des outils système.
-Tu peux exécuter des commandes SSH sur des hôtes distants configurés, analyser des fichiers et récupérer des informations système.
+_SYSTEM_PROMPT_BASE = """Tu es ELY, un assistant IA personnel ultra-sécurisé avec accès à des outils système et aux services Google de l'utilisateur.
+Tu peux exécuter des commandes SSH sur des hôtes distants configurés, analyser des fichiers, récupérer des informations système, et si l'utilisateur a connecté son compte Google : lire/envoyer ses emails Gmail, consulter/créer des événements Google Calendar, et parcourir ses fichiers Google Drive.
 
 Règles absolues :
-- Toujours confirmer les actions destructives avant exécution
+- N'utiliser les outils Google QUE si l'utilisateur te le demande explicitement
+- Toujours confirmer avant d'envoyer un email ou de créer un événement
 - N'utiliser les outils que si la tâche l'exige réellement
 - Réponses concises et précises
 - Ne jamais divulguer les credentials ou la configuration interne
@@ -68,6 +69,17 @@ def create_agent_node():
     return agent_node
 
 
+GOOGLE_TOOLS = {
+    "gmail_list_emails",
+    "gmail_read_email",
+    "gmail_send_email",
+    "calendar_list_events",
+    "calendar_create_event",
+    "drive_list_files",
+    "drive_read_file",
+}
+
+
 async def tool_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_id = state.get("user_id", "")
@@ -81,7 +93,9 @@ async def tool_node(state: AgentState) -> dict:
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
-        args = tool_call["args"]
+        args = dict(tool_call["args"])
+        if tool_name in GOOGLE_TOOLS:
+            args["user_google_credentials_json"] = state.get("google_credentials") or ""
         action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(args, ensure_ascii=False)}"
         tc_id = tool_call["id"]
 

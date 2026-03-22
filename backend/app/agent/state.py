@@ -8,3 +8,4 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     user_id: str
     conversation_id: str
+    google_credentials: str

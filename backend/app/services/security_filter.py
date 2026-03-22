@@ -12,7 +12,11 @@ _PATTERNS: dict[str, str] = {
 }
 
 # Tool names that always require human validation
-ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({"ssh_execute"})
+ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
+    "ssh_execute",
+    "gmail_send_email",
+    "calendar_create_event",
+})
 
 # Keywords that flag an action as needing validation
 _CRITICAL_KEYWORDS: frozenset[str] = frozenset({

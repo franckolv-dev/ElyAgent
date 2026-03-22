@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.database import init_db
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts
+from app.routers import google as google_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 
@@ -46,3 +47,4 @@ app.include_router(hosts.router, prefix="/hosts", tags=["hosts"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
 app.include_router(validation.router)
 app.include_router(tts.router)
+app.include_router(google_router.router, prefix="/api")
