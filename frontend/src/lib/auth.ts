@@ -48,7 +48,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 
   _refreshPromise = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         credentials: "include",   // sends the HttpOnly cookie
       });
@@ -106,7 +106,7 @@ export async function authFetch(
 
 export async function logout(): Promise<void> {
   try {
-    await fetch(`${API_BASE}/api/auth/logout`, {
+    await fetch(`${API_BASE}/auth/logout`, {
       method: "POST",
       credentials: "include",
     });
@@ -120,7 +120,7 @@ export async function logout(): Promise<void> {
 /** @deprecated Use authFetch instead */
 export async function fetchUser(): Promise<User | null> {
   try {
-    const res = await authFetch(`${API_BASE}/api/auth/me`);
+    const res = await authFetch(`${API_BASE}/auth/me`);
     if (!res.ok) return null;
     return res.json();
   } catch {
