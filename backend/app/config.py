@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # TTS
     tts_voice: str = "fr-FR-DeniseNeural"
 
+    # Cookie security (set True in production behind HTTPS)
+    cookie_secure: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

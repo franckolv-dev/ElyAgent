@@ -8,8 +8,9 @@ export interface User {
 
 export interface TokenResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
+  /** @deprecated refresh_token is now an HttpOnly cookie — no longer in response body */
+  refresh_token?: string;
 }
 
 export interface ChatMessage {

@@ -1,3 +1,4 @@
+import asyncio
 import fnmatch
 from pathlib import Path
 
@@ -86,3 +87,9 @@ def execute_ssh_command(host_name: str, command: str) -> tuple[int, str, str]:
         return exit_code, out, err
     finally:
         client.close()
+
+
+async def async_execute_ssh_command(host_name: str, command: str) -> tuple[int, str, str]:
+    """Async wrapper: runs the blocking SSH call in a thread pool so the
+    FastAPI event loop stays free during long-running commands."""
+    return await asyncio.to_thread(execute_ssh_command, host_name, command)

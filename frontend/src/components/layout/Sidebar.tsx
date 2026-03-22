@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MessageSquare, LayoutDashboard, Settings, Shield, LogOut, Cpu } from "lucide-react";
-import { clearTokens } from "@/lib/auth";
+import { logout } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
 const navItems = [
@@ -17,8 +17,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
 
-  const handleLogout = () => {
-    clearTokens();
+  const handleLogout = async () => {
+    await logout();   // clears localStorage + asks backend to delete HttpOnly cookie
     router.push("/login");
   };
 
