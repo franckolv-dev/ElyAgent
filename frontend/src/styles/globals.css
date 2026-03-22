@@ -27,15 +27,19 @@
 @layer base {
   html.light {
     color-scheme: light;
+    /* Backgrounds / borders / text */
     --color-bg-primary:    #f2f5fa;
     --color-bg-secondary:  #e8edf6;
     --color-bg-tertiary:   #dde4f0;
     --color-bg-card:       #e4ebf5;
     --color-border-dim:    #c0cce0;
-    --color-border-glow:   #0099cc33;
+    --color-border-glow:   #006fa833;
     --color-text-primary:  #1a1c2e;
     --color-text-secondary:#4a5280;
     --color-text-muted:    #8892b0;
+    /* Accent: darker blue replaces the too-light cyan on white backgrounds */
+    --color-cyber-cyan:     #0077a8;
+    --color-cyber-cyan-dim: #005f88;
   }
 
   html.dark {
@@ -51,6 +55,10 @@
   ::selection {
     background-color: #00e5ff33;
     color: var(--color-cyber-cyan);
+  }
+  html.light ::selection {
+    background-color: #0077a822;
+    color: #0077a8;
   }
 
   ::-webkit-scrollbar        { width: 6px; }
@@ -75,6 +83,20 @@
   .glow-border {
     border-color: #00e5ff33;
     box-shadow: 0 0 8px #00e5ff11;
+  }
+
+  /* Light mode: replace hard-coded cyan hex with darker blue */
+  html.light .glow-cyan,
+  html.light .glow-green {
+    box-shadow: 0 0 15px #0077a822, 0 0 30px #0077a811, inset 0 0 15px #0077a808;
+  }
+  html.light .glow-cyan-text,
+  html.light .glow-green-text {
+    text-shadow: 0 0 8px #0077a866, 0 0 18px #0077a833;
+  }
+  html.light .glow-border {
+    border-color: #0077a833;
+    box-shadow: 0 0 8px #0077a811;
   }
 
   /* Grid + scanlines — dark and light variants */
