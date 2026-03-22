@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # Cookie security (set True in production behind HTTPS)
     cookie_secure: bool = False
 
+    # Google OAuth2 (optionnel — laisser vide pour désactiver)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/google/callback"
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

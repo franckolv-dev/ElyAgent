@@ -10,6 +10,7 @@ from app.auth.jwt import decode_token
 from app.database import async_session
 from app.models.conversation import Conversation, Message
 from app.models.user import User
+from app.services.memory_manager import get_memory_manager
 from app.services.security_filter import SecurityFilter
 from app.services import ws_registry
 
@@ -65,6 +66,7 @@ async def websocket_chat(websocket: WebSocket):
             await websocket.accept()
             await websocket.close(code=4001, reason="User not found")
             return
+        google_credentials = user.google_credentials
 
     await websocket.accept()
     ws_registry.register(user_id, websocket)
@@ -107,6 +109,7 @@ async def websocket_chat(websocket: WebSocket):
                 "messages": [HumanMessage(content=clean_content)],
                 "user_id": user_id,
                 "conversation_id": conversation_id,
+                "google_credentials": google_credentials or "",
             })
 
             ai_content = invoke_result["messages"][-1].content
@@ -119,6 +122,14 @@ async def websocket_chat(websocket: WebSocket):
                 )
                 db.add(ai_msg)
                 await db.commit()
+
+            memory = get_memory_manager()
+            await memory.store_interaction(
+                user_msg=user_content,
+                assistant_msg=ai_content,
+                user_id=user_id,
+                conversation_id=str(conversation_id),
+            )
 
             await websocket.send_text(json.dumps({
                 "type": "message",

@@ -26,6 +26,9 @@ dependencies = [
     "fastembed>=0.3.0",
     "edge-tts>=7.0.0",
     "langchain-mistralai>=1.1.1",
+    "google-api-python-client>=2.150.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-auth-httplib2>=0.2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
