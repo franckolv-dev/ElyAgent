@@ -1,11 +1,13 @@
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     # LLM
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""
+    mistral_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     active_llm_provider: str = "anthropic"
     active_llm_model: str = "claude-haiku-4-5-20251001"
@@ -23,11 +25,40 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     frontend_url: str = "http://localhost:3000"
+    backend_url: str = "http://localhost:8000"
+    # Comma-separated list of allowed CORS origins (overrides frontend_url when set)
+    cors_origins: str = ""
 
     # Rate Limiting
     rate_limit: str = "60/minute"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # Qdrant vector memory
+    qdrant_url: str = "http://localhost:6333"
+
+    # ntfy push notifications (Android HITL)
+    ntfy_url: str = ""        # e.g. https://ntfy.sh  or http://ntfy:80
+    ntfy_topic: str = "cyberentity"
+
+    # TTS
+    tts_voice: str = "fr-FR-DeniseNeural"
+
+    # Cookie security (set True in production behind HTTPS)
+    cookie_secure: bool = False
+
+    # Google OAuth2 (optionnel — laisser vide pour désactiver)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/google/callback"
+
+    # Telegram bot (optionnel — configurer via Admin ou .env)
+    telegram_bot_token: str = ""
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "env_ignore_empty": True,   # empty shell vars don't override .env values
+        "extra": "ignore",          # ignore unknown env vars (e.g. NEXT_PUBLIC_*, SSH_KEYS_PATH)
+    }
 
 
 @lru_cache

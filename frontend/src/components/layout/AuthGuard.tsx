@@ -19,7 +19,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!checked) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-cyber-green animate-pulse-slow text-sm">Verifying access...</div>
+        <div className="text-cyber-cyan animate-pulse-slow text-sm">Verifying access...</div>
       </div>
     );
   }

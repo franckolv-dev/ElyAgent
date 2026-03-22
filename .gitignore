@@ -26,6 +26,9 @@ Thumbs.db
 # Alembic
 alembic/versions/__pycache__/
 
+# Docker / data
+data/*.db
+
 # Claude
 .claude/
 memory/

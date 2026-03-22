@@ -3,22 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MessageSquare, LayoutDashboard, Settings, Shield, LogOut, Cpu } from "lucide-react";
-import { clearTokens } from "@/lib/auth";
+import { logout } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
 const navItems = [
-  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/chat",      label: "Chat",      icon: MessageSquare   },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/admin", label: "Admin", icon: Shield },
+  { href: "/settings",  label: "Settings",  icon: Settings        },
+  { href: "/admin",     label: "Admin",     icon: Shield          },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
+  const router   = useRouter();
 
-  const handleLogout = () => {
-    clearTokens();
+  const handleLogout = async () => {
+    await logout();   // clears localStorage + asks backend to delete HttpOnly cookie
     router.push("/login");
   };
 
@@ -26,11 +26,11 @@ export function Sidebar() {
     <aside className="w-16 lg:w-56 h-screen bg-bg-secondary border-r border-border-dim flex flex-col shrink-0">
       <div className="p-4 border-b border-border-dim">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyber-green/10 border border-cyber-green/30 flex items-center justify-center">
-            <Cpu className="w-4 h-4 text-cyber-green" />
+          <div className="w-8 h-8 rounded-lg bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center">
+            <Cpu className="w-4 h-4 text-cyber-cyan" />
           </div>
-          <span className="hidden lg:block text-sm font-bold text-cyber-green glow-green-text tracking-wider">
-            CYBER-ENTITY
+          <span className="hidden lg:block text-sm font-bold text-cyber-cyan glow-cyan-text tracking-wider">
+            ELY AGENT
           </span>
         </div>
       </div>
@@ -44,7 +44,7 @@ export function Sidebar() {
               href={href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${
                 isActive
-                  ? "bg-cyber-green/10 text-cyber-green border border-cyber-green/20"
+                  ? "bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20"
                   : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
               }`}
             >

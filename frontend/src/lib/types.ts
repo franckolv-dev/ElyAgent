@@ -8,8 +8,9 @@ export interface User {
 
 export interface TokenResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
+  /** @deprecated refresh_token is now an HttpOnly cookie — no longer in response body */
+  refresh_token?: string;
 }
 
 export interface ChatMessage {
@@ -27,10 +28,15 @@ export interface Conversation {
 }
 
 export interface WSMessage {
-  type: "start" | "message" | "error" | "stream";
+  type: "start" | "message" | "error" | "stream" | "hitl_pending" | "hitl_resolved";
   content?: string;
   role?: string;
   conversation_id?: string;
+  // HITL fields
+  action_id?: string;
+  description?: string;
+  decision?: string;
+  reason?: string;
 }
 
 export interface SSHHost {

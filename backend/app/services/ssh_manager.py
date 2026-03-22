@@ -1,3 +1,4 @@
+import asyncio
 import fnmatch
 from pathlib import Path
 
@@ -15,18 +16,24 @@ def load_host_config() -> dict:
     if _host_config is not None:
         return _host_config
 
-    config_path = Path(__file__).parent.parent.parent.parent / "config" / "hosts.yaml"
-    if config_path.exists():
-        with open(config_path) as f:
-            _host_config = yaml.safe_load(f) or {}
-    else:
-        _host_config = {}
+    # Support both local dev (relative to project root) and Docker (/config volume)
+    candidates = [
+        Path("/config/hosts.yaml"),
+        Path(__file__).parent.parent.parent.parent / "config" / "hosts.yaml",
+    ]
+    for config_path in candidates:
+        if config_path.exists():
+            with open(config_path) as f:
+                _host_config = yaml.safe_load(f) or {}
+            return _host_config
+
+    _host_config = {}
     return _host_config
 
 
 def is_command_allowed(host_name: str, command: str) -> bool:
     config = load_host_config()
-    hosts = config.get("hosts", {})
+    hosts = config.get("hosts") or {}
     host = hosts.get(host_name)
     if not host:
         return False
@@ -49,7 +56,7 @@ def is_command_allowed(host_name: str, command: str) -> bool:
 
 def execute_ssh_command(host_name: str, command: str) -> tuple[int, str, str]:
     config = load_host_config()
-    hosts = config.get("hosts", {})
+    hosts = config.get("hosts") or {}
     host = hosts.get(host_name)
     if not host:
         raise ValueError(f"Unknown host: {host_name}")
@@ -80,3 +87,9 @@ def execute_ssh_command(host_name: str, command: str) -> tuple[int, str, str]:
         return exit_code, out, err
     finally:
         client.close()
+
+
+async def async_execute_ssh_command(host_name: str, command: str) -> tuple[int, str, str]:
+    """Async wrapper: runs the blocking SSH call in a thread pool so the
+    FastAPI event loop stays free during long-running commands."""
+    return await asyncio.to_thread(execute_ssh_command, host_name, command)

@@ -17,8 +17,8 @@ export default function Home() {
 
   return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="text-cyber-green animate-pulse-slow text-lg">
-        Initializing Cyber-Entity...
+      <div className="text-cyber-cyan animate-pulse-slow text-lg">
+        Initializing ELY...
       </div>
     </div>
   );

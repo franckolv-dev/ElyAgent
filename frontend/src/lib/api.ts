@@ -1,27 +1,15 @@
-import { getAccessToken, clearTokens } from "./auth";
+import { authFetch } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function fetchAPI(path: string, options: RequestInit = {}) {
-  const token = getAccessToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-
-  if (res.status === 401) {
-    clearTokens();
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
-    throw new Error("Unauthorized");
-  }
+  // authFetch adds Authorization header and retries once after token refresh
+  const res = await authFetch(`${API_URL}${path}`, { ...options, headers });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
