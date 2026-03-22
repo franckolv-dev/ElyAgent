@@ -21,22 +21,22 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
 
 export const api = {
   login: (username: string, password: string) =>
-    fetchAPI("/api/auth/login", {
+    fetchAPI("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
 
   register: (username: string, email: string, password: string) =>
-    fetchAPI("/api/auth/register", {
+    fetchAPI("/auth/register", {
       method: "POST",
       body: JSON.stringify({ username, email, password }),
     }),
 
-  getMe: () => fetchAPI("/api/auth/me"),
+  getMe: () => fetchAPI("/auth/me"),
 
-  getHosts: () => fetchAPI("/api/hosts/"),
+  getHosts: () => fetchAPI("/hosts/"),
 
-  getUsers: () => fetchAPI("/api/admin/users"),
+  getUsers: () => fetchAPI("/admin/users"),
 
-  getAuditLogs: (limit = 50) => fetchAPI(`/api/admin/audit?limit=${limit}`),
+  getAuditLogs: (limit = 50) => fetchAPI(`/admin/audit?limit=${limit}`),
 };

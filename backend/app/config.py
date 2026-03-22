@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     frontend_url: str = "http://localhost:3000"
     backend_url: str = "http://localhost:8000"
+    # Comma-separated list of allowed CORS origins (overrides frontend_url when set)
+    cors_origins: str = ""
 
     # Rate Limiting
     rate_limit: str = "60/minute"
