@@ -183,10 +183,18 @@ async def websocket_chat(websocket: WebSocket):
 
 
 async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
-    """Generate a semantic summary of the conversation and store it in Qdrant.
+    """Generate a summary + extract user profile facts; store both in Qdrant + FTS5.
 
-    Called on WebSocket disconnect so it doesn't block the main loop.
-    Only summarizes if there are at least 4 messages (2 exchanges).
+    Called on WebSocket disconnect so it never blocks the active session.
+    Skipped when the conversation has fewer than 4 messages (2 exchanges).
+
+    Two LLM calls are run in parallel:
+    1. Holistic summary  — 3-6 sentences about what happened / was learned.
+    2. Profile facts     — JSON list of durable facts about the user
+                           (name, preferences, habits, family, work, etc.).
+
+    Each extracted fact is stored as an individual memory entry so it can
+    be retrieved independently by semantic + keyword search later.
     """
     try:
         async with async_session() as db:
@@ -200,7 +208,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         if len(msgs) < 4:
             return  # Too short to summarize
 
-        # Build a compact transcript (last 30 messages max)
+        # Compact transcript — last 30 messages, 300 chars per message
         transcript = "\n".join(
             f"{'Utilisateur' if m.role == 'user' else 'ELY'}: {m.content[:300]}"
             for m in msgs[-30:]
@@ -208,6 +216,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
 
         from app.services.llm_provider import get_llm
         llm = get_llm()
+
         summary_prompt = (
             "Résume en 3 à 6 phrases les informations importantes apprises sur l'utilisateur "
             "dans cette conversation : ses préférences, habitudes, événements mentionnés, "
@@ -215,16 +224,64 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
             "Formule au présent ('L'utilisateur a un chien nommé...', 'Il travaille sur...', etc.).\n\n"
             f"Conversation :\n{transcript}"
         )
-        response = await llm.ainvoke([{"role": "user", "content": summary_prompt}])
-        summary = response.content.strip()
 
+        facts_prompt = (
+            "À partir de cette conversation, extrais les faits durables et importants sur "
+            "l'utilisateur (prénom/nom, âge, localisation, préférences, habitudes, famille, "
+            "amis, travail, projets, outils utilisés, abonnements, etc.).\n"
+            "Réponds UNIQUEMENT avec un tableau JSON de phrases courtes au présent, "
+            "une par fait. Exemple :\n"
+            '[\"L\'utilisateur s\'appelle Franck\", \"Il vit en France\", '
+            '"Il travaille sur un projet d\'IA nommé ELY"]\n'
+            "Retourne [] si aucun fait nouveau n'est clairement identifiable.\n\n"
+            f"Conversation :\n{transcript}"
+        )
+
+        # Run both LLM calls concurrently to minimise latency
+        summary_resp, facts_resp = await asyncio.gather(
+            llm.ainvoke([{"role": "user", "content": summary_prompt}]),
+            llm.ainvoke([{"role": "user", "content": facts_prompt}]),
+        )
+
+        memory = get_memory_manager()
+
+        # ── 1. Store holistic summary ────────────────────────────────────
+        summary = summary_resp.content.strip()
         if summary:
-            memory = get_memory_manager()
             await memory.store_memory(
                 content=summary,
                 user_id=user_id,
                 conversation_id=conversation_id,
             )
             logger.info("Conversation %s summarized into long-term memory", conversation_id)
+
+        # ── 2. Store individual profile facts ────────────────────────────
+        import json as _json
+        raw = facts_resp.content.strip()
+        # Strip markdown code fences if the model wrapped the JSON
+        if "```" in raw:
+            raw = raw.split("```")[1].lstrip("json").strip()
+        try:
+            facts = _json.loads(raw)
+        except (_json.JSONDecodeError, ValueError):
+            facts = []
+
+        if isinstance(facts, list):
+            stored_count = 0
+            for fact in facts[:12]:  # safety cap
+                if isinstance(fact, str) and len(fact) > 10:
+                    await memory.store_memory(
+                        content=fact,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                    )
+                    stored_count += 1
+            if stored_count:
+                logger.info(
+                    "Extracted %d profile fact(s) from conversation %s",
+                    stored_count,
+                    conversation_id,
+                )
+
     except Exception as exc:
         logger.warning("Failed to summarize conversation %s: %s", conversation_id, exc)

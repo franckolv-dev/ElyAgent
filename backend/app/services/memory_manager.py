@@ -1,22 +1,28 @@
-"""Hybrid vector memory backed by Qdrant.
+"""Hybrid vector + full-text memory backed by Qdrant + SQLite FTS5.
 
-Three collections:
-- ``memories``            — summarised facts about past conversations
-- ``security_constraints``— permanent security rules learned from user refusals
-- ``interactions``        — individual Q&A pairs for semantic retrieval
+Three Qdrant collections:
+- ``memories``             — summarised facts and per-fact user profile items
+- ``security_constraints`` — permanent security rules learned from user refusals
+- ``interactions``         — individual Q&A pairs for semantic retrieval
 
-Search strategy (per query):
+Every item is also indexed in the SQLite FTS5 table (see ``fts_store.py``)
+for keyword / prefix matching.
+
+Search strategy (per query)
+----------------------------
 1. Fetch ``limit * 4`` vector-similar candidates from Qdrant.
-2. For each candidate, compute a hybrid score:
-       hybrid = (α × vector_score  +  β × keyword_score) × time_decay
-3. Re-rank and return the top ``limit`` results.
+2. In parallel, query the FTS5 index for matching Qdrant point IDs.
+3. For each candidate, compute:
+       hybrid = (α × vector_score  +  β × keyword_score  +  γ × fts_boost)
+                × time_decay
+4. Re-rank and return the top ``limit`` results.
 
-Decay rates (exponential, e^{-λ × age_days}):
-- constraints  : λ = 0.00  → no decay (permanent security rules)
-- memories     : λ = 0.01  → ~69-day half-life (long-term facts)
-- interactions : λ = 0.05  → ~14-day half-life (recent exchanges preferred)
+Decay rates (exponential e^{-λ × age_days}):
+- constraints  : λ = 0.00 → permanent (security rules never expire)
+- memories     : λ = 0.01 → ~69-day half-life
+- interactions : λ = 0.05 → ~14-day half-life (recent exchanges preferred)
 
-Uses fastembed (ONNX, CPU-friendly) for local embeddings.
+Uses fastembed (ONNX, CPU-friendly) for local embeddings — no GPU needed.
 """
 from __future__ import annotations
 
@@ -35,7 +41,7 @@ _COLLECTION_CONSTRAINTS = "security_constraints"
 _COLLECTION_INTERACTIONS = "interactions"
 _VECTOR_DIM = 384  # all-MiniLM-L6-v2 output dimension
 
-# French + English stop-words to ignore during keyword matching
+# French + English stop-words — ignored during keyword matching
 _STOP_WORDS: frozenset[str] = frozenset({
     "le", "la", "les", "de", "du", "des", "un", "une", "et", "en", "à", "au",
     "aux", "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "me",
@@ -67,7 +73,9 @@ class MemoryManager:
     def encoder(self):
         if self._encoder is None:
             from fastembed import TextEmbedding
-            self._encoder = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            self._encoder = TextEmbedding(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
         return self._encoder
 
     # ------------------------------------------------------------------ #
@@ -78,27 +86,33 @@ class MemoryManager:
         try:
             from qdrant_client.models import Distance, VectorParams
             existing = {c.name for c in self.client.get_collections().collections}
-            for name in (_COLLECTION_MEMORIES, _COLLECTION_CONSTRAINTS, _COLLECTION_INTERACTIONS):
+            for name in (
+                _COLLECTION_MEMORIES,
+                _COLLECTION_CONSTRAINTS,
+                _COLLECTION_INTERACTIONS,
+            ):
                 if name not in existing:
                     self.client.create_collection(
                         name,
-                        vectors_config=VectorParams(size=_VECTOR_DIM, distance=Distance.COSINE),
+                        vectors_config=VectorParams(
+                            size=_VECTOR_DIM, distance=Distance.COSINE
+                        ),
                     )
             logger.info("Qdrant collections ready")
         except Exception as exc:
             logger.warning("Qdrant unavailable — memory disabled: %s", exc)
 
     # ------------------------------------------------------------------ #
-    # Scoring helpers                                                      #
+    # Scoring helpers (pure static — no I/O)                             #
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _time_decay(created_at_ts: float | None, lambda_decay: float = 0.02) -> float:
-        """Exponential decay factor in [0, 1].
+    def _time_decay(created_at_ts: float | None, lambda_decay: float) -> float:
+        """Exponential decay factor ∈ (0, 1].
 
-        Returns 1.0 for brand-new items and decreases for older ones.
-        Returns 1.0 when lambda_decay == 0 (no decay) or when timestamp is missing
-        (backward-compatibility with items stored before this feature).
+        Returns 1.0 when lambda_decay == 0 (no decay) or when the timestamp
+        is missing (backward-compatibility with items stored before this
+        feature was introduced).
         """
         if created_at_ts is None or lambda_decay == 0.0:
             return 1.0
@@ -109,8 +123,8 @@ class MemoryManager:
     def _keyword_score(query: str, text: str) -> float:
         """Fraction of significant query words that appear in *text*.
 
-        Normalised to [0, 1]. Words shorter than 3 characters and stop-words
-        are ignored.  Returns 0 if no significant words remain after filtering.
+        Normalised to [0, 1].  Words ≤ 2 chars and stop-words are ignored.
+        Returns 0 when no significant words remain.
         """
         words = {
             w.strip(".,!?;:\"'()[]")
@@ -124,22 +138,81 @@ class MemoryManager:
         return matches / len(words)
 
     # ------------------------------------------------------------------ #
-    # Low-level helpers                                                    #
+    # Low-level Qdrant helpers                                            #
     # ------------------------------------------------------------------ #
 
     def _embed(self, text: str) -> list[float]:
         return list(self.encoder.embed([text]))[0].tolist()
 
-    def _upsert(self, collection: str, vector: list[float], payload: dict) -> None:
-        """Insert or update a point.  Automatically stamps ``created_at``."""
+    def _upsert(self, collection: str, vector: list[float], payload: dict) -> str:
+        """Insert or update a Qdrant point.
+
+        Automatically stamps ``created_at`` (Unix timestamp).
+        Returns the generated point UUID string so callers can also index
+        the item in the FTS store using the same ID.
+        """
         from qdrant_client.models import PointStruct
+        point_id = str(uuid.uuid4())
         stamped = {"created_at": time.time(), **payload}
         self.client.upsert(
             collection_name=collection,
-            points=[PointStruct(id=str(uuid.uuid4()), vector=vector, payload=stamped)],
+            points=[PointStruct(id=point_id, vector=vector, payload=stamped)],
         )
+        return point_id
 
-    def _search_hybrid(
+    def _qdrant_candidates(
+        self,
+        collection: str,
+        vector: list[float],
+        user_id: str,
+        limit: int,
+        score_threshold: float,
+    ) -> list:
+        """Synchronous Qdrant ANN search returning raw hit objects."""
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        return self.client.query_points(
+            collection_name=collection,
+            query=vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            # Fetch extra candidates so re-ranking has material to work with.
+            # Relax threshold slightly to surface keyword-rich but less
+            # vector-similar items before re-ranking.
+            limit=limit * 4,
+            score_threshold=max(0.0, score_threshold - 0.15),
+            with_payload=True,
+        ).points
+
+    def _rerank(
+        self,
+        candidates: list,
+        query: str,
+        text_fields: list[str],
+        fts_matches: set[str],
+        decay_lambda: float,
+        alpha: float,
+        beta: float,
+        fts_boost: float,
+        limit: int,
+    ) -> list:
+        """Re-rank *candidates* using the hybrid scoring formula.
+
+        hybrid = (α × vector_score  +  β × keyword_score  +  γ × fts_boost)
+                 × time_decay
+        """
+        scored: list[tuple[float, object]] = []
+        for hit in candidates:
+            text = " ".join(str(hit.payload.get(f, "")) for f in text_fields)
+            kw = self._keyword_score(query, text)
+            decay = self._time_decay(hit.payload.get("created_at"), decay_lambda)
+            fts = fts_boost if str(hit.id) in fts_matches else 0.0
+            score = (alpha * hit.score + beta * kw + fts) * decay
+            scored.append((score, hit))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [hit for _, hit in scored[:limit]]
+
+    async def _search_hybrid(
         self,
         collection: str,
         query: str,
@@ -149,46 +222,36 @@ class MemoryManager:
         score_threshold: float,
         text_fields: list[str],
         decay_lambda: float = 0.02,
-        alpha: float = 0.7,   # weight for vector similarity
-        beta: float = 0.3,    # weight for keyword score
+        alpha: float = 0.65,   # weight: vector similarity
+        beta: float = 0.25,    # weight: keyword overlap
+        fts_boost: float = 0.10,  # additive bonus when FTS also matches
     ) -> list:
-        """Fetch candidates via ANN then re-rank with keyword boost + time decay.
+        """Full hybrid search: Qdrant ANN + FTS5 boost + temporal decay.
 
         Steps:
-        1. Retrieve ``limit * 4`` candidates from Qdrant (lower threshold to get
-           more candidates before re-ranking).
-        2. Compute per-candidate hybrid score.
-        3. Sort descending and return the top ``limit`` points.
+        1. Run FTS5 search (async) to collect matching Qdrant point IDs.
+        2. Run Qdrant ANN (sync, fast in practice) to get vector candidates.
+        3. Re-rank candidates with the hybrid formula and return top ``limit``.
         """
-        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        from app.services.fts_store import get_fts_store
 
-        # Pull extra candidates so re-ranking has material to work with
-        candidates = self.client.query_points(
-            collection_name=collection,
-            query=vector,
-            query_filter=Filter(
-                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
-            ),
-            limit=limit * 4,
-            # Relax threshold slightly so keyword-rich but less similar items surface
-            score_threshold=max(0.0, score_threshold - 0.15),
-            with_payload=True,
-        ).points
+        # FTS search runs first; it's cheap and helps boost exact matches
+        fts_matches = set(
+            await get_fts_store().search(
+                query, user_id, collection, limit=limit * 4
+            )
+        )
 
+        candidates = self._qdrant_candidates(
+            collection, vector, user_id, limit, score_threshold
+        )
         if not candidates:
             return []
 
-        scored: list[tuple[float, object]] = []
-        for hit in candidates:
-            # Concatenate all relevant text fields for keyword matching
-            text = " ".join(str(hit.payload.get(f, "")) for f in text_fields)
-            kw = self._keyword_score(query, text)
-            decay = self._time_decay(hit.payload.get("created_at"), decay_lambda)
-            hybrid = (alpha * hit.score + beta * kw) * decay
-            scored.append((hybrid, hit))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [hit for _, hit in scored[:limit]]
+        return self._rerank(
+            candidates, query, text_fields,
+            fts_matches, decay_lambda, alpha, beta, fts_boost, limit,
+        )
 
     # ------------------------------------------------------------------ #
     # Security constraints (permanent — no decay)                         #
@@ -196,11 +259,13 @@ class MemoryManager:
 
     async def store_constraint(self, rule: str, user_id: str) -> None:
         try:
-            self._upsert(
+            point_id = self._upsert(
                 _COLLECTION_CONSTRAINTS,
                 self._embed(rule),
                 {"rule": rule, "user_id": user_id, "priority": "high"},
             )
+            from app.services.fts_store import get_fts_store
+            await get_fts_store().store(rule, user_id, _COLLECTION_CONSTRAINTS, point_id)
         except Exception as exc:
             logger.warning("Failed to store constraint: %s", exc)
 
@@ -208,7 +273,7 @@ class MemoryManager:
         self, query: str, user_id: str, limit: int = 5
     ) -> list[str]:
         try:
-            hits = self._search_hybrid(
+            hits = await self._search_hybrid(
                 _COLLECTION_CONSTRAINTS,
                 query,
                 self._embed(query),
@@ -216,7 +281,8 @@ class MemoryManager:
                 limit,
                 score_threshold=0.4,
                 text_fields=["rule"],
-                decay_lambda=0.0,   # Security rules never decay
+                decay_lambda=0.0,      # Security rules never decay
+                fts_boost=0.15,        # Slightly higher boost — exact keyword matters for security
             )
             return [h.payload["rule"] for h in hits]
         except Exception as exc:
@@ -231,11 +297,13 @@ class MemoryManager:
         self, content: str, user_id: str, conversation_id: str
     ) -> None:
         try:
-            self._upsert(
+            point_id = self._upsert(
                 _COLLECTION_MEMORIES,
                 self._embed(content),
                 {"content": content, "user_id": user_id, "conversation_id": conversation_id},
             )
+            from app.services.fts_store import get_fts_store
+            await get_fts_store().store(content, user_id, _COLLECTION_MEMORIES, point_id)
         except Exception as exc:
             logger.warning("Failed to store memory: %s", exc)
 
@@ -243,7 +311,7 @@ class MemoryManager:
         self, query: str, user_id: str, limit: int = 3
     ) -> list[str]:
         try:
-            hits = self._search_hybrid(
+            hits = await self._search_hybrid(
                 _COLLECTION_MEMORIES,
                 query,
                 self._embed(query),
@@ -251,7 +319,7 @@ class MemoryManager:
                 limit,
                 score_threshold=0.45,
                 text_fields=["content"],
-                decay_lambda=0.01,  # ~69-day half-life
+                decay_lambda=0.01,     # ~69-day half-life
             )
             return [h.payload["content"] for h in hits]
         except Exception as exc:
@@ -269,12 +337,13 @@ class MemoryManager:
         user_id: str,
         conversation_id: str,
     ) -> None:
-        """Store a complete interaction (user query + assistant response)."""
+        """Store a complete Q&A pair for future semantic retrieval."""
         try:
             content = f"Question: {user_msg}\nRéponse: {assistant_msg}"
-            self._upsert(
+            # Embed the user query (what we'll search by later)
+            point_id = self._upsert(
                 _COLLECTION_INTERACTIONS,
-                self._embed(user_msg),  # embed the query for semantic search
+                self._embed(user_msg),
                 {
                     "user_message": user_msg,
                     "assistant_message": assistant_msg,
@@ -283,15 +352,18 @@ class MemoryManager:
                     "conversation_id": conversation_id,
                 },
             )
+            # Index both sides in FTS so either can surface the interaction
+            from app.services.fts_store import get_fts_store
+            await get_fts_store().store(content, user_id, _COLLECTION_INTERACTIONS, point_id)
         except Exception as exc:
             logger.warning("Failed to store interaction: %s", exc)
 
     async def get_relevant_interactions(
         self, query: str, user_id: str, limit: int = 3
     ) -> list[dict]:
-        """Retrieve past interactions semantically similar to the current query."""
+        """Retrieve past Q&A pairs semantically similar to *query*."""
         try:
-            hits = self._search_hybrid(
+            hits = await self._search_hybrid(
                 _COLLECTION_INTERACTIONS,
                 query,
                 self._embed(query),
@@ -299,7 +371,7 @@ class MemoryManager:
                 limit,
                 score_threshold=0.5,
                 text_fields=["user_message", "assistant_message"],
-                decay_lambda=0.05,  # ~14-day half-life
+                decay_lambda=0.05,     # ~14-day half-life
             )
             return [h.payload for h in hits]
         except Exception as exc:

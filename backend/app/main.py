@@ -12,11 +12,13 @@ from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
+from app.services.fts_store import get_fts_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     await get_memory_manager().init_collections()
+    await get_fts_store().init()
 
     # Start Telegram bot if configured
     from app.channels.telegram_bot import start_telegram_bot, stop_telegram_bot

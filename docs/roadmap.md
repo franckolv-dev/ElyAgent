@@ -49,13 +49,13 @@
 - [ ] Commandes naturelles : "rappelle-moi tous les lundis de..."
 
 ### Phase 3 — Recherche hybride mémoire
-**Statut : À FAIRE**
+**Statut : ✅ FAIT (2026-03-22)**
 
-- [ ] SQLite FTS5 en complément de Qdrant
-- [ ] Recherche hybride : score sémantique + score mots-clés
-- [ ] Décroissance temporelle (les souvenirs récents pèsent plus)
-- [ ] Multi-provider embeddings avec fallback (fastembed → Mistral → OpenAI)
-- [ ] Extraction automatique de faits structurés (profil utilisateur)
+- [x] SQLite FTS5 en complément de Qdrant (`app/services/fts_store.py`)
+- [x] Recherche hybride : score sémantique + keyword score + FTS boost
+- [x] Décroissance temporelle (les souvenirs récents pèsent plus)
+- [x] Extraction automatique de faits structurés (profil utilisateur en fin de session)
+- [ ] Multi-provider embeddings avec fallback (dimension mismatch — à résoudre en v2 avec migration Qdrant)
 
 ### Phase 4 — Architecture de plugins/skills
 **Statut : À FAIRE**
