@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     # Telegram bot (optionnel — configurer via Admin ou .env)
     telegram_bot_token: str = ""
 
+    # WhatsApp Cloud API (optional)
+    whatsapp_phone_number_id: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_webhook_verify_token: str = "ely-whatsapp-verify"
+    whatsapp_app_secret: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

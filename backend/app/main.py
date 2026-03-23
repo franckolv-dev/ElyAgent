@@ -13,6 +13,7 @@ from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
 from app.routers import skills as skills_router
 from app.routers import transcribe as transcribe_router
+from app.routers import whatsapp_webhook as whatsapp_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -30,6 +31,10 @@ async def lifespan(app: FastAPI):
     # Start Telegram bot if configured
     from app.channels.telegram_bot import start_telegram_bot, stop_telegram_bot
     await start_telegram_bot()
+
+    # Load WhatsApp linked users
+    from app.channels.whatsapp import load_linked_whatsapp_users
+    await load_linked_whatsapp_users()
 
     # Start scheduled tasks
     from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
@@ -79,3 +84,4 @@ app.include_router(google_router.router, prefix="/api")
 app.include_router(scheduler_router.router, prefix="/scheduler", tags=["scheduler"])
 app.include_router(skills_router.router, prefix="/skills", tags=["skills"])
 app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])
+app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
