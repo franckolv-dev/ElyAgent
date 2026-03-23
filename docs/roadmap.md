@@ -58,13 +58,21 @@
 - [ ] Multi-provider embeddings avec fallback (dimension mismatch — à résoudre en v2 avec migration Qdrant)
 
 ### Phase 4 — Architecture de plugins/skills
-**Statut : À FAIRE**
+**Statut : ✅ FAIT (2026-03-23)**
 
-- [ ] Interface `Skill` standard (nom, description, outils, scopes)
-- [ ] Chargement dynamique des skills depuis un dossier
-- [ ] Registre de skills (activés/désactivés par utilisateur)
-- [ ] SDK pour créer des skills tiers
-- [ ] Skills empaquetés : météo, actualités, traduction, etc.
+- [x] `Skill` dataclass standard (nom, display_name, description, icon, scopes, tools, version, author)
+- [x] `SkillRegistry` singleton avec `register()`, `all_tools`, `get_user_active_tools()`, `skills_summary()`
+- [x] Chargement dynamique : `register_all()` dans `app/skills/builtin/__init__.py`
+- [x] 8 skills existants wrappés : system, gmail, calendar, drive, docs, sheets, tasks, scheduler
+- [x] 3 nouveaux skills packagés :
+  - 🌤️ Météo — wttr.in JSON API, prévisions J+1 à J+3, sans clé API
+  - 📰 Actualités — Google News RSS, recherche par sujet, multilingue, sans clé API
+  - 🌐 Traduction — MyMemory API, 50+ langues, noms de langue en français acceptés, sans clé API
+- [x] `SkillPreference` DB model : enable/disable par utilisateur
+- [x] `GET /skills/` et `PUT /skills/{name}` — REST API avec auth
+- [x] `nodes.py` utilise `get_skill_registry().all_tools` (plus de liste hardcodée)
+- [x] System prompt dynamique : liste les skills disponibles via `registry.skills_summary()`
+- [x] SDK clair : créer un fichier dans `app/skills/builtin/`, appeler `register()`, importer dans `__init__.py`
 
 ### Phase 5 — Contrôle navigateur
 **Statut : À FAIRE**

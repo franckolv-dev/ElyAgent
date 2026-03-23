@@ -1,0 +1,44 @@
+"""Skill — the unit of capability in the ELY plugin system.
+
+A Skill groups a set of related LangChain tools under a common identity
+with metadata (name, description, icon, required scopes).
+
+Usage (defining a new skill)
+------------------------------
+    from app.skills.base import Skill
+    from app.skills.registry import get_skill_registry
+
+    my_skill = Skill(
+        name="my_service",
+        display_name="My Service",
+        description="Does useful things with My Service",
+        icon="🔧",
+        scopes=["my_service_api_key"],   # optional config keys
+        tools=[my_tool_a, my_tool_b],
+    )
+    get_skill_registry().register(my_skill)
+
+The ``name`` field is the stable identifier stored in the database for
+per-user skill preferences.  Change it only with a DB migration.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Skill:
+    # Required fields
+    name: str           # stable unique slug  e.g. "google_gmail"
+    display_name: str   # human-readable name e.g. "Gmail"
+    description: str    # one-liner shown in the settings UI
+    icon: str           # emoji shown next to the display name
+    tools: list         # list of LangChain @tool callables
+
+    # Optional metadata
+    version: str = "1.0.0"
+    author: str = "built-in"
+    # Logical permission scopes — "google_oauth", "ssh", "internet", …
+    scopes: list[str] = field(default_factory=list)
+    # Whether the skill is on for new users before they change anything
+    enabled_by_default: bool = True

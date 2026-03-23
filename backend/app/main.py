@@ -5,17 +5,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
-from app.models import system_config as _  # ensure SystemConfig table is registered
+from app.models import system_config as _   # ensure SystemConfig table is registered
 from app.models import scheduled_task as __  # ensure ScheduledTask table is registered
+from app.models import skill_preference as ___ # ensure SkillPreference table is registered
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
+from app.routers import skills as skills_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Register all built-in skills BEFORE the agent graph is built
+    from app.skills.builtin import register_all
+    register_all()
+
     await init_db()
     await get_memory_manager().init_collections()
     await get_fts_store().init()
@@ -65,3 +71,4 @@ app.include_router(validation.router)
 app.include_router(tts.router)
 app.include_router(google_router.router, prefix="/api")
 app.include_router(scheduler_router.router, prefix="/scheduler", tags=["scheduler"])
+app.include_router(skills_router.router, prefix="/skills", tags=["skills"])
