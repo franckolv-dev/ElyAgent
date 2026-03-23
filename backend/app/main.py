@@ -8,12 +8,14 @@ from app.database import init_db
 from app.models import system_config as _   # ensure SystemConfig table is registered
 from app.models import scheduled_task as __  # ensure ScheduledTask table is registered
 from app.models import skill_preference as ___ # ensure SkillPreference table is registered
+from app.models import watch_task as _watch_task  # ensure WatchTask table is registered
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
 from app.routers import skills as skills_router
 from app.routers import transcribe as transcribe_router
 from app.routers import whatsapp_webhook as whatsapp_router
+from app.routers import watchdog as watchdog_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -40,6 +42,10 @@ async def lifespan(app: FastAPI):
     from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
     await load_and_schedule_tasks()
 
+    # Start watchdog service
+    from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
+    await load_and_schedule_watch_tasks()
+
     # Start headless browser (graceful no-op if playwright is not installed)
     from app.services.browser_manager import get_browser_manager
     await get_browser_manager().start()
@@ -47,6 +53,7 @@ async def lifespan(app: FastAPI):
     yield
 
     await stop_scheduler()
+    await stop_watchdog()
     await stop_telegram_bot()
     await get_browser_manager().stop()
 
@@ -85,3 +92,4 @@ app.include_router(scheduler_router.router, prefix="/scheduler", tags=["schedule
 app.include_router(skills_router.router, prefix="/skills", tags=["skills"])
 app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])
 app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
+app.include_router(watchdog_router.router, prefix="/watchdog", tags=["watchdog"])

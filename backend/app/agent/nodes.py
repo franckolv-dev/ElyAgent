@@ -39,6 +39,10 @@ Comportement attendu :
 - "cherche sur le web" / "google [sujet]" → utiliser browser_search_web
 - "va sur [url]" / "ouvre le site" → utiliser browser_navigate puis browser_get_text si besoin
 - "prends une capture d'écran" → utiliser browser_screenshot
+- "surveille ce site" / "veille sur" / "préviens-moi si" → utiliser watchdog_add
+- "mes surveillances" / "mes veilles" → utiliser watchdog_list
+- "arrête de surveiller" → utiliser watchdog_remove
+- "briefing du matin" / "mon briefing" → utiliser briefing_generate puis calendar_list_events + gmail_list_emails
 - Donner l'URL cliquable après chaque création de document ou feuille
 
 Format des réponses — IMPÉRATIF :
@@ -71,6 +75,10 @@ USER_ID_TOOLS = {
     "browser_click",
     "browser_fill",
     "browser_close",
+    # Watchdog tools
+    "watchdog_add",
+    "watchdog_list",
+    "watchdog_remove",
 }
 
 GOOGLE_TOOLS = {
