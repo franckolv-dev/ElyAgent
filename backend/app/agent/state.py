@@ -9,3 +9,4 @@ class AgentState(TypedDict):
     user_id: str
     conversation_id: str
     google_credentials: str
+    domain: str  # routing field: "research" | "workspace" | "infra" | "general"
