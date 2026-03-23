@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option java_package = "com.ely.agent";
+option java_multiple_files = true;
+
+message UserPreferences {
+  string access_token = 1;
+  string server_url = 2;
+  string theme = 3;
+  string fcm_token = 4;
+  string current_conversation_id = 5;
+}
