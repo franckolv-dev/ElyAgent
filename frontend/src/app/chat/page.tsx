@@ -69,12 +69,13 @@ function usePanelResize() {
 
 // ── Page ─────────────────────────────────────────────────────────────────
 export default function ChatPage() {
-  const [messages,      setMessages]      = useState<ChatMessage[]>([]);
-  const [isLoading,     setIsLoading]     = useState(false);
-  const [wsStatus,      setWsStatus]      = useState<"connected" | "disconnected" | "connecting">("disconnected");
-  const [conversationId,setConversationId]= useState<string | undefined>();
-  const [lastWsMessage, setLastWsMessage] = useState<WSMessage | null>(null);
-  const [suggestion,    setSuggestion]    = useState<string>("");
+  const [messages,        setMessages]        = useState<ChatMessage[]>([]);
+  const [isLoading,       setIsLoading]       = useState(false);
+  const [wsStatus,        setWsStatus]        = useState<"connected" | "disconnected" | "connecting">("disconnected");
+  const [conversationId,  setConversationId]  = useState<string | undefined>();
+  const [lastWsMessage,   setLastWsMessage]   = useState<WSMessage | null>(null);
+  const [suggestion,      setSuggestion]      = useState<string>("");
+  const [streamingContent,setStreamingContent]= useState<string>("");
   const wsRef = useRef<AgentWebSocket | null>(null);
 
   const { width: avatarWidth, onHandleMouseDown } = usePanelResize();
@@ -91,11 +92,16 @@ export default function ChatPage() {
       if (msg.type === "start") {
         setConversationId(msg.conversation_id);
         setIsLoading(true);
+        setStreamingContent("");
+      } else if (msg.type === "token") {
+        setStreamingContent((prev) => prev + (msg.content ?? ""));
       } else if (msg.type === "message" && msg.role === "assistant") {
         setMessages((prev) => [...prev, { role: "assistant", content: msg.content ?? "" }]);
+        setStreamingContent("");
         setIsLoading(false);
       } else if (msg.type === "error") {
         setMessages((prev) => [...prev, { role: "assistant", content: `Erreur : ${msg.content}` }]);
+        setStreamingContent("");
         setIsLoading(false);
       }
     });
@@ -125,6 +131,7 @@ export default function ChatPage() {
                 messages={messages}
                 isLoading={isLoading}
                 onSuggestion={setSuggestion}
+                streamingContent={streamingContent}
               />
               <ChatInput
                 onSend={handleSend}

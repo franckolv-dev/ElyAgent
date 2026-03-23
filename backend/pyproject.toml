@@ -32,6 +32,7 @@ dependencies = [
     "python-telegram-bot>=21.0",
     "APScheduler>=3.10",
     "playwright>=1.40.0",
+    "faster-whisper>=1.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]

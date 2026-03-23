@@ -9,6 +9,7 @@ interface ChatWindowProps {
   messages: ChatMessage[];
   isLoading?: boolean;
   onSuggestion?: (text: string) => void;
+  streamingContent?: string;
 }
 
 const SUGGESTIONS = [
@@ -18,12 +19,12 @@ const SUGGESTIONS = [
   "Utilisation du disque",
 ];
 
-export function ChatWindow({ messages, isLoading, onSuggestion }: ChatWindowProps) {
+export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streamingContent]);
 
   if (messages.length === 0) {
     return (
@@ -63,8 +64,20 @@ export function ChatWindow({ messages, isLoading, onSuggestion }: ChatWindowProp
         />
       ))}
 
-      {/* Thinking indicator */}
-      {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
+      {/* Streaming message — tokens arriving in real time */}
+      {isLoading && streamingContent && (
+        <div className="flex gap-3 message assistant streaming">
+          <div className="w-7 h-7 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
+            <Bot className="w-3.5 h-3.5 text-cyber-cyan" />
+          </div>
+          <div className="bg-bg-card border border-border-dim rounded-lg px-4 py-3 text-sm text-text-primary whitespace-pre-wrap max-w-prose">
+            {streamingContent}<span className="animate-pulse">▊</span>
+          </div>
+        </div>
+      )}
+
+      {/* Thinking indicator — shown only before first token arrives */}
+      {isLoading && !streamingContent && messages[messages.length - 1]?.role !== "assistant" && (
         <div className="flex gap-3">
           <div className="w-7 h-7 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
             <Bot className="w-3.5 h-3.5 text-cyber-cyan" />

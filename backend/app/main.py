@@ -12,6 +12,7 @@ from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
 from app.routers import skills as skills_router
+from app.routers import transcribe as transcribe_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -77,3 +78,4 @@ app.include_router(tts.router)
 app.include_router(google_router.router, prefix="/api")
 app.include_router(scheduler_router.router, prefix="/scheduler", tags=["scheduler"])
 app.include_router(skills_router.router, prefix="/skills", tags=["skills"])
+app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])

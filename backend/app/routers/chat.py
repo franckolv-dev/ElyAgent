@@ -139,14 +139,32 @@ async def websocket_chat(websocket: WebSocket):
                 "conversation_id": conversation_id,
             }))
 
-            invoke_result = await agent.ainvoke({
-                "messages": history_msgs,
-                "user_id": user_id,
-                "conversation_id": conversation_id,
-                "google_credentials": google_credentials or "",
-            })
+            ai_content = ""
+            async for event in agent.astream_events(
+                {
+                    "messages": history_msgs,
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
+                    "google_credentials": google_credentials or "",
+                },
+                version="v2",
+            ):
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    if hasattr(chunk, "content") and chunk.content:
+                        token = chunk.content
+                        ai_content += token
+                        await websocket.send_text(json.dumps({
+                            "type": "token",
+                            "content": token,
+                        }))
+                elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
+                    output = event.get("data", {}).get("output", {})
+                    msgs = output.get("messages", [])
+                    if msgs:
+                        last = msgs[-1]
+                        ai_content = last.content if hasattr(last, "content") else ai_content
 
-            ai_content = invoke_result["messages"][-1].content
             # Restore real values in the response
             ai_content = sf.deanonymize(ai_content)
 
