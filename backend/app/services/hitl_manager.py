@@ -84,8 +84,9 @@ class HITLManager:
             logger.info("HITL action %s timed out — auto-denied", action_id)
             pending.decision = "deny"
             pending.reason = "timeout"
-
-        self._pending.pop(action_id, None)
+        finally:
+            # Always clean up, even if the event loop is cancelled
+            self._pending.pop(action_id, None)
 
         await self._notify_frontend(
             user_id, action_id, description, "hitl_resolved",

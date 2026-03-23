@@ -95,16 +95,19 @@ async def _execute_task(task_id: str) -> None:
 
     except Exception as exc:
         logger.exception("Failed to execute scheduled task %s: %s", task_id, exc)
-        # Save error
-        async with async_session() as db:
-            t_result = await db.execute(
-                select(ScheduledTask).where(ScheduledTask.id == task_id)
-            )
-            t = t_result.scalar_one_or_none()
-            if t:
-                t.last_run_at = datetime.now(timezone.utc)
-                t.last_result = f"Erreur: {exc}"
-                await db.commit()
+        # Save error — wrapped in its own try-except so a DB failure doesn't hide the original error
+        try:
+            async with async_session() as db:
+                t_result = await db.execute(
+                    select(ScheduledTask).where(ScheduledTask.id == task_id)
+                )
+                t = t_result.scalar_one_or_none()
+                if t:
+                    t.last_run_at = datetime.now(timezone.utc)
+                    t.last_result = f"Erreur: {exc}"
+                    await db.commit()
+        except Exception as db_exc:
+            logger.warning("Failed to persist error status for task %s: %s", task_id, db_exc)
 
 
 async def _deliver_result(task: ScheduledTask, content: str) -> None:

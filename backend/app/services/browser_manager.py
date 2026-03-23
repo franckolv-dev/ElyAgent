@@ -148,9 +148,15 @@ class BrowserManager:
     # ------------------------------------------------------------------ #
 
     async def screenshot_path(self, user_id: str) -> str:
-        """Take a screenshot and return the saved file path."""
+        """Take a screenshot and return the saved file path.
+
+        Each call produces a uniquely-named file (timestamp suffix) so that
+        screenshots from different moments are never overwritten.
+        """
+        import time as _time
         page = await self.get_page(user_id)
-        path = os.path.join(tempfile.gettempdir(), f"ely_browser_{user_id}.png")
+        ts = int(_time.time())
+        path = os.path.join(tempfile.gettempdir(), f"ely_browser_{user_id}_{ts}.png")
         await page.screenshot(path=path, full_page=False)
         return path
 

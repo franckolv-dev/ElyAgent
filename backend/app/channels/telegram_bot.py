@@ -108,8 +108,12 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Delete the message containing credentials immediately
     try:
         await update.message.delete()
-    except Exception:
-        pass  # May fail if bot doesn't have delete permission
+    except Exception as del_exc:
+        logger.warning("Could not delete /link message (credentials may be visible): %s", del_exc)
+        await update.effective_chat.send_message(
+            "⚠️ Je n'ai pas pu supprimer ton message contenant tes identifiants. "
+            "Supprime-le manuellement pour protéger ton mot de passe."
+        )
 
     async with async_session() as db:
         result = await db.execute(select(User).where(User.username == username))

@@ -10,6 +10,7 @@ def _all_tools():
     return _get_registry().all_tools
 
 
-# all_tools is evaluated lazily; any module-level consumer should call
-# get_skill_registry().all_tools instead of importing this symbol.
-all_tools = _all_tools()
+# WARNING: do NOT add a module-level `all_tools = _all_tools()` here.
+# register_all() has not been called yet at import time, so the registry
+# is empty and the call would always return an empty list.
+# Use get_skill_registry().all_tools directly instead.

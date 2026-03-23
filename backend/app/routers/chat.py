@@ -76,7 +76,15 @@ async def websocket_chat(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            msg = json.loads(data)
+            try:
+                msg = json.loads(data)
+            except json.JSONDecodeError:
+                logger.warning("Malformed JSON from user %s (ignored): %.200s", user_id, data)
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "content": "Message invalide — JSON mal formé.",
+                }))
+                continue
 
             user_content = msg.get("content", "")
             conversation_id = msg.get("conversation_id") or conversation_id

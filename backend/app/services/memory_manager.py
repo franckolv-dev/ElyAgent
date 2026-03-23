@@ -26,6 +26,7 @@ Uses fastembed (ONNX, CPU-friendly) for local embeddings — no GPU needed.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
@@ -85,14 +86,16 @@ class MemoryManager:
     async def init_collections(self) -> None:
         try:
             from qdrant_client.models import Distance, VectorParams
-            existing = {c.name for c in self.client.get_collections().collections}
+            collections_resp = await asyncio.to_thread(self.client.get_collections)
+            existing = {c.name for c in collections_resp.collections}
             for name in (
                 _COLLECTION_MEMORIES,
                 _COLLECTION_CONSTRAINTS,
                 _COLLECTION_INTERACTIONS,
             ):
                 if name not in existing:
-                    self.client.create_collection(
+                    await asyncio.to_thread(
+                        self.client.create_collection,
                         name,
                         vectors_config=VectorParams(
                             size=_VECTOR_DIM, distance=Distance.COSINE
@@ -144,8 +147,8 @@ class MemoryManager:
     def _embed(self, text: str) -> list[float]:
         return list(self.encoder.embed([text]))[0].tolist()
 
-    def _upsert(self, collection: str, vector: list[float], payload: dict) -> str:
-        """Insert or update a Qdrant point.
+    async def _upsert(self, collection: str, vector: list[float], payload: dict) -> str:
+        """Insert or update a Qdrant point (non-blocking via asyncio.to_thread).
 
         Automatically stamps ``created_at`` (Unix timestamp).
         Returns the generated point UUID string so callers can also index
@@ -154,13 +157,14 @@ class MemoryManager:
         from qdrant_client.models import PointStruct
         point_id = str(uuid.uuid4())
         stamped = {"created_at": time.time(), **payload}
-        self.client.upsert(
+        await asyncio.to_thread(
+            self.client.upsert,
             collection_name=collection,
             points=[PointStruct(id=point_id, vector=vector, payload=stamped)],
         )
         return point_id
 
-    def _qdrant_candidates(
+    async def _qdrant_candidates(
         self,
         collection: str,
         vector: list[float],
@@ -168,9 +172,10 @@ class MemoryManager:
         limit: int,
         score_threshold: float,
     ) -> list:
-        """Synchronous Qdrant ANN search returning raw hit objects."""
+        """Async Qdrant ANN search — runs in a thread to avoid blocking the event loop."""
         from qdrant_client.models import FieldCondition, Filter, MatchValue
-        return self.client.query_points(
+        result = await asyncio.to_thread(
+            self.client.query_points,
             collection_name=collection,
             query=vector,
             query_filter=Filter(
@@ -182,7 +187,8 @@ class MemoryManager:
             limit=limit * 4,
             score_threshold=max(0.0, score_threshold - 0.15),
             with_payload=True,
-        ).points
+        )
+        return result.points
 
     def _rerank(
         self,
@@ -242,7 +248,7 @@ class MemoryManager:
             )
         )
 
-        candidates = self._qdrant_candidates(
+        candidates = await self._qdrant_candidates(
             collection, vector, user_id, limit, score_threshold
         )
         if not candidates:
@@ -259,7 +265,7 @@ class MemoryManager:
 
     async def store_constraint(self, rule: str, user_id: str) -> None:
         try:
-            point_id = self._upsert(
+            point_id = await self._upsert(
                 _COLLECTION_CONSTRAINTS,
                 self._embed(rule),
                 {"rule": rule, "user_id": user_id, "priority": "high"},
@@ -297,7 +303,7 @@ class MemoryManager:
         self, content: str, user_id: str, conversation_id: str
     ) -> None:
         try:
-            point_id = self._upsert(
+            point_id = await self._upsert(
                 _COLLECTION_MEMORIES,
                 self._embed(content),
                 {"content": content, "user_id": user_id, "conversation_id": conversation_id},
@@ -341,7 +347,7 @@ class MemoryManager:
         try:
             content = f"Question: {user_msg}\nRéponse: {assistant_msg}"
             # Embed the user query (what we'll search by later)
-            point_id = self._upsert(
+            point_id = await self._upsert(
                 _COLLECTION_INTERACTIONS,
                 self._embed(user_msg),
                 {

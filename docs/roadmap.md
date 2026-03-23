@@ -1,5 +1,23 @@
 # ELY Agent — Roadmap
 
+## Statut actuel — 2026-03-23
+✅ Phase 1 : Bot Telegram
+✅ Phase 2 : Tâches planifiées (cron)
+✅ Phase 3 : Mémoire hybride (FTS5 + Qdrant)
+✅ Phase 4 : Architecture plugins/skills
+✅ Phase 5 : Contrôle navigateur (Playwright)
+
+**Revue de code complète effectuée le 2026-03-23 :**
+- Corrigé : `all_tools` évalué trop tôt au démarrage
+- Corrigé : `HITLManager.pop()` maintenant dans `finally`
+- Corrigé : appels Qdrant synchrones wrappés dans `asyncio.to_thread()`
+- Corrigé : gestion `json.JSONDecodeError` dans WebSocket handler
+- Corrigé : avertissement utilisateur si suppression message `/link` Telegram échoue
+- Corrigé : isolation d'erreur DB dans le handler d'erreur du scheduler
+- Corrigé : captures d'écran browser avec timestamp (plus d'écrasement)
+
+---
+
 ## Analyse comparative : ELY vs OpenClaw (330K stars, MIT)
 
 ### Ce qu'OpenClaw fait exceptionnellement bien
@@ -29,24 +47,24 @@
 ## Plan d'implémentation
 
 ### Phase 1 — Bot Telegram (canal alternatif)
-**Statut : EN COURS**
+**Statut : ✅ FAIT**
 
-- [ ] Bot Telegram via `python-telegram-bot` (async)
-- [ ] Whitelist de Telegram user IDs liés aux comptes ELY
-- [ ] Routage vers le même agent graph (mêmes outils, mêmes filtres)
-- [ ] HITL via boutons inline Telegram (Approve / Deny / Ban)
-- [ ] Configuration du bot token via Admin UI (pas .env)
+- [x] Bot Telegram via `python-telegram-bot` (async)
+- [x] Whitelist de Telegram user IDs liés aux comptes ELY
+- [x] Routage vers le même agent graph (mêmes outils, mêmes filtres)
+- [x] HITL via boutons inline Telegram (Approve / Deny / Ban)
+- [x] Configuration du bot token via Admin UI (pas .env)
 - [ ] Support voix (messages vocaux → transcription → agent)
 
 ### Phase 2 — Tâches planifiées (cron)
-**Statut : À FAIRE**
+**Statut : ✅ FAIT**
 
-- [ ] Modèle DB `scheduled_tasks` (user_id, cron_expression, prompt, channel, enabled)
-- [ ] Service cron en background (APScheduler ou custom)
-- [ ] Exécution de prompt planifié via l'agent
-- [ ] Livraison des résultats sur le canal d'origine (web, Telegram)
-- [ ] UI de gestion des tâches (créer, modifier, activer/désactiver)
-- [ ] Commandes naturelles : "rappelle-moi tous les lundis de..."
+- [x] Modèle DB `scheduled_tasks` (user_id, cron_expression, prompt, channel, enabled)
+- [x] Service cron en background (APScheduler ou custom)
+- [x] Exécution de prompt planifié via l'agent
+- [x] Livraison des résultats sur le canal d'origine (web, Telegram)
+- [x] UI de gestion des tâches (créer, modifier, activer/désactiver)
+- [x] Commandes naturelles : "rappelle-moi tous les lundis de..."
 
 ### Phase 3 — Recherche hybride mémoire
 **Statut : ✅ FAIT (2026-03-22)**
