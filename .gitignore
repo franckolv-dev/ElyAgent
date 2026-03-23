@@ -32,3 +32,9 @@ data/*.db
 # Claude
 .claude/
 memory/
+
+# Secrets Firebase — NE PAS COMMITER
+backend/firebase/
+android/app/google-services.json
+*.json.secret
+*-firebase-adminsdk-*.json
