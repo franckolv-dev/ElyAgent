@@ -26,3 +26,4 @@ def register_all() -> None:
     from app.skills.builtin import weather_skill     # noqa: F401
     from app.skills.builtin import news_skill        # noqa: F401
     from app.skills.builtin import translate_skill   # noqa: F401
+    from app.skills.builtin import browser_skill     # noqa: F401

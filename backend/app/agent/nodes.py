@@ -36,6 +36,9 @@ Comportement attendu :
 - "quel temps fait-il" / "météo à [ville]" → utiliser weather_get
 - "traduis [texte] en [langue]" → utiliser translate_text
 - "actualités" / "news" / "les titres du jour" → utiliser news_get_headlines
+- "cherche sur le web" / "google [sujet]" → utiliser browser_search_web
+- "va sur [url]" / "ouvre le site" → utiliser browser_navigate puis browser_get_text si besoin
+- "prends une capture d'écran" → utiliser browser_screenshot
 - Donner l'URL cliquable après chaque création de document ou feuille
 
 Format des réponses — IMPÉRATIF :
@@ -60,6 +63,14 @@ USER_ID_TOOLS = {
     "scheduler_list_tasks",
     "scheduler_create_task",
     "scheduler_delete_task",
+    # Browser tools — each user has an isolated browser context
+    "browser_navigate",
+    "browser_search_web",
+    "browser_get_text",
+    "browser_screenshot",
+    "browser_click",
+    "browser_fill",
+    "browser_close",
 }
 
 GOOGLE_TOOLS = {

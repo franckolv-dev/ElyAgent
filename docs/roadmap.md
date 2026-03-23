@@ -75,13 +75,21 @@
 - [x] SDK clair : créer un fichier dans `app/skills/builtin/`, appeler `register()`, importer dans `__init__.py`
 
 ### Phase 5 — Contrôle navigateur
-**Statut : À FAIRE**
+**Statut : ✅ FAIT (2026-03-23)**
 
-- [ ] Intégration Playwright headless
-- [ ] Outil `browser_navigate`, `browser_screenshot`, `browser_fill`, `browser_click`
-- [ ] Sandboxing (profil Chrome isolé, pas d'accès aux cookies utilisateur)
-- [ ] Extraction de contenu web structuré
-- [ ] Cas d'usage : remplir un formulaire, scraper une page, comparer des prix
+- [x] `BrowserManager` — Playwright Chromium headless, un contexte isolé par utilisateur
+- [x] Sandboxing : pas de cookies partagés, pas de profil utilisateur, storage_state=None
+- [x] 7 outils intégrés dans le skill 🌍 Navigateur web :
+  - `browser_navigate`    — charger une URL, extraire le contenu principal (5 000 car. max)
+  - `browser_search_web`  — recherche DuckDuckGo, retourne titres + snippets + URLs
+  - `browser_get_text`    — extraire le texte d'un sélecteur CSS précis
+  - `browser_screenshot`  — capture d'écran → fichier `/tmp/ely_browser_{user_id}.png`
+  - `browser_click`       — cliquer un élément (HITL obligatoire)
+  - `browser_fill`        — remplir un champ (HITL obligatoire)
+  - `browser_close`       — libérer la session navigateur
+- [x] Extraction intelligente : priorité article > main > .content > body, scripts/nav supprimés
+- [x] `browser_click` + `browser_fill` dans `ALWAYS_CRITICAL_TOOLS` (validation humaine)
+- [x] user_id injecté automatiquement via `InjectedToolArg` pour isolation par utilisateur
 
 ---
 

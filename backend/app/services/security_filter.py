@@ -16,6 +16,9 @@ _PATTERNS: dict[str, str] = {
 ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "ssh_execute",
     "gmail_send_email",
+    # Browser actions that modify state on external websites
+    "browser_click",
+    "browser_fill",
 })
 
 # Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation

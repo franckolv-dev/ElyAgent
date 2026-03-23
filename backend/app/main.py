@@ -34,10 +34,15 @@ async def lifespan(app: FastAPI):
     from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
     await load_and_schedule_tasks()
 
+    # Start headless browser (graceful no-op if playwright is not installed)
+    from app.services.browser_manager import get_browser_manager
+    await get_browser_manager().start()
+
     yield
 
     await stop_scheduler()
     await stop_telegram_bot()
+    await get_browser_manager().stop()
 
 
 app = FastAPI(
