@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -77,6 +78,7 @@ class HITLManager:
             self._send_telegram(user_id, action_id, description),
             return_exceptions=True,
         )
+        asyncio.create_task(self._send_fcm(user_id, action_id, "hitl", description, {}))
 
         try:
             await asyncio.wait_for(pending.event.wait(), timeout=TIMEOUT_SECONDS)
@@ -167,6 +169,46 @@ class HITLManager:
             )
         except Exception as exc:
             logger.warning("Failed to send Telegram HITL: %s", exc)
+
+    async def _send_fcm(self, user_id: str, action_id: str, tool: str, description: str, args: dict) -> None:
+        """Send HITL notification via Firebase Cloud Messaging to Android app."""
+        try:
+            import firebase_admin
+            from firebase_admin import credentials, messaging
+
+            # Initialize Firebase app once (lazy)
+            if not firebase_admin._apps:
+                cred_path = get_settings().firebase_credentials_path
+                if not cred_path or not os.path.exists(cred_path):
+                    return  # FCM not configured
+                cred = credentials.Certificate(cred_path)
+                firebase_admin.initialize_app(cred)
+
+            # Get user's FCM token from DB
+            from app.database import AsyncSessionLocal
+            from app.models.user import User
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(User).where(User.id == user_id))
+                user = result.scalar_one_or_none()
+                if not user or not user.fcm_token:
+                    return
+
+            message = messaging.Message(
+                data={
+                    "type": "hitl_pending",
+                    "action_id": action_id,
+                    "tool": tool,
+                    "description": description,
+                    "args": json.dumps(args),
+                },
+                android=messaging.AndroidConfig(priority="high"),
+                token=user.fcm_token,
+            )
+            messaging.send(message)
+            logger.info(f"FCM HITL notification sent to user {user_id}")
+        except Exception as e:
+            logger.warning(f"FCM send failed: {e}")
 
     async def _notify_frontend(
         self,

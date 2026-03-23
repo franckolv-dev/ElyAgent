@@ -20,3 +20,4 @@ class User(Base):
     google_credentials: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     telegram_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
     whatsapp_phone: Mapped[str | None] = mapped_column(String(20), nullable=True, unique=True, default=None)
+    fcm_token: Mapped[str | None] = mapped_column(String(200), nullable=True)

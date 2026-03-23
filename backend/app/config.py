@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     whatsapp_webhook_verify_token: str = "ely-whatsapp-verify"
     whatsapp_app_secret: str = ""
 
+    # Firebase Cloud Messaging (optional — Android push notifications)
+    firebase_credentials_path: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

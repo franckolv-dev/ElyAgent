@@ -33,6 +33,7 @@ dependencies = [
     "APScheduler>=3.10",
     "playwright>=1.40.0",
     "faster-whisper>=1.0.0",
+    "firebase-admin>=6.5.0",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -18,6 +18,7 @@ from app.routers import transcribe as transcribe_router
 from app.routers import whatsapp_webhook as whatsapp_router
 from app.routers import watchdog as watchdog_router
 from app.routers import analytics as analytics_router
+from app.routers.device_token import router as device_token_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -96,3 +97,4 @@ app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])
 app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
 app.include_router(watchdog_router.router, prefix="/watchdog", tags=["watchdog"])
 app.include_router(analytics_router.router, prefix="/analytics", tags=["analytics"])
+app.include_router(device_token_router)
