@@ -9,9 +9,9 @@ import com.ely.agent.data.remote.websocket.ChatWebSocketClient
 import com.ely.agent.data.remote.websocket.WsMessage
 import com.ely.agent.data.repository.ChatRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.UUID
 import javax.inject.Inject
 
 data class ChatUiState(
@@ -29,14 +29,13 @@ class ChatViewModel @Inject constructor(
     private val wsClient: ChatWebSocketClient
 ) : ViewModel() {
 
-    private val conversationId = UUID.randomUUID().toString()
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     init {
         chatRepository.connect()
         viewModelScope.launch {
-            chatRepository.observeMessages(conversationId).collect { messages ->
+            chatRepository.observeMessages().collect { messages ->
                 _uiState.update { it.copy(messages = messages) }
             }
         }
@@ -48,7 +47,7 @@ class ChatViewModel @Inject constructor(
                     is WsMessage.MessageComplete -> _uiState.update { it.copy(isStreaming = false, streamingContent = "") }
                     is WsMessage.HitlPending -> {
                         val hitl = Message(
-                            id = "hitl_${msg.actionId}", conversationId = conversationId,
+                            id = "hitl_${msg.actionId}", conversationId = "",
                             role = MessageRole.HITL_PENDING, content = msg.description,
                             hitlRequest = HitlRequest(msg.actionId, msg.tool, msg.description, msg.args)
                         )
@@ -59,7 +58,17 @@ class ChatViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            chatRepository.wsConnectionState.collect { s -> _uiState.update { it.copy(connectionState = s) } }
+            chatRepository.wsConnectionState.collect { s ->
+                _uiState.update { it.copy(connectionState = s) }
+                // Auto-reconnect on disconnect after 3s
+                if (s is ChatWebSocketClient.ConnectionState.Disconnected) {
+                    delay(3_000)
+                    val current = chatRepository.wsConnectionState.value
+                    if (current is ChatWebSocketClient.ConnectionState.Disconnected) {
+                        chatRepository.connect()
+                    }
+                }
+            }
         }
     }
 

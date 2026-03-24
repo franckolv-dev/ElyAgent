@@ -41,8 +41,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit, viewModel: LoginViewModel = hiltView
             Spacer(Modifier.height(48.dp))
             OutlinedTextField(
                 value = uiState.email, onValueChange = viewModel::onEmailChange,
-                label = { Text("Adresse e-mail") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                label = { Text("Nom d'utilisateur") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )

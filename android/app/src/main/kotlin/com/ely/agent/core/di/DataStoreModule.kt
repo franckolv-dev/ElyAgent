@@ -3,7 +3,7 @@ package com.ely.agent.core.di
 import android.content.Context
 import androidx.datastore.core.DataStore
 import com.ely.agent.UserPreferences
-import com.ely.agent.core.datastore.PreferencesDataStore.userPreferencesDataStore
+import com.ely.agent.core.datastore.userPreferencesDataStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

@@ -15,7 +15,8 @@ data class SettingsUiState(
     val serverUrl: String = "http://10.0.2.2:8000",
     val theme: String = "SYSTEM",
     val skills: List<Skill> = emptyList(),
-    val isSaved: Boolean = false
+    val isSaved: Boolean = false,
+    val isLoggedOut: Boolean = false
 )
 
 @HiltViewModel
@@ -43,6 +44,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStore.updateData { p -> p.toBuilder().setServerUrl(_uiState.value.serverUrl).setTheme(_uiState.value.theme).build() }
             _uiState.update { it.copy(isSaved = true) }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            dataStore.updateData { it.toBuilder().clearAccessToken().build() }
+            _uiState.update { it.copy(isLoggedOut = true) }
         }
     }
 }

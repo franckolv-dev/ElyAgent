@@ -150,20 +150,41 @@ async def websocket_chat(websocket: WebSocket):
                 version="v2",
             ):
                 if event["event"] == "on_chat_model_stream":
+                    # Only stream tokens from specialist nodes, not the router
+                    node = event.get("metadata", {}).get("langgraph_node", "")
+                    if node == "router":
+                        continue
                     chunk = event["data"]["chunk"]
                     if hasattr(chunk, "content") and chunk.content:
-                        token = chunk.content
-                        ai_content += token
-                        await websocket.send_text(json.dumps({
-                            "type": "token",
-                            "content": token,
-                        }))
+                        raw = chunk.content
+                        # content can be a list of blocks (tool calls, text) or a plain string
+                        if isinstance(raw, list):
+                            token = "".join(
+                                b.get("text", "") if isinstance(b, dict) else ""
+                                for b in raw
+                            )
+                        else:
+                            token = str(raw)
+                        if token:
+                            ai_content += token
+                            await websocket.send_text(json.dumps({
+                                "type": "token",
+                                "content": token,
+                            }))
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
                     msgs = output.get("messages", [])
                     if msgs:
                         last = msgs[-1]
-                        ai_content = last.content if hasattr(last, "content") else ai_content
+                        if hasattr(last, "content"):
+                            raw = last.content
+                            if isinstance(raw, list):
+                                ai_content = "".join(
+                                    b.get("text", "") if isinstance(b, dict) else ""
+                                    for b in raw
+                                )
+                            else:
+                                ai_content = str(raw)
 
             # Restore real values in the response
             ai_content = sf.deanonymize(ai_content)

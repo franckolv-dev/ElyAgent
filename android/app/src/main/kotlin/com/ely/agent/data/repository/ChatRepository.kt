@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface ChatRepository {
     val wsConnectionState: StateFlow<ChatWebSocketClient.ConnectionState>
-    fun observeMessages(conversationId: String): Flow<List<Message>>
+    fun observeMessages(): Flow<List<Message>>
     fun connect()
     suspend fun sendMessage(text: String)
     fun sendHitlResponse(actionId: String, decision: String)

@@ -15,7 +15,7 @@ class AuthRepositoryImpl @Inject constructor(
 ) : AuthRepository {
 
     override suspend fun login(email: String, password: String): NetworkResult<Unit> {
-        val result = safeApiCall { authApi.login(email, password) }
+        val result = safeApiCall { authApi.login(com.ely.agent.data.remote.dto.LoginRequest(email, password)) }
         if (result is NetworkResult.Success) {
             dataStore.updateData { prefs ->
                 prefs.toBuilder().setAccessToken(result.data.accessToken).build()

@@ -44,7 +44,7 @@ class ChatWebSocketClient @Inject constructor(
         val wsUrl = serverUrl
             .replace("http://", "ws://")
             .replace("https://", "wss://")
-            .trimEnd('/') + "/ws?token=$token"
+            .trimEnd('/') + "/ws/chat?token=$token"
 
         _connectionState.value = ConnectionState.Connecting
         val request = Request.Builder().url(wsUrl).build()
@@ -65,7 +65,7 @@ class ChatWebSocketClient @Inject constructor(
     }
 
     fun send(text: String) {
-        webSocket?.send(WsMessageAdapter.toJson("message", "message" to text))
+        webSocket?.send(WsMessageAdapter.toJson("message", "content" to text))
     }
 
     fun sendHitlResponse(actionId: String, decision: String) {

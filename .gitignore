@@ -28,6 +28,16 @@ alembic/versions/__pycache__/
 
 # Docker / data
 data/*.db
+TO_DELETE/
+
+# Android build artifacts
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/build/
+android/local.properties
+*.apk
+*.aab
 
 # Claude
 .claude/
