@@ -32,7 +32,6 @@ android {
         }
         debug {
             isDebuggable = true
-            applicationIdSuffix = ".debug"
         }
     }
 
@@ -90,6 +89,7 @@ dependencies {
     implementation(libs.navigation.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.appcompat)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -115,7 +115,8 @@ dependencies {
     implementation(libs.firebase.analytics)
 
     implementation(libs.biometric)
-    implementation(libs.mediapipe.genai)
+    // TODO Phase 5: Gemini Nano on-device AI
+    // implementation(libs.mediapipe.genai)
     implementation(libs.coroutines.android)
     implementation(libs.accompanist.permissions)
 

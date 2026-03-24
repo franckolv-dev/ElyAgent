@@ -29,7 +29,7 @@ class LoginViewModel @Inject constructor(private val authRepository: AuthReposit
     fun login(onSuccess: () -> Unit) {
         val s = _uiState.value
         if (s.email.isBlank() || s.password.isBlank()) {
-            _uiState.update { it.copy(error = "Email et mot de passe requis") }
+            _uiState.update { it.copy(error = "Identifiant et mot de passe requis") }
             return
         }
         viewModelScope.launch {

@@ -6,7 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import com.ely.agent.core.datastore.PreferencesDataStore.userPreferencesDataStore
+import com.ely.agent.core.datastore.userPreferencesDataStore
 import com.ely.agent.core.model.ThemePreference
 import com.ely.agent.ui.navigation.AppNavGraph
 import com.ely.agent.ui.theme.ElyTheme

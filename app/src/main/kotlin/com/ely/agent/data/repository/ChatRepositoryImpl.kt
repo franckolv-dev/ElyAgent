@@ -47,8 +47,8 @@ class ChatRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun observeMessages(conversationId: String): Flow<List<Message>> =
-        messageDao.observeMessages(conversationId).map { it.map { e -> e.toDomain() } }
+    override fun observeMessages(): Flow<List<Message>> =
+        messageDao.observeAllMessages().map { it.map { e -> e.toDomain() } }
 
     override fun connect() = wsClient.connect()
 

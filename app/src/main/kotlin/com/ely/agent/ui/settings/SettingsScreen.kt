@@ -13,9 +13,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     LaunchedEffect(uiState.isSaved) { if (uiState.isSaved) onBack() }
+    LaunchedEffect(uiState.isLoggedOut) { if (uiState.isLoggedOut) onLogout() }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Paramètres") },
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } })
@@ -48,6 +49,14 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             }
             item {
                 Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth()) { Text("Enregistrer") }
+            }
+            item {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = viewModel::logout,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Se déconnecter") }
             }
         }
     }

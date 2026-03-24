@@ -27,7 +27,16 @@ fun AppNavGraph(isLoggedIn: Boolean) {
                 onNavigateToDashboard = { navController.navigate(Screen.Dashboard.route) }
             )
         }
-        composable(Screen.Settings.route) { SettingsScreen(onBack = { navController.popBackStack() }) }
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(Screen.Dashboard.route) { DashboardScreen(onBack = { navController.popBackStack() }) }
     }
 }
