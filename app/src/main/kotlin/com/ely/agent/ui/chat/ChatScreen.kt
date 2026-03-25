@@ -1,5 +1,6 @@
 package com.ely.agent.ui.chat
 
+import android.Manifest
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,7 +20,11 @@ import com.ely.agent.core.model.MessageRole
 import com.ely.agent.data.remote.websocket.ChatWebSocketClient
 import com.ely.agent.ui.components.*
 import com.ely.agent.ui.components.avatar.ElyAvatar
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun ChatScreen(
     onNavigateToSettings: () -> Unit,
@@ -28,6 +33,7 @@ fun ChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+    val micPermission = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
 
     LaunchedEffect(uiState.messages.size, uiState.streamingContent) {
         val count = uiState.messages.size + if (uiState.isStreaming) 1 else 0
@@ -64,7 +70,15 @@ fun ChatScreen(
                 text = uiState.inputText,
                 onTextChange = viewModel::onInputChange,
                 onSend = viewModel::sendMessage,
-                isLoading = uiState.isLoading || uiState.isStreaming
+                isLoading = uiState.isLoading || uiState.isStreaming || uiState.isTranscribing,
+                isRecording = uiState.isRecording,
+                onVoiceToggle = {
+                    if (micPermission.status.isGranted) {
+                        viewModel.toggleVoiceRecording()
+                    } else {
+                        micPermission.launchPermissionRequest()
+                    }
+                }
             )
         }
     ) { padding ->
@@ -100,7 +114,9 @@ fun ChatScreen(
                 if (uiState.isStreaming) {
                     item {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             horizontalArrangement = Arrangement.Start
                         ) {
                             Surface(
@@ -120,6 +136,26 @@ fun ChatScreen(
                         }
                     }
                 }
+                // Indicateur de transcription vocale en cours
+                if (uiState.isTranscribing) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            LoadingDots(modifier = Modifier.padding(12.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Transcription…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -130,7 +166,9 @@ private fun ChatInputBar(
     text: String,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isRecording: Boolean,
+    onVoiceToggle: () -> Unit
 ) {
     Surface(tonalElevation = 3.dp) {
         Row(
@@ -141,6 +179,13 @@ private fun ChatInputBar(
                 .imePadding(),
             verticalAlignment = Alignment.Bottom
         ) {
+            // Bouton microphone
+            VoiceInputButton(
+                isRecording = isRecording,
+                onToggle = onVoiceToggle,
+                modifier = Modifier.size(48.dp)
+            )
+            Spacer(Modifier.width(4.dp))
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,

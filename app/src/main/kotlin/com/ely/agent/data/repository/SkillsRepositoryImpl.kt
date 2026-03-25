@@ -4,6 +4,7 @@ import com.ely.agent.core.database.dao.SkillDao
 import com.ely.agent.core.database.entity.SkillEntity
 import com.ely.agent.core.model.Skill
 import com.ely.agent.data.remote.api.SkillsApi
+import com.ely.agent.data.remote.dto.SkillUpdateRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -25,7 +26,8 @@ class SkillsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun toggleSkill(name: String, enabled: Boolean) {
-        // TODO: PUT /api/skills/{name}
+        skillsApi.updateSkill(name, SkillUpdateRequest(enabled))
+        skillDao.updateEnabled(name, enabled)
     }
 
     private fun SkillEntity.toDomain() = Skill(name, displayName, description, icon, enabled, version)

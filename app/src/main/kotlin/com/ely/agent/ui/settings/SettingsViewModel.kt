@@ -35,7 +35,7 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         serverUrl = p.serverUrl.ifBlank { "http://10.0.2.2:8000" },
                         theme = p.theme.ifBlank { "SYSTEM" },
-                        showAvatar = !p.hideAvatar   // hide_avatar défaut = false → showAvatar = true
+                        showAvatar = !p.hideAvatar
                     )
                 }
             }
@@ -49,6 +49,21 @@ class SettingsViewModel @Inject constructor(
     fun onServerUrlChange(v: String) = _uiState.update { it.copy(serverUrl = v) }
     fun onThemeChange(v: String) = _uiState.update { it.copy(theme = v) }
     fun onShowAvatarChange(v: Boolean) = _uiState.update { it.copy(showAvatar = v) }
+
+    fun toggleSkill(name: String, enabled: Boolean) {
+        // Mise à jour optimiste de l'UI
+        _uiState.update { state ->
+            state.copy(skills = state.skills.map { if (it.name == name) it.copy(enabled = enabled) else it })
+        }
+        viewModelScope.launch {
+            try {
+                skillsRepository.toggleSkill(name, enabled)
+            } catch (_: Exception) {
+                // Rollback : resynchroniser depuis le serveur
+                try { skillsRepository.refreshSkills() } catch (_: Exception) {}
+            }
+        }
+    }
 
     fun save() {
         viewModelScope.launch {

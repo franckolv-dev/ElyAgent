@@ -93,7 +93,12 @@ fun SettingsScreen(
                     ListItem(
                         headlineContent = { Text("${skill.icon} ${skill.displayName}") },
                         supportingContent = { Text(skill.description, maxLines = 2) },
-                        trailingContent = { Switch(checked = skill.enabled, onCheckedChange = {}) }
+                        trailingContent = {
+                        Switch(
+                            checked = skill.enabled,
+                            onCheckedChange = { viewModel.toggleSkill(skill.name, it) }
+                        )
+                    }
                     )
                     HorizontalDivider()
                 }

@@ -15,6 +15,9 @@ interface SkillDao {
     @Update
     suspend fun update(skill: SkillEntity)
 
+    @Query("UPDATE skills SET enabled = :enabled WHERE name = :name")
+    suspend fun updateEnabled(name: String, enabled: Boolean)
+
     @Query("DELETE FROM skills")
     suspend fun deleteAll()
 }
