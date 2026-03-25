@@ -90,7 +90,7 @@ fun ChatScreen(
                     state = uiState.avatarState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(190.dp)
+                        .height(230.dp)
                 )
             }
 
