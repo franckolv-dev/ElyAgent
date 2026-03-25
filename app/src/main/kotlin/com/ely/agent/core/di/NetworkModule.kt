@@ -1,8 +1,7 @@
 package com.ely.agent.core.di
 
-import androidx.datastore.core.DataStore
-import com.ely.agent.UserPreferences
 import com.ely.agent.core.network.AuthInterceptor
+import com.ely.agent.core.network.BaseUrlInterceptor
 import com.ely.agent.data.remote.api.*
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -10,8 +9,6 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -31,8 +28,13 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient =
+    fun provideOkHttpClient(
+        authInterceptor: AuthInterceptor,
+        baseUrlInterceptor: BaseUrlInterceptor
+    ): OkHttpClient =
         OkHttpClient.Builder()
+            // BaseUrlInterceptor en premier pour réécrire l'URL avant l'auth
+            .addInterceptor(baseUrlInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BODY
@@ -44,21 +46,14 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(
-        okHttpClient: OkHttpClient,
-        moshi: Moshi,
-        dataStore: DataStore<UserPreferences>
-    ): Retrofit {
-        val serverUrl = runBlocking {
-            val url = dataStore.data.first().serverUrl
-            if (url.isBlank()) "http://10.0.2.2:8000/" else url
-        }
-        return Retrofit.Builder()
-            .baseUrl(serverUrl)
+    fun provideRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
+        // URL de base fictive — BaseUrlInterceptor la remplace dynamiquement à chaque requête.
+        // Plus de runBlocking ici → plus d'ANR au démarrage.
+        Retrofit.Builder()
+            .baseUrl("http://localhost/")
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
-    }
 
     @Provides @Singleton
     fun provideAuthApi(retrofit: Retrofit): AuthApi = retrofit.create(AuthApi::class.java)
