@@ -18,6 +18,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.ely.agent.core.model.MessageRole
 import com.ely.agent.data.remote.websocket.ChatWebSocketClient
 import com.ely.agent.ui.components.*
+import com.ely.agent.ui.components.avatar.ElyAvatar
 
 @Composable
 fun ChatScreen(
@@ -45,7 +46,11 @@ fun ChatScreen(
                             is ChatWebSocketClient.ConnectionState.Connecting -> Color(0xFFFBBC05)
                             else -> Color(0xFFEA4335)
                         }
-                        Surface(color = dotColor, shape = MaterialTheme.shapes.small, modifier = Modifier.size(8.dp)) {}
+                        Surface(
+                            color = dotColor,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.size(8.dp)
+                        ) {}
                     }
                 },
                 actions = {
@@ -55,33 +60,63 @@ fun ChatScreen(
             )
         },
         bottomBar = {
-            ChatInputBar(text = uiState.inputText, onTextChange = viewModel::onInputChange,
-                onSend = viewModel::sendMessage, isLoading = uiState.isLoading || uiState.isStreaming)
+            ChatInputBar(
+                text = uiState.inputText,
+                onTextChange = viewModel::onInputChange,
+                onSend = viewModel::sendMessage,
+                isLoading = uiState.isLoading || uiState.isStreaming
+            )
         }
     ) { padding ->
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(vertical = 8.dp)) {
-            items(uiState.messages, key = { it.id }) { message ->
-                if (message.role == MessageRole.HITL_PENDING && message.hitlRequest != null) {
-                    HitlCard(
-                        hitlRequest = message.hitlRequest,
-                        onApprove = { viewModel.resolveHitl(message.hitlRequest.actionId, "allow") },
-                        onDeny = { viewModel.resolveHitl(message.hitlRequest.actionId, "deny") }
-                    )
-                } else {
-                    MessageBubble(message = message)
-                }
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+
+            // Panel avatar — affiché en haut si la préférence est activée
+            if (uiState.showAvatar) {
+                ElyAvatar(
+                    state = uiState.avatarState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                )
             }
-            if (uiState.isStreaming) {
-                item {
-                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.Start) {
-                        Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
-                            if (uiState.streamingContent.isNotEmpty())
-                                StreamingText(text = uiState.streamingContent,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).widthIn(max = 280.dp))
-                            else
-                                LoadingDots(modifier = Modifier.padding(12.dp))
+
+            // Liste des messages
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(vertical = 8.dp)
+            ) {
+                items(uiState.messages, key = { it.id }) { message ->
+                    if (message.role == MessageRole.HITL_PENDING && message.hitlRequest != null) {
+                        HitlCard(
+                            hitlRequest = message.hitlRequest,
+                            onApprove = { viewModel.resolveHitl(message.hitlRequest.actionId, "allow") },
+                            onDeny = { viewModel.resolveHitl(message.hitlRequest.actionId, "deny") }
+                        )
+                    } else {
+                        MessageBubble(message = message)
+                    }
+                }
+                if (uiState.isStreaming) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            Surface(
+                                shape = MaterialTheme.shapes.medium,
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                if (uiState.streamingContent.isNotEmpty())
+                                    StreamingText(
+                                        text = uiState.streamingContent,
+                                        modifier = Modifier
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                            .widthIn(max = 280.dp)
+                                    )
+                                else
+                                    LoadingDots(modifier = Modifier.padding(12.dp))
+                            }
                         }
                     }
                 }
@@ -91,16 +126,35 @@ fun ChatScreen(
 }
 
 @Composable
-private fun ChatInputBar(text: String, onTextChange: (String) -> Unit, onSend: () -> Unit, isLoading: Boolean) {
+private fun ChatInputBar(
+    text: String,
+    onTextChange: (String) -> Unit,
+    onSend: () -> Unit,
+    isLoading: Boolean
+) {
     Surface(tonalElevation = 3.dp) {
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)
-            .navigationBarsPadding().imePadding(), verticalAlignment = Alignment.Bottom) {
-            OutlinedTextField(value = text, onValueChange = onTextChange,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .navigationBarsPadding()
+                .imePadding(),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = onTextChange,
                 placeholder = { Text("Demandez quelque chose…") },
-                modifier = Modifier.weight(1f), maxLines = 5, shape = MaterialTheme.shapes.extraLarge)
+                modifier = Modifier.weight(1f),
+                maxLines = 5,
+                shape = MaterialTheme.shapes.extraLarge
+            )
             Spacer(Modifier.width(8.dp))
-            FilledIconButton(onClick = onSend, enabled = text.isNotBlank() && !isLoading,
-                modifier = Modifier.size(48.dp)) {
+            FilledIconButton(
+                onClick = onSend,
+                enabled = text.isNotBlank() && !isLoading,
+                modifier = Modifier.size(48.dp)
+            ) {
                 Icon(Icons.Default.Send, "Envoyer")
             }
         }

@@ -9,4 +9,5 @@ message UserPreferences {
   string theme = 3;
   string fcm_token = 4;
   string current_conversation_id = 5;
+  bool hide_avatar = 6;  // Masquer l'avatar ELY (défaut proto = false → avatar affiché)
 }

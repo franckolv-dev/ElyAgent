@@ -13,42 +13,97 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     val uiState by viewModel.uiState.collectAsState()
     LaunchedEffect(uiState.isSaved) { if (uiState.isSaved) onBack() }
     LaunchedEffect(uiState.isLoggedOut) { if (uiState.isLoggedOut) onLogout() }
+
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Paramètres") },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } })
+        TopAppBar(
+            title = { Text("Paramètres") },
+            navigationIcon = {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") }
+            }
+        )
     }) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // --- Connexion ---
             item {
                 Text("Connexion", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = uiState.serverUrl, onValueChange = viewModel::onServerUrlChange,
-                    label = { Text("URL du serveur ELY") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = uiState.serverUrl,
+                    onValueChange = viewModel::onServerUrlChange,
+                    label = { Text("URL du serveur ELY") },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
+
+            // --- Thème ---
             item {
                 Text("Thème", style = MaterialTheme.typography.titleMedium)
                 listOf("SYSTEM" to "Système", "LIGHT" to "Clair", "DARK" to "Sombre").forEach { (v, l) ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         RadioButton(selected = uiState.theme == v, onClick = { viewModel.onThemeChange(v) })
                         Text(l)
                     }
                 }
             }
+
+            // --- Affichage ---
+            item {
+                Text("Affichage", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Avatar ELY", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "Afficher l'avatar animé en haut du chat",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Switch(
+                        checked = uiState.showAvatar,
+                        onCheckedChange = viewModel::onShowAvatarChange
+                    )
+                }
+            }
+
+            // --- Compétences ---
             if (uiState.skills.isNotEmpty()) {
                 item { Text("Compétences (${uiState.skills.size})", style = MaterialTheme.typography.titleMedium) }
                 items(uiState.skills) { skill ->
-                    ListItem(headlineContent = { Text("${skill.icon} ${skill.displayName}") },
+                    ListItem(
+                        headlineContent = { Text("${skill.icon} ${skill.displayName}") },
                         supportingContent = { Text(skill.description, maxLines = 2) },
-                        trailingContent = { Switch(checked = skill.enabled, onCheckedChange = {}) })
+                        trailingContent = { Switch(checked = skill.enabled, onCheckedChange = {}) }
+                    )
                     HorizontalDivider()
                 }
             }
+
+            // --- Boutons d'action ---
             item {
-                Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth()) { Text("Enregistrer") }
+                Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth()) {
+                    Text("Enregistrer")
+                }
             }
             item {
                 Spacer(Modifier.height(8.dp))
