@@ -1,14 +1,23 @@
 import re
 from dataclasses import dataclass, field
 
+# Longueur maximale de texte soumis aux regex.
+# Protège contre les attaques ReDoS : une chaîne très longue et mal formée
+# peut faire exploser le backtracking sur les patterns ci-dessous.
+_MAX_REGEX_INPUT = 50_000   # caractères
 
-# Patterns for sensitive data detection
-_PATTERNS: dict[str, str] = {
-    "CARD":  r"\b(?:\d[ -]*?){13,16}\b",
-    "EMAIL": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
-    "TOKEN": r"(?:api[_-]?key|token|auth|password|secret|bearer)[:\s=]+([a-zA-Z0-9\-_.]{16,})",
-    "IBAN":  r"\b[A-Z]{2}\d{2}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}[ ]?\d{2,}\b",
-    "PHONE": r"\b(?:\+33|0)[1-9](?:[\s.\-]?\d{2}){4}\b",
+# Patterns for sensitive data detection.
+# Notes ReDoS :
+#   EMAIL  — quantificateurs imbriqués sur [a-zA-Z0-9_.+-]+ → vulnérable sur entrées
+#             très longues (e.g. 50 000×'a' + '@'). Mitigé par _MAX_REGEX_INPUT.
+#   IBAN   — alternances d'espaces optionnels → risque faible mais garde ajoutée.
+#   Tous les patterns utilisent re.compile() pour bénéficier du cache NFA.
+_PATTERNS: dict[str, re.Pattern] = {
+    "CARD":  re.compile(r"\b(?:\d[ -]*?){13,16}\b"),
+    "EMAIL": re.compile(r"[a-zA-Z0-9_.+-]{1,64}@[a-zA-Z0-9-]{1,63}\.[a-zA-Z0-9-.]{1,63}"),
+    "TOKEN": re.compile(r"(?:api[_-]?key|token|auth|password|secret|bearer)[:\s=]+([a-zA-Z0-9\-_.]{16,256})", re.IGNORECASE),
+    "IBAN":  re.compile(r"\b[A-Z]{2}\d{2}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}[ ]?\d{2,}\b"),
+    "PHONE": re.compile(r"\b(?:\+33|0)[1-9](?:[\s.\-]?\d{2}){4}\b"),
 }
 
 # Tool names that always require human validation
@@ -59,7 +68,14 @@ class SecurityFilter:
         re.finditer is called on the *current* result string so that already-
         substituted tokens are not matched again by subsequent iterations.
         A reverse set (_seen) provides O(1) duplicate detection.
+
+        Guard anti-ReDoS : le texte est tronqué à _MAX_REGEX_INPUT caractères
+        avant d'être soumis aux expressions régulières.
         """
+        # ── Guard anti-ReDoS ─────────────────────────────────────────────
+        if len(text) > _MAX_REGEX_INPUT:
+            text = text[:_MAX_REGEX_INPUT]
+
         result = text
         # Build a reverse lookup from real-value → existing placeholder so
         # the same value seen again in a new message reuses the same token.
@@ -69,7 +85,7 @@ class SecurityFilter:
             # Collect all unique matches first, then replace, to avoid
             # mutating `result` mid-iteration over positions.
             found: list[str] = []
-            for match in re.finditer(pattern, result, re.IGNORECASE):
+            for match in pattern.finditer(result):
                 original = match.group(0)
                 if original not in found:
                     found.append(original)

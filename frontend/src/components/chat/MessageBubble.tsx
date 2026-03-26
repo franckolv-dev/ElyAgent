@@ -32,10 +32,18 @@ function formatSize(bytes: number): string {
 function parseImageBlock(content: string): ImageBlock | ImagesBlock | null {
   const trimmed = content.trim();
   if (!trimmed.startsWith("{")) return null;
+  // Types MIME autorisés — SVG exclu (peut contenir des <script> → XSS)
+  const SAFE_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]);
+
   try {
     const obj = JSON.parse(trimmed);
-    if (obj.type === "image"  && obj.data && obj.mime) return obj as ImageBlock;
-    if (obj.type === "images" && Array.isArray(obj.items)) return obj as ImagesBlock;
+    if (obj.type === "image" && obj.data && obj.mime && SAFE_MIME.has(obj.mime))
+      return obj as ImageBlock;
+    if (obj.type === "images" && Array.isArray(obj.items)) {
+      // Filtrer les items avec des MIME non sûrs
+      obj.items = obj.items.filter((img: { mime?: string }) => img.mime && SAFE_MIME.has(img.mime));
+      if (obj.items.length > 0) return obj as ImagesBlock;
+    }
   } catch { /* not JSON */ }
   return null;
 }

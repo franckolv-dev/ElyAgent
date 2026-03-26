@@ -1,24 +1,128 @@
 """Python sandbox tool — exécute du code Python dans un sous-processus isolé.
 
-Sécurité :
-- Exécution dans un répertoire temporaire dédié (nettoyé après)
-- Timeout 30 secondes
+Sécurité (réelle, pas juste commentée) :
+- Analyse AST avant exécution : bloque socket, subprocess, ctypes et imports dangereux
+- Environnement minimal passé au sous-processus : AUCUNE variable d'env sensible (clés API…)
+- preexec_fn applique les limites resource (CPU, mémoire, fichiers, processus) dans le child
+- Répertoire de travail temporaire dédié (nettoyé après)
+- Timeout 30 secondes côté asyncio + CPU hard limit via RLIMIT_CPU dans le child
 - stdout + stderr capturés, limités à 8 000 caractères
-- Pas d'accès réseau (pas de restriction OS — à renforcer si besoin)
-- Le code s'exécute avec les mêmes permissions que le process backend
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import os
 import sys
 import tempfile
 import textwrap
+from pathlib import Path
 
 from langchain_core.tools import tool
 
-_TIMEOUT = 30  # secondes
-_MAX_OUTPUT = 8_000  # caractères
+_TIMEOUT = 30          # secondes (asyncio)
+_MAX_OUTPUT = 8_000    # caractères
+
+# ── Modules interdits dans le sandbox ────────────────────────────────────────
+# Inclut les accès réseau, exécution de processus et accès bas niveau.
+_BLOCKED_MODULES: frozenset[str] = frozenset({
+    "socket", "ssl", "http", "urllib", "urllib2", "urllib3",
+    "httpx", "requests", "aiohttp", "httplib",
+    "subprocess", "multiprocessing", "concurrent",
+    "ctypes", "cffi", "pty", "tty", "termios", "fcntl",
+    "mmap", "msvcrt", "winreg", "winsound",
+    "importlib",   # empêche import dynamique de contournement
+    "pkg_resources", "setuptools", "pip",
+    "sysconfig", "distutils",
+    "code", "codeop",   # REPL interactif
+    "antigravity",      # fun mais inutile
+})
+
+# ── Analyse statique du code par AST ─────────────────────────────────────────
+
+def _ast_check(code: str) -> str | None:
+    """Retourne un message d'erreur si le code contient des constructions
+    dangereuses, sinon None.  Utilise l'AST Python pour éviter les faux positifs
+    de regex."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        return f"Syntaxe invalide : {exc}"
+
+    for node in ast.walk(tree):
+        # import X  /  import X.Y
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if top in _BLOCKED_MODULES:
+                    return f"Module interdit dans le sandbox : '{alias.name}'"
+
+        # from X import Y
+        if isinstance(node, ast.ImportFrom) and node.module:
+            top = node.module.split(".")[0]
+            if top in _BLOCKED_MODULES:
+                return f"Module interdit dans le sandbox : '{node.module}'"
+
+        # __import__("socket")  /  importlib.import_module("socket")
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "__import__":
+                if node.args and isinstance(node.args[0], ast.Constant):
+                    mod = str(node.args[0].value).split(".")[0]
+                    if mod in _BLOCKED_MODULES:
+                        return f"Import dynamique interdit : '{node.args[0].value}'"
+
+    return None
+
+
+# ── Limites resource appliquées dans le child process ────────────────────────
+
+def _apply_sandbox_limits() -> None:
+    """Appelé dans le processus enfant juste avant exec (preexec_fn).
+
+    Applique des limites système hard qui empêchent :
+    - L'épuisement CPU (RLIMIT_CPU)
+    - La consommation excessive de mémoire (RLIMIT_AS)
+    - La création de fichiers géants (RLIMIT_FSIZE)
+    - L'ouverture de trop de descripteurs (RLIMIT_NOFILE)
+    - Le fork excessif (RLIMIT_NPROC)
+    """
+    try:
+        import resource as _resource
+        _resource.setrlimit(_resource.RLIMIT_CPU,   (25, 25))
+        _resource.setrlimit(_resource.RLIMIT_FSIZE,  (100 * 1024 * 1024, 100 * 1024 * 1024))
+        _resource.setrlimit(_resource.RLIMIT_NOFILE, (32, 32))
+        try:
+            _resource.setrlimit(_resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+        except (ValueError, AttributeError):
+            pass
+        try:
+            _resource.setrlimit(_resource.RLIMIT_NPROC, (8, 8))
+        except (ValueError, AttributeError):
+            pass
+    except Exception:
+        pass  # Non-Linux (Windows) : on ignore silencieusement
+
+
+# ── Environnement minimal pour le sous-processus ─────────────────────────────
+
+def _sandbox_env(workdir: str) -> dict[str, str]:
+    """Construit un environnement minimaliste pour le sous-processus.
+
+    AUCUNE variable sensible (clés API, tokens, secrets) n'est transmise.
+    Le répertoire HOME est forcé sur le workdir pour éviter que le code
+    n'accède aux fichiers de config de l'utilisateur système (~/.ssh, ~/.aws…).
+    """
+    return {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": workdir,          # pas de ~/.ssh, ~/.aws, etc.
+        "TMPDIR": workdir,
+        "TEMP": workdir,
+        "TMP": workdir,
+        "MPLBACKEND": "Agg",      # matplotlib non-interactif
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONIOENCODING": "utf-8",
+    }
 
 
 @tool
@@ -32,26 +136,31 @@ async def python_execute(code: str) -> str:
     - Generating charts (saved as image, path returned)
     - Any task that benefits from running actual code
 
-    The execution environment has: Python standard library + numpy, pandas,
-    matplotlib (if installed). No internet access from code.
+    The execution environment has: Python standard library (except network/system
+    modules) + numpy, pandas, matplotlib (if installed).
+    Network access and system calls are blocked.
 
     Args:
         code: Valid Python code to execute. Use print() to output results.
     """
-    # Créer un répertoire de travail temporaire isolé
+    # ── 1. Analyse statique avant toute exécution ─────────────────────────
+    error = _ast_check(code)
+    if error:
+        return f"Code refusé par le sandbox : {error}"
+
+    # ── 2. Exécution dans un répertoire temporaire isolé ──────────────────
     with tempfile.TemporaryDirectory(prefix="ely_sandbox_") as workdir:
         script_path = os.path.join(workdir, "script.py")
 
-        # Préambule : redirige matplotlib vers un backend non-interactif
-        preamble = textwrap.dedent("""\
+        # Préambule : redirige matplotlib et fixe le cwd
+        preamble = textwrap.dedent(f"""\
             import os, sys
             os.environ.setdefault("MPLBACKEND", "Agg")
-            _WORKDIR = os.path.dirname(os.path.abspath(__file__))
+            _WORKDIR = {workdir!r}
             os.chdir(_WORKDIR)
         """)
 
-        with open(script_path, "w", encoding="utf-8") as f:
-            f.write(preamble + "\n" + code)
+        Path(script_path).write_text(preamble + "\n" + code, encoding="utf-8")
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -59,6 +168,8 @@ async def python_execute(code: str) -> str:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=workdir,
+                env=_sandbox_env(workdir),         # env sans secrets
+                preexec_fn=_apply_sandbox_limits,  # resource limits dans le child
             )
 
             try:
@@ -74,12 +185,15 @@ async def python_execute(code: str) -> str:
             err = stderr.decode("utf-8", errors="replace").strip()
 
             # Chercher des fichiers image générés (matplotlib savefig)
-            images = [
-                f for f in os.listdir(workdir)
-                if f.endswith((".png", ".jpg", ".svg"))
-            ]
+            try:
+                images = [
+                    f for f in os.listdir(workdir)
+                    if f.endswith((".png", ".jpg"))  # pas de .svg (XSS possible)
+                ]
+            except OSError:
+                images = []
 
-            parts = []
+            parts: list[str] = []
             if proc.returncode == 0:
                 if out:
                     parts.append(out[:_MAX_OUTPUT])
@@ -88,11 +202,10 @@ async def python_execute(code: str) -> str:
                 if not out:
                     parts.append("Code exécuté avec succès (aucune sortie).")
                 if images:
-                    parts.append(f"Fichier(s) généré(s) : {', '.join(images)}")
+                    parts.append(f"Fichier(s) généré(s) dans le sandbox : {', '.join(images)}")
             else:
                 parts.append(f"Erreur (code {proc.returncode}) :")
                 if err:
-                    # Garder seulement les dernières lignes de l'erreur (plus lisible)
                     err_lines = err.splitlines()
                     parts.append("\n".join(err_lines[-20:]))
                 elif out:

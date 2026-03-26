@@ -1,6 +1,9 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+_DEFAULT_JWT_SECRET = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
 
 
 class Settings(BaseSettings):
@@ -76,6 +79,24 @@ class Settings(BaseSettings):
         "env_ignore_empty": True,   # empty shell vars don't override .env values
         "extra": "ignore",          # ignore unknown env vars (e.g. NEXT_PUBLIC_*, SSH_KEYS_PATH)
     }
+
+    @model_validator(mode="after")
+    def _check_security_secrets(self) -> "Settings":
+        """Refuse de démarrer si des secrets critiques ont encore leur valeur par défaut."""
+        if self.jwt_secret_key == _DEFAULT_JWT_SECRET:
+            raise ValueError(
+                "\n\n⛔  ERREUR DE SÉCURITÉ CRITIQUE ⛔\n"
+                "JWT_SECRET_KEY a encore sa valeur par défaut.\n"
+                "N'importe qui lisant le code source peut forger des tokens JWT admin.\n\n"
+                "Génère une clé aléatoire et ajoute-la dans ton .env :\n"
+                "  python3 -c \"import secrets; print(secrets.token_hex(32))\"\n"
+            )
+        if len(self.jwt_secret_key) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY doit faire au moins 32 caractères. "
+                f"Actuelle : {len(self.jwt_secret_key)} caractères."
+            )
+        return self
 
 
 @lru_cache
