@@ -144,8 +144,15 @@ class MemoryManager:
     # Low-level Qdrant helpers                                            #
     # ------------------------------------------------------------------ #
 
-    def _embed(self, text: str) -> list[float]:
-        return list(self.encoder.embed([text]))[0].tolist()
+    async def _embed(self, text: str) -> list[float]:
+        """Compute embedding in a thread pool to avoid blocking the event loop.
+
+        fastembed uses ONNX (CPU-bound, ~50-200 ms) — running it directly in
+        an async context would freeze every other coroutine for that duration.
+        """
+        return await asyncio.to_thread(
+            lambda: list(self.encoder.embed([text]))[0].tolist()
+        )
 
     async def _upsert(self, collection: str, vector: list[float], payload: dict) -> str:
         """Insert or update a Qdrant point (non-blocking via asyncio.to_thread).
@@ -267,7 +274,7 @@ class MemoryManager:
         try:
             point_id = await self._upsert(
                 _COLLECTION_CONSTRAINTS,
-                self._embed(rule),
+                await self._embed(rule),
                 {"rule": rule, "user_id": user_id, "priority": "high"},
             )
             from app.services.fts_store import get_fts_store
@@ -282,7 +289,7 @@ class MemoryManager:
             hits = await self._search_hybrid(
                 _COLLECTION_CONSTRAINTS,
                 query,
-                self._embed(query),
+                await self._embed(query),
                 user_id,
                 limit,
                 score_threshold=0.4,
@@ -305,7 +312,7 @@ class MemoryManager:
         try:
             point_id = await self._upsert(
                 _COLLECTION_MEMORIES,
-                self._embed(content),
+                await self._embed(content),
                 {"content": content, "user_id": user_id, "conversation_id": conversation_id},
             )
             from app.services.fts_store import get_fts_store
@@ -320,7 +327,7 @@ class MemoryManager:
             hits = await self._search_hybrid(
                 _COLLECTION_MEMORIES,
                 query,
-                self._embed(query),
+                await self._embed(query),
                 user_id,
                 limit,
                 score_threshold=0.45,
@@ -349,7 +356,7 @@ class MemoryManager:
             # Embed the user query (what we'll search by later)
             point_id = await self._upsert(
                 _COLLECTION_INTERACTIONS,
-                self._embed(user_msg),
+                await self._embed(user_msg),
                 {
                     "user_message": user_msg,
                     "assistant_message": assistant_msg,
@@ -372,7 +379,7 @@ class MemoryManager:
             hits = await self._search_hybrid(
                 _COLLECTION_INTERACTIONS,
                 query,
-                self._embed(query),
+                await self._embed(query),
                 user_id,
                 limit,
                 score_threshold=0.5,

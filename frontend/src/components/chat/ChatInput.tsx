@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
 import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import { getAccessToken } from "@/lib/auth";
@@ -177,14 +177,14 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
     await startMediaRecorder();
   };
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (speechRecRef.current) {
       speechRecRef.current.stop();
       speechRecRef.current = null;
     }
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
-  };
+  }, []);
 
   // ── File attachment ───────────────────────────────────────────────────────
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -235,9 +235,9 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
     }
   };
 
-  const removeFile = (localId: string) => {
+  const removeFile = useCallback((localId: string) => {
     setPendingFiles((prev) => prev.filter((p) => p.localId !== localId));
-  };
+  }, []);
 
   // ── Prefill ───────────────────────────────────────────────────────────────
   if (prefill && prefill !== value) {
@@ -247,7 +247,7 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const trimmed = value.trim();
     // Allow sending even with no text if there are attachments
     if ((!trimmed && !pendingFiles.length) || disabled || isLoading) return;
@@ -259,25 +259,28 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
     setValue("");
     setPendingFiles([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  };
+  }, [value, pendingFiles, disabled, isLoading, onSend]);
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
-  };
+  }, [handleSend]);
 
-  const handleInput = () => {
+  const handleInput = useCallback(() => {
     const el = textareaRef.current;
     if (el) {
       el.style.height = "auto";
       el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
     }
-  };
+  }, []);
 
-  const canSend = (value.trim().length > 0 || pendingFiles.some((p) => !p.uploading && !p.error)) && !disabled && !isLoading;
-  const hasUploading = pendingFiles.some((p) => p.uploading);
+  const canSend = useMemo(
+    () => (value.trim().length > 0 || pendingFiles.some((p) => !p.uploading && !p.error)) && !disabled && !isLoading,
+    [value, pendingFiles, disabled, isLoading]
+  );
+  const hasUploading = useMemo(() => pendingFiles.some((p) => p.uploading), [pendingFiles]);
 
   return (
     <div className="border-t border-border-dim bg-bg-secondary/80 backdrop-blur-sm p-4">
