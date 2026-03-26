@@ -42,9 +42,10 @@ Comportement attendu :
 - "mes tâches planifiées" → utiliser scheduler_list_tasks
 - "quel temps fait-il" / "météo à [ville]" → utiliser weather_get
 - "traduis [texte] en [langue]" → utiliser translate_text
-- "actualités" / "news" / "les titres du jour" → utiliser news_get_headlines
-- "cherche sur le web" / "google [sujet]" → utiliser browser_search_web
-- "va sur [url]" / "ouvre le site" → utiliser browser_navigate puis browser_get_text si besoin
+- "actualités" / "news" / "les titres du jour" → utiliser web_search_news ou news_get_headlines
+- "cherche sur le web" / "google [sujet]" / "trouve le site de" / "restaurants à" / "commerces à" / "horaires de" → utiliser web_search EN PREMIER (fiable, pas de blocage bot) — TOUJOURS inclure la ville et le pays dans la requête pour les recherches locales
+- "va sur [url]" / "ouvre le site" / "lis cette page" → utiliser browser_navigate puis browser_get_text si besoin
+- Pour réserver sur un site : web_search pour trouver l'URL, puis browser_navigate + browser_fill + browser_click
 - "prends une capture d'écran" → utiliser browser_screenshot (s'affiche directement dans le chat)
 - "montre-moi une image de" / "trouve une photo de" / "cherche une image de" → utiliser browser_search_images (photos réelles depuis le web, pas une image générée)
 - "surveille ce site" / "veille sur" / "préviens-moi si" → utiliser watchdog_add

@@ -108,69 +108,24 @@ async def browser_navigate(
 @tool
 async def browser_search_web(
     query: str,
-    count: int = 5,
+    count: int = 8,
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Search the web via DuckDuckGo and return the top results with titles, snippets and URLs.
+    """Search the web and return the top results with titles, snippets and URLs.
 
-    Prefer this over browser_navigate when you need to find information
-    on a topic rather than read a specific page.
+    Uses the DuckDuckGo Python library (not Playwright scraping) — immune to bot detection.
+    Falls back to Tavily if TAVILY_API_KEY is configured.
+
+    Prefer web_search over this tool — they share the same backend.
+    Use browser_navigate when you need to read a specific page in full.
 
     Args:
         query: Search query (in any language)
-        count: Number of results to return (1-10, default 5)
+        count: Number of results to return (1-10, default 8)
     """
-    from app.services.browser_manager import get_browser_manager
-
-    count = max(1, min(int(count), 10))
-
-    try:
-        mgr = get_browser_manager()
-        page = await mgr.get_page(user_id or "default")
-
-        q = urllib.parse.quote_plus(query)
-        await page.goto(
-            f"https://html.duckduckgo.com/html/?q={q}&kl=fr-fr",
-            wait_until="domcontentloaded",
-            timeout=20_000,
-        )
-
-        results = await page.evaluate(f"""() => {{
-            const items = document.querySelectorAll('.result');
-            return Array.from(items).slice(0, {count}).map(item => {{
-                const a = item.querySelector('.result__title a');
-                const snip = item.querySelector('.result__snippet');
-                const href = a ? a.getAttribute('href') : '';
-                // DuckDuckGo wraps links — extract actual URL from uddg= param
-                let url = href;
-                try {{
-                    const params = new URLSearchParams(new URL('https://x.com' + href).search);
-                    if (params.get('uddg')) url = decodeURIComponent(params.get('uddg'));
-                }} catch(_) {{}}
-                return {{
-                    title:   a    ? a.innerText.trim()    : '',
-                    snippet: snip ? snip.innerText.trim() : '',
-                    url,
-                }};
-            }}).filter(r => r.title);
-        }}""")
-
-        if not results:
-            return f"Aucun résultat DuckDuckGo pour : {query}"
-
-        lines = [f"Résultats de recherche pour « {query} » ({len(results)} résultats) :"]
-        for i, r in enumerate(results, 1):
-            lines.append(f"\n{i}. {r['title']}")
-            if r.get("snippet"):
-                lines.append(f"   {r['snippet'][:200]}")
-            if r.get("url"):
-                lines.append(f"   {r['url']}")
-
-        return "\n".join(lines)
-
-    except Exception as exc:
-        logger.warning("browser_search_web error: %s", exc)
-        return f"Erreur de recherche web : {exc}"
+    # Delegate entirely to the reliable search_tool backend (no Playwright scraping)
+    from app.agent.tools.search_tool import web_search as _web_search
+    return await _web_search.ainvoke({"query": query, "count": count})
 
 
 @tool

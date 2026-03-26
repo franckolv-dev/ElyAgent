@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # YouTube Data API v3 (optionnel — sans clé on utilise Invidious comme fallback)
     youtube_api_key: str = ""
 
+    # Tavily Search API (optionnel — meilleure qualité de recherche pour agents IA)
+    # Gratuit : 1000 requêtes/mois sur https://tavily.com
+    tavily_api_key: str = ""
+
     # Telegram bot (optionnel — configurer via Admin ou .env)
     telegram_bot_token: str = ""
 

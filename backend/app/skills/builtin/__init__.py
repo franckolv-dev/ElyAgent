@@ -33,6 +33,7 @@ def register_all() -> None:
     from app.skills.builtin import contacts_skill    # noqa: F401
     from app.skills.builtin import python_skill      # noqa: F401
     from app.skills.builtin import pdf_skill         # noqa: F401
+    from app.skills.builtin import search_skill      # noqa: F401
     from app.skills.builtin import notes_skill       # noqa: F401
     from app.skills.builtin import maps_skill        # noqa: F401
     from app.skills.builtin import youtube_skill     # noqa: F401
