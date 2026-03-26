@@ -8,7 +8,7 @@ import { ChatWindow }  from "@/components/chat/ChatWindow";
 import { ChatInput }   from "@/components/chat/ChatInput";
 import { AvatarPanel } from "@/components/avatar/AvatarPanel";
 import { AgentWebSocket } from "@/lib/websocket";
-import type { ChatMessage, WSMessage } from "@/lib/types";
+import type { Attachment, ChatMessage, WSMessage } from "@/lib/types";
 
 // ── Resizable avatar-panel hook ───────────────────────────────────────────
 const PANEL_MIN  = 220;
@@ -110,10 +110,10 @@ export default function ChatPage() {
     return () => ws.disconnect();
   }, []);
 
-  const handleSend = useCallback((content: string) => {
+  const handleSend = useCallback((content: string, attachments?: Attachment[]) => {
     if (!wsRef.current) return;
-    setMessages((prev) => [...prev, { role: "user", content }]);
-    wsRef.current.send(content, conversationId);
+    setMessages((prev) => [...prev, { role: "user", content, attachments }]);
+    wsRef.current.send(content, conversationId, attachments);
   }, [conversationId]);
 
   return (

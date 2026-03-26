@@ -10,12 +10,14 @@ from app.models import scheduled_task as __  # ensure ScheduledTask table is reg
 from app.models import skill_preference as ___ # ensure SkillPreference table is registered
 from app.models import watch_task as _watch_task  # ensure WatchTask table is registered
 from app.models import usage_log as _usage_log    # ensure UsageLog table is registered
+from app.models import note as _note              # ensure Note table is registered
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
 from app.routers import skills as skills_router
 from app.routers import transcribe as transcribe_router
 from app.routers import whatsapp_webhook as whatsapp_router
+from app.routers import upload as upload_router
 from app.routers import watchdog as watchdog_router
 from app.routers import analytics as analytics_router
 from app.routers.device_token import router as device_token_router
@@ -48,6 +50,10 @@ async def lifespan(app: FastAPI):
     # Start watchdog service
     from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
     await load_and_schedule_watch_tasks()
+
+    # Ensure uploads directory exists
+    from app.routers.upload import UPLOADS_DIR
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Start headless browser (graceful no-op if playwright is not installed)
     from app.services.browser_manager import get_browser_manager
@@ -94,6 +100,7 @@ app.include_router(google_router.router, prefix="/api")
 app.include_router(scheduler_router.router, prefix="/scheduler", tags=["scheduler"])
 app.include_router(skills_router.router, prefix="/skills", tags=["skills"])
 app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])
+app.include_router(upload_router.router, prefix="/api", tags=["upload"])
 app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
 app.include_router(watchdog_router.router, prefix="/watchdog", tags=["watchdog"])
 app.include_router(analytics_router.router, prefix="/analytics", tags=["analytics"])

@@ -89,6 +89,16 @@ async def websocket_chat(websocket: WebSocket):
             user_content = msg.get("content", "")
             conversation_id = msg.get("conversation_id") or conversation_id
 
+            # Enrich content with attached file paths so the agent can process them
+            attachments = msg.get("attachments") or []
+            if attachments:
+                file_lines = "\n".join(
+                    f"• {a.get('filename', '?')} → {a.get('path', '?')}"
+                    for a in attachments
+                    if a.get("path")
+                )
+                user_content = f"{user_content}\n\n📎 Fichiers joints :\n{file_lines}".strip()
+
             async with async_session() as db:
                 # Re-read user on each message to pick up latest google_credentials
                 u_result = await db.execute(select(User).where(User.id == user_id))

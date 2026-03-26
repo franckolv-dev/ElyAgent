@@ -207,23 +207,122 @@ async def browser_get_text(
 async def browser_screenshot(
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Take a screenshot of the current browser page and save it to a file.
+    """Take a screenshot of the current browser page and display it inline in the chat.
 
-    Returns the file path.  Useful to inspect the visual state of a page
-    after navigation or interaction.
+    Useful to inspect the visual state of a page after navigation or interaction.
     """
+    import base64
+    import json
     from app.services.browser_manager import get_browser_manager
 
     try:
         mgr = get_browser_manager()
-        path = await mgr.screenshot_path(user_id or "default")
         page = await mgr.get_page(user_id or "default")
         title = await page.title()
-        return f"Capture d'écran enregistrée : {path}\nPage : {title}"
+
+        png_bytes = await page.screenshot(full_page=False)
+        b64 = base64.b64encode(png_bytes).decode("utf-8")
+
+        return json.dumps({
+            "type": "image",
+            "data": b64,
+            "mime": "image/png",
+            "prompt": f"Capture d'écran — {title} ({page.url})",
+        })
 
     except Exception as exc:
         logger.warning("browser_screenshot error: %s", exc)
         return f"Erreur lors de la capture d'écran : {exc}"
+
+
+@tool
+async def browser_search_images(
+    query: str,
+    count: int = 3,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Search Google Images and display results inline in the chat.
+
+    Use this when the user asks to find, show or display an image of something.
+    Do NOT use generate_image for this — use this tool to find real photos.
+
+    Args:
+        query: Description of the image to search for (e.g. 'boeuf charolais', 'tour eiffel nuit')
+        count: Number of images to return (1-4, default 3)
+    """
+    import base64
+    import json
+    import httpx
+
+    count = max(1, min(int(count), 4))
+
+    try:
+        from app.services.browser_manager import get_browser_manager
+        mgr  = get_browser_manager()
+        page = await mgr.get_page(user_id or "default")
+
+        q = urllib.parse.quote_plus(query)
+        await page.goto(
+            f"https://www.google.com/search?q={q}&tbm=isch&hl=fr",
+            wait_until="domcontentloaded",
+            timeout=20_000,
+        )
+        await page.wait_for_timeout(2000)
+
+        # Extraire les URLs des thumbnails Google Images
+        img_urls: list[str] = await page.evaluate("""(count) => {
+            const imgs = Array.from(document.querySelectorAll('img'));
+            const results = [];
+            for (const img of imgs) {
+                const src = img.src || img.getAttribute('data-src') || '';
+                // Filtrer : garder seulement les vraies photos (pas les icônes Google)
+                if (src.startsWith('data:image') && src.length > 500) {
+                    results.push(src);
+                } else if (src.startsWith('http') && !src.includes('google.com/images/branding')) {
+                    results.push(src);
+                }
+                if (results.length >= count * 3) break;
+            }
+            return results;
+        }""", count)
+
+        if not img_urls:
+            return f"Aucune image trouvée sur Google pour : {query}"
+
+        images = []
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+            for src in img_urls:
+                if len(images) >= count:
+                    break
+                try:
+                    if src.startswith("data:image"):
+                        # Déjà en base64 (thumbnail Google)
+                        header, b64 = src.split(",", 1)
+                        mime = header.split(";")[0].replace("data:", "")
+                        if len(b64) > 500:
+                            images.append({"data": b64, "mime": mime, "title": query})
+                    else:
+                        resp = await client.get(src)
+                        if resp.status_code == 200 and len(resp.content) > 2000:
+                            mime = resp.headers.get("content-type", "image/jpeg").split(";")[0]
+                            if mime.startswith("image/"):
+                                b64 = base64.b64encode(resp.content).decode("utf-8")
+                                images.append({"data": b64, "mime": mime, "title": query})
+                except Exception:
+                    continue
+
+        if not images:
+            return f"J'ai trouvé des résultats Google mais impossible de récupérer les images pour : {query}"
+
+        return json.dumps({
+            "type": "images",
+            "items": images,
+            "query": query,
+        })
+
+    except Exception as exc:
+        logger.warning("browser_search_images error: %s", exc)
+        return f"Erreur lors de la recherche d'images pour « {query} » : {exc}"
 
 
 @tool
@@ -320,6 +419,7 @@ get_skill_registry().register(Skill(
     tools=[
         browser_navigate,
         browser_search_web,
+        browser_search_images,
         browser_get_text,
         browser_screenshot,
         browser_click,

@@ -13,11 +13,20 @@ export interface TokenResponse {
   refresh_token?: string;
 }
 
+export interface Attachment {
+  file_id: string;
+  filename: string;
+  path: string;
+  size: number;
+  mime_type: string;
+}
+
 export interface ChatMessage {
   id?: string;
   role: "user" | "assistant" | "system";
   content: string;
   created_at?: string;
+  attachments?: Attachment[];
 }
 
 export interface Conversation {

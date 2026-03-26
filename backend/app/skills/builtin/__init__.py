@@ -29,3 +29,12 @@ def register_all() -> None:
     from app.skills.builtin import browser_skill     # noqa: F401
     from app.skills.builtin import briefing_skill    # noqa: F401
     from app.skills.builtin import watchdog_skill    # noqa: F401
+    from app.skills.builtin import image_skill       # noqa: F401
+    from app.skills.builtin import contacts_skill    # noqa: F401
+    from app.skills.builtin import python_skill      # noqa: F401
+    from app.skills.builtin import pdf_skill         # noqa: F401
+    from app.skills.builtin import notes_skill       # noqa: F401
+    from app.skills.builtin import maps_skill        # noqa: F401
+    from app.skills.builtin import youtube_skill     # noqa: F401
+    from app.skills.builtin import qrcode_skill      # noqa: F401
+    from app.skills.builtin import whatsapp_skill    # noqa: F401

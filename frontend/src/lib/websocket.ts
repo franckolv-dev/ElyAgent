@@ -1,4 +1,4 @@
-import type { WSMessage } from "./types";
+import type { Attachment, WSMessage } from "./types";
 import { getAccessToken } from "./auth";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
@@ -71,9 +71,13 @@ export class AgentWebSocket {
     }, delay);
   }
 
-  send(content: string, conversationId?: string) {
+  send(content: string, conversationId?: string, attachments?: Attachment[]) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ content, conversation_id: conversationId }));
+      this.ws.send(JSON.stringify({
+        content,
+        conversation_id: conversationId,
+        ...(attachments?.length ? { attachments } : {}),
+      }));
     }
   }
 

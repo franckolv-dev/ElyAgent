@@ -48,5 +48,14 @@ def get_llm() -> BaseChatModel:
             temperature=0.7,
         )
 
+    elif provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=settings.gemini_api_key,
+            max_output_tokens=4096,
+            temperature=0.7,
+        )
+
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")

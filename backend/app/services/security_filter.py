@@ -16,6 +16,8 @@ _PATTERNS: dict[str, str] = {
 ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "ssh_execute",
     "gmail_send_email",
+    "whatsapp_send",
+    "whatsapp_send_template",
     # Browser actions that modify state on external websites
     "browser_click",
     "browser_fill",
