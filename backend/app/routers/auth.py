@@ -44,10 +44,11 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     count_result = await db.execute(select(func.count(User.id)))
     is_first = count_result.scalar_one() == 0
 
+    hashed = await hash_password(req.password)
     user = User(
         username=req.username,
         email=req.email,
-        hashed_password=hash_password(req.password),
+        hashed_password=hashed,
         role="admin" if is_first else "user",
     )
     db.add(user)
@@ -65,7 +66,7 @@ async def login(
     result = await db.execute(select(User).where(User.username == req.username))
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(req.password, user.hashed_password):
+    if not user or not await verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user.is_active:
