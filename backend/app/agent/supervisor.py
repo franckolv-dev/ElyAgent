@@ -65,7 +65,8 @@ _DOMAIN_DESCRIPTIONS = {
     ),
     "workspace": (
         "Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, "
-        "Google Tasks — lecture, création, modification, envoi d'emails."
+        "Google Tasks, Google Contacts — lecture, création, modification, "
+        "envoi d'emails, gestion des contacts."
     ),
     "infra": (
         "Commandes SSH sur serveurs, tâches planifiées (cron), briefing matinal, "
@@ -125,13 +126,14 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         _IDENTITY +
         "Tu es spécialiste de Google Workspace.\n\n"
         "Tu maîtrises Gmail, Google Calendar, Google Drive, Google Docs, Google "
-        "Sheets et Google Tasks. Tu aides l'utilisateur à gérer sa vie numérique "
-        "Google de façon efficace. Toujours donner l'URL après chaque création.\n\n"
+        "Sheets, Google Tasks et Google Contacts. Tu aides l'utilisateur à gérer "
+        "sa vie numérique Google de façon efficace. Toujours donner l'URL après chaque création.\n\n"
         "Outils disponibles : gmail_list_emails, gmail_read_email, gmail_send_email "
         "(HITL), calendar_list_events, calendar_create_event (HITL), drive_list_files, "
         "drive_read_file, docs_create_document, docs_read_document, docs_append_text, "
         "sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
-        "tasks_list, tasks_create, tasks_complete." + _COMMON_FORMAT
+        "tasks_list, tasks_create, tasks_complete, "
+        "contacts_search, contacts_list, contacts_create." + _COMMON_FORMAT
     ),
     "infra": (
         _IDENTITY +
@@ -169,6 +171,7 @@ _WORKSPACE_SKILLS = {
     "docs_create_document", "docs_read_document", "docs_append_text",
     "sheets_create_spreadsheet", "sheets_read_spreadsheet", "sheets_append_rows",
     "tasks_list", "tasks_create", "tasks_complete",
+    "contacts_search", "contacts_list", "contacts_create",
 }
 
 _INFRA_SKILLS = {
