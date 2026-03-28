@@ -13,6 +13,7 @@ from app.models import usage_log as _usage_log    # ensure UsageLog table is reg
 from app.models import note as _note              # ensure Note table is registered
 from app.models import feedback as _feedback      # ensure Feedback table is registered
 from app.models import mcp_server as _mcp_server  # ensure MCPServer table is registered
+from app.models import vault as _vault_models      # ensure VaultConfig + VaultEntry tables
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
@@ -26,6 +27,7 @@ from app.routers.device_token import router as device_token_router
 from app.routers import feedback as feedback_router
 from app.routers import mcp as mcp_router
 from app.routers import telegram_webhook as telegram_webhook_router
+from app.routers import vault as vault_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -72,8 +74,21 @@ async def lifespan(app: FastAPI):
     from app.services.slm_warmup import warmup_slm
     await warmup_slm()
 
+    # Schedule vault auto-lock (every 5 minutes — locks idle vaults after AUTO_LOCK_MINUTES)
+    from app.services.vault_service import get_vault_service
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    _vault_scheduler = AsyncIOScheduler()
+    _vault_scheduler.add_job(
+        get_vault_service().auto_lock_expired,
+        trigger="interval",
+        minutes=5,
+        id="vault_auto_lock",
+    )
+    _vault_scheduler.start()
+
     yield
 
+    _vault_scheduler.shutdown(wait=False)
     await stop_scheduler()
     await stop_watchdog()
     await stop_telegram_bot()
@@ -121,3 +136,4 @@ app.include_router(device_token_router)
 app.include_router(feedback_router.router)
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
+app.include_router(vault_router.router)

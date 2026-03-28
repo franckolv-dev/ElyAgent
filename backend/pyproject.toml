@@ -42,6 +42,7 @@ dependencies = [
     "qrcode[pil]>=7.4.0",
     "duckduckgo-search>=6.0.0",
     "tavily-python>=0.3.0",
+    "argon2-cffi>=21.3.0",
     "mcp>=1.0.0",
     "langchain-mcp-adapters>=0.1.0",
     "pyautogui>=0.9.54",

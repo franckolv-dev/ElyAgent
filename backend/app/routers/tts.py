@@ -21,11 +21,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tts", tags=["tts"])
 
 DEFAULT_VOICE = "fr-FR-DeniseNeural"
+DEFAULT_RATE = "+20%"   # slightly faster than natural pace — more pleasant for a personal assistant
 
 
 class TTSRequest(BaseModel):
     text: str
     voice: str = DEFAULT_VOICE
+    rate: str = DEFAULT_RATE   # edge-tts format: "+20%" = 20% faster, "-10%" = 10% slower
 
 
 def _strip_markdown(text: str) -> str:
@@ -71,7 +73,7 @@ async def speak(req: TTSRequest):
         clean_text = _strip_markdown(req.text)
         if not clean_text:
             raise HTTPException(status_code=400, detail="Empty text after markdown cleanup")
-        communicate = edge_tts.Communicate(clean_text, req.voice)
+        communicate = edge_tts.Communicate(clean_text, req.voice, rate=req.rate)
         buf = io.BytesIO()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":

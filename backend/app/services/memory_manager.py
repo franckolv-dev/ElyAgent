@@ -425,13 +425,54 @@ class MemoryManager:
         capture *how* the user likes to interact: preferred tone, level of detail,
         response format, recurring patterns, etc.  They are stored permanently
         and always injected into the system prompt at the start of each session.
+
+        Deduplication: if a semantically very similar preference already exists
+        (cosine similarity ≥ 0.88), the new text replaces it in-place instead
+        of creating a duplicate entry.  This prevents accumulation of near-identical
+        preferences across sessions (e.g. "be concise" stored 5 times).
         """
         try:
-            point_id = await self._upsert(
-                _COLLECTION_PREFERENCES,
-                await self._embed(preference),
-                {"content": preference, "user_id": user_id},
+            vector = await self._embed(preference)
+
+            # ── Deduplication: look for a near-identical existing preference ─
+            from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+            candidates = await asyncio.to_thread(
+                self.client.query_points,
+                collection_name=_COLLECTION_PREFERENCES,
+                query=vector,
+                query_filter=Filter(
+                    must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+                ),
+                limit=3,
+                score_threshold=0.88,   # very high → only near-identical preferences
+                with_payload=True,
             )
+
+            if candidates.points:
+                # Reuse the existing point ID → update in-place
+                existing = candidates.points[0]
+                point_id = str(existing.id)
+                await asyncio.to_thread(
+                    self.client.upsert,
+                    collection_name=_COLLECTION_PREFERENCES,
+                    points=[PointStruct(
+                        id=point_id,
+                        vector=vector,
+                        payload={"content": preference, "user_id": user_id,
+                                 "created_at": existing.payload.get("created_at", time.time()),
+                                 "updated_at": time.time()},
+                    )],
+                )
+                logger.debug("Updated existing preference (dedup): %s", preference[:60])
+            else:
+                # New preference → insert
+                point_id = await self._upsert(
+                    _COLLECTION_PREFERENCES,
+                    vector,
+                    {"content": preference, "user_id": user_id},
+                )
+                logger.debug("Stored new preference: %s", preference[:60])
+
             from app.services.fts_store import get_fts_store
             await get_fts_store().store(
                 preference, user_id, _COLLECTION_PREFERENCES, point_id

@@ -256,6 +256,20 @@ def create_agent_node():
 
             system = _SYSTEM_PROMPT_BASE
 
+            # ── Inject active LLM info (transparency / self-awareness) ──────
+            _provider = settings.active_llm_provider
+            _model    = settings.active_llm_model
+            _slm_info = ""
+            if settings.slm_enabled:
+                _slm_info = (
+                    f" Pour les requêtes simples, tu utilises en priorité le modèle local "
+                    f"{settings.slm_model} via Ollama (rapide, données non envoyées dans le cloud)."
+                )
+            system += (
+                f"\n\nModèle IA actif : {_model} (fournisseur : {_provider}).{_slm_info}\n"
+                "Si l'utilisateur te demande quel LLM tu utilises, donne cette information précise.\n"
+            )
+
             skills_list = registry.skills_summary()
             if skills_list:
                 system += f"\n\nCapacités disponibles :\n{skills_list}\n"
@@ -266,7 +280,12 @@ def create_agent_node():
             )
 
             if preferences:
-                system += "\n\n👤 PRÉFÉRENCES UTILISATEUR (style de communication) :\n"
+                system += (
+                    "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
+                    "⚠️ Ces règles ont la même priorité que les règles absolues ci-dessus.\n"
+                    "Elles s'appliquent à CHAQUE réponse, sans exception, même si tu penses\n"
+                    "qu'une réponse plus longue serait plus utile. Respecte-les strictement.\n"
+                )
                 system += "\n".join(f"- {p}" for p in preferences)
             if constraints:
                 system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n"
@@ -326,7 +345,10 @@ def create_agent_node():
                     "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
                 )
                 if preferences:
-                    system += "\n\n👤 PRÉFÉRENCES UTILISATEUR :\n"
+                    system += (
+                        "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
+                        "⚠️ Ces règles s'appliquent à CHAQUE réponse, sans exception.\n"
+                    )
                     system += "\n".join(f"- {p}" for p in preferences)
                 if constraints:
                     system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES :\n"
@@ -375,6 +397,28 @@ async def tool_node(state: AgentState) -> dict:
         display_args = {k: v for k, v in args.items() if k not in _hidden}
         action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
         tc_id = tool_call["id"]
+
+        # ── Vault: resolve vault://label references in args ───────────────
+        vault_refs_found = any(
+            isinstance(v, str) and v.startswith("vault://")
+            for v in args.values()
+        )
+        if vault_refs_found:
+            from app.services.vault_service import get_vault_service
+            vault = get_vault_service()
+            if vault.is_locked(user_id):
+                results.append(_tool_result(
+                    "⛔ Vault verrouillé — déverrouillez votre coffre-fort dans Paramètres > Vault "
+                    "pour utiliser ce secret.", tc_id
+                ))
+                continue
+            try:
+                args, _resolved = await vault.resolve_vault_refs(user_id, args)
+                if _resolved:
+                    logger.info("Resolved vault refs %s for tool %s", _resolved, tool_name)
+            except KeyError as exc:
+                results.append(_tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id))
+                continue
 
         # HITL check
         needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
