@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { AuthGuard }   from "@/components/layout/AuthGuard";
-import { Sidebar }     from "@/components/layout/Sidebar";
-import { Header }      from "@/components/layout/Header";
-import { ChatWindow }  from "@/components/chat/ChatWindow";
-import { ChatInput }   from "@/components/chat/ChatInput";
-import { AvatarPanel } from "@/components/avatar/AvatarPanel";
-import { AgentWebSocket } from "@/lib/websocket";
-import type { Attachment, ChatMessage, WSMessage } from "@/lib/types";
+import { AuthGuard }          from "@/components/layout/AuthGuard";
+import { Sidebar }             from "@/components/layout/Sidebar";
+import { Header }              from "@/components/layout/Header";
+import { ChatWindow }          from "@/components/chat/ChatWindow";
+import { ChatInput }           from "@/components/chat/ChatInput";
+import { AvatarPanel }         from "@/components/avatar/AvatarPanel";
+import { LiveBrowserPanel }    from "@/components/browser/LiveBrowserPanel";
+import { AgentWebSocket }      from "@/lib/websocket";
+import type { Attachment, BrowserFrame, ChatMessage, WSMessage } from "@/lib/types";
 
 // ── Resizable avatar-panel hook ───────────────────────────────────────────
 const PANEL_MIN  = 220;
@@ -76,6 +77,7 @@ export default function ChatPage() {
   const [lastWsMessage,   setLastWsMessage]   = useState<WSMessage | null>(null);
   const [suggestion,      setSuggestion]      = useState<string>("");
   const [streamingContent,setStreamingContent]= useState<string>("");
+  const [browserFrame,    setBrowserFrame]    = useState<BrowserFrame | null>(null);
   const wsRef = useRef<AgentWebSocket | null>(null);
 
   const { width: avatarWidth, onHandleMouseDown } = usePanelResize();
@@ -96,13 +98,20 @@ export default function ChatPage() {
       } else if (msg.type === "token") {
         setStreamingContent((prev) => prev + (msg.content ?? ""));
       } else if (msg.type === "message" && msg.role === "assistant") {
-        setMessages((prev) => [...prev, { role: "assistant", content: msg.content ?? "" }]);
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: msg.content ?? "",
+          model_used: msg.model_used,
+          routing_score: msg.routing_score,
+        }]);
         setStreamingContent("");
         setIsLoading(false);
       } else if (msg.type === "error") {
         setMessages((prev) => [...prev, { role: "assistant", content: `Erreur : ${msg.content}` }]);
         setStreamingContent("");
         setIsLoading(false);
+      } else if (msg.type === "browser_frame" && msg.data) {
+        setBrowserFrame({ data: msg.data, url: msg.url ?? "", title: msg.title ?? "" });
       }
     });
 
@@ -132,7 +141,17 @@ export default function ChatPage() {
                 isLoading={isLoading}
                 onSuggestion={setSuggestion}
                 streamingContent={streamingContent}
+                conversationId={conversationId}
               />
+              {/* ── Live Browser Copilot — visible whenever Ély uses the browser ── */}
+              {browserFrame && (
+                <div className="px-4 pb-1">
+                  <LiveBrowserPanel
+                    frame={browserFrame}
+                    onClose={() => setBrowserFrame(null)}
+                  />
+                </div>
+              )}
               <ChatInput
                 onSend={handleSend}
                 isLoading={isLoading}

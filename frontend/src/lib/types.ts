@@ -27,6 +27,10 @@ export interface ChatMessage {
   content: string;
   created_at?: string;
   attachments?: Attachment[];
+  /** "slm:qwen2.5:3b-instruct" or "llm:anthropic/claude-..." — set by backend */
+  model_used?: string;
+  /** IntentRouter score 0-100 — for feedback context */
+  routing_score?: number;
 }
 
 export interface Conversation {
@@ -37,7 +41,7 @@ export interface Conversation {
 }
 
 export interface WSMessage {
-  type: "start" | "message" | "error" | "stream" | "token" | "hitl_pending" | "hitl_resolved";
+  type: "start" | "message" | "error" | "stream" | "token" | "hitl_pending" | "hitl_resolved" | "browser_frame";
   content?: string;
   role?: string;
   conversation_id?: string;
@@ -46,6 +50,19 @@ export interface WSMessage {
   description?: string;
   decision?: string;
   reason?: string;
+  // SLM/LLM routing info
+  model_used?: string;
+  routing_score?: number;
+  // Browser copilot fields
+  data?: string;   // base64 PNG screenshot
+  url?: string;
+  title?: string;
+}
+
+export interface BrowserFrame {
+  data: string;   // base64 PNG
+  url: string;
+  title: string;
 }
 
 export interface SSHHost {

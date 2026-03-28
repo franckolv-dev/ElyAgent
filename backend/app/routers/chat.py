@@ -150,6 +150,8 @@ async def websocket_chat(websocket: WebSocket):
             }))
 
             ai_content = ""
+            model_used_out: str = ""
+            routing_score_out: int | None = None
             async for event in agent.astream_events(
                 {
                     "messages": history_msgs,
@@ -183,6 +185,8 @@ async def websocket_chat(websocket: WebSocket):
                             }))
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
+                    model_used_out = output.get("model_used", "") or model_used_out
+                    routing_score_out = output.get("routing_score", routing_score_out)
                     msgs = output.get("messages", [])
                     if msgs:
                         last = msgs[-1]
@@ -214,12 +218,17 @@ async def websocket_chat(websocket: WebSocket):
                 conversation_id=str(conversation_id),
             )
 
-            await websocket.send_text(json.dumps({
+            payload: dict = {
                 "type": "message",
                 "role": "assistant",
                 "content": ai_content,
                 "conversation_id": conversation_id,
-            }))
+            }
+            if model_used_out:
+                payload["model_used"] = model_used_out
+            if routing_score_out is not None:
+                payload["routing_score"] = routing_score_out
+            await websocket.send_text(json.dumps(payload))
 
     except WebSocketDisconnect:
         logger.debug("WebSocket disconnected for user %s", user_id)
@@ -294,10 +303,25 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
             f"Conversation :\n{transcript}"
         )
 
-        # Run both LLM calls concurrently to minimise latency
-        summary_resp, facts_resp = await asyncio.gather(
+        prefs_prompt = (
+            "À partir de cette conversation, identifie les préférences de communication "
+            "et comportements récurrents de l'utilisateur : ton préféré, niveau de détail "
+            "souhaité, sujets de prédilection, façon de formuler ses demandes, préférences "
+            "de format de réponse, utilisation de l'humour, rythme d'interaction, etc.\n"
+            "Réponds UNIQUEMENT avec un tableau JSON de phrases courtes décrivant ses "
+            "préférences, une par entrée. Exemple :\n"
+            '["L\'utilisateur préfère des réponses courtes et directes", '
+            '"Il apprécie l\'humour léger dans les échanges", '
+            '"Il préfère le tutoiement"]\n'
+            "Retourne [] si aucune préférence n'est clairement identifiable.\n\n"
+            f"Conversation :\n{transcript}"
+        )
+
+        # Run all 3 LLM calls concurrently to minimise latency
+        summary_resp, facts_resp, prefs_resp = await asyncio.gather(
             llm.ainvoke([{"role": "user", "content": summary_prompt}]),
             llm.ainvoke([{"role": "user", "content": facts_prompt}]),
+            llm.ainvoke([{"role": "user", "content": prefs_prompt}]),
         )
 
         memory = get_memory_manager()
@@ -337,6 +361,31 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
                 logger.info(
                     "Extracted %d profile fact(s) from conversation %s",
                     stored_count,
+                    conversation_id,
+                )
+
+        # ── 3. Store individual user preferences ─────────────────────────
+        raw_prefs = prefs_resp.content.strip()
+        if "```" in raw_prefs:
+            raw_prefs = raw_prefs.split("```")[1].lstrip("json").strip()
+        try:
+            prefs = _json.loads(raw_prefs)
+        except (_json.JSONDecodeError, ValueError):
+            prefs = []
+
+        if isinstance(prefs, list):
+            pref_count = 0
+            for pref in prefs[:8]:  # safety cap
+                if isinstance(pref, str) and len(pref) > 10:
+                    await memory.store_preference(
+                        preference=pref,
+                        user_id=user_id,
+                    )
+                    pref_count += 1
+            if pref_count:
+                logger.info(
+                    "Stored %d preference(s) from conversation %s",
+                    pref_count,
                     conversation_id,
                 )
 

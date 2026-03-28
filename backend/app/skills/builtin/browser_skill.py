@@ -33,6 +33,36 @@ from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
 
+
+async def _push_browser_frame(page, user_id: str) -> None:
+    """Send a live screenshot of *page* to the user's WebSocket as a ``browser_frame`` message.
+
+    Called silently after every browser action (navigate, click, fill) so the
+    frontend can render a live view of the browser session.  Failures are
+    swallowed — the main tool result is what matters.
+    """
+    try:
+        import base64
+        import json
+        from app.services import ws_registry
+
+        ws = ws_registry.get(user_id)
+        if ws is None:
+            return  # user not connected — nothing to push
+
+        png_bytes = await page.screenshot(full_page=False)
+        b64 = base64.b64encode(png_bytes).decode("utf-8")
+
+        await ws.send_text(json.dumps({
+            "type": "browser_frame",
+            "data": b64,
+            "url": page.url,
+            "title": await page.title(),
+        }))
+    except Exception as exc:
+        logger.debug("_push_browser_frame silently failed: %s", exc)
+
+
 # JS helper injected into every content-extraction call
 _EXTRACT_JS = """() => {
     const PRIORITY = ['article', 'main', '[role="main"]', '.content',
@@ -93,6 +123,9 @@ async def browser_navigate(
         title = await page.title()
         current_url = page.url
         content = await page.evaluate(_EXTRACT_JS)
+
+        # Push a live screenshot to the frontend (fire-and-forget)
+        await _push_browser_frame(page, user_id)
 
         return (
             f"Page : {title}\n"
@@ -305,6 +338,10 @@ async def browser_click(
         await page.wait_for_timeout(800)  # wait for navigation/reaction
 
         title = await page.title()
+
+        # Push a live screenshot to the frontend (fire-and-forget)
+        await _push_browser_frame(page, user_id)
+
         return f"Clic effectué sur {selector!r}. Page actuelle : {title} ({page.url})"
 
     except Exception as exc:
@@ -333,6 +370,10 @@ async def browser_fill(
         page = await mgr.get_page(user_id or "default")
 
         await page.fill(selector, value, timeout=10_000)
+
+        # Push a live screenshot to the frontend (fire-and-forget)
+        await _push_browser_frame(page, user_id)
+
         return f"Champ {selector!r} rempli avec la valeur : {value!r}"
 
     except Exception as exc:

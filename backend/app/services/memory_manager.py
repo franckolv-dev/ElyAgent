@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 _COLLECTION_MEMORIES = "memories"
 _COLLECTION_CONSTRAINTS = "security_constraints"
 _COLLECTION_INTERACTIONS = "interactions"
+_COLLECTION_PREFERENCES = "user_profile"   # communication style, tone, habits (permanent)
 _VECTOR_DIM = 384  # all-MiniLM-L6-v2 output dimension
 
 # French + English stop-words — ignored during keyword matching
@@ -97,6 +98,7 @@ class MemoryManager:
                 _COLLECTION_MEMORIES,
                 _COLLECTION_CONSTRAINTS,
                 _COLLECTION_INTERACTIONS,
+                _COLLECTION_PREFERENCES,
             ):
                 if name not in existing:
                     await asyncio.to_thread(
@@ -410,6 +412,54 @@ class MemoryManager:
             return [h.payload for h in hits]
         except Exception as exc:
             logger.warning("Failed to fetch interactions: %s", exc)
+            return []
+
+    # ------------------------------------------------------------------ #
+    # User preferences (permanent — communication style, tone, habits)   #
+    # ------------------------------------------------------------------ #
+
+    async def store_preference(self, preference: str, user_id: str) -> None:
+        """Store a user preference or communication habit (permanent, no decay).
+
+        Unlike episodic memories (facts about the user's life), preferences
+        capture *how* the user likes to interact: preferred tone, level of detail,
+        response format, recurring patterns, etc.  They are stored permanently
+        and always injected into the system prompt at the start of each session.
+        """
+        try:
+            point_id = await self._upsert(
+                _COLLECTION_PREFERENCES,
+                await self._embed(preference),
+                {"content": preference, "user_id": user_id},
+            )
+            from app.services.fts_store import get_fts_store
+            await get_fts_store().store(
+                preference, user_id, _COLLECTION_PREFERENCES, point_id
+            )
+        except Exception as exc:
+            logger.warning("Failed to store preference: %s", exc)
+
+    async def get_user_preferences(self, user_id: str, limit: int = 10) -> list[str]:
+        """Retrieve all stored user preferences (scroll, no decay filter).
+
+        Preferences are always relevant regardless of the current query, so we
+        use Qdrant ``scroll`` to fetch them all (capped at *limit*) rather than
+        doing a semantic search.
+        """
+        try:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            result = await asyncio.to_thread(
+                self.client.scroll,
+                collection_name=_COLLECTION_PREFERENCES,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+                ),
+                limit=limit,
+                with_payload=True,
+            )
+            return [p.payload["content"] for p in result[0]]
+        except Exception as exc:
+            logger.warning("Failed to fetch preferences: %s", exc)
             return []
 
 

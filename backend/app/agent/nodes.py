@@ -8,6 +8,7 @@ from app.agent.state import AgentState
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_llm
+from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,27 @@ GOOGLE_TOOLS = {
     "tasks_list",
     "tasks_create",
     "tasks_complete",
+    # Contacts (People API)
+    "contacts_search",
+    "contacts_list",
+    "contacts_create",
 }
+
+
+# ------------------------------------------------------------------ #
+# Lightweight system prompt for SLM (simple tasks, no memory needed) #
+# ------------------------------------------------------------------ #
+
+_SYSTEM_PROMPT_SLM = """Tu es Ély (prononcer "Éli"), une assistante IA personnelle — féminin, chaleureuse et directe.
+
+Règles :
+- Répondre en français, en texte naturel sans markdown
+- Utiliser les outils disponibles dès que la demande le justifie
+- Réponses courtes et claires pour les tâches simples
+- Honnêteté sur tes capacités — ne jamais simuler une tentative échouée
+
+📅 Date et heure : {date_str} (Europe/Paris)
+"""
 
 
 # ------------------------------------------------------------------ #
@@ -145,23 +166,42 @@ GOOGLE_TOOLS = {
 
 def create_agent_node():
     from app.skills import get_skill_registry
+    from app.config import get_settings
 
+    settings = get_settings()
     llm = get_llm()
     registry = get_skill_registry()
     llm_with_tools = llm.bind_tools(registry.all_tools)
     memory = get_memory_manager()
+    intent_router = get_intent_router()
+
+    # Pre-build SLM with tools if SLM is enabled — cached in closure for the session
+    _slm_with_tools = None
+    if settings.slm_enabled:
+        try:
+            from app.services.llm_provider import get_slm
+            _slm_with_tools = get_slm().bind_tools(registry.all_tools)
+            logger.info("SLM pre-built: model=%s, threshold=%d", settings.slm_model, settings.slm_complexity_threshold)
+        except Exception as exc:
+            logger.warning("SLM init failed: %s — all requests will use LLM", exc)
 
     async def agent_node(state: AgentState) -> dict:
         messages = state["messages"]
         user_id = state.get("user_id", "")
         user_query = messages[-1].content if messages else ""
 
-        # Fetch memory context in parallel
-        constraints, memories, past_interactions = await asyncio.gather(
-            memory.get_relevant_constraints(user_query, user_id),
-            memory.get_relevant_memories(user_query, user_id),
-            memory.get_relevant_interactions(user_query, user_id, limit=3),
-        )
+        # ── Route first — avoids loading memory for SLM requests ──────────
+        routing_score = 100
+        model_used = f"llm:{settings.active_llm_provider}/{settings.active_llm_model}"
+        response = None
+
+        from app.services.intent_router import ModelTier
+        use_slm = False
+        decision = None
+        if _slm_with_tools is not None:
+            decision = intent_router.route(user_query, history=messages[:-1])
+            routing_score = decision.score
+            use_slm = (decision.tier == ModelTier.SLM)
 
         # Current date/time in French (Europe/Paris)
         from datetime import datetime
@@ -176,36 +216,105 @@ def create_agent_node():
             f"{now.year}, {now.strftime('%H:%M')}"
         )
 
-        system = _SYSTEM_PROMPT_BASE
+        if use_slm:
+            # ── Lightweight path: minimal prompt, no memory queries ────────
+            # Fetching Qdrant memory adds ~150-300ms and is useless for simple tasks
+            system = _SYSTEM_PROMPT_SLM.format(date_str=date_str)
+        else:
+            # ── Full path: complete prompt + memory context ────────────────
+            constraints, memories, past_interactions, preferences = await asyncio.gather(
+                memory.get_relevant_constraints(user_query, user_id),
+                memory.get_relevant_memories(user_query, user_id),
+                memory.get_relevant_interactions(user_query, user_id, limit=3),
+                memory.get_user_preferences(user_id),
+            )
 
-        # Dynamically list available skills so ELY knows what it can do
-        skills_list = registry.skills_summary()
-        if skills_list:
-            system += f"\n\nCapacités disponibles :\n{skills_list}\n"
+            system = _SYSTEM_PROMPT_BASE
 
-        system += (
-            f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-            "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
-        )
+            skills_list = registry.skills_summary()
+            if skills_list:
+                system += f"\n\nCapacités disponibles :\n{skills_list}\n"
 
-        if constraints:
-            system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n"
-            system += "\n".join(f"- {c}" for c in constraints)
-        if memories:
-            system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
-            system += "\n".join(f"- {m}" for m in memories)
-        if past_interactions:
-            system += "\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n"
-            for p in past_interactions:
-                system += (
-                    f"- Q: {p.get('user_message', '')[:120]} "
-                    f"→ R: {p.get('assistant_message', '')[:120]}\n"
+            system += (
+                f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
+                "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
+            )
+
+            if preferences:
+                system += "\n\n👤 PRÉFÉRENCES UTILISATEUR (style de communication) :\n"
+                system += "\n".join(f"- {p}" for p in preferences)
+            if constraints:
+                system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n"
+                system += "\n".join(f"- {c}" for c in constraints)
+            if memories:
+                system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
+                system += "\n".join(f"- {m}" for m in memories)
+            if past_interactions:
+                system += "\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n"
+                for p in past_interactions:
+                    system += (
+                        f"- Q: {p.get('user_message', '')[:120]} "
+                        f"→ R: {p.get('assistant_message', '')[:120]}\n"
+                    )
+
+        # ── Inference ──────────────────────────────────────────────────────
+        if use_slm:
+            try:
+                response = await asyncio.wait_for(
+                    _slm_with_tools.ainvoke(
+                        [{"role": "system", "content": system}] + messages
+                    ),
+                    timeout=settings.slm_timeout,
+                )
+                model_used = f"slm:{settings.slm_model}"
+                logger.info(
+                    "SLM answered (score=%d, model=%s, reason=%s)",
+                    decision.score, settings.slm_model, decision.reason,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "SLM timeout after %.1fs (score=%d) — falling back to LLM",
+                    settings.slm_timeout, decision.score,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "SLM error (score=%d): %s — falling back to LLM",
+                    decision.score, exc,
                 )
 
-        response = await llm_with_tools.ainvoke(
-            [{"role": "system", "content": system}] + messages
-        )
-        return {"messages": [response]}
+        if response is None:
+            # LLM path (or SLM fallback) — needs full system prompt if not built yet
+            if use_slm:
+                # SLM failed: rebuild full system prompt for LLM fallback
+                constraints, memories, past_interactions, preferences = await asyncio.gather(
+                    memory.get_relevant_constraints(user_query, user_id),
+                    memory.get_relevant_memories(user_query, user_id),
+                    memory.get_relevant_interactions(user_query, user_id, limit=3),
+                    memory.get_user_preferences(user_id),
+                )
+                system = _SYSTEM_PROMPT_BASE
+                skills_list = registry.skills_summary()
+                if skills_list:
+                    system += f"\n\nCapacités disponibles :\n{skills_list}\n"
+                system += (
+                    f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
+                    "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
+                )
+                if preferences:
+                    system += "\n\n👤 PRÉFÉRENCES UTILISATEUR :\n"
+                    system += "\n".join(f"- {p}" for p in preferences)
+                if constraints:
+                    system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES :\n"
+                    system += "\n".join(f"- {c}" for c in constraints)
+                if memories:
+                    system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
+                    system += "\n".join(f"- {m}" for m in memories)
+
+            response = await llm_with_tools.ainvoke(
+                [{"role": "system", "content": system}] + messages
+            )
+
+        return {"messages": [response], "model_used": model_used, "routing_score": routing_score}
 
     return agent_node
 
