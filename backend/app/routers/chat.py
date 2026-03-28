@@ -1,6 +1,9 @@
 import asyncio
+import base64
 import json
 import logging
+import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import HumanMessage, AIMessage
@@ -98,6 +101,21 @@ async def websocket_chat(websocket: WebSocket):
                     if a.get("path")
                 )
                 user_content = f"{user_content}\n\n📎 Fichiers joints :\n{file_lines}".strip()
+
+            # Screen capture — save base64 PNG to uploads dir, inject path into content
+            screen_b64 = msg.get("screen_capture")
+            if screen_b64:
+                try:
+                    upload_dir = Path("/app/uploads") / user_id
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+                    screen_path = upload_dir / f"screen_{uuid.uuid4().hex[:8]}.png"
+                    screen_path.write_bytes(base64.b64decode(screen_b64))
+                    user_content = (
+                        f"{user_content}\n\n📸 Capture d'écran partagée → {screen_path}"
+                    ).strip()
+                    logger.debug("Screen capture saved to %s", screen_path)
+                except Exception as exc:
+                    logger.warning("Failed to save screen capture: %s", exc)
 
             async with async_session() as db:
                 # Re-read user on each message to pick up latest google_credentials

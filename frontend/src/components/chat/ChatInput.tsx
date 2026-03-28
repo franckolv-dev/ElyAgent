@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
-import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode, Monitor } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import { getAccessToken } from "@/lib/auth";
 
 interface ChatInputProps {
-  onSend: (message: string, attachments?: Attachment[]) => void;
+  onSend: (message: string, attachments?: Attachment[], screenCapture?: string) => void;
   disabled?: boolean;
   isLoading?: boolean;
   prefill?: string;
@@ -24,8 +24,17 @@ interface PendingAttachment {
 }
 
 // Web Speech API types
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  0: { transcript: string };
+}
+interface SpeechRecognitionResultList {
+  length: number;
+  [index: number]: SpeechRecognitionResult;
+}
 interface SpeechRecognitionEvent extends Event {
   results: SpeechRecognitionResultList;
+  resultIndex: number;
 }
 interface SpeechRecognitionErrorEvent extends Event {
   error: string;
@@ -69,6 +78,7 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
   const [micError, setMicError] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
+  const [screenCapture, setScreenCapture] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,7 +86,8 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef  = useRef<Blob[]>([]);
-  const speechRecRef    = useRef<SpeechRecognitionInstance | null>(null);
+  const speechRecRef       = useRef<SpeechRecognitionInstance | null>(null);
+  const finalTranscriptRef = useRef<string>("");
 
   // Effacer l'erreur micro après 4 secondes
   useEffect(() => {
@@ -90,30 +101,40 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return false;
 
+    finalTranscriptRef.current = "";
     const rec = new SR();
     rec.lang = "fr-FR";
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.continuous = true;     // ← continue même après les silences
+    rec.interimResults = true; // ← affiche les mots au fil de la dictée
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
-      const transcript = Array.from(e.results)
-        .map((r) => r[0].transcript)
-        .join(" ")
-        .trim();
-      if (transcript) {
-        setValue(transcript);
-        setTimeout(() => textareaRef.current?.focus(), 0);
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          finalTranscriptRef.current += t + " ";
+        } else {
+          interim += t;
+        }
       }
+      const full = (finalTranscriptRef.current + interim).trim();
+      if (full) setValue(full);
     };
+
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
       if (e.error === "not-allowed") {
         setMicError("Permission micro refusée. Autorise le micro dans les paramètres du navigateur.");
-      } else {
+      } else if (e.error !== "aborted") {
         setMicError(`Erreur micro : ${e.error}`);
       }
       setIsRecording(false);
     };
-    rec.onend = () => setIsRecording(false);
+
+    rec.onend = () => {
+      setValue((v) => v.trim());
+      setIsRecording(false);
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    };
 
     rec.start();
     speechRecRef.current = rec;
@@ -239,6 +260,45 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
     setPendingFiles((prev) => prev.filter((p) => p.localId !== localId));
   }, []);
 
+  // ── Screen capture ────────────────────────────────────────────────────────
+  const captureScreen = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const imageCapture = new (window as unknown as { ImageCapture: new (t: MediaStreamTrack) => { grabFrame(): Promise<ImageBitmap> } }).ImageCapture(track);
+      const bitmap = await imageCapture.grabFrame();
+
+      const canvas = document.createElement("canvas");
+      canvas.width  = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+
+      // Downscale if too large (> 1280 px wide) to keep WS message small
+      const MAX_W = 1280;
+      let finalB64: string;
+      if (bitmap.width > MAX_W) {
+        const scale = MAX_W / bitmap.width;
+        const small = document.createElement("canvas");
+        small.width  = MAX_W;
+        small.height = Math.round(bitmap.height * scale);
+        small.getContext("2d")!.drawImage(canvas, 0, 0, small.width, small.height);
+        finalB64 = small.toDataURL("image/png").split(",")[1];
+      } else {
+        finalB64 = canvas.toDataURL("image/png").split(",")[1];
+      }
+
+      setScreenCapture(finalB64);
+      track.stop();
+      stream.getTracks().forEach((t) => t.stop());
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    } catch (err: unknown) {
+      // User cancelled the picker or permission denied — silently ignore
+      if (err instanceof Error && err.name !== "NotAllowedError") {
+        console.warn("captureScreen error:", err);
+      }
+    }
+  }, []);
+
   // ── Prefill ───────────────────────────────────────────────────────────────
   if (prefill && prefill !== value) {
     setValue(prefill);
@@ -249,17 +309,22 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
   // ── Send ──────────────────────────────────────────────────────────────────
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
-    // Allow sending even with no text if there are attachments
-    if ((!trimmed && !pendingFiles.length) || disabled || isLoading) return;
+    // Allow sending even with no text if there are attachments or screen capture
+    if ((!trimmed && !pendingFiles.length && !screenCapture) || disabled || isLoading) return;
     // Only include successfully uploaded attachments
     const readyAttachments = pendingFiles
       .filter((p) => !p.uploading && !p.error && p.result)
       .map((p) => p.result!);
-    onSend(trimmed, readyAttachments.length ? readyAttachments : undefined);
+    onSend(
+      trimmed,
+      readyAttachments.length ? readyAttachments : undefined,
+      screenCapture ?? undefined,
+    );
     setValue("");
     setPendingFiles([]);
+    setScreenCapture(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [value, pendingFiles, disabled, isLoading, onSend]);
+  }, [value, pendingFiles, screenCapture, disabled, isLoading, onSend]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -277,13 +342,44 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
   }, []);
 
   const canSend = useMemo(
-    () => (value.trim().length > 0 || pendingFiles.some((p) => !p.uploading && !p.error)) && !disabled && !isLoading,
-    [value, pendingFiles, disabled, isLoading]
+    () =>
+      (value.trim().length > 0 ||
+        pendingFiles.some((p) => !p.uploading && !p.error) ||
+        !!screenCapture) &&
+      !disabled &&
+      !isLoading,
+    [value, pendingFiles, screenCapture, disabled, isLoading]
   );
   const hasUploading = useMemo(() => pendingFiles.some((p) => p.uploading), [pendingFiles]);
 
   return (
     <div className="border-t border-border-dim bg-bg-secondary/80 backdrop-blur-sm p-4">
+
+      {/* ── Screen capture preview chip ── */}
+      {screenCapture && (
+        <div className="flex items-center gap-2 mb-2">
+          <div className="relative inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-cyber-cyan/40 bg-cyber-cyan/10 text-[11px] text-cyber-cyan">
+            <Monitor className="w-3 h-3 shrink-0" />
+            <span>Capture d&apos;écran prête</span>
+            <button
+              type="button"
+              onClick={() => setScreenCapture(null)}
+              className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
+              title="Retirer la capture"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          {/* Miniature */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:image/png;base64,${screenCapture}`}
+            alt="Aperçu capture"
+            className="h-10 rounded border border-cyber-cyan/30 object-cover cursor-pointer"
+            title="Aperçu de la capture d'écran"
+          />
+        </div>
+      )}
 
       {/* ── Attachment chips ── */}
       {pendingFiles.length > 0 && (
@@ -359,6 +455,21 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
           ) : (
             <Paperclip className="w-3.5 h-3.5" />
           )}
+        </button>
+
+        {/* Screen capture button */}
+        <button
+          type="button"
+          onClick={captureScreen}
+          disabled={disabled}
+          title="Partager l'écran avec Ély (Vision IA)"
+          className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
+            screenCapture
+              ? "bg-cyber-cyan/20 border-cyber-cyan/50 text-cyber-cyan"
+              : "border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10"
+          }`}
+        >
+          <Monitor className="w-3.5 h-3.5" />
         </button>
 
         {/* Mic button */}

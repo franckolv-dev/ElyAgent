@@ -31,6 +31,12 @@ class SkillRegistry:
     def __init__(self) -> None:
         # Insertion-ordered dict: skills appear in registration order
         self._skills: dict[str, Skill] = {}
+        # Incremented on every register/unregister — used to detect hot-reload
+        self._version: int = 0
+
+    @property
+    def tools_version(self) -> int:
+        return self._version
 
     # ------------------------------------------------------------------ #
     # Registration                                                         #
@@ -42,7 +48,24 @@ class SkillRegistry:
         if skill.name in self._skills:
             return
         self._skills[skill.name] = skill
+        self._version += 1
         logger.debug("Skill registered: %s (%d tools)", skill.name, len(skill.tools))
+
+    def register_or_replace(self, skill: Skill) -> None:
+        """Register a skill, replacing any existing skill with the same name.
+
+        Used by MCPClientManager to hot-reload MCP skills at runtime.
+        """
+        self._skills[skill.name] = skill
+        self._version += 1
+        logger.info("Skill registered/replaced: %s (%d tools)", skill.name, len(skill.tools))
+
+    def unregister(self, skill_name: str) -> None:
+        """Remove a skill from the registry (used by MCPClientManager)."""
+        if skill_name in self._skills:
+            del self._skills[skill_name]
+            self._version += 1
+            logger.info("Skill unregistered: %s", skill_name)
 
     # ------------------------------------------------------------------ #
     # Query helpers                                                        #

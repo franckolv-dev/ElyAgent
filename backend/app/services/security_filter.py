@@ -30,6 +30,13 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     # Browser actions that modify state on external websites
     "browser_click",
     "browser_fill",
+    # OS control — desktop automation (Interactive Trainer)
+    "os_mouse_move",
+    "os_click",
+    "os_type_text",
+    "os_hotkey",
+    # MCP dynamic generation — executes generated code
+    "mcp_validate_and_deploy",
 })
 
 # Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation

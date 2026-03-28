@@ -119,10 +119,10 @@ export default function ChatPage() {
     return () => ws.disconnect();
   }, []);
 
-  const handleSend = useCallback((content: string, attachments?: Attachment[]) => {
+  const handleSend = useCallback((content: string, attachments?: Attachment[], screenCapture?: string) => {
     if (!wsRef.current) return;
     setMessages((prev) => [...prev, { role: "user", content, attachments }]);
-    wsRef.current.send(content, conversationId, attachments);
+    wsRef.current.send(content, conversationId, attachments, screenCapture);
   }, [conversationId]);
 
   return (

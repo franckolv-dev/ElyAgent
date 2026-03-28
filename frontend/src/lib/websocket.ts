@@ -71,12 +71,18 @@ export class AgentWebSocket {
     }, delay);
   }
 
-  send(content: string, conversationId?: string, attachments?: Attachment[]) {
+  send(
+    content: string,
+    conversationId?: string,
+    attachments?: Attachment[],
+    screenCapture?: string,
+  ) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         content,
         conversation_id: conversationId,
         ...(attachments?.length ? { attachments } : {}),
+        ...(screenCapture    ? { screen_capture: screenCapture } : {}),
       }));
     }
   }

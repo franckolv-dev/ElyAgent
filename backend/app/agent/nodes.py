@@ -58,6 +58,11 @@ Comportement attendu :
 - "ajoute un contact" / "crée un contact" → utiliser contacts_create
 - "calcule" / "code python" / "exécute" / "analyse ces données" / "fais un graphique" → utiliser python_execute avec du code Python complet utilisant print() pour les résultats
 - "lis ce PDF" / "analyse ce document PDF" / "extrait le texte de" → utiliser pdf_read avec le chemin ou l'URL du fichier ; utiliser pdf_info pour les métadonnées
+- "regarde mon écran" / "qu'est-ce que tu vois" / "analyse cette image" / "que dit ce document" / quand le message contient "📸 Capture d'écran partagée →" → utiliser vision_analyze_image avec le chemin fourni et la question de l'utilisateur
+- "montre-moi comment faire" / "démontre" / "tuteur" / "apprends-moi à utiliser" / "fais une démo de" → utiliser os_screenshot pour voir l'écran, puis expliquer ou démontrer avec os_click/os_type_text (après validation HITL)
+- "prends une capture de mon écran" / "screenshot de l'écran" (PAS du navigateur) → utiliser os_screenshot
+- "connecte-toi à [logiciel/service]" / "crée un connecteur pour" / "intègre [outil non supporté]" → utiliser mcp_generate_server pour générer le code, puis mcp_validate_and_deploy pour le déployer (avec HITL obligatoire)
+- "mes connecteurs MCP" / "outils générés" → utiliser mcp_list_library
 - "prends une note" / "note ça" / "mémorise" / "ajoute au presse-papier" → utiliser notes_create
 - "mes notes" / "liste mes notes" → utiliser notes_list
 - "cherche dans mes notes" / "trouve la note sur" → utiliser notes_search
@@ -171,24 +176,44 @@ def create_agent_node():
     settings = get_settings()
     llm = get_llm()
     registry = get_skill_registry()
-    llm_with_tools = llm.bind_tools(registry.all_tools)
     memory = get_memory_manager()
     intent_router = get_intent_router()
 
-    # Pre-build SLM with tools if SLM is enabled — cached in closure for the session
+    # Pre-build SLM if enabled — cached in closure but re-bound when tools change
     _slm_with_tools = None
+    _slm_version = -1
     if settings.slm_enabled:
         try:
             from app.services.llm_provider import get_slm
             _slm_with_tools = get_slm().bind_tools(registry.all_tools)
+            _slm_version = registry.tools_version
             logger.info("SLM pre-built: model=%s, threshold=%d", settings.slm_model, settings.slm_complexity_threshold)
         except Exception as exc:
             logger.warning("SLM init failed: %s — all requests will use LLM", exc)
 
+    # LLM tool binding cached, rebuilt when new MCP tools are hot-loaded
+    _llm_with_tools = llm.bind_tools(registry.all_tools)
+    _llm_version = registry.tools_version
+
     async def agent_node(state: AgentState) -> dict:
+        nonlocal _llm_with_tools, _llm_version, _slm_with_tools, _slm_version
         messages = state["messages"]
         user_id = state.get("user_id", "")
         user_query = messages[-1].content if messages else ""
+
+        # Hot-reload: rebuild tool bindings if MCP skills were added/removed
+        current_version = registry.tools_version
+        if current_version != _llm_version:
+            _llm_with_tools = llm.bind_tools(registry.all_tools)
+            _llm_version = current_version
+            logger.debug("LLM tool binding refreshed (version=%d)", current_version)
+        if _slm_with_tools is not None and current_version != _slm_version:
+            try:
+                from app.services.llm_provider import get_slm
+                _slm_with_tools = get_slm().bind_tools(registry.all_tools)
+                _slm_version = current_version
+            except Exception:
+                pass
 
         # ── Route first — avoids loading memory for SLM requests ──────────
         routing_score = 100
@@ -310,7 +335,7 @@ def create_agent_node():
                     system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
                     system += "\n".join(f"- {m}" for m in memories)
 
-            response = await llm_with_tools.ainvoke(
+            response = await _llm_with_tools.ainvoke(
                 [{"role": "system", "content": system}] + messages
             )
 
