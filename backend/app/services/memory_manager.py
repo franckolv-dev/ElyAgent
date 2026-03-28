@@ -58,6 +58,11 @@ class MemoryManager:
     def __init__(self) -> None:
         self._client = None
         self._encoder = None
+        # Embedding cache: avoids recomputing the same vector 3× per query
+        # (get_relevant_constraints / memories / interactions all embed the same text).
+        # Double-checked locking ensures correctness when called via asyncio.gather.
+        self._embed_cache: dict[str, list[float]] = {}
+        self._embed_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
     # Lazy-initialised dependencies                                        #
@@ -145,14 +150,30 @@ class MemoryManager:
     # ------------------------------------------------------------------ #
 
     async def _embed(self, text: str) -> list[float]:
-        """Compute embedding in a thread pool to avoid blocking the event loop.
+        """Compute embedding with LRU caching to avoid redundant ONNX inference.
 
-        fastembed uses ONNX (CPU-bound, ~50-200 ms) — running it directly in
-        an async context would freeze every other coroutine for that duration.
+        fastembed uses ONNX (CPU-bound, ~50-200 ms).  The same query text is
+        typically embedded 3× per turn (constraints, memories, interactions).
+        Double-checked locking ensures only one coroutine runs the model while
+        the others wait and then reuse the cached result.
+
+        Cache is bounded to 64 entries (insertion-order eviction) to cap memory.
         """
-        return await asyncio.to_thread(
-            lambda: list(self.encoder.embed([text]))[0].tolist()
-        )
+        if text in self._embed_cache:
+            return self._embed_cache[text]
+        async with self._embed_lock:
+            # Re-check inside lock: a concurrent coroutine may have filled the
+            # cache while we were waiting to acquire it.
+            if text in self._embed_cache:
+                return self._embed_cache[text]
+            result = await asyncio.to_thread(
+                lambda: list(self.encoder.embed([text]))[0].tolist()
+            )
+            if len(self._embed_cache) >= 64:
+                # Evict the oldest entry (dict preserves insertion order in Python 3.7+)
+                self._embed_cache.pop(next(iter(self._embed_cache)))
+            self._embed_cache[text] = result
+        return result
 
     async def _upsert(self, collection: str, vector: list[float], payload: dict) -> str:
         """Insert or update a Qdrant point (non-blocking via asyncio.to_thread).

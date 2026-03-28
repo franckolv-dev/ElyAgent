@@ -12,9 +12,19 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     mistral_api_key: str = ""
     gemini_api_key: str = ""
-    ollama_base_url: str = "http://localhost:11434"
+    ollama_base_url: str = "http://ollama:11434"
     active_llm_provider: str = "anthropic"
     active_llm_model: str = "claude-haiku-4-5-20251001"
+
+    # SLM — Small Language Model local via Ollama
+    # Modèles recommandés :
+    #   8 GB  VPS  → qwen2.5:3b-instruct   (~2 GB)
+    #   16 GB VPS  → qwen2.5:7b-instruct   (~5 GB)   ← VPS actuel (Hostinger 16 Go)
+    #   24 GB VPS  → qwen2.5:14b-instruct  (~9 GB)   ← futur VPS (migration ~avril 2026)
+    slm_enabled: bool = False
+    slm_model: str = "qwen2.5:7b-instruct"
+    slm_complexity_threshold: int = 40   # 0-100 ; en-dessous → SLM, au-dessus → LLM
+    slm_timeout: float = 25.0            # secondes avant fallback automatique vers LLM
 
     # Auth
     jwt_secret_key: str = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
@@ -46,7 +56,9 @@ class Settings(BaseSettings):
     # TTS
     tts_voice: str = "fr-FR-DeniseNeural"
 
-    # Cookie security (set True in production behind HTTPS)
+    # Cookie security — set True in production behind HTTPS.
+    # Automatically enabled when COOKIE_SECURE=true is set in the environment,
+    # or when any CORS origin uses HTTPS (auto-detected).
     cookie_secure: bool = False
 
     # Google OAuth2 (optionnel — laisser vide pour désactiver)
@@ -56,6 +68,16 @@ class Settings(BaseSettings):
 
     # YouTube Data API v3 (optionnel — sans clé on utilise Invidious comme fallback)
     youtube_api_key: str = ""
+
+    # Serper.dev — Google Search API (recommandé, 2500 req/mois gratuites)
+    # Inscription : https://serper.dev — une seule clé, résultats Google réels
+    serper_api_key: str = ""
+
+    # Google Custom Search (alternative à Serper — 100 req/jour gratuites)
+    # Créer un moteur sur https://programmablesearchengine.google.com
+    # Puis activer l'API sur https://console.cloud.google.com
+    google_search_api_key: str = ""
+    google_search_cx: str = ""   # Custom Search Engine ID (ex: "017576662512468239146:omuauf_lfve")
 
     # Tavily Search API (optionnel — meilleure qualité de recherche pour agents IA)
     # Gratuit : 1000 requêtes/mois sur https://tavily.com
@@ -83,6 +105,9 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _check_security_secrets(self) -> "Settings":
         """Refuse de démarrer si des secrets critiques ont encore leur valeur par défaut."""
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+
         if self.jwt_secret_key == _DEFAULT_JWT_SECRET:
             raise ValueError(
                 "\n\n⛔  ERREUR DE SÉCURITÉ CRITIQUE ⛔\n"
@@ -96,6 +121,19 @@ class Settings(BaseSettings):
                 "JWT_SECRET_KEY doit faire au moins 32 caractères. "
                 f"Actuelle : {len(self.jwt_secret_key)} caractères."
             )
+
+        # Auto-enable cookie_secure when any CORS origin uses HTTPS,
+        # unless it was explicitly set to False via environment variable.
+        if not self.cookie_secure and "https://" in self.cors_origins:
+            object.__setattr__(self, "cookie_secure", True)
+            _log.info("cookie_secure auto-enabled (HTTPS detected in CORS_ORIGINS)")
+
+        if not self.cookie_secure:
+            _log.warning(
+                "cookie_secure=False — refresh token cookie is not Secure. "
+                "Set COOKIE_SECURE=true in production or add an HTTPS origin to CORS_ORIGINS."
+            )
+
         return self
 
 

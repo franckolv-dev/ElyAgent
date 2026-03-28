@@ -65,9 +65,14 @@ class SecurityFilter:
         """Replace sensitive values with opaque placeholders.
 
         Each unique sensitive value is mapped to exactly one placeholder.
-        re.finditer is called on the *current* result string so that already-
-        substituted tokens are not matched again by subsequent iterations.
-        A reverse set (_seen) provides O(1) duplicate detection.
+        Substitutions are performed using match positions (start/end offsets)
+        rather than str.replace, which avoids incorrect replacements when a
+        PII value happens to be a substring of a common word or another match.
+
+        Algorithm:
+        1. Run all patterns on the original text and collect (start, end, label, value).
+        2. Sort by start position; discard overlapping matches (first match wins).
+        3. Process matches right-to-left so that earlier offsets stay valid.
 
         Guard anti-ReDoS : le texte est tronqué à _MAX_REGEX_INPUT caractères
         avant d'être soumis aux expressions régulières.
@@ -76,30 +81,38 @@ class SecurityFilter:
         if len(text) > _MAX_REGEX_INPUT:
             text = text[:_MAX_REGEX_INPUT]
 
-        result = text
-        # Build a reverse lookup from real-value → existing placeholder so
-        # the same value seen again in a new message reuses the same token.
+        # Build a reverse lookup: real-value → existing placeholder, so the
+        # same value seen again in a new message reuses the same token.
         _seen: dict[str, str] = {v: k for k, v in self._vault.items()}
 
+        # ── Collect all matches with positions ───────────────────────────
+        # list of (start, end, label, original_value)
+        all_matches: list[tuple[int, int, str, str]] = []
         for label, pattern in _PATTERNS.items():
-            # Collect all unique matches first, then replace, to avoid
-            # mutating `result` mid-iteration over positions.
-            found: list[str] = []
-            for match in pattern.finditer(result):
-                original = match.group(0)
-                if original not in found:
-                    found.append(original)
+            for m in pattern.finditer(text):
+                all_matches.append((m.start(), m.end(), label, m.group(0)))
 
-            for original in found:
-                if original in _seen:
-                    # Already have a placeholder; ensure it is substituted
-                    result = result.replace(original, _seen[original])
-                    continue
+        # Sort ascending by start position; remove overlapping spans (keep first)
+        all_matches.sort(key=lambda x: x[0])
+        non_overlapping: list[tuple[int, int, str, str]] = []
+        last_end = -1
+        for start, end, label, original in all_matches:
+            if start >= last_end:
+                non_overlapping.append((start, end, label, original))
+                last_end = end
+
+        # ── Apply substitutions right-to-left (preserves earlier offsets) ─
+        result = text
+        for start, end, label, original in reversed(non_overlapping):
+            if original in _seen:
+                placeholder = _seen[original]
+            else:
                 placeholder = f"[{label}_{self._counter}]"
                 self._vault[placeholder] = original
                 _seen[original] = placeholder
                 self._counter += 1
-                result = result.replace(original, placeholder)
+            result = result[:start] + placeholder + result[end:]
+
         return result
 
     def deanonymize(self, text: str) -> str:
