@@ -25,6 +25,7 @@ from app.routers import analytics as analytics_router
 from app.routers.device_token import router as device_token_router
 from app.routers import feedback as feedback_router
 from app.routers import mcp as mcp_router
+from app.routers import telegram_webhook as telegram_webhook_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -119,3 +120,4 @@ app.include_router(analytics_router.router, prefix="/analytics", tags=["analytic
 app.include_router(device_token_router)
 app.include_router(feedback_router.router)
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
+app.include_router(telegram_webhook_router.router, tags=["telegram"])

@@ -315,7 +315,12 @@ _bot_app: Application | None = None
 
 
 async def start_telegram_bot() -> None:
-    """Start the Telegram bot (called from FastAPI lifespan)."""
+    """Start the Telegram bot in webhook mode (called from FastAPI lifespan).
+
+    Webhook mode avoids the Conflict error that occurs when multiple instances
+    (e.g. during a rolling deploy) try to long-poll the same token simultaneously.
+    Telegram pushes updates to our HTTPS endpoint instead.
+    """
     global _bot_app
 
     from app.services.system_config import get_config
@@ -328,9 +333,20 @@ async def start_telegram_bot() -> None:
         logger.info("Telegram bot token not configured — skipping Telegram channel")
         return
 
+    # Determine webhook URL from config/env
+    backend_url = getattr(s, "backend_url", "") or ""
+    webhook_url = f"{backend_url.rstrip('/')}/webhook/telegram"
+    if not backend_url or not backend_url.startswith("https://"):
+        # Fallback to polling if no HTTPS backend URL configured
+        logger.warning(
+            "BACKEND_URL not set or not HTTPS (%r) — falling back to polling mode", backend_url
+        )
+        await _start_polling(token)
+        return
+
     await _load_linked_users()
 
-    _bot_app = Application.builder().token(token).build()
+    _bot_app = Application.builder().token(token).updater(None).build()
 
     # Register handlers
     _bot_app.add_handler(CommandHandler("start", cmd_start))
@@ -342,16 +358,60 @@ async def start_telegram_bot() -> None:
 
     await _bot_app.initialize()
     await _bot_app.start()
-    await _bot_app.updater.start_polling(drop_pending_updates=True)
 
-    logger.info("Telegram bot started — polling for messages")
+    # Register webhook with Telegram
+    await _bot_app.bot.set_webhook(
+        url=webhook_url,
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES,
+    )
+    logger.info("Telegram bot started — webhook at %s", webhook_url)
+
+
+async def _start_polling(token: str) -> None:
+    """Fallback: start bot in polling mode (development / no HTTPS)."""
+    global _bot_app
+
+    await _load_linked_users()
+
+    _bot_app = Application.builder().token(token).build()
+    _bot_app.add_handler(CommandHandler("start", cmd_start))
+    _bot_app.add_handler(CommandHandler("link", cmd_link))
+    _bot_app.add_handler(CommandHandler("unlink", cmd_unlink))
+    _bot_app.add_handler(CommandHandler("new", cmd_new))
+    _bot_app.add_handler(CallbackQueryHandler(handle_hitl_callback, pattern=r"^hitl:"))
+    _bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    await _bot_app.initialize()
+    await _bot_app.start()
+    await _bot_app.updater.start_polling(drop_pending_updates=True)
+    logger.info("Telegram bot started — polling mode")
+
+
+async def receive_telegram_update(data: dict) -> None:
+    """Process an incoming webhook update from Telegram.
+
+    Called by the /webhook/telegram FastAPI route.
+    """
+    if _bot_app is None:
+        logger.warning("Received Telegram webhook but bot is not initialized")
+        return
+    update = Update.de_json(data, _bot_app.bot)
+    await _bot_app.process_update(update)
 
 
 async def stop_telegram_bot() -> None:
     """Stop the Telegram bot gracefully."""
     global _bot_app
     if _bot_app:
-        await _bot_app.updater.stop()
+        try:
+            # Delete webhook so Telegram stops sending updates
+            await _bot_app.bot.delete_webhook(drop_pending_updates=False)
+        except Exception as exc:
+            logger.warning("Could not delete Telegram webhook: %s", exc)
+        # Stop polling updater if in polling mode
+        if _bot_app.updater and _bot_app.updater.running:
+            await _bot_app.updater.stop()
         await _bot_app.stop()
         await _bot_app.shutdown()
         _bot_app = None
