@@ -128,8 +128,16 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
 
             # Complexity routing: classify last user message and select LLM accordingly.
             # If the sub-agent has a fixed provider, use it; otherwise route by complexity.
+            # workspace and infra always run multi-step tool sequences → force COMPLEX tier
+            # to avoid Mistral's tool-calling history limitation (rejects content="" with
+            # tool_calls present, which langchain_mistralai produces from null content).
+            _ALWAYS_COMPLEX_AGENTS = {"workspace", "infra"}
             if cfg.llm_provider is not None:
                 llm = get_llm_for_agent(cfg)
+            elif cfg.name in _ALWAYS_COMPLEX_AGENTS:
+                from app.services.llm_provider import ComplexityTier
+                llm = get_llm_for_tier(ComplexityTier.COMPLEX)
+                logger.debug("Sub-agent '%s': forced COMPLEX tier (multi-step tool agent)", cfg.name)
             else:
                 tier = classify_complexity(user_query)
                 llm = get_llm_for_tier(tier)

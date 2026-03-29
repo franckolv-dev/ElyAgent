@@ -52,10 +52,13 @@ _SIMPLE_KEYWORDS = re.compile(
 # Writing / composition tasks that require some reasoning → MEDIUM
 _MEDIUM_KEYWORDS = re.compile(
     r"\b(rédige|rédiger|rédaction|écris|écrire|compose|composé|emails?|"
-    r"mail[sx]?|boite mail|boîte mail|lettre|message|réponse|explique|expliquer|comment faire|"
+    r"mail[sx]?|boite mail|boîte mail|boîte aux lettres|inbox|lettre|message|réponse|explique|expliquer|comment faire|"
     r"aide.moi|aide moi|help me|propose|suggestion|conseil|conseille|"
     r"planifie|organise|liste|compare|comparer|recherche|trouve|"
-    r"calendrier|agenda|rendez.vous|tâche[sx]?|rappel|note[sx]?|contact[sx]?)\b",
+    r"calendrier|agenda|rendez.vous|tâche[sx]?|rappel|note[sx]?|contact[sx]?|"
+    r"newsletter[sx]?|mailing[sx]?|spam|corbeille|archive[sz]?|promotionnel[sx]?|"
+    r"gmail|drive|sheets?|docs?|google|workspace|fichier[sx]?|dossier[sx]?|"
+    r"document[sx]?|tableur[sx]?|spreadsheet[sx]?|événement[sx]?|réunion[sx]?)\b",
     re.IGNORECASE,
 )
 
@@ -350,21 +353,11 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
             return get_llm()
 
     if tier == ComplexityTier.MEDIUM:
-        mistral_key = _key("mistral", settings.mistral_api_key)
-        if mistral_key:
-            try:
-                from langchain_mistralai import ChatMistralAI
-                return ChatMistralAI(
-                    model="mistral-small-latest",
-                    api_key=mistral_key,
-                    max_tokens=4096,
-                    temperature=0.7,
-                )
-            except Exception as exc:
-                logger.warning("Tier MEDIUM: Mistral unavailable (%s) — trying Gemini", exc)
-        else:
-            logger.debug("Tier MEDIUM: no Mistral key — trying Gemini")
-        # Gemini as second option for MEDIUM
+        # Gemini first for MEDIUM: Mistral has a bug where it rejects AIMessage history
+        # entries that have content="" AND tool_calls present (langchain_mistralai
+        # serializes content="" instead of null when the `if tool_calls and content`
+        # condition at line 418 is skipped because "" is falsy). Gemini handles this
+        # correctly and is equally fast/cheap for MEDIUM tasks.
         gemini_key = _key("gemini", settings.gemini_api_key)
         if gemini_key:
             try:
@@ -376,7 +369,22 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
                     temperature=0.7,
                 )
             except Exception as exc:
-                logger.warning("Tier MEDIUM: Gemini unavailable (%s) — falling back to global LLM", exc)
+                logger.warning("Tier MEDIUM: Gemini unavailable (%s) — trying Mistral", exc)
+        else:
+            logger.debug("Tier MEDIUM: no Gemini key — trying Mistral")
+        # Mistral as fallback (single-turn queries only — no tool-call history)
+        mistral_key = _key("mistral", settings.mistral_api_key)
+        if mistral_key:
+            try:
+                from langchain_mistralai import ChatMistralAI
+                return ChatMistralAI(
+                    model="mistral-small-latest",
+                    api_key=mistral_key,
+                    max_tokens=4096,
+                    temperature=0.7,
+                )
+            except Exception as exc:
+                logger.warning("Tier MEDIUM: Mistral unavailable (%s) — falling back to global LLM", exc)
         return get_llm()
 
     if tier == ComplexityTier.COMPLEX:
