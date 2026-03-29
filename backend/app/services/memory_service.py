@@ -291,9 +291,10 @@ async def consolidate_user_memory(user_id: str) -> int:
         else:
             existing_profile_text = "(aucun profil existant)"
 
-        # Step 3: Call Mistral-small for consolidation
-        from app.services.llm_provider import get_llm_for_tier, ComplexityTier
-        llm = get_llm_for_tier(ComplexityTier.MEDIUM)
+        # Step 3: Use local Ollama (SLM) for consolidation — background task,
+        # no real-time interaction required, zero cloud cost.
+        from app.services.llm_provider import get_slm
+        llm = get_slm()
 
         prompt = _CONSOLIDATION_PROMPT.format(
             raw_facts=raw_facts_text,
