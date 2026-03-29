@@ -15,22 +15,18 @@ logger = logging.getLogger(__name__)
 
 
 def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Fix Mistral-specific constraint: AIMessage with tool_calls must have non-null content.
+    """Fix Mistral-specific constraint: AIMessage content must not be None.
 
-    Mistral rejects: {"role":"assistant","content":null,"tool_calls":[...]}
-    Fix:             {"role":"assistant","content":"","tool_calls":[...]}
+    Mistral rejects any assistant message where content is None, whether or not
+    tool_calls are present (HTTP 400, error code 3240):
+      - {"role":"assistant","content":null,"tool_calls":[...]}  → rejected
+      - {"role":"assistant","content":null}                     → rejected
 
-    Other providers (Anthropic, Gemini, OpenAI) accept null/None content — only Mistral
-    raises HTTP 400 error code 3240 for this case.
+    Other providers (Anthropic, Gemini, OpenAI) accept null/None content.
     """
     sanitized = []
     for msg in messages:
-        if (
-            isinstance(msg, AIMessage)
-            and msg.content is None
-            and getattr(msg, "tool_calls", None)
-        ):
-            # Shallow-copy the message with content forced to empty string
+        if isinstance(msg, AIMessage) and msg.content is None:
             msg = msg.model_copy(update={"content": ""})
         sanitized.append(msg)
     return sanitized
