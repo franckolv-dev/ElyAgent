@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
+  Monitor, Download, Plus, Trash2, Wifi, WifiOff,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations } from "next-intl";
@@ -129,6 +130,16 @@ export default function SettingsPage() {
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [googleLoading, setGoogleLoading]     = useState(false);
 
+  // Desktop state
+  const [desktopConnected, setDesktopConnected] = useState<boolean | null>(null);
+  const [desktopPlatform, setDesktopPlatform]   = useState<string>("");
+  const [desktopVersion, setDesktopVersion]     = useState<string>("");
+  const [sandboxDirs, setSandboxDirs]           = useState<string[]>([]);
+  const [sandboxInput, setSandboxInput]         = useState<string>("");
+  const [savingDesktop, setSavingDesktop]       = useState(false);
+  const [desktopBinaries, setDesktopBinaries]  = useState<Array<{os: string; arch: string; filename: string; url: string}>>([]);
+  const desktopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const { toasts, push } = useToasts();
 
   // Derived: current provider metadata from the API response
@@ -177,6 +188,56 @@ export default function SettingsPage() {
       window.history.replaceState({}, "", "/settings");
     }
   }, []);
+
+  // Load desktop config and status
+  const loadDesktopStatus = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/desktop/status`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDesktopConnected(data.connected);
+      if (data.connected) {
+        setDesktopPlatform(data.platform ?? "");
+        setDesktopVersion(data.version ?? "");
+      }
+    } catch {
+      setDesktopConnected(false);
+    }
+  }, []);
+
+  const loadDesktopConfig = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/desktop/config`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setSandboxDirs(data.sandbox_dirs ?? []);
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  const loadDesktopBinaries = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/desktop/binaries`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDesktopBinaries(data.binaries ?? []);
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDesktopStatus();
+    loadDesktopConfig();
+    loadDesktopBinaries();
+
+    // Poll status every 10 seconds
+    desktopPollRef.current = setInterval(loadDesktopStatus, 10_000);
+    return () => {
+      if (desktopPollRef.current) clearInterval(desktopPollRef.current);
+    };
+  }, [loadDesktopStatus, loadDesktopConfig, loadDesktopBinaries]);
 
   // ---------------------------------------------------------------------------
   // Handlers — LLM
@@ -281,6 +342,62 @@ export default function SettingsPage() {
       setGoogleConnected(false);
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Handlers — Desktop
+  // ---------------------------------------------------------------------------
+
+  const handleAddSandboxDir = () => {
+    const trimmed = sandboxInput.trim();
+    if (!trimmed || sandboxDirs.includes(trimmed)) return;
+    setSandboxDirs((prev) => [...prev, trimmed]);
+    setSandboxInput("");
+  };
+
+  const handleRemoveSandboxDir = (dir: string) => {
+    setSandboxDirs((prev) => prev.filter((d) => d !== dir));
+  };
+
+  const handleSaveDesktopConfig = async () => {
+    if (savingDesktop) return;
+    setSavingDesktop(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/desktop/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sandbox_dirs: sandboxDirs }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        push("error", err.detail ?? `Erreur ${res.status}`);
+      } else {
+        push("success", "Configuration ELY Desktop sauvegardée");
+      }
+    } catch {
+      push("error", "Impossible de contacter le serveur");
+    } finally {
+      setSavingDesktop(false);
+    }
+  };
+
+  const handleDownloadConfig = async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/desktop/download-config`);
+      if (!res.ok) {
+        push("error", "Erreur lors de la génération du fichier de configuration");
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ely-config.json";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      push("error", "Impossible de télécharger la configuration");
     }
   };
 
@@ -593,6 +710,155 @@ export default function SettingsPage() {
                 </div>
               </section>
             )}
+
+            {/* ----------------------------------------------------------------
+                ELY Desktop
+            ---------------------------------------------------------------- */}
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <Monitor className="w-4 h-4 text-cyber-cyan" />
+                <h2 className="text-sm font-medium text-text-primary">ELY Desktop</h2>
+                {desktopConnected === true && (
+                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <Wifi className="w-2.5 h-2.5" /> Connecté
+                    {desktopPlatform && ` · ${desktopPlatform}`}
+                    {desktopVersion && ` v${desktopVersion}`}
+                  </span>
+                )}
+                {desktopConnected === false && (
+                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
+                    <WifiOff className="w-2.5 h-2.5" /> Non connecté
+                  </span>
+                )}
+              </div>
+
+              <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
+
+                {/* Description */}
+                <p className="text-xs text-text-muted">
+                  ELY Desktop est un daemon léger qui tourne sur votre machine et donne à ELY
+                  un accès contrôlé à votre système de fichiers local. Seuls les répertoires
+                  listés ci-dessous sont accessibles.
+                </p>
+
+                {/* Sandbox dirs */}
+                <div className="space-y-2">
+                  <span className="text-xs text-text-muted uppercase tracking-wider">
+                    Répertoires autorisés
+                  </span>
+
+                  {sandboxDirs.length === 0 && (
+                    <p className="text-[11px] text-text-muted italic">
+                      Aucun répertoire configuré — ajoutez-en un ci-dessous.
+                    </p>
+                  )}
+
+                  <div className="space-y-1.5">
+                    {sandboxDirs.map((dir) => (
+                      <div
+                        key={dir}
+                        className="flex items-center justify-between gap-2 px-3 py-1.5 rounded bg-bg-primary border border-border-dim"
+                      >
+                        <code className="text-[11px] text-text-secondary flex-1 truncate">{dir}</code>
+                        <button
+                          onClick={() => handleRemoveSandboxDir(dir)}
+                          className="shrink-0 text-text-muted hover:text-cyber-red transition-colors"
+                          aria-label="Supprimer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Add dir input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={sandboxInput}
+                      onChange={(e) => setSandboxInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddSandboxDir()}
+                      placeholder="/home/user/documents"
+                      className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                    />
+                    <button
+                      onClick={handleAddSandboxDir}
+                      className="text-xs px-3 py-2 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Save button */}
+                <button
+                  onClick={handleSaveDesktopConfig}
+                  disabled={savingDesktop}
+                  className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-50"
+                >
+                  {savingDesktop ? "Sauvegarde…" : "Sauvegarder"}
+                </button>
+
+                {/* Download config */}
+                <div className="pt-3 border-t border-border-dim space-y-2">
+                  <p className="text-[11px] text-text-muted">
+                    Téléchargez le fichier de configuration et placez-le dans le même répertoire
+                    que le daemon ELY Desktop. Il contient un token d'authentification valable
+                    30 jours.
+                  </p>
+                  <button
+                    onClick={handleDownloadConfig}
+                    className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
+                  >
+                    <Download className="w-3 h-3" />
+                    Télécharger ely-config.json
+                  </button>
+                </div>
+
+                {/* Binaries */}
+                {desktopBinaries.length > 0 && (
+                  <div className="pt-3 border-t border-border-dim space-y-2">
+                    <span className="text-xs text-text-muted uppercase tracking-wider">
+                      Télécharger le daemon
+                    </span>
+                    <div className="space-y-1.5">
+                      {desktopBinaries.map((b) => (
+                        <a
+                          key={b.filename}
+                          href={b.url}
+                          download={b.filename}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded bg-bg-primary border border-border-dim hover:border-cyber-cyan/30 transition-colors group"
+                        >
+                          <Download className="w-3 h-3 text-text-muted group-hover:text-cyber-cyan transition-colors shrink-0" />
+                          <span className="text-[11px] text-text-secondary group-hover:text-text-primary transition-colors truncate">
+                            {b.filename}
+                          </span>
+                          <span className="text-[10px] text-text-muted ml-auto shrink-0">
+                            {b.os} {b.arch}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                    <details className="text-[11px] text-text-muted">
+                      <summary className="cursor-pointer hover:text-text-secondary">
+                        Instructions d'installation
+                      </summary>
+                      <ol className="mt-2 space-y-1 pl-3 list-decimal">
+                        <li>Télécharger le binaire correspondant à votre OS</li>
+                        <li>Télécharger <code className="text-cyber-cyan">ely-config.json</code> (bouton ci-dessus)</li>
+                        <li>Placer les deux fichiers dans le même répertoire</li>
+                        <li>
+                          Linux/macOS : <code className="text-cyber-cyan">chmod +x ely-desktop-* && ./ely-desktop-*</code>
+                        </li>
+                        <li>Windows : double-cliquer sur <code className="text-cyber-cyan">ely-desktop-windows-amd64.exe</code></li>
+                        <li>Le statut ci-dessus passera à "Connecté" en quelques secondes</li>
+                      </ol>
+                    </details>
+                  </div>
+                )}
+
+              </div>
+            </section>
 
           </div>
         </div>

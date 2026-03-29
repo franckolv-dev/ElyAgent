@@ -282,6 +282,44 @@ MEMORY_AGENT = SubAgentConfig(
     llm_model=None,
 )
 
+DESKTOP_AGENT = SubAgentConfig(
+    name="desktop",
+    domain="desktop",
+    display_name="Agent Desktop",
+    system_prompt=(
+        _ANTI_HALLUCINATION.format(agent_name="Desktop")
+        + _IDENTITY
+        + "Tu es spécialiste de la gestion du système de fichiers local de l'utilisateur.\n\n"
+        "Tu accèdes aux fichiers et répertoires de la machine de l'utilisateur via le daemon "
+        "ELY Desktop. Tu peux lister, lire, écrire, déplacer, supprimer des fichiers, "
+        "créer des répertoires, calculer des hash SHA-256 et rechercher des fichiers par motif.\n\n"
+        "RÈGLES ABSOLUES :\n"
+        "- Tu n'accèdes qu'aux répertoires dans la liste sandbox_dirs configurée par l'utilisateur\n"
+        "- Les opérations destructives (écriture, déplacement, suppression) nécessitent une "
+        "confirmation HITL — tu n'as pas à demander toi-même, le système le fait automatiquement\n"
+        "- Si le daemon ELY Desktop n'est pas connecté, informe l'utilisateur et guide-le "
+        "vers Paramètres > ELY Desktop pour télécharger et lancer le daemon\n"
+        "- Ne jamais tenter de sortir des répertoires sandbox autorisés\n\n"
+        "Outils disponibles : desktop_list_dir, desktop_read_file, desktop_write_file (HITL), "
+        "desktop_move_file (HITL), desktop_delete_file (HITL), desktop_create_dir, "
+        "desktop_stat_file, desktop_hash_file, desktop_search_files."
+        + _COMMON_FORMAT
+    ),
+    tool_names={
+        "desktop_list_dir",
+        "desktop_read_file",
+        "desktop_write_file",
+        "desktop_move_file",
+        "desktop_delete_file",
+        "desktop_create_dir",
+        "desktop_stat_file",
+        "desktop_hash_file",
+        "desktop_search_files",
+    },
+    llm_provider=None,
+    llm_model=None,
+)
+
 SYSTEM_AGENT = SubAgentConfig(
     name="system",
     domain="system",
@@ -311,5 +349,6 @@ ALL_AGENTS: list[SubAgentConfig] = [
     CREATIVE_AGENT,
     DATA_AGENT,
     MEMORY_AGENT,
+    DESKTOP_AGENT,
     SYSTEM_AGENT,
 ]

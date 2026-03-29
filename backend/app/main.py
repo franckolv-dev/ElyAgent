@@ -33,6 +33,7 @@ from app.routers import vault as vault_router
 from app.routers import conversations as conversations_router
 from app.routers import settings_llm as settings_llm_router
 from app.routers import setup as setup_router
+from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -176,3 +177,5 @@ app.include_router(vault_router.router)
 app.include_router(conversations_router.router)
 app.include_router(settings_llm_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
+app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
+app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])

@@ -37,6 +37,10 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "os_hotkey",
     # MCP dynamic generation — executes generated code
     "mcp_validate_and_deploy",
+    # ELY Desktop — destructive filesystem operations on user's local machine
+    "desktop_write_file",
+    "desktop_move_file",
+    "desktop_delete_file",
 })
 
 # Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation

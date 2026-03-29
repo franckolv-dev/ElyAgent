@@ -141,6 +141,16 @@ USER_ID_TOOLS = {
     "notes_update",
     "notes_delete",
     "notes_search",
+    # Desktop tools — need user_id to look up the daemon connection
+    "desktop_list_dir",
+    "desktop_read_file",
+    "desktop_write_file",
+    "desktop_move_file",
+    "desktop_delete_file",
+    "desktop_create_dir",
+    "desktop_stat_file",
+    "desktop_hash_file",
+    "desktop_search_files",
 }
 
 GOOGLE_TOOLS = {

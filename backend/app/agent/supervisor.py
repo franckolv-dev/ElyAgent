@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 # "system" is intentionally excluded from user-facing routing — it is only
 # accessible programmatically via the sub-agent registry (e.g. scheduler jobs).
-Domain = Literal["research", "workspace", "infra", "creative", "data", "memory", "general", "system"]
+Domain = Literal["research", "workspace", "infra", "creative", "data", "memory", "desktop", "general", "system"]
 
 _DOMAIN_DESCRIPTIONS = {
     "research": (
@@ -86,6 +86,11 @@ _DOMAIN_DESCRIPTIONS = {
         "Notes personnelles (créer, lire, modifier, supprimer, chercher), "
         "envoi de messages WhatsApp, gestion de la mémoire personnelle."
     ),
+    "desktop": (
+        "Accès au système de fichiers local de l'utilisateur via ELY Desktop : "
+        "lister, lire, écrire, déplacer, supprimer des fichiers, créer des répertoires, "
+        "calculer des hash, rechercher des fichiers sur la machine locale."
+    ),
     "general": (
         "Requête complexe impliquant plusieurs domaines à la fois, ou ne "
         "correspondant clairement à aucune catégorie unique."
@@ -93,7 +98,7 @@ _DOMAIN_DESCRIPTIONS = {
 }
 
 _ROUTER_SYSTEM = """Tu es le routeur d'ELY. Ton unique rôle est de classifier la demande de l'utilisateur
-dans l'une des sept catégories suivantes, sans l'exécuter.
+dans l'une des huit catégories suivantes, sans l'exécuter.
 
 Catégories disponibles :
 - research   : {research}
@@ -102,9 +107,10 @@ Catégories disponibles :
 - creative   : {creative}
 - data       : {data}
 - memory     : {memory}
+- desktop    : {desktop}
 - general    : {general}
 
-Réponds UNIQUEMENT avec le nom de la catégorie en minuscules (research / workspace / infra / creative / data / memory / general).
+Réponds UNIQUEMENT avec le nom de la catégorie en minuscules (research / workspace / infra / creative / data / memory / desktop / general).
 Aucune explication. Aucun autre texte.
 """.format(**_DOMAIN_DESCRIPTIONS)
 
@@ -224,7 +230,7 @@ async def router_node(state: AgentState) -> dict:
             HumanMessage(content=last_user_msg),
         ])
         domain = response.content.strip().lower()
-        if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "general"):
+        if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "desktop", "general"):
             domain = "general"
     except Exception as exc:
         logger.warning("Router failed, falling back to general: %s", exc)
@@ -324,7 +330,7 @@ def create_specialist_node(domain: Domain):
 # Sub-agent dispatch nodes
 # ──────────────────────────────────────────────────────────────────────────────
 
-_SUB_AGENT_DOMAINS = ("research", "workspace", "infra", "creative", "data", "memory")
+_SUB_AGENT_DOMAINS = ("research", "workspace", "infra", "creative", "data", "memory", "desktop")
 
 
 def _make_dispatch_node(domain: str):
