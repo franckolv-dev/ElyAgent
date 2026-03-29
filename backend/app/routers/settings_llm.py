@@ -32,18 +32,19 @@ router = APIRouter(prefix="/api/settings/llm", tags=["settings-llm"])
 # ---------------------------------------------------------------------------
 PROVIDERS_META = [
     {
+        "id": "zhipu",
+        "name": "Zhipu AI — GLM",
+        "env_key": "ZHIPU_API_KEY",
+        "config_key": "api_key_zhipu",
+        # GLM-4.7 : optimisé function-calling / agents, prefix caching automatique
+        "models": ["glm-4.7", "glm-4-plus", "glm-4-air", "glm-4-flash"],
+    },
+    {
         "id": "anthropic",
         "name": "Anthropic Claude",
         "env_key": "ANTHROPIC_API_KEY",
         "config_key": "api_key_anthropic",
         "models": ["claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929", "claude-sonnet-4-6", "claude-opus-4-5-20251101", "claude-opus-4-6"],
-    },
-    {
-        "id": "mistral",
-        "name": "Mistral AI",
-        "env_key": "MISTRAL_API_KEY",
-        "config_key": "api_key_mistral",
-        "models": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest", "magistral-small-latest", "magistral-medium-latest", "ministral-8b-latest", "ministral-14b-latest"],
     },
     {
         "id": "gemini",
@@ -60,11 +61,18 @@ PROVIDERS_META = [
         "models": ["deepseek-chat", "deepseek-reasoner"],
     },
     {
+        "id": "mistral",
+        "name": "Mistral AI",
+        "env_key": "MISTRAL_API_KEY",
+        "config_key": "api_key_mistral",
+        "models": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
+    },
+    {
         "id": "ollama",
         "name": "Ollama (local)",
         "env_key": None,
         "config_key": None,
-        "models": ["llama3.2", "qwen2.5-coder", "qwen2.5:7b-instruct", "mistral"],
+        "models": ["llama3.2", "qwen2.5-coder", "qwen2.5:7b-instruct"],
     },
 ]
 
@@ -78,6 +86,7 @@ def _env_key_for(provider_id: str) -> str:
         "mistral":   "mistral_api_key",
         "gemini":    "gemini_api_key",
         "deepseek":  "deepseek_api_key",
+        "zhipu":     "zhipu_api_key",
     }
     return mapping.get(provider_id, "")
 

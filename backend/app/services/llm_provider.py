@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 class ComplexityTier(str, Enum):
     """Message complexity tiers for LLM routing."""
     SIMPLE = "simple"    # Tier 1 — Ollama local (qwen2.5:7b-instruct)
-    MEDIUM = "medium"    # Tier 2 — Mistral mistral-small-latest
-    COMPLEX = "complex"  # Tier 3 — Claude → Gemini → Mistral (fallback chain)
-    IMAGE = "image"      # Tier 4 — Gemini → Mistral (fallback)
+    MEDIUM = "medium"    # Tier 2 — GLM-4.7 → Gemini → Claude (fallback chain)
+    COMPLEX = "complex"  # Tier 3 — GLM-4.7 → Claude → Gemini (fallback chain)
+    IMAGE = "image"      # Tier 4 — Gemini → GLM (fallback)
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +154,7 @@ async def load_llm_settings_from_db() -> None:
             "mistral":   "api_key_mistral",
             "gemini":    "api_key_gemini",
             "deepseek":  "api_key_deepseek",
+            "zhipu":     "api_key_zhipu",
         }
         for prov, cfg_key in key_map.items():
             val = await get_config(cfg_key, "")
@@ -184,6 +185,46 @@ def get_slm() -> BaseChatModel:
     )
 
 
+def _make_glm(model: str, api_key: str, max_tokens: int = 4096, temperature: float = 0.7) -> BaseChatModel:
+    """Instantiate GLM-4.x via Zhipu AI's OpenAI-compatible endpoint.
+
+    Context caching (prefix caching) is **automatic** on Zhipu's side — no extra
+    configuration is needed.  Cached tokens appear in the response as
+    ``usage.prompt_tokens_details.cached_tokens`` and are billed at ~1/5 of
+    normal input token price, giving up to 80 % cost reduction on repeated prompts
+    (e.g. long system prompts or repeated tool schemas).
+    """
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url="https://open.bigmodel.cn/api/paas/v4/",
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+
+def _make_anthropic(model: str, api_key: str, max_tokens: int = 8192, temperature: float = 0.7) -> BaseChatModel:
+    """Instantiate Claude with prompt-caching beta enabled.
+
+    The Anthropic API supports up to 4 cache breakpoints per request (ephemeral,
+    5-min TTL).  The ``prompt-caching-2024-07-31`` beta header activates the
+    feature; actual cache markers (cache_control blocks) are added by the agent
+    factory on the system message to cache the long static system prompt.
+    Cached tokens are billed at ~10 % of normal input price.
+    """
+    from langchain_anthropic import ChatAnthropic
+    return ChatAnthropic(
+        model=model,
+        api_key=api_key,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        model_kwargs={
+            "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"},
+        },
+    )
+
+
 def get_llm() -> BaseChatModel:
     # Settings are read inside the function so that the .env file is always
     # fully loaded before we access any values (avoids module-import-time
@@ -199,13 +240,14 @@ def get_llm() -> BaseChatModel:
         return _runtime.get(f"key_{prov}") or env_val or None
 
     if provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
+        return _make_anthropic(
             model=model,
             api_key=_key("anthropic", settings.anthropic_api_key),
-            max_tokens=4096,
-            temperature=0.7,
         )
+
+    elif provider == "zhipu":
+        key = _key("zhipu", settings.zhipu_api_key)
+        return _make_glm(model=model, api_key=key)
 
     elif provider == "mistral":
         from langchain_mistralai import ChatMistralAI
@@ -225,7 +267,6 @@ def get_llm() -> BaseChatModel:
         )
 
     elif provider == "deepseek":
-        # DeepSeek exposes an OpenAI-compatible API
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             model=model,
@@ -271,11 +312,16 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
         return _runtime.get(f"key_{prov}") or env_val or None
 
     if provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
+        return _make_anthropic(
             model=model,
             api_key=_key("anthropic", settings.anthropic_api_key),
-            max_tokens=4096,
+            temperature=temperature,
+        )
+
+    elif provider == "zhipu":
+        return _make_glm(
+            model=model,
+            api_key=_key("zhipu", settings.zhipu_api_key),
             temperature=temperature,
         )
 
@@ -326,14 +372,20 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
 def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     """Return the appropriate LLM for a given complexity tier.
 
-    Tier routing:
-        SIMPLE  → Ollama qwen2.5:7b-instruct (local, zero latency)
-        MEDIUM  → Mistral mistral-small-latest
-        COMPLEX → Claude claude-sonnet-4-6 → Gemini gemini-2.0-flash → Mistral (fallback)
-        IMAGE   → Gemini gemini-2.0-flash → Mistral (fallback)
+    Tier routing (Mistral removed — replaced by GLM-4.7 as primary):
+        SIMPLE  → Ollama qwen2.5:7b-instruct  (local, free, zero latency)
+        MEDIUM  → GLM-4.7 → Gemini 2.0 Flash → Claude Sonnet (fallback chain)
+        COMPLEX → GLM-4.7 → Claude Sonnet (prompt-caching) → Gemini (fallback)
+        IMAGE   → Gemini 2.0 Flash → GLM (fallback)
+
+    GLM-4.7 (Zhipu AI) advantages:
+      - Excellent function-calling / tool-use for agentic tasks
+      - Handles complex JSON schemas correctly
+      - Automatic prefix caching (cached tokens billed at ~1/5 price)
+      - OpenAI-compatible API — no content="" serialization bug
 
     Falls back gracefully: if a required API key is unavailable, the next
-    option in the chain is tried.  If all fail, get_llm() (global default) is returned.
+    option in the chain is tried.  If all fail, get_llm() is returned.
     """
     settings = get_settings()
 
@@ -353,11 +405,18 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
             return get_llm()
 
     if tier == ComplexityTier.MEDIUM:
-        # Gemini first for MEDIUM: Mistral has a bug where it rejects AIMessage history
-        # entries that have content="" AND tool_calls present (langchain_mistralai
-        # serializes content="" instead of null when the `if tool_calls and content`
-        # condition at line 418 is skipped because "" is falsy). Gemini handles this
-        # correctly and is equally fast/cheap for MEDIUM tasks.
+        # GLM-4.7 — primary for MEDIUM: strong function-calling, automatic prefix caching,
+        # no content="" serialization bug (unlike Mistral), affordable pricing.
+        zhipu_key = _key("zhipu", settings.zhipu_api_key)
+        if zhipu_key:
+            try:
+                return _make_glm(model="glm-4.7", api_key=zhipu_key)
+            except Exception as exc:
+                logger.warning("Tier MEDIUM: GLM-4.7 unavailable (%s) — trying Gemini", exc)
+        else:
+            logger.debug("Tier MEDIUM: no Zhipu key — trying Gemini")
+
+        # Gemini as first fallback
         gemini_key = _key("gemini", settings.gemini_api_key)
         if gemini_key:
             try:
@@ -369,40 +428,48 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
                     temperature=0.7,
                 )
             except Exception as exc:
-                logger.warning("Tier MEDIUM: Gemini unavailable (%s) — trying Mistral", exc)
-        else:
-            logger.debug("Tier MEDIUM: no Gemini key — trying Mistral")
-        # Mistral as fallback (single-turn queries only — no tool-call history)
-        mistral_key = _key("mistral", settings.mistral_api_key)
-        if mistral_key:
-            try:
-                from langchain_mistralai import ChatMistralAI
-                return ChatMistralAI(
-                    model="mistral-small-latest",
-                    api_key=mistral_key,
-                    max_tokens=4096,
-                    temperature=0.7,
-                )
-            except Exception as exc:
-                logger.warning("Tier MEDIUM: Mistral unavailable (%s) — falling back to global LLM", exc)
-        return get_llm()
+                logger.warning("Tier MEDIUM: Gemini unavailable (%s) — trying Claude", exc)
 
-    if tier == ComplexityTier.COMPLEX:
-        # Try Claude first
+        # Claude as last resort for MEDIUM
         anthropic_key = _key("anthropic", settings.anthropic_api_key)
         if anthropic_key:
             try:
-                from langchain_anthropic import ChatAnthropic
-                return ChatAnthropic(
+                return _make_anthropic(
+                    model="claude-sonnet-4-6",
+                    api_key=anthropic_key,
+                    max_tokens=4096,
+                )
+            except Exception as exc:
+                logger.warning("Tier MEDIUM: Claude unavailable (%s) — using global LLM", exc)
+
+        return get_llm()
+
+    if tier == ComplexityTier.COMPLEX:
+        # GLM-4.7 — tested first even for COMPLEX: excels at multi-step tool use
+        # and JSON schemas. Automatic prefix caching reduces cost on repeated system prompts.
+        zhipu_key = _key("zhipu", settings.zhipu_api_key)
+        if zhipu_key:
+            try:
+                return _make_glm(model="glm-4.7", api_key=zhipu_key, max_tokens=8192)
+            except Exception as exc:
+                logger.warning("Tier COMPLEX: GLM-4.7 unavailable (%s) — trying Claude", exc)
+        else:
+            logger.debug("Tier COMPLEX: no Zhipu key — trying Claude")
+
+        # Claude as primary fallback — prompt caching enabled (system prompt cached,
+        # up to 90 % cost reduction on subsequent turns with the same system prompt)
+        anthropic_key = _key("anthropic", settings.anthropic_api_key)
+        if anthropic_key:
+            try:
+                return _make_anthropic(
                     model="claude-sonnet-4-6",
                     api_key=anthropic_key,
                     max_tokens=8192,
-                    temperature=0.7,
                 )
             except Exception as exc:
                 logger.warning("Tier COMPLEX: Claude unavailable (%s) — trying Gemini", exc)
 
-        # Try Gemini as first fallback
+        # Gemini as final fallback
         gemini_key = _key("gemini", settings.gemini_api_key)
         if gemini_key:
             try:
@@ -414,27 +481,13 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
                     temperature=0.7,
                 )
             except Exception as exc:
-                logger.warning("Tier COMPLEX: Gemini unavailable (%s) — trying Mistral", exc)
-
-        # Final fallback: Mistral
-        mistral_key = _key("mistral", settings.mistral_api_key)
-        if mistral_key:
-            try:
-                from langchain_mistralai import ChatMistralAI
-                return ChatMistralAI(
-                    model="mistral-small-latest",
-                    api_key=mistral_key,
-                    max_tokens=4096,
-                    temperature=0.7,
-                )
-            except Exception as exc:
-                logger.warning("Tier COMPLEX: Mistral unavailable (%s) — falling back to global LLM", exc)
+                logger.warning("Tier COMPLEX: Gemini unavailable (%s) — using global LLM", exc)
 
         logger.warning("Tier COMPLEX: all providers unavailable — using global LLM")
         return get_llm()
 
     if tier == ComplexityTier.IMAGE:
-        # Try Gemini first (supports image generation)
+        # Gemini first — best image understanding/generation support
         gemini_key = _key("gemini", settings.gemini_api_key)
         if gemini_key:
             try:
@@ -446,21 +499,15 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
                     temperature=0.7,
                 )
             except Exception as exc:
-                logger.warning("Tier IMAGE: Gemini unavailable (%s) — trying Mistral", exc)
+                logger.warning("Tier IMAGE: Gemini unavailable (%s) — trying GLM", exc)
 
-        # Fallback: Mistral
-        mistral_key = _key("mistral", settings.mistral_api_key)
-        if mistral_key:
+        # GLM as fallback for IMAGE
+        zhipu_key = _key("zhipu", settings.zhipu_api_key)
+        if zhipu_key:
             try:
-                from langchain_mistralai import ChatMistralAI
-                return ChatMistralAI(
-                    model="mistral-small-latest",
-                    api_key=mistral_key,
-                    max_tokens=4096,
-                    temperature=0.7,
-                )
+                return _make_glm(model="glm-4.7", api_key=zhipu_key)
             except Exception as exc:
-                logger.warning("Tier IMAGE: Mistral unavailable (%s) — using global LLM", exc)
+                logger.warning("Tier IMAGE: GLM unavailable (%s) — using global LLM", exc)
 
         logger.warning("Tier IMAGE: all providers unavailable — using global LLM")
         return get_llm()

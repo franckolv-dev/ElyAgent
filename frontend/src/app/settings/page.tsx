@@ -20,30 +20,28 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // ---------------------------------------------------------------------------
 const PROVIDERS = [
   {
+    id: "zhipu",
+    label: "Zhipu AI — GLM",
+    flag: "🇨🇳",
+    desc: "GLM-4.7 · Excellent function-calling · Prefix caching auto (−80 % coût) · API OpenAI-compatible",
+    tier: "A/B",
+    docsUrl: "https://open.bigmodel.cn/",
+  },
+  {
     id: "anthropic",
     label: "Anthropic Claude",
     flag: "🇺🇸",
-    desc: "Fiable, rapide — serveurs aux États-Unis",
+    desc: "Fiable, rapide — prompt caching activé (−90 % sur system prompt) · serveurs US",
     tier: "B/C",
     docsUrl: "https://console.anthropic.com/",
   },
   {
-    id: "mistral",
-    label: "Mistral AI",
-    flag: "🇫🇷",
-    desc: "IA française, serveurs en Europe (RGPD), coûts raisonnables",
+    id: "gemini",
+    label: "Google Gemini",
+    flag: "🇺🇸",
+    desc: "Gemini 2.0 Flash / Pro — caching implicite activé",
     tier: "B",
-    docsUrl: "https://console.mistral.ai/",
-    rgpd: true,
-  },
-  {
-    id: "ollama",
-    label: "Ollama (Local)",
-    flag: "🖥️",
-    desc: "100 % local, zéro données transmises — nécessite un GPU",
-    tier: "A",
-    docsUrl: "https://ollama.com/",
-    rgpd: true,
+    docsUrl: "https://aistudio.google.com/",
   },
   {
     id: "deepseek",
@@ -54,12 +52,22 @@ const PROVIDERS = [
     docsUrl: "https://platform.deepseek.com/",
   },
   {
-    id: "gemini",
-    label: "Google Gemini",
-    flag: "🇺🇸",
-    desc: "Gemini 2.0 Flash / Pro",
-    tier: "B",
-    docsUrl: "https://aistudio.google.com/",
+    id: "mistral",
+    label: "Mistral AI",
+    flag: "🇫🇷",
+    desc: "IA française, serveurs en Europe (RGPD) — fallback uniquement",
+    tier: "C",
+    docsUrl: "https://console.mistral.ai/",
+    rgpd: true,
+  },
+  {
+    id: "ollama",
+    label: "Ollama (Local)",
+    flag: "🖥️",
+    desc: "100 % local, zéro données transmises — tâches de fond (mémoire)",
+    tier: "A",
+    docsUrl: "https://ollama.com/",
+    rgpd: true,
   },
 ];
 
@@ -480,7 +488,7 @@ export default function SettingsPage() {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
-  const needsKey = activeProvider !== "ollama";
+  const needsKey = !["ollama"].includes(activeProvider);
   const hasKey   = currentMeta?.has_key ?? false;
 
   return (
