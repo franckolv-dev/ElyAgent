@@ -138,7 +138,22 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     cfg.name, tier.value, tier.value,
                 )
 
-            llm_with_tools = llm.bind_tools(agent_tools)
+            # Force tool calling on first turn (last message is HumanMessage).
+            # Without this, Claude tends to respond with a planning text like "je vais
+            # lancer la recherche…" without actually emitting tool_calls, which causes
+            # should_continue() to return "end" and the action is never executed.
+            # On subsequent turns (last msg = ToolMessage) we use auto so the LLM can
+            # either call more tools or produce the final text response.
+            from langchain_core.messages import HumanMessage as _HM
+            _last = messages[-1] if messages else None
+            _force_tools = isinstance(_last, _HM) and bool(agent_tools)
+            if _force_tools:
+                try:
+                    llm_with_tools = llm.bind_tools(agent_tools, tool_choice="any")
+                except Exception:
+                    llm_with_tools = llm.bind_tools(agent_tools)
+            else:
+                llm_with_tools = llm.bind_tools(agent_tools)
 
             # Fetch memory context in parallel
             constraints, memories, past_interactions = await asyncio.gather(
