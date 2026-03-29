@@ -3,7 +3,7 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useState } from "react";
 import * as THREE from "three";
 import type { AvatarState } from "./CyberpunkAvatar";
 
@@ -210,14 +210,67 @@ function FaceModel({ state }: { state: AvatarState }) {
   );
 }
 
+// ─── WebGL availability check ───────────────────────────────────────────────
+function isWebGLAvailable(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+// ─── CSS fallback when WebGL is unavailable ─────────────────────────────────
+function AvatarFallback({ state }: { state: AvatarState }) {
+  const COLORS: Record<string, string> = {
+    idle: "#00d2ff", thinking: "#aa00ff", speaking: "#00ff5a",
+    alert: "#ff1e37", listening: "#ffd200",
+  };
+  const color = COLORS[state] ?? "#00d2ff";
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-[#060c16]">
+      <div className="relative w-28 h-28 mb-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="absolute inset-0 rounded-full border animate-pulse"
+            style={{
+              borderColor: `${color}${["88", "66", "44", "22"][i]}`,
+              transform: `scale(${1 - i * 0.18})`,
+              animationDelay: `${i * 0.35}s`,
+            }}
+          />
+        ))}
+        <div className="absolute inset-0 flex items-center justify-center text-sm font-mono font-bold" style={{ color }}>
+          ELY
+        </div>
+      </div>
+      <p className="text-[9px] font-mono opacity-40" style={{ color }}>WebGL indisponible</p>
+    </div>
+  );
+}
+
 // ─── Scene wrapper ─────────────────────────────────────────────────────────
 export function AvatarScene({ state }: { state: AvatarState }) {
+  const [failed, setFailed] = useState(false);
+
+  // Check WebGL availability before even mounting Canvas
+  const webglOk = typeof window !== "undefined" && isWebGLAvailable();
+
+  if (!webglOk || failed) {
+    return <AvatarFallback state={state} />;
+  }
+
   return (
     <Canvas
       camera={{ position: [0, -0.18, 3.1], fov: 38 }}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       style={{ background: "#060c16" }}
       onCreated={({ scene }) => { scene.background = new THREE.Color("#060c16"); }}
+      onError={() => setFailed(true)}
       dpr={[1, 1.5]}
     >
       <FaceModel state={state} />

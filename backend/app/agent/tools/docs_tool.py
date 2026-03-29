@@ -6,10 +6,10 @@ from typing import Annotated
 from langchain_core.tools import tool, InjectedToolArg
 
 
-def _get_docs_service(user_google_credentials_json: str | None):
+async def _get_docs_service(user_google_credentials_json: str | None):
     from googleapiclient.discovery import build
     from app.services.google_auth import get_user_credentials
-    creds = get_user_credentials(user_google_credentials_json)
+    creds = await get_user_credentials(user_google_credentials_json)
     if not creds:
         return None
     return build("docs", "v1", credentials=creds)
@@ -38,7 +38,7 @@ async def docs_create_document(
         title: Document title
         content: Initial text content (optional). Use \\n for line breaks.
     """
-    service = _get_docs_service(user_google_credentials_json)
+    service = await _get_docs_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
@@ -68,7 +68,7 @@ async def docs_read_document(
     Args:
         document_id: The document ID (from the URL or docs_create_document)
     """
-    service = _get_docs_service(user_google_credentials_json)
+    service = await _get_docs_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
@@ -93,7 +93,7 @@ async def docs_append_text(
         document_id: The document ID
         text: Text to append. Use \\n for line breaks.
     """
-    service = _get_docs_service(user_google_credentials_json)
+    service = await _get_docs_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 

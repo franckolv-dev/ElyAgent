@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AuthGuard } from "@/components/layout/AuthGuard";
+import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { api } from "@/lib/api";
+import { authFetch } from "@/lib/auth";
 import { Server, Terminal, Clock, AlertCircle, TrendingUp, Zap, DollarSign, BarChart2 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { AuditLog, SSHHost } from "@/lib/types";
+import { useTranslations } from "next-intl";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,14 @@ interface HitlStats {
   ban: number;
 }
 
+interface ProviderUsage {
+  provider: string;
+  model: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatNumber(n: number): string {
@@ -56,10 +66,10 @@ function formatCost(n: number): string {
 
 // ── SVG Bar Chart ─────────────────────────────────────────────────────────────
 
-function BarChart({ data, height = 120 }: { data: DailyUsage[]; height?: number }) {
+function BarChart({ data, height = 120, noDataLabel }: { data: DailyUsage[]; height?: number; noDataLabel: string }) {
   if (!data.length) return (
     <div className="flex items-center justify-center h-32 text-text-muted text-sm">
-      Aucune donnée disponible
+      {noDataLabel}
     </div>
   );
 
@@ -113,11 +123,13 @@ function BarChart({ data, height = 120 }: { data: DailyUsage[]; height?: number 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const t = useTranslations("dashboard");
   const [period, setPeriod] = useState(30);
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [daily, setDaily] = useState<DailyUsage[]>([]);
   const [skills, setSkills] = useState<SkillUsage[]>([]);
   const [hitl, setHitl] = useState<HitlStats | null>(null);
+  const [providers, setProviders] = useState<ProviderUsage[]>([]);
   const [hosts, setHosts] = useState<Record<string, SSHHost>>({});
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,21 +137,21 @@ export default function DashboardPage() {
   const fetchAnalytics = useCallback(async (days: number) => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("access_token");
-      const headers = { Authorization: `Bearer ${token}` };
       const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-      const [sumRes, dailyRes, skillsRes, hitlRes] = await Promise.all([
-        fetch(`${base}/analytics/summary?days=${days}`, { headers }),
-        fetch(`${base}/analytics/daily?days=${days}`, { headers }),
-        fetch(`${base}/analytics/skills?days=${days}`, { headers }),
-        fetch(`${base}/analytics/hitl?days=${days}`, { headers }),
+      const [sumRes, dailyRes, skillsRes, hitlRes, providersRes] = await Promise.all([
+        authFetch(`${base}/analytics/summary?days=${days}`),
+        authFetch(`${base}/analytics/daily?days=${days}`),
+        authFetch(`${base}/analytics/skills?days=${days}`),
+        authFetch(`${base}/analytics/hitl?days=${days}`),
+        authFetch(`${base}/analytics/providers?days=${days}`),
       ]);
 
       if (sumRes.ok) setSummary(await sumRes.json());
       if (dailyRes.ok) setDaily(await dailyRes.json());
       if (skillsRes.ok) setSkills(await skillsRes.json());
       if (hitlRes.ok) setHitl(await hitlRes.json());
+      if (providersRes.ok) setProviders(await providersRes.json());
     } catch (e) {
       // Analytics API not yet available — show empty state gracefully
     } finally {
@@ -158,7 +170,7 @@ export default function DashboardPage() {
   const totalHitl = (hitl?.allow ?? 0) + (hitl?.deny ?? 0) + (hitl?.ban ?? 0);
 
   return (
-    <AuthGuard>
+    <AdminGuard>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
@@ -167,7 +179,7 @@ export default function DashboardPage() {
 
             {/* Period selector */}
             <div className="flex items-center justify-between">
-              <h1 className="text-lg font-medium text-text-primary">Dashboard</h1>
+              <h1 className="text-lg font-medium text-text-primary">{t("title")}</h1>
               <div className="flex gap-1 bg-bg-secondary border border-border-dim rounded-lg p-1">
                 {[7, 30, 90].map((d) => (
                   <button
@@ -189,14 +201,14 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 {
-                  label: "Requêtes",
+                  label: t("requests"),
                   value: summary ? formatNumber(summary.total_requests) : "—",
                   icon: TrendingUp,
                   color: "cyber-cyan",
                   sub: `${period} derniers jours`,
                 },
                 {
-                  label: "Tokens",
+                  label: t("tokens"),
                   value: summary ? formatNumber(summary.total_tokens) : "—",
                   icon: Zap,
                   color: "cyber-cyan",
@@ -205,14 +217,14 @@ export default function DashboardPage() {
                     : "",
                 },
                 {
-                  label: "Coût estimé",
+                  label: t("estimatedCost"),
                   value: summary ? formatCost(summary.total_cost_usd) : "—",
                   icon: DollarSign,
                   color: "cyber-blue",
                   sub: "estimation approximative",
                 },
                 {
-                  label: "Hôtes SSH",
+                  label: t("sshHosts"),
                   value: hostEntries.length,
                   icon: Server,
                   color: "cyber-cyan",
@@ -241,15 +253,15 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2 mb-4">
                 <BarChart2 className="w-4 h-4 text-cyber-cyan" />
                 <h2 className="text-xs text-text-muted uppercase tracking-wider">
-                  Tokens par jour
+                  {t("tokensPerDay")}
                 </h2>
               </div>
               {loading ? (
                 <div className="h-32 flex items-center justify-center text-text-muted text-sm animate-pulse">
-                  Chargement...
+                  {t("loading")}
                 </div>
               ) : (
-                <BarChart data={daily} />
+                <BarChart data={daily} noDataLabel={t("noData")} />
               )}
             </div>
 
@@ -257,10 +269,10 @@ export default function DashboardPage() {
               {/* Top skills */}
               <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
                 <h2 className="text-xs text-text-muted uppercase tracking-wider mb-4">
-                  Skills les plus utilisés
+                  {t("mostUsedSkills")}
                 </h2>
                 {skills.length === 0 ? (
-                  <p className="text-sm text-text-muted text-center py-4">Aucune donnée</p>
+                  <p className="text-sm text-text-muted text-center py-4">{t("noData")}</p>
                 ) : (
                   <div className="space-y-2">
                     {skills.map((s) => (
@@ -284,7 +296,7 @@ export default function DashboardPage() {
               {/* HITL stats */}
               <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
                 <h2 className="text-xs text-text-muted uppercase tracking-wider mb-4">
-                  Validations HITL
+                  {t("hitlValidations")}
                 </h2>
                 {!hitl || totalHitl === 0 ? (
                   <p className="text-sm text-text-muted text-center py-4">Aucune validation</p>
@@ -318,13 +330,52 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* LLM Provider breakdown */}
+            <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
+              <h2 className="text-xs text-text-muted uppercase tracking-wider mb-4">
+                {t("usageByLlm")}
+              </h2>
+              {providers.length === 0 ? (
+                <p className="text-sm text-text-muted text-center py-4">{t("noData")}</p>
+              ) : (
+                <div className="space-y-3">
+                  {providers.map((p) => {
+                    const maxTokens = Math.max(...providers.map((x) => x.tokens), 1);
+                    const PROVIDER_COLORS: Record<string, string> = {
+                      anthropic: "bg-cyber-cyan",
+                      gemini: "bg-blue-500",
+                      mistral: "bg-orange-400",
+                      deepseek: "bg-purple-500",
+                      ollama: "bg-emerald-500",
+                    };
+                    const color = PROVIDER_COLORS[p.provider] ?? "bg-text-muted";
+                    return (
+                      <div key={`${p.provider}-${p.model}`} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-text-secondary font-medium">{p.provider}</span>
+                          <span className="text-text-muted text-[10px] truncate max-w-[120px]">{p.model}</span>
+                          <span className="text-text-muted ml-2">{p.requests} req · {formatCost(p.cost)}</span>
+                        </div>
+                        <div className="h-1.5 bg-bg-primary rounded-full overflow-hidden">
+                          <div
+                            className={`h-full ${color} rounded-full transition-all`}
+                            style={{ width: `${(p.tokens / maxTokens) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* SSH Hosts */}
             <div>
-              <h2 className="text-xs text-text-muted uppercase tracking-wider mb-3">Hôtes SSH configurés</h2>
+              <h2 className="text-xs text-text-muted uppercase tracking-wider mb-3">{t("sshConfiguredHosts")}</h2>
               {hostEntries.length === 0 ? (
                 <div className="bg-bg-secondary border border-dashed border-border-dim rounded-lg p-8 text-center">
                   <Server className="w-6 h-6 text-text-muted mx-auto mb-2" />
-                  <p className="text-sm text-text-muted">Aucun hôte configuré.</p>
+                  <p className="text-sm text-text-muted">{t("noHostsConfigured")}</p>
                   <p className="text-xs text-text-muted mt-1">
                     Éditez <code className="text-cyber-cyan">config/hosts.yaml</code>
                   </p>
@@ -359,10 +410,10 @@ export default function DashboardPage() {
 
             {/* Recent activity */}
             <div>
-              <h2 className="text-xs text-text-muted uppercase tracking-wider mb-3">Activité récente</h2>
+              <h2 className="text-xs text-text-muted uppercase tracking-wider mb-3">{t("recentActivity")}</h2>
               {logs.length === 0 ? (
                 <div className="bg-bg-secondary border border-border-dim rounded-lg p-6 text-center text-sm text-text-muted">
-                  Aucune activité récente.
+                  {t("noRecentActivity")}
                 </div>
               ) : (
                 <div className="bg-bg-secondary border border-border-dim rounded-lg divide-y divide-border-dim">
@@ -398,6 +449,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-    </AuthGuard>
+    </AdminGuard>
   );
 }

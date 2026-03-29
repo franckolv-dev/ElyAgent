@@ -39,4 +39,23 @@ export const api = {
   getUsers: () => fetchAPI("/admin/users"),
 
   getAuditLogs: (limit = 50) => fetchAPI(`/admin/audit?limit=${limit}`),
+
+  /** Submit thumbs up / down feedback on an assistant response. */
+  submitFeedback: (params: {
+    conversation_id: string;
+    user_message: string;
+    rating: 1 | -1;
+    model_used?: string;
+    routing_score?: number;
+  }) =>
+    fetchAPI("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
+  getConversations: (limit = 15) =>
+    authFetch(`${API_URL}/api/conversations?limit=${limit}`).then((r) => r.json()),
+
+  getConversationMessages: (id: string) =>
+    authFetch(`${API_URL}/api/conversations/${id}/messages`).then((r) => r.json()),
 };

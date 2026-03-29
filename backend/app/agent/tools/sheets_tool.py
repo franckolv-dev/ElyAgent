@@ -7,10 +7,10 @@ from typing import Annotated
 from langchain_core.tools import tool, InjectedToolArg
 
 
-def _get_sheets_service(user_google_credentials_json: str | None):
+async def _get_sheets_service(user_google_credentials_json: str | None):
     from googleapiclient.discovery import build
     from app.services.google_auth import get_user_credentials
-    creds = get_user_credentials(user_google_credentials_json)
+    creds = await get_user_credentials(user_google_credentials_json)
     if not creds:
         return None
     return build("sheets", "v4", credentials=creds)
@@ -30,7 +30,7 @@ async def sheets_create_spreadsheet(
         headers: Column headers for the first row (e.g. ["Name", "Date", "Amount"])
         rows: Data rows as list of lists (e.g. [["Alice", "2025-01-01", 100], ["Bob", "2025-01-02", 200]])
     """
-    service = _get_sheets_service(user_google_credentials_json)
+    service = await _get_sheets_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
@@ -80,7 +80,7 @@ async def sheets_read_spreadsheet(
         sheet_range: Range to read, e.g. 'Sheet1', 'Sheet1!A1:E20', 'Feuille 1'
         max_rows: Maximum number of rows to return (default 100)
     """
-    service = _get_sheets_service(user_google_credentials_json)
+    service = await _get_sheets_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
@@ -120,7 +120,7 @@ async def sheets_append_rows(
         rows: Rows to append as list of lists (e.g. [["Alice", "2025-06-01", 150]])
         sheet_name: Name of the sheet tab (default: Sheet1)
     """
-    service = _get_sheets_service(user_google_credentials_json)
+    service = await _get_sheets_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 

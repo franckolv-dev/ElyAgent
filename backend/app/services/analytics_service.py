@@ -11,13 +11,26 @@ from app.models.usage_log import UsageLog
 
 # Pricing table (USD per 1M tokens, approximate)
 _PRICING: dict[str, tuple[float, float]] = {
+    # Anthropic Claude
     "claude-haiku-4-5-20251001": (0.25, 1.25),
+    "claude-haiku-3-5": (0.25, 1.25),
     "claude-sonnet-4-5": (3.0, 15.0),
+    "claude-sonnet-3-5": (3.0, 15.0),
     "claude-opus-4-5": (15.0, 75.0),
+    # Mistral
     "mistral-small-latest": (0.2, 0.6),
     "mistral-medium-latest": (2.7, 8.1),
-    "gpt-4o-mini": (0.15, 0.60),
+    "mistral-large-latest": (8.0, 24.0),
+    # DeepSeek
     "deepseek-chat": (0.014, 0.028),
+    "deepseek-reasoner": (0.55, 2.19),
+    # Gemini
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-2.0-flash-lite": (0.075, 0.30),
+    "gemini-1.5-pro": (1.25, 5.0),
+    "gemini-1.5-flash": (0.075, 0.30),
+    # Generic fallback
+    "gpt-4o-mini": (0.15, 0.60),
 }
 
 
@@ -133,6 +146,39 @@ async def get_hitl_stats(user_id: str, days: int = 30) -> dict:
         if r.hitl_decision in totals:
             totals[r.hitl_decision] = r.count
     return totals
+
+
+async def get_provider_breakdown(user_id: str, days: int = 30) -> list[dict]:
+    """Get usage breakdown by LLM provider for the last N days."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(
+                UsageLog.provider,
+                UsageLog.model,
+                func.count(UsageLog.id).label("requests"),
+                func.coalesce(func.sum(UsageLog.total_tokens), 0).label("tokens"),
+                func.coalesce(func.sum(UsageLog.cost_usd), 0.0).label("cost"),
+            ).where(
+                UsageLog.user_id == user_id,
+                UsageLog.timestamp >= since,
+                UsageLog.provider.isnot(None),
+            ).group_by(UsageLog.provider, UsageLog.model)
+            .order_by(func.sum(UsageLog.total_tokens).desc())
+        )
+        rows = result.all()
+
+    return [
+        {
+            "provider": r.provider or "unknown",
+            "model": r.model or "unknown",
+            "requests": r.requests,
+            "tokens": r.tokens,
+            "cost": round(r.cost, 4),
+        }
+        for r in rows
+    ]
 
 
 async def log_usage(

@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AuthGuard } from "@/components/layout/AuthGuard";
+import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { api } from "@/lib/api";
 import { authFetch } from "@/lib/auth";
 import type { AuditLog } from "@/lib/types";
-import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle, Send } from "lucide-react";
+import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle, Send, UserPlus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -221,7 +222,88 @@ function TelegramConfigPanel() {
 
 // ── Main admin page ───────────────────────────────────────────────────────────
 
+function CreateUserForm({ onCreated }: { onCreated: () => void }) {
+  const t = useTranslations("admin");
+  const [form, setForm]       = useState({ username: "", email: "", password: "", role: "user" });
+  const [saving, setSaving]   = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [err, setErr]         = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setErr("");
+    try {
+      const res = await authFetch(`${API_URL}/auth/register`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? `Erreur ${res.status}`);
+      setSuccess(true);
+      setForm({ username: "", email: "", password: "", role: "user" });
+      setTimeout(() => { setSuccess(false); onCreated(); }, 1500);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Erreur lors de la création");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3 max-w-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <UserPlus className="w-3.5 h-3.5 text-cyber-cyan" />
+        <span className="text-xs font-medium text-text-primary">{t("createAccount")}</span>
+      </div>
+
+      {[
+        { key: "username", label: t("username"), type: "text",     placeholder: "alice" },
+        { key: "email",    label: "Email",       type: "email",    placeholder: "alice@example.com" },
+        { key: "password", label: t("password"), type: "password", placeholder: "••••••••" },
+      ].map(({ key, label, type, placeholder }) => (
+        <div key={key} className="space-y-1">
+          <label className="text-[11px] text-text-muted uppercase tracking-wider">{label}</label>
+          <input
+            type={type}
+            required
+            value={form[key as keyof typeof form]}
+            onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+            placeholder={placeholder}
+            className="w-full bg-bg-primary border border-border-dim rounded px-3 py-2 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-cyber-cyan/40"
+          />
+        </div>
+      ))}
+
+      <div className="space-y-1">
+        <label className="text-[11px] text-text-muted uppercase tracking-wider">{t("role")}</label>
+        <select
+          value={form.role}
+          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+          className="w-full bg-bg-primary border border-border-dim rounded px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-cyber-cyan/40"
+        >
+          <option value="user">{t("user")}</option>
+          <option value="admin">{t("administrator")}</option>
+        </select>
+      </div>
+
+      {err && <p className="text-[11px] text-cyber-red">{err}</p>}
+
+      <button
+        type="submit"
+        disabled={saving}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 text-xs transition-all disabled:opacity-50"
+      >
+        {success ? <CheckCircle className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+        {success ? t("accountCreated") : saving ? t("creating") : t("createAccountBtn")}
+      </button>
+    </form>
+  );
+}
+
 export default function AdminPage() {
+  const t = useTranslations("admin");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,7 +326,7 @@ export default function AdminPage() {
   useEffect(() => { load(); }, []);
 
   return (
-    <AuthGuard>
+    <AdminGuard>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
@@ -254,7 +336,7 @@ export default function AdminPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4 text-cyber-cyan" />
-                <h1 className="text-sm font-medium text-text-primary">Administration</h1>
+                <h1 className="text-sm font-medium text-text-primary">{t("title")}</h1>
               </div>
               <button
                 onClick={load}
@@ -274,10 +356,10 @@ export default function AdminPage() {
             {/* Tabs */}
             <div className="flex rounded-lg bg-bg-primary border border-border-dim p-1 w-fit">
               {([
-                { id: "audit", label: "Audit Logs",   icon: Terminal  },
-                { id: "users", label: "Utilisateurs", icon: Users     },
-                { id: "oauth", label: "OAuth Google", icon: Settings2 },
-                { id: "telegram", label: "Telegram",    icon: Send     },
+                { id: "audit", label: t("logs"),        icon: Terminal  },
+                { id: "users", label: t("users"),      icon: Users     },
+                { id: "oauth", label: t("oauthGoogle"), icon: Settings2 },
+                { id: "telegram", label: t("telegram"), icon: Send     },
               ] as const).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -300,23 +382,23 @@ export default function AdminPage() {
             ) : tab === "oauth" ? (
               <OAuthConfigPanel />
             ) : loading ? (
-              <div className="text-sm text-text-muted py-8 text-center">Chargement...</div>
+              <div className="text-sm text-text-muted py-8 text-center">{t("loading")}</div>
             ) : tab === "audit" ? (
               <div className="bg-bg-secondary border border-border-dim rounded-lg overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border-dim text-text-muted">
-                        <th className="text-left px-4 py-3 font-medium">Heure</th>
-                        <th className="text-left px-4 py-3 font-medium">Action</th>
-                        <th className="text-left px-4 py-3 font-medium">Hôte</th>
-                        <th className="text-left px-4 py-3 font-medium">Commande</th>
-                        <th className="text-left px-4 py-3 font-medium">Résultat</th>
+                        <th className="text-left px-4 py-3 font-medium">{t("time")}</th>
+                        <th className="text-left px-4 py-3 font-medium">{t("action")}</th>
+                        <th className="text-left px-4 py-3 font-medium">{t("host")}</th>
+                        <th className="text-left px-4 py-3 font-medium">{t("command")}</th>
+                        <th className="text-left px-4 py-3 font-medium">{t("result")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border-dim">
                       {logs.length === 0 ? (
-                        <tr><td colSpan={5} className="px-4 py-8 text-center text-text-muted">Aucun log.</td></tr>
+                        <tr><td colSpan={5} className="px-4 py-8 text-center text-text-muted">{t("noLogs")}</td></tr>
                       ) : logs.map((log) => (
                         <tr key={log.id} className="hover:bg-bg-tertiary/50">
                           <td className="px-4 py-2.5 text-text-muted whitespace-nowrap">
@@ -345,13 +427,15 @@ export default function AdminPage() {
                 </div>
               </div>
             ) : (
+              <div className="space-y-4">
+                <CreateUserForm onCreated={load} />
               <div className="bg-bg-secondary border border-border-dim rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border-dim text-text-muted">
-                      <th className="text-left px-4 py-3 font-medium">Utilisateur</th>
+                      <th className="text-left px-4 py-3 font-medium">{t("username")}</th>
                       <th className="text-left px-4 py-3 font-medium">Email</th>
-                      <th className="text-left px-4 py-3 font-medium">Rôle</th>
+                      <th className="text-left px-4 py-3 font-medium">{t("role")}</th>
                       <th className="text-left px-4 py-3 font-medium">Statut</th>
                       <th className="text-left px-4 py-3 font-medium">Créé le</th>
                     </tr>
@@ -385,10 +469,11 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
+              </div>
             )}
           </div>
         </div>
       </div>
-    </AuthGuard>
+    </AdminGuard>
   );
 }

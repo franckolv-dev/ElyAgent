@@ -185,10 +185,10 @@ class HITLManager:
                 firebase_admin.initialize_app(cred)
 
             # Get user's FCM token from DB
-            from app.database import AsyncSessionLocal
+            from app.database import async_session
             from app.models.user import User
             from sqlalchemy import select
-            async with AsyncSessionLocal() as db:
+            async with async_session() as db:
                 result = await db.execute(select(User).where(User.id == user_id))
                 user = result.scalar_one_or_none()
                 if not user or not user.fcm_token:

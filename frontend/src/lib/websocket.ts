@@ -30,10 +30,14 @@ export class AgentWebSocket {
     if (!token) return;
 
     this.onStatusCallback?.("connecting");
-    this.ws = new WebSocket(`${WS_URL}/ws/chat?token=${token}`);
+    // CRIT-2: Token is sent as the first JSON message after connection (handshake),
+    // NOT as a URL query parameter, to avoid token exposure in server access logs.
+    this.ws = new WebSocket(`${WS_URL}/ws/chat`);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;   // reset backoff on successful connection
+      // Send authentication handshake as first message
+      this.ws?.send(JSON.stringify({ token }));
       this.onStatusCallback?.("connected");
     };
 

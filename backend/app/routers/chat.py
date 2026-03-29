@@ -25,8 +25,22 @@ router = APIRouter()
 # One graph instance shared across all connections
 _agent_graph = None
 
-# One SecurityFilter per conversation (persists placeholders within a session)
-_filters: dict[str, SecurityFilter] = {}
+# One SecurityFilter per conversation (bounded LRU to prevent unbounded memory growth)
+from collections import OrderedDict
+
+
+class _BoundedDict(OrderedDict):
+    def __init__(self, maxsize: int = 1000):
+        super().__init__()
+        self._maxsize = maxsize
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        if len(self) > self._maxsize:
+            self.popitem(last=False)
+
+
+_filters: _BoundedDict = _BoundedDict(maxsize=1000)
 
 
 def get_agent():
@@ -42,22 +56,31 @@ async def websocket_chat(websocket: WebSocket):
     # Calling close() on an unaccepted WebSocket raises a protocol error
     # which manifests as an immediate disconnect in the logs.
     # All auth rejections must therefore accept first, then close.
+    #
+    # Token is received as the first message (JSON handshake) after accept,
+    # NOT as a URL query param, to avoid the token appearing in server logs.
 
-    token = websocket.query_params.get("token")
+    await websocket.accept()
+
+    try:
+        handshake = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        data = json.loads(handshake)
+        token = data.get("token", "")
+    except (asyncio.TimeoutError, json.JSONDecodeError, KeyError):
+        await websocket.close(code=1008)
+        return
+
     if not token:
-        await websocket.accept()
         await websocket.close(code=4001, reason="Missing token")
         return
 
     payload = decode_token(token)
     if not payload or payload.get("type") != "access":
-        await websocket.accept()
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     user_id = payload.get("sub")
     if not user_id:
-        await websocket.accept()
         await websocket.close(code=4001, reason="Invalid token payload")
         return
 
@@ -67,11 +90,8 @@ async def websocket_chat(websocket: WebSocket):
         )
         user = result.scalar_one_or_none()
         if not user:
-            await websocket.accept()
             await websocket.close(code=4001, reason="User not found")
             return
-
-    await websocket.accept()
     ws_registry.register(user_id, websocket)
 
     conversation_id: str | None = None
@@ -141,16 +161,15 @@ async def websocket_chat(websocket: WebSocket):
             clean_content = sf.anonymize(user_content)
 
             # Load conversation history (last 20 exchanges = 40 messages max)
+            _MAX_HISTORY = 40
             async with async_session() as db:
                 hist_result = await db.execute(
                     select(Message)
                     .where(Message.conversation_id == conversation_id)
-                    .order_by(Message.created_at.asc())
+                    .order_by(Message.created_at.desc())
+                    .limit(_MAX_HISTORY + 2)
                 )
-                history_rows = hist_result.scalars().all()
-
-            # Build LangChain message list from DB history (exclude the just-saved user msg)
-            _MAX_HISTORY = 40
+                history_rows = list(reversed(hist_result.scalars().all()))
             history_msgs = []
             for row in history_rows[:-1]:  # skip current user message already saved
                 if row.role == "user":
@@ -170,6 +189,8 @@ async def websocket_chat(websocket: WebSocket):
             ai_content = ""
             model_used_out: str = ""
             routing_score_out: int | None = None
+            input_tokens_total: int = 0
+            output_tokens_total: int = 0
             async for event in agent.astream_events(
                 {
                     "messages": history_msgs,
@@ -201,22 +222,43 @@ async def websocket_chat(websocket: WebSocket):
                                 "type": "token",
                                 "content": token,
                             }))
+                elif event["event"] == "on_chat_model_end":
+                    node = event.get("metadata", {}).get("langgraph_node", "")
+                    if node != "router":
+                        ai_msg_out = event.get("data", {}).get("output", None)
+                        if ai_msg_out is not None and hasattr(ai_msg_out, "usage_metadata") and ai_msg_out.usage_metadata:
+                            um = ai_msg_out.usage_metadata
+                            input_tokens_total += um.get("input_tokens", 0)
+                            output_tokens_total += um.get("output_tokens", 0)
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
                     model_used_out = output.get("model_used", "") or model_used_out
                     routing_score_out = output.get("routing_score", routing_score_out)
-                    msgs = output.get("messages", [])
-                    if msgs:
-                        last = msgs[-1]
-                        if hasattr(last, "content"):
-                            raw = last.content
+                    # Only use on_chain_end content as a fallback when streaming
+                    # produced nothing (non-streaming models like Ollama).
+                    # NEVER overwrite content already accumulated via token streaming —
+                    # the last message may be a ToolMessage or an AIMessage with
+                    # content=None/="" (sanitized for Mistral), which would wipe the
+                    # visible response with an empty string.
+                    if not ai_content:
+                        msgs = output.get("messages", [])
+                        # Walk backwards to find the last AIMessage with real text
+                        for _msg in reversed(msgs):
+                            if not isinstance(_msg, AIMessage):
+                                continue
+                            raw = _msg.content
+                            if raw is None:
+                                continue
                             if isinstance(raw, list):
-                                ai_content = "".join(
+                                _candidate = "".join(
                                     b.get("text", "") if isinstance(b, dict) else ""
                                     for b in raw
                                 )
                             else:
-                                ai_content = str(raw)
+                                _candidate = str(raw)
+                            if _candidate and _candidate not in ("None", ""):
+                                ai_content = _candidate
+                                break
 
             # Restore real values in the response
             ai_content = sf.deanonymize(ai_content)
@@ -226,6 +268,11 @@ async def websocket_chat(websocket: WebSocket):
                     conversation_id=conversation_id, role="assistant", content=ai_content
                 )
                 db.add(ai_msg)
+                # Touch updated_at so the conversation floats to the top of recent list
+                from datetime import datetime, timezone
+                conv_row = await db.get(Conversation, conversation_id)
+                if conv_row:
+                    conv_row.updated_at = datetime.now(timezone.utc)
                 await db.commit()
 
             memory = get_memory_manager()
@@ -248,12 +295,41 @@ async def websocket_chat(websocket: WebSocket):
                 payload["routing_score"] = routing_score_out
             await websocket.send_text(json.dumps(payload))
 
+            # ── Log usage for analytics ─────────────────────────────────────────
+            if model_used_out:
+                try:
+                    from app.services.analytics_service import log_usage
+                    # model_used_out is "llm:anthropic/claude-haiku-..." or "slm:qwen2.5:3b"
+                    _parts = model_used_out.split(":", 1)
+                    _type = _parts[0]  # "llm" or "slm"
+                    _rest = _parts[1] if len(_parts) > 1 else model_used_out
+                    if "/" in _rest:
+                        _provider, _model = _rest.split("/", 1)
+                    else:
+                        _provider, _model = ("ollama" if _type == "slm" else "unknown"), _rest
+                    asyncio.create_task(log_usage(
+                        user_id=user_id,
+                        model=_model,
+                        provider=_provider,
+                        input_tokens=input_tokens_total,
+                        output_tokens=output_tokens_total,
+                        conversation_id=str(conversation_id) if conversation_id else None,
+                        channel="web",
+                    ))
+                except Exception:
+                    pass  # analytics non-critical
+
     except WebSocketDisconnect:
         logger.debug("WebSocket disconnected for user %s", user_id)
     except Exception as e:
-        logger.exception("Unexpected error in WebSocket handler for user %s", user_id)
+        logger.error(
+            "WebSocket error for user %s: %s", user_id, str(e), exc_info=True
+        )
         try:
-            await websocket.send_text(json.dumps({"type": "error", "content": str(e)}))
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "content": "Une erreur interne s'est produite. Veuillez réessayer.",
+            }))
         except Exception:
             pass  # Socket may already be closed; swallow the secondary error
     finally:

@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import logging
 from functools import lru_cache
+from urllib.parse import urlparse
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -14,6 +16,44 @@ from app.database import async_session
 from app.models.watch_task import WatchTask
 
 logger = logging.getLogger(__name__)
+
+# Internal Docker service hostnames that must never be fetched
+_INTERNAL_HOSTNAMES = frozenset({
+    "qdrant", "ollama", "backend", "redis", "postgres", "db",
+    "localhost", "127.0.0.1", "::1", "0.0.0.0",
+})
+
+
+def _is_safe_url(url: str) -> bool:
+    """Block SSRF: reject private IPs, localhost, metadata endpoints."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        if hostname.lower() in _INTERNAL_HOSTNAMES:
+            return False
+        # Block AWS/GCP/Azure metadata endpoints
+        if hostname in ("169.254.169.254", "metadata.google.internal"):
+            return False
+        # Resolve and check IP range if it looks like a literal IP
+        try:
+            addr = ipaddress.ip_address(hostname)
+            if (
+                addr.is_private
+                or addr.is_loopback
+                or addr.is_link_local
+                or addr.is_reserved
+                or addr.is_multicast
+            ):
+                return False
+        except ValueError:
+            pass  # hostname (not a literal IP) — DNS resolution omitted for simplicity
+        return True
+    except Exception:
+        return False
 
 _watchdog_scheduler: AsyncIOScheduler | None = None
 
@@ -30,8 +70,15 @@ def _hash_content(content: str) -> str:
 
 
 async def _fetch_content(target: str, watch_type: str) -> str:
-    """Fetch content for a watch target."""
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+    """Fetch content for a watch target.
+
+    HIGH-6: URL safety check applied before any network request.
+    For search-type tasks, the query is sent to DuckDuckGo (always safe).
+    For URL-type tasks, the target URL must pass the SSRF filter.
+    """
+    if watch_type != "search" and not _is_safe_url(target):
+        raise ValueError(f"SSRF protection: unsafe URL blocked: {target!r}")
+    async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
         if watch_type == "search":
             # Use DuckDuckGo HTML search
             r = await client.get(

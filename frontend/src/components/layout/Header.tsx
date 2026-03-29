@@ -10,7 +10,7 @@ interface HeaderProps {
   wsStatus?: "connected" | "disconnected" | "connecting";
 }
 
-export function Header({ wsStatus = "disconnected" }: HeaderProps) {
+export function Header({ wsStatus }: HeaderProps) {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -28,10 +28,14 @@ export function Header({ wsStatus = "disconnected" }: HeaderProps) {
   return (
     <header className="h-12 bg-bg-secondary/80 backdrop-blur-sm border-b border-border-dim flex items-center justify-between px-4">
       <div className="flex items-center gap-2">
-        <StatusIcon className={`w-3.5 h-3.5 ${statusColors[wsStatus]}`} />
-        <span className="text-xs text-text-muted uppercase tracking-wider">
-          {wsStatus}
-        </span>
+        {wsStatus && (
+          <>
+            <StatusIcon className={`w-3.5 h-3.5 ${statusColors[wsStatus]}`} />
+            <span className="text-xs text-text-muted uppercase tracking-wider">
+              {wsStatus}
+            </span>
+          </>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

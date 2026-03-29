@@ -1,32 +1,54 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { MessageSquare, LayoutDashboard, Settings, Shield, LogOut, Cpu } from "lucide-react";
-import { logout } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { MessageSquare, LayoutDashboard, Settings, Shield, LogOut, Cpu, Plus, Clock } from "lucide-react";
+import { logout, isAdmin } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useTranslations } from "next-intl";
 
-const navItems = [
-  { href: "/chat",      label: "Chat",      icon: MessageSquare   },
+interface RecentConv {
+  id: string;
+  title: string;
+  created_at: string | null;
+}
+
+const BASE_NAV = [
+  { href: "/chat",     label: "Chat",     icon: MessageSquare },
+  { href: "/settings", label: "Settings", icon: Settings      },
+];
+
+const ADMIN_NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/settings",  label: "Settings",  icon: Settings        },
   { href: "/admin",     label: "Admin",     icon: Shield          },
 ];
 
 export function Sidebar() {
+  const t        = useTranslations("sidebar");
   const pathname = usePathname();
   const router   = useRouter();
+  const admin    = isAdmin();
+  const [conversations, setConversations] = useState<RecentConv[]>([]);
+  const [expanded, setExpanded] = useState(false);
+
+  const navItems = admin ? [...BASE_NAV, ...ADMIN_NAV] : BASE_NAV;
+
+  useEffect(() => {
+    api.getConversations(15).then(setConversations).catch(() => {});
+  }, [pathname]); // refresh when navigating
 
   const handleLogout = async () => {
-    await logout();   // clears localStorage + asks backend to delete HttpOnly cookie
+    await logout();
     router.push("/login");
   };
 
   return (
-    <aside className="w-16 lg:w-56 h-screen bg-bg-secondary border-r border-border-dim flex flex-col shrink-0">
-      <div className="p-4 border-b border-border-dim">
+    <aside className="w-16 lg:w-56 h-screen bg-bg-secondary border-r border-border-dim flex flex-col shrink-0 overflow-hidden">
+      {/* Logo */}
+      <div className="p-4 border-b border-border-dim shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
             <Cpu className="w-4 h-4 text-cyber-cyan" />
           </div>
           <span className="hidden lg:block text-sm font-bold text-cyber-cyan glow-cyan-text tracking-wider">
@@ -35,9 +57,10 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 p-2 space-y-1">
+      {/* Main nav + new conversation */}
+      <nav className="p-2 space-y-1 shrink-0">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href;
+          const isActive = pathname === href || pathname.startsWith(href + "?");
           return (
             <Link
               key={href}
@@ -53,9 +76,56 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* New conversation button — always force a fresh /chat page */}
+        <button
+          onClick={() => router.push("/chat?new=" + Date.now())}
+          className="hidden lg:flex items-center gap-3 px-3 py-2 rounded-md text-xs text-text-muted hover:text-cyber-cyan hover:bg-cyber-cyan/5 border border-dashed border-border-dim hover:border-cyber-cyan/30 transition-all mt-1 w-full"
+        >
+          <Plus className="w-3.5 h-3.5 shrink-0" />
+          <span>{t("newConversation")}</span>
+        </button>
       </nav>
 
-      <div className="p-2 border-t border-border-dim">
+      {/* Recent conversations */}
+      {conversations.length > 0 && (
+        <div className="hidden lg:flex flex-col flex-1 min-h-0 mt-1">
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-2 px-3 py-1.5 text-[10px] text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors shrink-0"
+          >
+            <Clock className="w-3 h-3" />
+            <span>{t("recent")}</span>
+            <span className="ml-auto text-[9px]">{expanded ? "▲" : "▼"}</span>
+          </button>
+
+          {expanded && (
+            <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+              {conversations.map((conv) => {
+                const isActive = pathname === `/chat` && typeof window !== "undefined" &&
+                  new URLSearchParams(window.location.search).get("c") === conv.id;
+                return (
+                  <Link
+                    key={conv.id}
+                    href={`/chat?c=${conv.id}`}
+                    className={`block px-2 py-1.5 rounded text-xs truncate transition-all ${
+                      isActive
+                        ? "bg-cyber-cyan/10 text-cyber-cyan"
+                        : "text-text-muted hover:text-text-secondary hover:bg-bg-tertiary"
+                    }`}
+                    title={conv.title}
+                  >
+                    {conv.title}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Logout */}
+      <div className="p-2 border-t border-border-dim shrink-0 mt-auto">
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-text-secondary hover:text-cyber-red hover:bg-cyber-red/5 transition-all w-full"

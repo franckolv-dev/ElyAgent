@@ -1,12 +1,18 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Bot, User, FileText, Image, FileCode } from "lucide-react";
+import { Bot, User, FileText, Image, FileCode, ThumbsUp, ThumbsDown } from "lucide-react";
+import { useState, useCallback } from "react";
 import type { Attachment, ChatMessage } from "@/lib/types";
+import { api } from "@/lib/api";
+import { useTranslations } from "next-intl";
 
 interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
+  /** The last user message text — sent with feedback for Phase 2 embedding */
+  lastUserMessage?: string;
+  conversationId?: string;
 }
 
 type ImageBlock = { type: "image"; data: string; mime: string; prompt: string };
@@ -20,12 +26,6 @@ function AttachmentFileIcon({ filename }: { filename: string }) {
   if (["py", "js", "ts", "html", "css", "json", "yaml", "toml", "sh"].includes(ext))
     return <FileCode className="w-3 h-3 shrink-0" />;
   return <FileText className="w-3 h-3 shrink-0" />;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
 /** Tente de parser un bloc image(s) JSON retourné par generate_image ou browser_search_images. */
@@ -48,9 +48,40 @@ function parseImageBlock(content: string): ImageBlock | ImagesBlock | null {
   return null;
 }
 
-export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
+export function MessageBubble({ message, isStreaming, lastUserMessage, conversationId }: MessageBubbleProps) {
+  const t = useTranslations("messageBubble");
   const isUser = message.role === "user";
   const imageBlock = !isUser ? parseImageBlock(message.content) : null;
+  const [feedbackSent, setFeedbackSent] = useState<1 | -1 | null>(null);
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} ${t("bytes")}`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} ${t("kilobytes")}`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("megabytes")}`;
+  }
+
+  const sendFeedback = useCallback(async (rating: 1 | -1) => {
+    if (feedbackSent !== null || !conversationId) return;
+    setFeedbackSent(rating);
+    try {
+      await api.submitFeedback({
+        conversation_id: conversationId,
+        user_message: (lastUserMessage ?? "").slice(0, 500),
+        rating,
+        model_used: message.model_used,
+        routing_score: message.routing_score,
+      });
+    } catch {
+      // Silent — feedback is best-effort
+    }
+  }, [feedbackSent, conversationId, lastUserMessage, message.model_used, message.routing_score]);
+
+  // Derive a short label for the model badge
+  const modelLabel = message.model_used?.startsWith("slm:")
+    ? "local"
+    : message.model_used?.startsWith("llm:")
+    ? null  // don't show badge for LLM (default, expected)
+    : null;
 
   return (
     <motion.div
@@ -113,7 +144,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
         ) : imageBlock?.type === "images" ? (
           /* Grille d'images — recherche web */
           <div className="flex flex-col gap-2">
-            <p className="text-xs text-text-muted mb-1">Images pour « {imageBlock.query} »</p>
+            <p className="text-xs text-text-muted mb-1">{t("imagesFor", { query: imageBlock.query })}</p>
             <div className="grid grid-cols-2 gap-2">
               {imageBlock.items.map((img, i) => (
                 <div key={i} className="flex flex-col gap-1">
@@ -135,6 +166,47 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
               <span className="inline-block w-2 h-4 bg-cyber-cyan ml-0.5 animate-pulse" />
             )}
           </pre>
+        )}
+
+        {/* Feedback + model badge — assistant messages only, not while streaming */}
+        {!isUser && !isStreaming && (
+          <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border-dim/40">
+            {modelLabel && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20 font-mono">
+                {modelLabel}
+              </span>
+            )}
+            <div className="flex items-center gap-1 ml-auto">
+              <button
+                onClick={() => sendFeedback(1)}
+                disabled={feedbackSent !== null}
+                title={t("goodResponse")}
+                className={`p-1 rounded transition-colors ${
+                  feedbackSent === 1
+                    ? "text-cyber-cyan"
+                    : feedbackSent !== null
+                    ? "text-text-muted/30 cursor-default"
+                    : "text-text-muted hover:text-cyber-cyan"
+                }`}
+              >
+                <ThumbsUp className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => sendFeedback(-1)}
+                disabled={feedbackSent !== null}
+                title={t("badResponse")}
+                className={`p-1 rounded transition-colors ${
+                  feedbackSent === -1
+                    ? "text-red-400"
+                    : feedbackSent !== null
+                    ? "text-text-muted/30 cursor-default"
+                    : "text-text-muted hover:text-red-400"
+                }`}
+              >
+                <ThumbsDown className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </motion.div>

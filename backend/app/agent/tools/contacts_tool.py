@@ -7,10 +7,10 @@ from typing import Annotated
 from langchain_core.tools import tool, InjectedToolArg
 
 
-def _get_people_service(user_google_credentials_json: str | None):
+async def _get_people_service(user_google_credentials_json: str | None):
     from googleapiclient.discovery import build
     from app.services.google_auth import get_user_credentials
-    creds = get_user_credentials(user_google_credentials_json)
+    creds = await get_user_credentials(user_google_credentials_json)
     if not creds:
         return None
     return build("people", "v1", credentials=creds)
@@ -28,7 +28,7 @@ async def contacts_search(
         query: Name, email or keyword to search for
         max_results: Maximum number of results (default 10)
     """
-    service = _get_people_service(user_google_credentials_json)
+    service = await _get_people_service(user_google_credentials_json)
     if not service:
         return "Google non connecté. Connecte ton compte Google dans les paramètres."
 
@@ -77,7 +77,7 @@ async def contacts_list(
     Args:
         max_results: Number of contacts to return (default 20, max 100)
     """
-    service = _get_people_service(user_google_credentials_json)
+    service = await _get_people_service(user_google_credentials_json)
     if not service:
         return "Google non connecté. Connecte ton compte Google dans les paramètres."
 
@@ -129,7 +129,7 @@ async def contacts_create(
         phone: Phone number (optional)
         company: Company or organization (optional)
     """
-    service = _get_people_service(user_google_credentials_json)
+    service = await _get_people_service(user_google_credentials_json)
     if not service:
         return "Google non connecté. Connecte ton compte Google dans les paramètres."
 

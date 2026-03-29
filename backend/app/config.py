@@ -122,6 +122,19 @@ class Settings(BaseSettings):
                 f"Actuelle : {len(self.jwt_secret_key)} caractères."
             )
 
+        # Enforce non-default WhatsApp verify token ONLY when WhatsApp is actively
+        # configured (phone_number_id is set). If WhatsApp is not used, the default
+        # token is harmless since the webhook will never be called.
+        _WA_DEFAULT = "ely-whatsapp-verify"
+        if (
+            self.whatsapp_phone_number_id
+            and self.whatsapp_webhook_verify_token == _WA_DEFAULT
+        ):
+            raise ValueError(
+                "WHATSAPP_WEBHOOK_VERIFY_TOKEN must be changed from its default value "
+                "when WhatsApp is configured. Set a secure random token in your .env file."
+            )
+
         # Auto-enable cookie_secure when any CORS origin uses HTTPS,
         # unless it was explicitly set to False via environment variable.
         if not self.cookie_secure and "https://" in self.cors_origins:

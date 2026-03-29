@@ -38,3 +38,12 @@ async def analytics_hitl(
     current_user=Depends(get_current_user),
 ):
     return await get_hitl_stats(current_user.id, days)
+
+
+@router.get("/providers")
+async def analytics_providers(
+    days: int = Query(30, ge=1, le=365),
+    current_user=Depends(get_current_user),
+):
+    from app.services.analytics_service import get_provider_breakdown
+    return await get_provider_breakdown(current_user.id, days)

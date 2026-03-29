@@ -1,5 +1,6 @@
 import asyncio
 import fnmatch
+import re
 from pathlib import Path
 
 import paramiko
@@ -9,6 +10,9 @@ import structlog
 logger = structlog.get_logger()
 
 _host_config: dict | None = None
+
+# Shell metacharacters that indicate potential injection attempts
+_SHELL_META = re.compile(r'[;&|`$<>\\\'\"()\n\r]')
 
 
 def load_host_config() -> dict:
@@ -32,6 +36,13 @@ def load_host_config() -> dict:
 
 
 def is_command_allowed(host_name: str, command: str) -> bool:
+    # MED-4: Reject any command containing shell metacharacters before pattern matching
+    if _SHELL_META.search(command):
+        logger.warning(
+            "shell_metachar_blocked", host=host_name, command=command[:200]
+        )
+        return False
+
     config = load_host_config()
     hosts = config.get("hosts") or {}
     host = hosts.get(host_name)
@@ -65,7 +76,12 @@ def execute_ssh_command(host_name: str, command: str) -> tuple[int, str, str]:
         raise PermissionError(f"Command not allowed on {host_name}: {command}")
 
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # HIGH-2: Use WarningPolicy instead of AutoAddPolicy.
+    # WarningPolicy logs unknown host keys but does not silently accept them the
+    # way AutoAddPolicy does, making MITM attacks visible in server logs.
+    # TODO: migrate to RejectPolicy once host_key fingerprints are stored in DB
+    # and loaded here via client.get_host_keys().add(...).
+    client.set_missing_host_key_policy(paramiko.WarningPolicy())
 
     try:
         connect_kwargs = {

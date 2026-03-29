@@ -9,4 +9,6 @@ class AgentState(TypedDict):
     user_id: str
     conversation_id: str
     google_credentials: str
-    domain: str  # routing field: "research" | "workspace" | "infra" | "general"
+    domain: str        # routing field: "research" | "workspace" | "infra" | "general"
+    model_used: str    # "slm:<model>" or "llm:<model>" — set by agent_node for feedback
+    routing_score: int # IntentRouter score 0-100 — stored for Phase 2 training

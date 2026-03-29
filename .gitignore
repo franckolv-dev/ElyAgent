@@ -48,3 +48,5 @@ backend/firebase/
 android/app/google-services.json
 *.json.secret
 *-firebase-adminsdk-*.json
+.aider*
+.mcp.json

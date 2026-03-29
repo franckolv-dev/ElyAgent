@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
@@ -7,7 +9,8 @@ from app.auth.jwt import decode_token
 from app.database import get_db
 from app.models.user import User
 
-security = HTTPBearer()
+security          = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
@@ -28,6 +31,23 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     return user
+
+
+async def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """Retourne l'utilisateur courant ou None si absent/token invalide (sans lever d'exception)."""
+    if not credentials:
+        return None
+    payload = decode_token(credentials.credentials)
+    if payload is None or payload.get("type") != "access":
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
+    return result.scalar_one_or_none()
 
 
 async def require_admin(user: User = Depends(get_current_user)) -> User:

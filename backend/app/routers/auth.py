@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.middleware.rate_limit import limiter
 from app.models.user import User
 from app.schemas.auth import (
     RegisterRequest, LoginRequest,
@@ -10,7 +11,7 @@ from app.schemas.auth import (
 )
 from app.auth.passwords import hash_password, verify_password
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_optional_user, require_admin
 from app.config import get_settings
 
 router = APIRouter()
@@ -25,31 +26,53 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         key=_COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
         max_age=_COOKIE_MAX_AGE,
         secure=settings.cookie_secure,
         path="/",
     )
 
 
+def _make_token_payload(user: User) -> dict:
+    """JWT payload enrichi avec le rôle et le username (évite des appels /me)."""
+    return {"sub": user.id, "role": user.role, "username": user.username, "email": user.email}
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(
+    request: Request,
+    req: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+    caller: User | None = Depends(get_optional_user),
+):
+    """
+    Premier utilisateur → devient admin sans auth (bootstrap).
+    Utilisateurs suivants → réservé aux admins connectés.
+    """
+    count_result = await db.execute(select(func.count(User.id)))
+    is_first = count_result.scalar_one() == 0
+
+    if not is_first:
+        if caller is None or caller.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="La création de compte est réservée aux administrateurs.",
+            )
+
     existing = await db.execute(
         select(User).where((User.username == req.username) | (User.email == req.email))
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username or email already exists")
 
-    # First user becomes admin — use COUNT to avoid loading all rows
-    count_result = await db.execute(select(func.count(User.id)))
-    is_first = count_result.scalar_one() == 0
-
     hashed = await hash_password(req.password)
+    role = req.role if (not is_first and caller and caller.role == "admin" and req.role in ("admin", "user")) else ("admin" if is_first else "user")
     user = User(
         username=req.username,
         email=req.email,
         hashed_password=hashed,
-        role="admin" if is_first else "user",
+        role=role,
     )
     db.add(user)
     await db.flush()
@@ -58,7 +81,9 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     req: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -72,7 +97,8 @@ async def login(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
 
-    access_token = create_access_token({"sub": user.id})
+    payload = _make_token_payload(user)
+    access_token = create_access_token(payload)
     refresh_token = create_refresh_token({"sub": user.id})
 
     # Refresh token stored in HttpOnly cookie — never exposed to JS
@@ -100,7 +126,7 @@ async def refresh(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
-    new_access = create_access_token({"sub": user.id})
+    new_access = create_access_token(_make_token_payload(user))
 
     # Rotate the refresh token on each use (sliding window)
     _set_refresh_cookie(response, create_refresh_token({"sub": user.id}))
@@ -111,7 +137,14 @@ async def refresh(
 @router.post("/logout")
 async def logout(response: Response):
     """Clear the refresh cookie server-side."""
-    response.delete_cookie(key=_COOKIE_NAME, path="/")
+    settings = get_settings()
+    response.delete_cookie(
+        key=_COOKIE_NAME,
+        path="/",
+        samesite="strict",
+        secure=settings.cookie_secure,
+        httponly=True,
+    )
     return {"message": "Logged out"}
 
 

@@ -4,23 +4,25 @@ import { useEffect, useRef } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
 import { Bot } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface ChatWindowProps {
   messages: ChatMessage[];
   isLoading?: boolean;
   onSuggestion?: (text: string) => void;
   streamingContent?: string;
+  conversationId?: string;
 }
 
-const SUGGESTIONS = [
-  "Quels hôtes sont configurés ?",
-  "Infos système",
-  "Lister les processus actifs",
-  "Utilisation du disque",
-];
-
-export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent }: ChatWindowProps) {
+export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent, conversationId }: ChatWindowProps) {
+  const t = useTranslations("chat");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const SUGGESTIONS = [
+    t("suggestions.hosts"),
+    t("suggestions.sysinfo"),
+    t("suggestions.disk"),
+  ];
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,8 +38,7 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
           ELY ONLINE
         </h2>
         <p className="text-sm text-text-muted max-w-sm">
-          Votre agent IA est prêt. Demandez-lui d'exécuter des commandes,
-          analyser des fichiers ou gérer vos systèmes.
+          {t("welcome")}
         </p>
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
           {SUGGESTIONS.map((s) => (
@@ -56,13 +57,21 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {messages.map((msg, i) => (
-        <MessageBubble
-          key={i}
-          message={msg}
-          isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
-        />
-      ))}
+      {messages.map((msg, i) => {
+        // Find the last user message before this assistant message (for feedback context)
+        const lastUserMsg = msg.role === "assistant"
+          ? messages.slice(0, i).reverse().find((m) => m.role === "user")?.content
+          : undefined;
+        return (
+          <MessageBubble
+            key={i}
+            message={msg}
+            isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
+            lastUserMessage={lastUserMsg}
+            conversationId={conversationId}
+          />
+        );
+      })}
 
       {/* Streaming message — tokens arriving in real time */}
       {isLoading && streamingContent && (

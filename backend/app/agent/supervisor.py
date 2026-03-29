@@ -56,7 +56,9 @@ logger = logging.getLogger(__name__)
 # Domain labels
 # ──────────────────────────────────────────────────────────────────────────────
 
-Domain = Literal["research", "workspace", "infra", "general"]
+# "system" is intentionally excluded from user-facing routing — it is only
+# accessible programmatically via the sub-agent registry (e.g. scheduler jobs).
+Domain = Literal["research", "workspace", "infra", "creative", "data", "memory", "general", "system"]
 
 _DOMAIN_DESCRIPTIONS = {
     "research": (
@@ -72,6 +74,18 @@ _DOMAIN_DESCRIPTIONS = {
         "Commandes SSH sur serveurs, tâches planifiées (cron), briefing matinal, "
         "surveillance de sites web (watchdog/veille), monitoring système."
     ),
+    "creative": (
+        "Génération d'images, création de QR codes, exécution de code Python pour "
+        "visualisations ou analyses, lecture de PDFs, analyse d'images, YouTube."
+    ),
+    "data": (
+        "Calcul, analyse de données, manipulation de fichiers locaux, cartes et "
+        "itinéraires, géolocalisation, code Python pour traitement de données."
+    ),
+    "memory": (
+        "Notes personnelles (créer, lire, modifier, supprimer, chercher), "
+        "envoi de messages WhatsApp, gestion de la mémoire personnelle."
+    ),
     "general": (
         "Requête complexe impliquant plusieurs domaines à la fois, ou ne "
         "correspondant clairement à aucune catégorie unique."
@@ -79,15 +93,18 @@ _DOMAIN_DESCRIPTIONS = {
 }
 
 _ROUTER_SYSTEM = """Tu es le routeur d'ELY. Ton unique rôle est de classifier la demande de l'utilisateur
-dans l'une des quatre catégories suivantes, sans l'exécuter.
+dans l'une des sept catégories suivantes, sans l'exécuter.
 
 Catégories disponibles :
 - research   : {research}
 - workspace  : {workspace}
 - infra      : {infra}
+- creative   : {creative}
+- data       : {data}
+- memory     : {memory}
 - general    : {general}
 
-Réponds UNIQUEMENT avec le nom de la catégorie en minuscules (research / workspace / infra / general).
+Réponds UNIQUEMENT avec le nom de la catégorie en minuscules (research / workspace / infra / creative / data / memory / general).
 Aucune explication. Aucun autre texte.
 """.format(**_DOMAIN_DESCRIPTIONS)
 
@@ -129,7 +146,10 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "Sheets, Google Tasks et Google Contacts. Tu aides l'utilisateur à gérer "
         "sa vie numérique Google de façon efficace. Toujours donner l'URL après chaque création.\n\n"
         "Outils disponibles : gmail_list_emails, gmail_read_email, gmail_send_email "
-        "(HITL), calendar_list_events, calendar_create_event (HITL), drive_list_files, "
+        "(HITL), gmail_search_for_cleanup (trouve newsletters/promos/démarchage), "
+        "gmail_list_labels, gmail_create_label, gmail_move_emails (HITL), "
+        "gmail_trash_emails (HITL — confirmation OBLIGATOIRE avant appel), "
+        "calendar_list_events, calendar_create_event (HITL), drive_list_files, "
         "drive_read_file, docs_create_document, docs_read_document, docs_append_text, "
         "sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
         "tasks_list, tasks_create, tasks_complete, "
@@ -166,6 +186,8 @@ _RESEARCH_SKILLS = {
 
 _WORKSPACE_SKILLS = {
     "gmail_list_emails", "gmail_read_email", "gmail_send_email",
+    "gmail_list_labels", "gmail_create_label", "gmail_move_emails",
+    "gmail_trash_emails", "gmail_search_for_cleanup",
     "calendar_list_events", "calendar_create_event",
     "drive_list_files", "drive_read_file",
     "docs_create_document", "docs_read_document", "docs_append_text",
@@ -202,7 +224,7 @@ async def router_node(state: AgentState) -> dict:
             HumanMessage(content=last_user_msg),
         ])
         domain = response.content.strip().lower()
-        if domain not in ("research", "workspace", "infra", "general"):
+        if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "general"):
             domain = "general"
     except Exception as exc:
         logger.warning("Router failed, falling back to general: %s", exc)
@@ -299,13 +321,64 @@ def create_specialist_node(domain: Domain):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Sub-agent dispatch nodes
+# ──────────────────────────────────────────────────────────────────────────────
+
+_SUB_AGENT_DOMAINS = ("research", "workspace", "infra", "creative", "data", "memory")
+
+
+def _make_dispatch_node(domain: str):
+    """Return an async node that delegates to the compiled sub-agent graph for *domain*.
+
+    Falls back gracefully to the general agent when the sub-agent graph is not
+    available in the registry (compilation failure, cold start, etc.).
+    """
+
+    async def dispatch_node(state: AgentState) -> dict:
+        from app.agent.sub_agents.registry import get_sub_agent_registry
+
+        registry = get_sub_agent_registry()
+        sub_graph = registry.get(domain)
+
+        if sub_graph is None:
+            logger.warning(
+                "Sub-agent '%s' not compiled — falling back to general agent", domain
+            )
+            # Inline general agent fallback (create_agent_node is a factory)
+            general = create_agent_node()
+            return await general(state)
+
+        sub_input = {
+            "messages": state["messages"],
+            "user_id": state.get("user_id", ""),
+            "google_credentials": state.get("google_credentials", ""),
+        }
+        try:
+            result = await sub_graph.ainvoke(
+                sub_input, config={"recursion_limit": 25}
+            )
+            # Return only the messages produced by the sub-agent
+            new_messages = result["messages"][len(state["messages"]):]
+            return {"messages": new_messages, "domain": domain}
+        except Exception as exc:
+            logger.error(
+                "Sub-agent '%s' failed (%s) — falling back to general agent", domain, exc
+            )
+            general = create_agent_node()
+            return await general(state)
+
+    dispatch_node.__name__ = f"{domain}_dispatch_node"
+    return dispatch_node
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Routing conditional
 # ──────────────────────────────────────────────────────────────────────────────
 
 def route_after_router(state: AgentState) -> str:
     """Map the domain stored by router_node to the next graph node."""
     domain = state.get("domain", "general")
-    return domain if domain in ("research", "workspace", "infra") else "general"
+    return domain if domain in _SUB_AGENT_DOMAINS else "general"
 
 
 def should_continue_specialist(state: AgentState) -> str:
@@ -324,55 +397,53 @@ def build_supervisor_graph():
     """Build and compile the multi-agent supervisor graph.
 
     Nodes:
-        router   → classifies intent
-        research → specialist for web/weather/news/translate
-        workspace → specialist for Google Workspace
-        infra    → specialist for SSH/cron/watchdog/briefing
-        general  → full-tool fallback
-        tools    → shared tool execution node
+        router              → classifies intent (fast LLM)
+        research            → dispatch to research sub-agent
+        workspace           → dispatch to workspace sub-agent
+        infra               → dispatch to infra sub-agent
+        creative            → dispatch to creative sub-agent
+        data                → dispatch to data sub-agent
+        memory              → dispatch to memory sub-agent
+        general             → full-tool fallback (create_agent_node)
+
+    Each dispatch node delegates the full turn to an isolated sub-agent
+    subgraph (agent+tools loop) and returns only the new messages.
+    The general node uses the legacy tool_node for its own tools loop.
 
     Edges:
-        router → {research, workspace, infra, general}
-        research/workspace/infra/general → {tools, end}
-        tools → {research, workspace, infra, general}  (loop back to caller)
+        router → {research, workspace, infra, creative, data, memory, general}
+        dispatch nodes      → END  (the loop is internal to each sub-graph)
+        general             → {tools, end}
+        tools               → general  (legacy loop for the general agent)
     """
-    # AgentState needs a "domain" field for routing
     from app.agent.state import AgentState
 
     graph = StateGraph(AgentState)
 
     # ── Nodes ──
     graph.add_node("router", router_node)
-    graph.add_node("research", create_specialist_node("research"))
-    graph.add_node("workspace", create_specialist_node("workspace"))
-    graph.add_node("infra", create_specialist_node("infra"))
+
+    # Sub-agent dispatch nodes (each delegates to an isolated subgraph)
+    for _domain in _SUB_AGENT_DOMAINS:
+        graph.add_node(_domain, _make_dispatch_node(_domain))
+
+    # General agent keeps the legacy specialist node + shared tools_node loop
     graph.add_node("general", create_agent_node())
     graph.add_node("tools", tool_node)
 
     # ── Entry point ──
     graph.set_entry_point("router")
 
-    # ── Router → specialists ──
-    graph.add_conditional_edges(
-        "router",
-        route_after_router,
-        {
-            "research": "research",
-            "workspace": "workspace",
-            "infra": "infra",
-            "general": "general",
-        },
-    )
+    # ── Router → dispatch nodes or general ──
+    _routing_map = {d: d for d in _SUB_AGENT_DOMAINS}
+    _routing_map["general"] = "general"
+    graph.add_conditional_edges("router", route_after_router, _routing_map)
 
-    # ── Specialists → tools or end ──
-    for specialist in ("research", "workspace", "infra"):
-        graph.add_conditional_edges(
-            specialist,
-            should_continue_specialist,
-            {"tools": "tools", "end": END},
-        )
+    # ── Dispatch nodes → END (sub-graphs handle their own tool loops) ──
+    for _domain in _SUB_AGENT_DOMAINS:
+        graph.add_edge(_domain, END)
 
-    # ── General agent → tools or end (reuses existing should_continue) ──
+    # ── General agent → tools or end ──
     from app.agent.nodes import should_continue
     graph.add_conditional_edges(
         "general",
@@ -380,17 +451,7 @@ def build_supervisor_graph():
         {"tools": "tools", "end": END},
     )
 
-    # ── Tools → back to the specialist that called them ──
-    # We route based on the domain stored in state
-    graph.add_conditional_edges(
-        "tools",
-        route_after_router,  # reads state["domain"] to know which specialist to return to
-        {
-            "research": "research",
-            "workspace": "workspace",
-            "infra": "infra",
-            "general": "general",
-        },
-    )
+    # ── Tools → back to general (general is the only node using tool_node) ──
+    graph.add_edge("tools", "general")
 
     return graph.compile()

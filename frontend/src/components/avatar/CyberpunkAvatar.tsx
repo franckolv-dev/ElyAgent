@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, Suspense, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 
 export type AvatarState = "idle" | "thinking" | "speaking" | "alert" | "listening";
@@ -75,20 +75,45 @@ class WebGLErrorBoundary extends Component<
 }
 
 // ── Main exported component ─────────────────────────────────────────────────
-export function CyberpunkAvatar({
-  state = "idle",
-  className = "",
-  minimal = false,    // hides HUD overlays — use for logo / small thumbnails
-}: {
+interface CyberpunkAvatarProps {
   state?: AvatarState;
   className?: string;
   minimal?: boolean;
-}) {
+  latencyMs?: number;       // real WebSocket latency (ms), undefined before first response
+  syncPercent?: number;     // success rate over last 10 messages (0-100)
+  neuralScore?: number;     // model capability tier (0-100), undefined before first model known
+  version?: string;         // backend version from /health
+}
+
+// ── Tagline cycling for idle state ─────────────────────────────────────────
+const IDLE_LABELS = ["IDLE", "EXACTLY LIKE YOU"];
+const IDLE_CYCLE_MS = 3200;
+
+export function CyberpunkAvatar({
+  state = "idle",
+  className = "",
+  minimal = false,
+  latencyMs,
+  syncPercent,
+  neuralScore,
+  version,
+}: CyberpunkAvatarProps) {
   const color = HUD_COLOR[state];
+
+  // Cycle the bottom label between "IDLE" and "EXACTLY LIKE YOU" when idle
+  const [idleLabelIdx, setIdleLabelIdx] = useState(0);
+  useEffect(() => {
+    if (state !== "idle") return;
+    const timer = setInterval(
+      () => setIdleLabelIdx((i) => (i + 1) % IDLE_LABELS.length),
+      IDLE_CYCLE_MS,
+    );
+    return () => clearInterval(timer);
+  }, [state]);
 
   return (
     <div
-      className={`relative bg-[#060c16] overflow-hidden rounded-lg ${className}`}
+      className={`relative bg-[#060c16] border border-cyber-cyan/10 overflow-hidden rounded-lg shadow-[0_0_24px_rgba(0,210,255,0.08)] ${className}`}
       style={{ minHeight: minimal ? 0 : 280 }}
     >
       {/* Three.js canvas — with WebGL error boundary */}
@@ -106,20 +131,20 @@ export function CyberpunkAvatar({
         >
           <div
             className="absolute top-2 left-2.5 text-[9px] leading-tight"
-            style={{ color, opacity: 0.45 }}
+            style={{ color, opacity: 0.75, textShadow: `0 0 8px ${color}88` }}
           >
-            NEURAL:98.3%
+            NEURAL:{neuralScore !== undefined ? `${neuralScore.toFixed(1)}%` : "—"}
             <br />
-            SYNC:99.72
+            SYNC:{syncPercent !== undefined ? `${syncPercent.toFixed(1)}%` : "—"}
           </div>
 
           <div
             className="absolute top-2 right-2.5 text-right text-[9px] leading-tight"
-            style={{ color, opacity: 0.45 }}
+            style={{ color, opacity: 0.75, textShadow: `0 0 8px ${color}88` }}
           >
-            LAT:12ms
+            LAT:{latencyMs !== undefined ? `${latencyMs}ms` : "—"}
             <br />
-            VER:3.0.0
+            VER:{version ?? "…"}
           </div>
 
           <div
@@ -131,7 +156,7 @@ export function CyberpunkAvatar({
               background: "rgba(6,12,22,0.85)",
             }}
           >
-            ELY :: {LABEL[state]}
+            ELY :: {state === "idle" ? IDLE_LABELS[idleLabelIdx] : LABEL[state]}
           </div>
         </div>
       )}

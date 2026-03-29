@@ -1,6 +1,7 @@
 """File upload endpoint — stores files server-side for use by agent tools (pdf_read, etc.)."""
 from __future__ import annotations
 
+import io
 import logging
 import uuid
 from pathlib import Path
@@ -27,6 +28,37 @@ ALLOWED_EXTENSIONS = {
 }
 
 _security = HTTPBearer()
+
+# Magic bytes for dangerous file types that should never be uploaded
+_DANGEROUS_MAGIC: list[bytes] = [
+    b"<?php",          # PHP scripts
+    b"<script",        # standalone JS/HTML script tags
+    b"<!doctype html", # HTML documents (case-insensitive check below)
+    b"<!DOCTYPE html",
+    b"<html",
+    b"MZ",             # Windows PE executables
+    b"\x7fELF",        # Linux/ELF executables
+    b"\xca\xfe\xba\xbe",  # macOS universal binary / Java .class
+    b"PK\x03\x04",    # ZIP — allowed by extension, verified below via ext allowlist
+]
+
+# Extensions that must NOT contain binary executable magic bytes
+_BINARY_EXEC_MAGIC = (b"MZ", b"\x7fELF", b"\xca\xfe\xba\xbe")
+
+
+def _verify_file_content(file_bytes: bytes, filename: str) -> bool:
+    """Return False if the file content looks dangerous regardless of extension."""
+    header = file_bytes[:16]
+    # Check for binary executables unconditionally
+    for magic in _BINARY_EXEC_MAGIC:
+        if header[: len(magic)] == magic:
+            return False
+    # Check for server-side script types
+    header_lower = header.lower()
+    for magic in (b"<?php", b"<script", b"<!doctype html", b"<html"):
+        if header_lower.startswith(magic):
+            return False
+    return True
 
 
 async def _get_user_id(
@@ -74,6 +106,13 @@ async def upload_file(
         raise HTTPException(
             status_code=413,
             detail=f"Fichier trop grand ({size // (1024*1024)} MB — max 50 MB).",
+        )
+
+    # MED-6: Verify content magic bytes before saving
+    if not _verify_file_content(content, original_name):
+        raise HTTPException(
+            status_code=415,
+            detail="Contenu de fichier refusé — type d'exécutable ou de script non autorisé.",
         )
 
     # Create per-user directory

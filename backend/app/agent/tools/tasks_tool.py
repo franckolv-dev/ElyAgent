@@ -6,10 +6,10 @@ from typing import Annotated
 from langchain_core.tools import tool, InjectedToolArg
 
 
-def _get_tasks_service(user_google_credentials_json: str | None):
+async def _get_tasks_service(user_google_credentials_json: str | None):
     from googleapiclient.discovery import build
     from app.services.google_auth import get_user_credentials
-    creds = get_user_credentials(user_google_credentials_json)
+    creds = await get_user_credentials(user_google_credentials_json)
     if not creds:
         return None
     return build("tasks", "v1", credentials=creds)
@@ -27,7 +27,7 @@ async def tasks_list(
         show_completed: Include completed tasks (default False)
         max_results: Maximum number of tasks to return (default 20)
     """
-    service = _get_tasks_service(user_google_credentials_json)
+    service = await _get_tasks_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
@@ -69,7 +69,7 @@ async def tasks_create(
         notes: Optional notes or description
         due_date: Optional due date in ISO 8601 format (e.g. '2025-06-15T00:00:00.000Z')
     """
-    service = _get_tasks_service(user_google_credentials_json)
+    service = await _get_tasks_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
@@ -96,7 +96,7 @@ async def tasks_complete(
     Args:
         task_id: The task ID returned by tasks_list
     """
-    service = _get_tasks_service(user_google_credentials_json)
+    service = await _get_tasks_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 

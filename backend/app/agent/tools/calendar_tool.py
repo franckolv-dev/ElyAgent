@@ -9,10 +9,10 @@ from langchain_core.tools import tool, InjectedToolArg
 logger = logging.getLogger(__name__)
 
 
-def _get_calendar_service(user_google_credentials_json: str | None):
+async def _get_calendar_service(user_google_credentials_json: str | None):
     from googleapiclient.discovery import build
     from app.services.google_auth import get_user_credentials
-    creds = get_user_credentials(user_google_credentials_json)
+    creds = await get_user_credentials(user_google_credentials_json)
     if not creds:
         return None
     return build("calendar", "v3", credentials=creds)
@@ -32,7 +32,7 @@ async def calendar_list_events(
         time_min: Start time filter in ISO 8601 format (e.g. '2025-01-01T00:00:00Z'), defaults to now
         time_max: End time filter in ISO 8601 format
     """
-    service = _get_calendar_service(user_google_credentials_json)
+    service = await _get_calendar_service(user_google_credentials_json)
     if not service:
         return "Google non connecté. Connectez votre compte Google dans les paramètres."
 
@@ -90,7 +90,7 @@ async def calendar_create_event(
         description: Optional event description
         location: Optional location
     """
-    service = _get_calendar_service(user_google_credentials_json)
+    service = await _get_calendar_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 

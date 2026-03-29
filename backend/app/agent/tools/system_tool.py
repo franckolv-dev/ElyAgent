@@ -1,7 +1,13 @@
+import asyncio
 import platform
 import subprocess
 
 from langchain_core.tools import tool
+
+
+async def _run_subprocess(cmd: list, **kwargs):
+    """Run a blocking subprocess in a thread pool to avoid blocking the event loop."""
+    return await asyncio.to_thread(subprocess.run, cmd, **kwargs)
 
 
 @tool

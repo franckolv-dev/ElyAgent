@@ -31,6 +31,7 @@ import logging
 import math
 import time
 import uuid
+from collections import OrderedDict
 from functools import lru_cache
 
 from app.config import get_settings
@@ -42,6 +43,25 @@ _COLLECTION_CONSTRAINTS = "security_constraints"
 _COLLECTION_INTERACTIONS = "interactions"
 _COLLECTION_PREFERENCES = "user_profile"   # communication style, tone, habits (permanent)
 _VECTOR_DIM = 384  # all-MiniLM-L6-v2 output dimension
+
+
+class _LRUCache(OrderedDict):
+    """MED-8: Bounded LRU cache for embeddings (evicts least-recently-used on overflow)."""
+
+    def __init__(self, maxsize: int = 2048):
+        super().__init__()
+        self._maxsize = maxsize
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        if len(self) > self._maxsize:
+            self.popitem(last=False)  # evict least-recently-used
 
 # French + English stop-words — ignored during keyword matching
 _STOP_WORDS: frozenset[str] = frozenset({
@@ -59,10 +79,10 @@ class MemoryManager:
     def __init__(self) -> None:
         self._client = None
         self._encoder = None
-        # Embedding cache: avoids recomputing the same vector 3× per query
-        # (get_relevant_constraints / memories / interactions all embed the same text).
-        # Double-checked locking ensures correctness when called via asyncio.gather.
-        self._embed_cache: dict[str, list[float]] = {}
+        # Embedding cache: avoids recomputing the same vector 3× per query.
+        # MED-8: bounded LRU cache (2048 entries) prevents unbounded memory growth.
+        # LOW-3: double-checked locking ensures correctness under asyncio.gather.
+        self._embed_cache: _LRUCache = _LRUCache(maxsize=2048)
         self._embed_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
@@ -164,16 +184,14 @@ class MemoryManager:
         if text in self._embed_cache:
             return self._embed_cache[text]
         async with self._embed_lock:
-            # Re-check inside lock: a concurrent coroutine may have filled the
-            # cache while we were waiting to acquire it.
+            # LOW-3: Re-check after acquiring the lock — a concurrent coroutine may have
+            # already computed and cached the result while we were waiting.
             if text in self._embed_cache:
                 return self._embed_cache[text]
             result = await asyncio.to_thread(
                 lambda: list(self.encoder.embed([text]))[0].tolist()
             )
-            if len(self._embed_cache) >= 64:
-                # Evict the oldest entry (dict preserves insertion order in Python 3.7+)
-                self._embed_cache.pop(next(iter(self._embed_cache)))
+            # MED-8: _LRUCache handles bounded eviction automatically on assignment
             self._embed_cache[text] = result
         return result
 

@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage
 
 from app.agent.state import AgentState
 from app.services.hitl_manager import get_hitl_manager
@@ -12,6 +12,28 @@ from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Fix Mistral-specific constraint: AIMessage with tool_calls must have non-null content.
+
+    Mistral rejects: {"role":"assistant","content":null,"tool_calls":[...]}
+    Fix:             {"role":"assistant","content":"","tool_calls":[...]}
+
+    Other providers (Anthropic, Gemini, OpenAI) accept null/None content — only Mistral
+    raises HTTP 400 error code 3240 for this case.
+    """
+    sanitized = []
+    for msg in messages:
+        if (
+            isinstance(msg, AIMessage)
+            and msg.content is None
+            and getattr(msg, "tool_calls", None)
+        ):
+            # Shallow-copy the message with content forced to empty string
+            msg = msg.model_copy(update={"content": ""})
+        sanitized.append(msg)
+    return sanitized
 
 # ------------------------------------------------------------------ #
 # System prompt                                                        #
@@ -129,6 +151,11 @@ GOOGLE_TOOLS = {
     "gmail_list_emails",
     "gmail_read_email",
     "gmail_send_email",
+    "gmail_list_labels",
+    "gmail_create_label",
+    "gmail_move_emails",
+    "gmail_trash_emails",
+    "gmail_search_for_cleanup",
     "calendar_list_events",
     "calendar_create_event",
     "drive_list_files",
@@ -172,9 +199,9 @@ Règles :
 def create_agent_node():
     from app.skills import get_skill_registry
     from app.config import get_settings
+    from app.services.llm_provider import get_active_provider, get_active_model
 
     settings = get_settings()
-    llm = get_llm()
     registry = get_skill_registry()
     memory = get_memory_manager()
     intent_router = get_intent_router()
@@ -191,22 +218,26 @@ def create_agent_node():
         except Exception as exc:
             logger.warning("SLM init failed: %s — all requests will use LLM", exc)
 
-    # LLM tool binding cached, rebuilt when new MCP tools are hot-loaded
-    _llm_with_tools = llm.bind_tools(registry.all_tools)
-    _llm_version = registry.tools_version
+    # LLM binding — cached per provider+model, rebuilt when either changes or tools change
+    _llm_with_tools = None
+    _llm_version = -1
+    _llm_provider_key = ""   # "<provider>/<model>" — detect runtime switches
 
     async def agent_node(state: AgentState) -> dict:
-        nonlocal _llm_with_tools, _llm_version, _slm_with_tools, _slm_version
+        nonlocal _llm_with_tools, _llm_version, _llm_provider_key, _slm_with_tools, _slm_version
         messages = state["messages"]
         user_id = state.get("user_id", "")
         user_query = messages[-1].content if messages else ""
 
-        # Hot-reload: rebuild tool bindings if MCP skills were added/removed
+        # Hot-reload: rebuild LLM if provider/model changed OR tools changed
         current_version = registry.tools_version
-        if current_version != _llm_version:
-            _llm_with_tools = llm.bind_tools(registry.all_tools)
+        current_provider_key = f"{get_active_provider()}/{get_active_model()}"
+        if _llm_with_tools is None or current_provider_key != _llm_provider_key or current_version != _llm_version:
+            _llm_with_tools = get_llm().bind_tools(registry.all_tools)
+            _llm_provider_key = current_provider_key
             _llm_version = current_version
-            logger.debug("LLM tool binding refreshed (version=%d)", current_version)
+            logger.info("LLM refreshed: %s (tools_v=%d)", current_provider_key, current_version)
+
         if _slm_with_tools is not None and current_version != _slm_version:
             try:
                 from app.services.llm_provider import get_slm
@@ -217,7 +248,7 @@ def create_agent_node():
 
         # ── Route first — avoids loading memory for SLM requests ──────────
         routing_score = 100
-        model_used = f"llm:{settings.active_llm_provider}/{settings.active_llm_model}"
+        model_used = f"llm:{get_active_provider()}/{get_active_model()}"
         response = None
 
         from app.services.intent_router import ModelTier
@@ -257,8 +288,8 @@ def create_agent_node():
             system = _SYSTEM_PROMPT_BASE
 
             # ── Inject active LLM info (transparency / self-awareness) ──────
-            _provider = settings.active_llm_provider
-            _model    = settings.active_llm_model
+            _provider = get_active_provider()
+            _model    = get_active_model()
             _slm_info = ""
             if settings.slm_enabled:
                 _slm_info = (
@@ -306,7 +337,8 @@ def create_agent_node():
             try:
                 response = await asyncio.wait_for(
                     _slm_with_tools.ainvoke(
-                        [{"role": "system", "content": system}] + messages
+                        [{"role": "system", "content": system}]
+                        + _sanitize_messages_for_mistral(messages)
                     ),
                     timeout=settings.slm_timeout,
                 )
@@ -358,8 +390,19 @@ def create_agent_node():
                     system += "\n".join(f"- {m}" for m in memories)
 
             response = await _llm_with_tools.ainvoke(
-                [{"role": "system", "content": system}] + messages
+                [{"role": "system", "content": system}]
+                + _sanitize_messages_for_mistral(messages)
             )
+
+        # Fire-and-forget: extract facts from this exchange for user memory
+        if user_id:
+            try:
+                from app.services.memory_service import extract_and_store_facts
+                asyncio.ensure_future(
+                    extract_and_store_facts(user_id, "", messages + [response])
+                )
+            except Exception as _mem_exc:
+                logger.debug("Memory extraction skipped: %s", _mem_exc)
 
         return {"messages": [response], "model_used": model_used, "routing_score": routing_score}
 

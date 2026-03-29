@@ -14,6 +14,8 @@ from app.models import note as _note              # ensure Note table is registe
 from app.models import feedback as _feedback      # ensure Feedback table is registered
 from app.models import mcp_server as _mcp_server  # ensure MCPServer table is registered
 from app.models import vault as _vault_models      # ensure VaultConfig + VaultEntry tables
+from app.models import conversation as _conversation  # ensure Conversation + Message tables
+from app.models import user_memory as _user_memory    # ensure UserMemoryLog + UserProfile tables
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
@@ -28,6 +30,9 @@ from app.routers import feedback as feedback_router
 from app.routers import mcp as mcp_router
 from app.routers import telegram_webhook as telegram_webhook_router
 from app.routers import vault as vault_router
+from app.routers import conversations as conversations_router
+from app.routers import settings_llm as settings_llm_router
+from app.routers import setup as setup_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -39,6 +44,11 @@ async def lifespan(app: FastAPI):
     register_all()
 
     await init_db()
+
+    # Load LLM provider/model/key overrides from DB into in-memory runtime
+    from app.services.llm_provider import load_llm_settings_from_db
+    await load_llm_settings_from_db()
+
     await get_memory_manager().init_collections()
     await get_fts_store().init()
 
@@ -74,6 +84,19 @@ async def lifespan(app: FastAPI):
     from app.services.slm_warmup import warmup_slm
     await warmup_slm()
 
+    # Compile and register all sub-agent subgraphs
+    from app.agent.sub_agents.registry import get_sub_agent_registry
+    from app.agent.sub_agents.config import ALL_AGENTS
+    _sub_registry = get_sub_agent_registry()
+    for _agent_config in ALL_AGENTS:
+        _sub_registry.register(_agent_config)
+    import logging as _logging
+    _logging.getLogger(__name__).info(
+        "Sub-agent registry ready: %d agents compiled (%s)",
+        len(_sub_registry),
+        ", ".join(_sub_registry.list_names()),
+    )
+
     # Schedule vault auto-lock (every 5 minutes — locks idle vaults after AUTO_LOCK_MINUTES)
     from app.services.vault_service import get_vault_service
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -86,8 +109,21 @@ async def lifespan(app: FastAPI):
     )
     _vault_scheduler.start()
 
+    # Schedule nightly user memory consolidation at 3:00 AM
+    from app.services.memory_service import consolidate_all_users
+    _memory_scheduler = AsyncIOScheduler()
+    _memory_scheduler.add_job(
+        consolidate_all_users,
+        trigger="cron",
+        hour=3,
+        minute=0,
+        id="memory_consolidation",
+    )
+    _memory_scheduler.start()
+
     yield
 
+    _memory_scheduler.shutdown(wait=False)
     _vault_scheduler.shutdown(wait=False)
     await stop_scheduler()
     await stop_watchdog()
@@ -137,3 +173,6 @@ app.include_router(feedback_router.router)
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)
+app.include_router(conversations_router.router)
+app.include_router(settings_llm_router.router)
+app.include_router(setup_router.router, prefix="/api", tags=["setup"])

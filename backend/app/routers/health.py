@@ -5,4 +5,5 @@ router = APIRouter()
 
 @router.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "cyber-entity"}
+    # LOW-1: Do not expose service name or version to unauthenticated callers
+    return {"status": "ok"}

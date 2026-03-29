@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { AuthGuard }          from "@/components/layout/AuthGuard";
 import { Sidebar }             from "@/components/layout/Sidebar";
 import { Header }              from "@/components/layout/Header";
@@ -9,7 +10,12 @@ import { ChatInput }           from "@/components/chat/ChatInput";
 import { AvatarPanel }         from "@/components/avatar/AvatarPanel";
 import { LiveBrowserPanel }    from "@/components/browser/LiveBrowserPanel";
 import { AgentWebSocket }      from "@/lib/websocket";
+import { api }                 from "@/lib/api";
+import { authFetch }           from "@/lib/auth";
 import type { Attachment, BrowserFrame, ChatMessage, WSMessage } from "@/lib/types";
+import { useTranslations } from "next-intl";
+
+const API_URL_CHAT = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Resizable avatar-panel hook ───────────────────────────────────────────
 const PANEL_MIN  = 220;
@@ -68,8 +74,9 @@ function usePanelResize() {
   return { width, onHandleMouseDown };
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────
-export default function ChatPage() {
+// ── Page (inner — needs Suspense for useSearchParams) ────────────────────
+function ChatPageInner() {
+  const t = useTranslations("chat");
   const [messages,        setMessages]        = useState<ChatMessage[]>([]);
   const [isLoading,       setIsLoading]       = useState(false);
   const [wsStatus,        setWsStatus]        = useState<"connected" | "disconnected" | "connecting">("disconnected");
@@ -79,8 +86,29 @@ export default function ChatPage() {
   const [streamingContent,setStreamingContent]= useState<string>("");
   const [browserFrame,    setBrowserFrame]    = useState<BrowserFrame | null>(null);
   const wsRef = useRef<AgentWebSocket | null>(null);
+  const router = useRouter();
+
+  // ── First-launch redirect: if no LLM is configured, redirect to setup ──
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem("ely_setup_completed")) return;
+    authFetch(`${API_URL_CHAT}/api/setup/status`)
+      .then((r) => r.json())
+      .then((d: { is_first_launch: boolean }) => {
+        if (d.is_first_launch) {
+          router.replace("/setup");
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { width: avatarWidth, onHandleMouseDown } = usePanelResize();
+
+  // Reactive URL params via Next.js hook
+  const searchParams  = useSearchParams();
+  const urlConvId     = searchParams.get("c") ?? undefined;
+  const isNewConv     = searchParams.has("new"); // ?new=<ts> → reset
 
   useEffect(() => {
     const ws = new AgentWebSocket();
@@ -107,7 +135,7 @@ export default function ChatPage() {
         setStreamingContent("");
         setIsLoading(false);
       } else if (msg.type === "error") {
-        setMessages((prev) => [...prev, { role: "assistant", content: `Erreur : ${msg.content}` }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: t("error", { message: msg.content ?? "" }) }]);
         setStreamingContent("");
         setIsLoading(false);
       } else if (msg.type === "browser_frame" && msg.data) {
@@ -116,8 +144,24 @@ export default function ChatPage() {
     });
 
     ws.connect();
+
     return () => ws.disconnect();
-  }, []);
+  }, []); // WebSocket lifecycle: mount once, disconnect on unmount
+
+  // React to URL param changes (new conv or load history)
+  useEffect(() => {
+    if (isNewConv) {
+      setMessages([]);
+      setConversationId(undefined);
+    } else if (urlConvId) {
+      setConversationId(urlConvId);
+      api.getConversationMessages(urlConvId)
+        .then((data: { messages: Array<{role: string; content: string}> }) => {
+          setMessages(data.messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })));
+        })
+        .catch(() => {});
+    }
+  }, [urlConvId, isNewConv]);
 
   const handleSend = useCallback((content: string, attachments?: Attachment[], screenCapture?: string) => {
     if (!wsRef.current) return;
@@ -170,7 +214,7 @@ export default function ChatPage() {
               <div
                 onMouseDown={onHandleMouseDown}
                 className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize group z-10 flex items-center justify-center"
-                title="Redimensionner le panneau"
+                title={t("resize")}
               >
                 {/* Visible track */}
                 <div className="w-px h-full bg-border-dim group-hover:bg-cyber-cyan/40 transition-colors" />
@@ -187,5 +231,14 @@ export default function ChatPage() {
         </div>
       </div>
     </AuthGuard>
+  );
+}
+
+// Suspense wrapper required by Next.js when using useSearchParams in a page
+export default function ChatPage() {
+  return (
+    <Suspense>
+      <ChatPageInner />
+    </Suspense>
   );
 }

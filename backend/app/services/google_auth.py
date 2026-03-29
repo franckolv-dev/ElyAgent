@@ -7,6 +7,7 @@ Credential priority (for client_id / client_secret):
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -15,7 +16,8 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",   # read + modify (labels, trash, move)
+    "https://www.googleapis.com/auth/gmail.readonly", # kept so Google's scope response matches exactly
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/drive.readonly",
@@ -82,46 +84,57 @@ async def build_auth_url(state: str) -> tuple[str, str | None]:
 
 
 async def exchange_code(code: str, code_verifier: str | None = None) -> dict:
-    """Exchange authorization code for tokens."""
+    """Exchange authorization code for tokens.
+
+    HIGH-3: Only token, refresh_token, token_uri, and scopes are stored per-user.
+    client_id and client_secret are NOT stored in user credentials — they are
+    always retrieved from settings/DB at runtime to avoid secret exposure.
+    """
     flow = await get_flow()
     fetch_kwargs: dict = {"code": code}
     if code_verifier:
         fetch_kwargs["code_verifier"] = code_verifier
-    flow.fetch_token(**fetch_kwargs)
+    await asyncio.to_thread(flow.fetch_token, **fetch_kwargs)
     creds = flow.credentials
     return {
         "token": creds.token,
         "refresh_token": creds.refresh_token,
         "token_uri": creds.token_uri,
-        "client_id": creds.client_id,
-        "client_secret": creds.client_secret,
         "scopes": list(creds.scopes or []),
     }
 
 
-def build_credentials(creds_dict: dict):
-    """Rebuild a Credentials object from stored dict."""
+async def build_credentials(creds_dict: dict):
+    """Rebuild a Credentials object from stored dict.
+
+    client_id and client_secret are always loaded from settings/DB, never from
+    the per-user stored dict (HIGH-3).
+    """
     from google.oauth2.credentials import Credentials
+    client_id, client_secret, _redirect = await _get_oauth_client()
     return Credentials(
         token=creds_dict.get("token"),
         refresh_token=creds_dict.get("refresh_token"),
         token_uri=creds_dict.get("token_uri", "https://oauth2.googleapis.com/token"),
-        client_id=creds_dict.get("client_id"),
-        client_secret=creds_dict.get("client_secret"),
+        client_id=client_id,
+        client_secret=client_secret,
         scopes=creds_dict.get("scopes"),
     )
 
 
-def get_user_credentials(google_credentials_json: str | None):
-    """Get refreshed credentials from stored JSON, or None if not connected."""
+async def get_user_credentials(google_credentials_json: str | None):
+    """Get refreshed credentials from stored JSON, or None if not connected.
+
+    LOW-5: blocking OAuth network calls are wrapped in asyncio.to_thread.
+    """
     if not google_credentials_json:
         return None
     try:
         creds_dict = json.loads(google_credentials_json)
-        creds = build_credentials(creds_dict)
+        creds = await build_credentials(creds_dict)
         if creds.expired and creds.refresh_token:
             from google.auth.transport.requests import Request
-            creds.refresh(Request())
+            await asyncio.to_thread(creds.refresh, Request())
         return creds
     except Exception as exc:
         logger.warning("Failed to load Google credentials: %s", exc)

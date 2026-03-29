@@ -1,14 +1,17 @@
-"""Web search tool — reliable search without headless browser scraping.
+"""Web search tool — Google-first strategy.
 
-Strategy (tried in order):
-  1. Tavily Search API  — best quality, structured results, optional (needs TAVILY_API_KEY)
-  2. DuckDuckGo DDGS    — free, no key, uses proper HTTP client (not Playwright scraping)
+Priority order (first available key wins):
+  1. Serper.dev          — Real Google results, 2 500 req/month free  (SERPER_API_KEY)
+  2. Google Custom Search — Real Google results, 100 req/day free     (GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX)
+  3. Tavily              — Good quality, 1 000 req/month free          (TAVILY_API_KEY)
+  4. DuckDuckGo          — Always available, no key, weaker on local   (fallback)
 
-Both backends are immune to the bot-detection issues that affect headless Playwright
-against html.duckduckgo.com.
+All backends use fr/France locale so local French results (restaurants,
+shops, events…) are returned with correct regional relevance.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from langchain_core.tools import tool
@@ -16,24 +19,102 @@ from langchain_core.tools import tool
 logger = logging.getLogger(__name__)
 
 
-def _fmt_results(results: list[dict], query: str) -> str:
+# ── Result formatter ──────────────────────────────────────────────────────────
+
+def _fmt_results(results: list[dict], query: str, source: str = "") -> str:
     if not results:
         return f"Aucun résultat trouvé pour : {query}"
-    lines = [f"Résultats de recherche pour « {query} » ({len(results)} résultats) :"]
+    src = f" [{source}]" if source else ""
+    lines = [f"Résultats Google{src} pour « {query} » ({len(results)} résultats) :"]
     for i, r in enumerate(results, 1):
         title   = r.get("title") or r.get("name") or "—"
-        url     = r.get("url")   or r.get("href") or ""
+        url     = r.get("url")   or r.get("href") or r.get("link") or ""
         snippet = r.get("content") or r.get("body") or r.get("snippet") or ""
         lines.append(f"\n{i}. {title}")
         if snippet:
-            lines.append(f"   {snippet[:250]}")
+            lines.append(f"   {snippet[:300]}")
         if url:
             lines.append(f"   {url}")
     return "\n".join(lines)
 
 
+# ── Backend 1 : Serper.dev (Google results) ───────────────────────────────────
+
+async def _search_serper(query: str, count: int, api_key: str) -> list[dict] | None:
+    """Search via Serper.dev — returns real Google results. gl=fr, hl=fr."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                json={"q": query, "gl": "fr", "hl": "fr", "num": count},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        results: list[dict] = []
+        # Knowledge graph (quick fact box) — prepend if present
+        kg = data.get("knowledgeGraph", {})
+        if kg.get("description"):
+            results.append({
+                "title": kg.get("title", ""),
+                "url": kg.get("website", ""),
+                "content": kg.get("description", ""),
+            })
+        for item in data.get("organic", []):
+            results.append({
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "content": item.get("snippet", ""),
+            })
+            if len(results) >= count:
+                break
+        return results
+    except Exception as exc:
+        logger.warning("Serper search failed: %s", exc)
+        return None
+
+
+# ── Backend 2 : Google Custom Search JSON API ─────────────────────────────────
+
+async def _search_google_cse(
+    query: str, count: int, api_key: str, cx: str
+) -> list[dict] | None:
+    """Search via Google Programmable Search Engine API. gl=fr, hl=fr."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params={
+                    "key": api_key,
+                    "cx": cx,
+                    "q": query,
+                    "gl": "fr",
+                    "hl": "fr",
+                    "num": min(count, 10),
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        results = []
+        for item in data.get("items", [])[:count]:
+            results.append({
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "content": item.get("snippet", ""),
+            })
+        return results
+    except Exception as exc:
+        logger.warning("Google CSE search failed: %s", exc)
+        return None
+
+
+# ── Backend 3 : Tavily ────────────────────────────────────────────────────────
+
 async def _search_tavily(query: str, count: int, api_key: str) -> list[dict] | None:
-    """Search via Tavily API. Returns None if the key is absent or the call fails."""
     try:
         from tavily import AsyncTavilyClient  # type: ignore
         client = AsyncTavilyClient(api_key=api_key)
@@ -44,8 +125,9 @@ async def _search_tavily(query: str, count: int, api_key: str) -> list[dict] | N
         return None
 
 
+# ── Backend 4 : DuckDuckGo (fallback, no key needed) ─────────────────────────
+
 def _get_ddgs():
-    """Import DDGS — try the new 'ddgs' package first, fall back to 'duckduckgo_search'."""
     try:
         from ddgs import DDGS  # type: ignore
         return DDGS
@@ -59,25 +141,18 @@ def _get_ddgs():
 
 
 def _ddgs_text_sync(query: str, count: int) -> list[dict]:
-    """Synchronous DuckDuckGo text search — run via asyncio.to_thread."""
     DDGS = _get_ddgs()
     with DDGS() as ddgs:
         return ddgs.text(query, max_results=count, region="fr-fr", safesearch="off")
 
 
 def _ddgs_news_sync(query: str, count: int) -> list[dict]:
-    """Synchronous DuckDuckGo news search — run via asyncio.to_thread."""
     DDGS = _get_ddgs()
     with DDGS() as ddgs:
         return ddgs.news(query, max_results=count, region="fr-fr")
 
 
 async def _search_ddgs(query: str, count: int) -> list[dict] | None:
-    """Search via duckduckgo-search library (no Playwright, proper HTTP client).
-
-    Runs the synchronous DDGS API in a thread pool to avoid blocking the event loop.
-    """
-    import asyncio
     try:
         results = await asyncio.to_thread(_ddgs_text_sync, query, count)
         return list(results) if results else []
@@ -86,41 +161,62 @@ async def _search_ddgs(query: str, count: int) -> list[dict] | None:
         return None
 
 
+# ── Dispatcher ────────────────────────────────────────────────────────────────
+
+async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, str]:
+    """Try backends in priority order. Returns (results, source_name)."""
+    from app.config import get_settings
+    s = get_settings()
+
+    serper_key: str = getattr(s, "serper_api_key", "") or ""
+    gse_key: str    = getattr(s, "google_search_api_key", "") or ""
+    gse_cx: str     = getattr(s, "google_search_cx", "") or ""
+    tavily_key: str = getattr(s, "tavily_api_key", "") or ""
+
+    if serper_key:
+        results = await _search_serper(query, count, serper_key)
+        if results is not None:
+            return results, "Serper/Google"
+
+    if gse_key and gse_cx:
+        results = await _search_google_cse(query, count, gse_key, gse_cx)
+        if results is not None:
+            return results, "Google CSE"
+
+    if tavily_key:
+        results = await _search_tavily(query, count, tavily_key)
+        if results is not None:
+            return results, "Tavily"
+
+    results = await _search_ddgs(query, count)
+    return results, "DuckDuckGo"
+
+
+# ── Tools ─────────────────────────────────────────────────────────────────────
+
 @tool
 async def web_search(
     query: str,
     count: int = 8,
 ) -> str:
-    """Search the web and return the most relevant results (titles, snippets, URLs).
+    """Search the web (Google) and return the most relevant results.
 
-    Uses Tavily (if configured) or DuckDuckGo as backend — much more reliable
-    than browser-based scraping.  Prefer this for any factual question, news,
-    finding websites, local businesses, etc.
+    Always use this tool for any factual question, local business search,
+    finding websites, restaurant recommendations, opening hours, etc.
 
     Args:
-        query: Search query — be precise, include location/country if relevant
-               (e.g. 'restaurant Le Moulin Chasseneuil du Poitou 86360 France site officiel')
+        query: Search query — always include city, region and country for local
+               searches (e.g. 'pizzeria Chasseneuil-du-Poitou Vienne France').
+               Use French for French topics, English for international topics.
         count: Number of results to return (1-10, default 8)
     """
-    from app.config import get_settings
     count = max(1, min(int(count), 10))
-    s = get_settings()
-    tavily_key: str = getattr(s, "tavily_api_key", "") or ""
-
-    # 1. Try Tavily if configured
-    if tavily_key:
-        results = await _search_tavily(query, count, tavily_key)
-        if results is not None:
-            return _fmt_results(results, query)
-
-    # 2. Fall back to DuckDuckGo library
-    results = await _search_ddgs(query, count)
+    results, source = await _dispatch_search(query, count)
     if results is not None:
-        return _fmt_results(results, query)
-
+        return _fmt_results(results, query, source)
     return (
         f"La recherche web a échoué pour « {query} ». "
-        "Essaie browser_navigate avec une URL directe si tu la connais."
+        "Essaie browser_navigate avec une URL directe (ex: maps.google.fr, pagesjaunes.fr)."
     )
 
 
@@ -138,8 +234,32 @@ async def web_search_news(
     from app.config import get_settings
     count = max(1, min(int(count), 10))
     s = get_settings()
+
+    serper_key: str = getattr(s, "serper_api_key", "") or ""
     tavily_key: str = getattr(s, "tavily_api_key", "") or ""
 
+    # Serper news
+    if serper_key:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://google.serper.dev/news",
+                    headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
+                    json={"q": query, "gl": "fr", "hl": "fr", "num": count},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            results = [
+                {"title": n.get("title", ""), "url": n.get("link", ""), "content": n.get("snippet", "")}
+                for n in data.get("news", [])[:count]
+            ]
+            if results:
+                return _fmt_results(results, query, "Serper/Google News")
+        except Exception as exc:
+            logger.warning("Serper news failed: %s", exc)
+
+    # Tavily news
     if tavily_key:
         try:
             from tavily import AsyncTavilyClient  # type: ignore
@@ -147,15 +267,13 @@ async def web_search_news(
             resp = await client.search(query, max_results=count, topic="news")
             results = resp.get("results") or []
             if results:
-                return _fmt_results(results, query)
+                return _fmt_results(results, query, "Tavily")
         except Exception as exc:
-            logger.warning("Tavily news search failed: %s", exc)
+            logger.warning("Tavily news failed: %s", exc)
 
-    # DDGS news fallback
-    import asyncio
+    # DDG news fallback
     try:
         results = await asyncio.to_thread(_ddgs_news_sync, query, count)
-        return _fmt_results(list(results) if results else [], query)
+        return _fmt_results(list(results) if results else [], query, "DuckDuckGo")
     except Exception as exc:
-        logger.warning("DDGS news search failed: %s", exc)
         return f"Impossible de récupérer les actualités pour « {query} » : {exc}"

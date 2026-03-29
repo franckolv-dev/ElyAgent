@@ -35,6 +35,31 @@ export function isAuthenticated(): boolean {
   return getAccessToken() !== null;
 }
 
+/**
+ * Décode le payload JWT côté client (sans vérification de signature).
+ * Le rôle, username et email sont inclus dans le token depuis le login.
+ */
+export function decodeTokenUser(): { id: string; role: "admin" | "user"; username: string; email: string } | null {
+  const token = getAccessToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    if (!payload.role) return null; // ancien token sans rôle → forcer un re-login
+    return {
+      id:       payload.sub,
+      role:     payload.role as "admin" | "user",
+      username: payload.username ?? "",
+      email:    payload.email ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function isAdmin(): boolean {
+  return decodeTokenUser()?.role === "admin";
+}
+
 // ── Token refresh ────────────────────────────────────────────────────────────
 
 let _refreshPromise: Promise<string | null> | null = null;
