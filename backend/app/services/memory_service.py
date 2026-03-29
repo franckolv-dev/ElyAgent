@@ -134,7 +134,13 @@ async def extract_and_store_facts(
         llm = get_slm()
 
         prompt = _EXTRACTION_PROMPT.format(conversation=conversation_text)
-        response = await llm.ainvoke([{"role": "user", "content": prompt}])
+        # config={"callbacks": []} isolates this call from any active LangGraph
+        # callback context (propagated via contextvars through ensure_future).
+        # Without this, Ollama's tokens would leak into the active chat stream.
+        response = await llm.ainvoke(
+            [{"role": "user", "content": prompt}],
+            config={"callbacks": []},
+        )
         raw = getattr(response, "content", "") or ""
 
         # Parse JSON response
@@ -293,7 +299,10 @@ async def consolidate_user_memory(user_id: str) -> int:
             raw_facts=raw_facts_text,
             existing_profile=existing_profile_text,
         )
-        response = await llm.ainvoke([{"role": "user", "content": prompt}])
+        response = await llm.ainvoke(
+            [{"role": "user", "content": prompt}],
+            config={"callbacks": []},
+        )
         raw = getattr(response, "content", "") or ""
 
         # Parse JSON
