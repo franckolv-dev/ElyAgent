@@ -335,18 +335,22 @@ export default function DashboardPage() {
               <h2 className="text-xs text-text-muted uppercase tracking-wider mb-4">
                 {t("usageByLlm")}
               </h2>
-              {providers.length === 0 ? (
+              {(() => {
+                // Exclude hitl-only entries (0 tokens, provider="hitl") from LLM block
+                const llmProviders = providers.filter((p) => p.provider !== "hitl" && p.tokens > 0);
+                return llmProviders.length === 0 ? (
                 <p className="text-sm text-text-muted text-center py-4">{t("noData")}</p>
               ) : (
                 <div className="space-y-3">
-                  {providers.map((p) => {
-                    const maxTokens = Math.max(...providers.map((x) => x.tokens), 1);
+                  {llmProviders.map((p) => {
+                    const maxTokens = Math.max(...llmProviders.map((x) => x.tokens), 1);
                     const PROVIDER_COLORS: Record<string, string> = {
                       anthropic: "bg-cyber-cyan",
-                      gemini: "bg-blue-500",
-                      mistral: "bg-orange-400",
-                      deepseek: "bg-purple-500",
-                      ollama: "bg-emerald-500",
+                      zhipu:     "bg-violet-500",
+                      gemini:    "bg-blue-500",
+                      mistral:   "bg-orange-400",
+                      deepseek:  "bg-purple-500",
+                      ollama:    "bg-emerald-500",
                     };
                     const color = PROVIDER_COLORS[p.provider] ?? "bg-text-muted";
                     return (
@@ -366,7 +370,8 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
-              )}
+              );
+              })()}
             </div>
 
             {/* SSH Hosts */}

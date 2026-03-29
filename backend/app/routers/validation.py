@@ -5,6 +5,8 @@ ntfy action buttons call these URLs directly:
   POST /validation/{action_id}/deny   → cancel this time
   POST /validation/{action_id}/ban    → cancel + store permanent rule
 """
+import asyncio
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.auth.dependencies import get_current_user
@@ -31,6 +33,23 @@ async def _resolve(
     resolved = await hitl.resolve(action_id, decision, reason)
     if not resolved:
         raise HTTPException(status_code=404, detail="Action not found or already resolved")
+
+    # Log HITL decision for dashboard analytics (non-critical, fire-and-forget)
+    try:
+        from app.services.analytics_service import log_usage
+        asyncio.create_task(log_usage(
+            user_id=current_user.id,
+            model="",
+            provider="hitl",
+            input_tokens=0,
+            output_tokens=0,
+            hitl_decision=decision,
+            hitl_action=action_id,
+            channel="web",
+        ))
+    except Exception:
+        pass
+
     return {"status": "ok", "decision": decision}
 
 

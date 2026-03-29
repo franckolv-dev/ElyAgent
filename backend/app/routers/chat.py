@@ -191,6 +191,7 @@ async def websocket_chat(websocket: WebSocket):
             routing_score_out: int | None = None
             input_tokens_total: int = 0
             output_tokens_total: int = 0
+            tools_called: list[str] = []   # track tool invocations for analytics
             async for event in agent.astream_events(
                 {
                     "messages": history_msgs,
@@ -231,6 +232,10 @@ async def websocket_chat(websocket: WebSocket):
                             um = ai_msg_out.usage_metadata
                             input_tokens_total += um.get("input_tokens", 0)
                             output_tokens_total += um.get("output_tokens", 0)
+                elif event["event"] == "on_tool_start":
+                    tool_name = event.get("name", "")
+                    if tool_name:
+                        tools_called.append(tool_name)
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
                     model_used_out = output.get("model_used", "") or model_used_out
@@ -308,6 +313,11 @@ async def websocket_chat(websocket: WebSocket):
                         _provider, _model = _rest.split("/", 1)
                     else:
                         _provider, _model = ("ollama" if _type == "slm" else "unknown"), _rest
+                    # skill_used = most frequently called tool, or first if tie
+                    _skill = (
+                        max(set(tools_called), key=tools_called.count)
+                        if tools_called else None
+                    )
                     asyncio.create_task(log_usage(
                         user_id=user_id,
                         model=_model,
@@ -315,6 +325,7 @@ async def websocket_chat(websocket: WebSocket):
                         input_tokens=input_tokens_total,
                         output_tokens=output_tokens_total,
                         conversation_id=str(conversation_id) if conversation_id else None,
+                        skill_used=_skill,
                         channel="web",
                     ))
                 except Exception:

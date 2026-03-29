@@ -15,8 +15,17 @@ _PRICING: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5-20251001": (0.25, 1.25),
     "claude-haiku-3-5": (0.25, 1.25),
     "claude-sonnet-4-5": (3.0, 15.0),
+    "claude-sonnet-4-5-20250929": (3.0, 15.0),
     "claude-sonnet-3-5": (3.0, 15.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
     "claude-opus-4-5": (15.0, 75.0),
+    "claude-opus-4-5-20251101": (15.0, 75.0),
+    "claude-opus-4-6": (15.0, 75.0),
+    # Zhipu AI — GLM (prefix caching reduces effective input cost by ~80%)
+    "glm-4.7":    (0.14, 0.14),   # ~€0.13/M input+output (fixed/month plan)
+    "glm-4-plus": (0.07, 0.07),
+    "glm-4-air":  (0.014, 0.014),
+    "glm-4-flash":(0.0, 0.0),    # gratuit
     # Mistral
     "mistral-small-latest": (0.2, 0.6),
     "mistral-medium-latest": (2.7, 8.1),
