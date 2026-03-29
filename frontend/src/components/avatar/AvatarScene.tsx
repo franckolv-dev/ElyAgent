@@ -3,7 +3,7 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { useRef, useMemo, useState } from "react";
+import { useRef, useMemo, useState, Component, type ReactNode, type ErrorInfo } from "react";
 import * as THREE from "three";
 import type { AvatarState } from "./CyberpunkAvatar";
 
@@ -210,6 +210,21 @@ function FaceModel({ state }: { state: AvatarState }) {
   );
 }
 
+// ─── Error boundary: catches EffectComposer / WebGL context-lost crashes ────
+interface EBProps { children: ReactNode; fallback: ReactNode }
+interface EBState { crashed: boolean }
+class WebGLErrorBoundary extends Component<EBProps, EBState> {
+  state: EBState = { crashed: false };
+  static getDerivedStateFromError(): EBState { return { crashed: true }; }
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    // Log but don't rethrow — gracefully degrade to fallback avatar
+    console.warn("[AvatarScene] WebGL error caught, switching to fallback:", err.message, info.componentStack);
+  }
+  render() {
+    return this.state.crashed ? this.props.fallback : this.props.children;
+  }
+}
+
 // ─── WebGL availability check ───────────────────────────────────────────────
 function isWebGLAvailable(): boolean {
   try {
@@ -260,30 +275,41 @@ export function AvatarScene({ state }: { state: AvatarState }) {
   // Check WebGL availability before even mounting Canvas
   const webglOk = typeof window !== "undefined" && isWebGLAvailable();
 
+  const fallback = <AvatarFallback state={state} />;
+
   if (!webglOk || failed) {
-    return <AvatarFallback state={state} />;
+    return fallback;
   }
 
   return (
-    <Canvas
-      camera={{ position: [0, -0.18, 3.1], fov: 38 }}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      style={{ background: "#060c16" }}
-      onCreated={({ scene }) => { scene.background = new THREE.Color("#060c16"); }}
-      onError={() => setFailed(true)}
-      dpr={[1, 1.5]}
-    >
-      <FaceModel state={state} />
+    <WebGLErrorBoundary fallback={fallback}>
+      <Canvas
+        camera={{ position: [0, -0.18, 3.1], fov: 38 }}
+        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        style={{ background: "#060c16" }}
+        onCreated={({ scene, gl }) => {
+          scene.background = new THREE.Color("#060c16");
+          // Handle GPU context loss: switch to CSS fallback instead of crashing
+          gl.domElement.addEventListener("webglcontextlost", (e) => {
+            e.preventDefault();
+            setFailed(true);
+          });
+        }}
+        onError={() => setFailed(true)}
+        dpr={[1, 1.5]}
+      >
+        <FaceModel state={state} />
 
-      <EffectComposer>
-        <Bloom
-          luminanceThreshold={0.15}
-          luminanceSmoothing={0.9}
-          intensity={1.2}
-          mipmapBlur
-        />
-      </EffectComposer>
-    </Canvas>
+        <EffectComposer>
+          <Bloom
+            luminanceThreshold={0.15}
+            luminanceSmoothing={0.9}
+            intensity={1.2}
+            mipmapBlur
+          />
+        </EffectComposer>
+      </Canvas>
+    </WebGLErrorBoundary>
   );
 }
 

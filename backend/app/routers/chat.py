@@ -199,6 +199,7 @@ async def websocket_chat(websocket: WebSocket):
                     "google_credentials": google_credentials or "",
                 },
                 version="v2",
+                config={"recursion_limit": 100},
             ):
                 if event["event"] == "on_chat_model_stream":
                     # Only stream tokens from specialist nodes, not the router

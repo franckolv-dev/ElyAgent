@@ -361,7 +361,7 @@ def _make_dispatch_node(domain: str):
         }
         try:
             result = await sub_graph.ainvoke(
-                sub_input, config={"recursion_limit": 25}
+                sub_input, config={"recursion_limit": 100}
             )
             # Return only the messages produced by the sub-agent
             new_messages = result["messages"][len(state["messages"]):]
