@@ -100,7 +100,7 @@ export function Sidebar() {
           </button>
 
           {expanded && (
-            <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+            <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0">
               {conversations.map((conv) => {
                 const isActive = pathname === `/chat` && typeof window !== "undefined" &&
                   new URLSearchParams(window.location.search).get("c") === conv.id;
@@ -108,10 +108,10 @@ export function Sidebar() {
                   <Link
                     key={conv.id}
                     href={`/chat?c=${conv.id}`}
-                    className={`block px-2 py-1.5 rounded text-xs truncate transition-all ${
+                    className={`block px-2 py-1.5 text-xs truncate transition-all border-y ${
                       isActive
-                        ? "bg-cyber-cyan/10 text-cyber-cyan"
-                        : "text-text-muted hover:text-text-secondary hover:bg-bg-tertiary"
+                        ? "bg-cyber-cyan/10 text-cyber-cyan border-cyber-cyan/20"
+                        : "text-text-muted border-transparent hover:text-cyber-cyan hover:bg-cyber-cyan/10 hover:border-cyber-cyan/20"
                     }`}
                     title={conv.title}
                   >
