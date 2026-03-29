@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
+from app.auth.passwords import hash_password
 from app.database import get_db
 from app.models.user import User
 from app.models.audit import AuditLog
 from app.models.system_config import SystemConfig
 from app.schemas.admin import AuditLogResponse, UserAdminResponse
+from app.schemas.auth import AdminResetPasswordRequest
 from app.services.system_config import set_config, delete_config, list_configs
 
 router = APIRouter()
@@ -23,6 +25,47 @@ async def list_users(
 ):
     result = await db.execute(select(User).order_by(desc(User.created_at)))
     return result.scalars().all()
+
+
+@router.post("/users/{user_id}/reset-password", status_code=status.HTTP_200_OK)
+async def admin_reset_password(
+    user_id: str,
+    req: AdminResetPasswordRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Réinitialise le mot de passe d'un utilisateur (admin uniquement)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    if user.id == admin.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Utilisez /auth/change-password pour modifier votre propre mot de passe.",
+        )
+    user.hashed_password = await hash_password(req.new_password)
+    await db.commit()
+    return {"message": f"Mot de passe de '{user.username}' réinitialisé."}
+
+
+@router.patch("/users/{user_id}/toggle-active", status_code=status.HTTP_200_OK)
+async def admin_toggle_user_active(
+    user_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Active ou désactive un compte utilisateur."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Impossible de désactiver son propre compte.")
+    user.is_active = not user.is_active
+    await db.commit()
+    state = "activé" if user.is_active else "désactivé"
+    return {"message": f"Compte '{user.username}' {state}.", "is_active": user.is_active}
 
 
 @router.get("/audit", response_model=list[AuditLogResponse])

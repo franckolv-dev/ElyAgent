@@ -8,6 +8,7 @@ from app.models.user import User
 from app.schemas.auth import (
     RegisterRequest, LoginRequest,
     TokenResponse, AccessTokenResponse, UserResponse,
+    ChangePasswordRequest,
 )
 from app.auth.passwords import hash_password, verify_password
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
@@ -151,3 +152,30 @@ async def logout(response: Response):
 @router.get("/me", response_model=UserResponse)
 async def get_me(user: User = Depends(get_current_user)):
     return user
+
+
+@router.post("/change-password")
+@limiter.limit("5/minute")
+async def change_password(
+    request: Request,
+    req: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Permet à un utilisateur connecté de changer son mot de passe.
+    Exige la saisie du mot de passe actuel (RGPD — contrôle d'identité).
+    """
+    if not await verify_password(req.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le mot de passe actuel est incorrect.",
+        )
+    if req.current_password == req.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le nouveau mot de passe doit être différent de l'ancien.",
+        )
+    current_user.hashed_password = await hash_password(req.new_password)
+    await db.commit()
+    return {"message": "Mot de passe modifié avec succès."}

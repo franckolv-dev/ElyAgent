@@ -1,11 +1,57 @@
-from pydantic import BaseModel, EmailStr, Field
+import re
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+# ── Règles CNIL / RGPD pour les mots de passe ─────────────────────────────────
+# Référentiel CNIL : 12 car. min + majuscule + minuscule + chiffre + spécial
+_PASSWORD_MIN_LEN = 12
+
+def _check_password_strength(v: str) -> str:
+    errors = []
+    if len(v) < _PASSWORD_MIN_LEN:
+        errors.append(f"Au moins {_PASSWORD_MIN_LEN} caractères")
+    if not re.search(r"[A-Z]", v):
+        errors.append("Au moins une lettre majuscule")
+    if not re.search(r"[a-z]", v):
+        errors.append("Au moins une lettre minuscule")
+    if not re.search(r"\d", v):
+        errors.append("Au moins un chiffre")
+    if not re.search(r"[^a-zA-Z0-9]", v):
+        errors.append("Au moins un caractère spécial (!@#$%^&*...)")
+    if errors:
+        raise ValueError(" · ".join(errors))
+    return v
 
 
 class RegisterRequest(BaseModel):
     username: str
     email: str
-    password: str = Field(..., min_length=12, description="Minimum 12 characters")
+    password: str = Field(..., min_length=_PASSWORD_MIN_LEN, description="Minimum 12 characters")
     role: str = "user"  # admin peut spécifier "admin" ou "user"
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _check_password_strength(v)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=_PASSWORD_MIN_LEN)
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_strength(cls, v: str) -> str:
+        return _check_password_strength(v)
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=_PASSWORD_MIN_LEN)
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_strength(cls, v: str) -> str:
+        return _check_password_strength(v)
 
 
 class LoginRequest(BaseModel):

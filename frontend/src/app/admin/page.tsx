@@ -7,7 +7,7 @@ import { Header } from "@/components/layout/Header";
 import { api } from "@/lib/api";
 import { authFetch } from "@/lib/auth";
 import type { AuditLog } from "@/lib/types";
-import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle, Send, UserPlus } from "lucide-react";
+import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle, Send, UserPlus, KeyRound, Power, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -310,6 +310,58 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"users" | "audit" | "oauth" | "telegram">("audit");
 
+  // Reset password modal
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
+  const [resetPwd, setResetPwd]       = useState("");
+  const [resetPwdShow, setResetPwdShow] = useState(false);
+  const [resetSaving, setResetSaving]   = useState(false);
+  const [actionMsg, setActionMsg]       = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  const showMsg = (kind: "ok" | "err", text: string) => {
+    setActionMsg({ kind, text });
+    setTimeout(() => setActionMsg(null), 3000);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetTarget || !resetPwd || resetSaving) return;
+    setResetSaving(true);
+    try {
+      const res = await authFetch(`${API_URL}/admin/users/${resetTarget.id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_password: resetPwd }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showMsg("err", err.detail ?? `Erreur ${res.status}`);
+      } else {
+        showMsg("ok", `Mot de passe de « ${resetTarget.username} » réinitialisé.`);
+        setResetTarget(null);
+        setResetPwd("");
+      }
+    } catch {
+      showMsg("err", "Impossible de contacter le serveur.");
+    } finally {
+      setResetSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (user: AdminUser) => {
+    try {
+      const res = await authFetch(`${API_URL}/admin/users/${user.id}/toggle-active`, { method: "PATCH" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showMsg("err", err.detail ?? `Erreur ${res.status}`);
+      } else {
+        const data = await res.json();
+        showMsg("ok", data.message);
+        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, is_active: data.is_active } : u));
+      }
+    } catch {
+      showMsg("err", "Impossible de contacter le serveur.");
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -429,6 +481,56 @@ export default function AdminPage() {
             ) : (
               <div className="space-y-4">
                 <CreateUserForm onCreated={load} />
+
+                {/* Toast feedback */}
+                {actionMsg && (
+                  <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs ${
+                    actionMsg.kind === "ok"
+                      ? "bg-emerald-900/60 border-emerald-500/30 text-emerald-300"
+                      : "bg-red-900/60 border-red-500/30 text-red-300"
+                  }`}>
+                    {actionMsg.kind === "ok" ? <CheckCircle className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                    {actionMsg.text}
+                  </div>
+                )}
+
+                {/* Reset password modal */}
+                {resetTarget && (
+                  <div className="bg-bg-secondary border border-cyber-cyan/20 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-text-primary">
+                        Réinitialiser le mot de passe de <span className="text-cyber-cyan">{resetTarget.username}</span>
+                      </p>
+                      <button onClick={() => { setResetTarget(null); setResetPwd(""); }} className="text-text-muted hover:text-text-primary">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={resetPwdShow ? "text" : "password"}
+                        value={resetPwd}
+                        onChange={(e) => setResetPwd(e.target.value)}
+                        placeholder="Nouveau mot de passe (12 car. min, maj, chiffre, spécial)"
+                        className="w-full bg-bg-primary border border-border-dim rounded-md px-3 py-2 text-xs text-text-primary placeholder-text-muted/40 focus:outline-none focus:border-cyber-cyan/50 pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setResetPwdShow((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                      >
+                        {resetPwdShow ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleResetPassword}
+                      disabled={resetSaving || !resetPwd}
+                      className="px-4 py-1.5 rounded text-xs bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors disabled:opacity-40"
+                    >
+                      {resetSaving ? "En cours…" : "Confirmer la réinitialisation"}
+                    </button>
+                  </div>
+                )}
+
               <div className="bg-bg-secondary border border-border-dim rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
@@ -438,6 +540,7 @@ export default function AdminPage() {
                       <th className="text-left px-4 py-3 font-medium">{t("role")}</th>
                       <th className="text-left px-4 py-3 font-medium">Statut</th>
                       <th className="text-left px-4 py-3 font-medium">Créé le</th>
+                      <th className="text-left px-4 py-3 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-dim">
@@ -456,13 +559,35 @@ export default function AdminPage() {
                         </td>
                         <td className="px-4 py-2.5">
                           <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                            u.is_active ? "text-cyber-cyan" : "text-cyber-red"
+                            u.is_active ? "text-cyber-cyan" : "text-red-400"
                           }`}>
                             {u.is_active ? "actif" : "désactivé"}
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-text-muted">
                           {new Date(u.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => { setResetTarget(u); setResetPwd(""); }}
+                              title="Réinitialiser le mot de passe"
+                              className="p-1 rounded text-text-muted hover:text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleActive(u)}
+                              title={u.is_active ? "Désactiver le compte" : "Activer le compte"}
+                              className={`p-1 rounded transition-colors ${
+                                u.is_active
+                                  ? "text-text-muted hover:text-red-400 hover:bg-red-400/10"
+                                  : "text-text-muted hover:text-emerald-400 hover:bg-emerald-400/10"
+                              }`}
+                            >
+                              <Power className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

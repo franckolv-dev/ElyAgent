@@ -7,7 +7,7 @@ import { Header } from "@/components/layout/Header";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
-  Monitor, Download, Plus, Trash2, Wifi, WifiOff,
+  Monitor, Download, Plus, Trash2, Wifi, WifiOff, Lock, Eye, EyeOff,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations } from "next-intl";
@@ -70,6 +70,37 @@ const GOOGLE_SERVICES = [
 ];
 
 // ---------------------------------------------------------------------------
+// Password strength helper (miroir des règles CNIL côté backend)
+// ---------------------------------------------------------------------------
+interface PasswordStrength {
+  score: number;       // 0-5
+  label: string;
+  color: string;       // Tailwind text color
+  barColor: string;    // Tailwind bg color
+  hints: string[];     // règles non satisfaites
+}
+
+function checkPasswordStrength(pwd: string): PasswordStrength {
+  const hints: string[] = [];
+  let score = 0;
+  if (pwd.length >= 12)           score++; else hints.push("Au moins 12 caractères");
+  if (/[A-Z]/.test(pwd))          score++; else hints.push("Une lettre majuscule");
+  if (/[a-z]/.test(pwd))          score++; else hints.push("Une lettre minuscule");
+  if (/\d/.test(pwd))             score++; else hints.push("Un chiffre");
+  if (/[^a-zA-Z0-9]/.test(pwd))  score++; else hints.push("Un caractère spécial (!@#...)");
+
+  const levels = [
+    { label: "Très faible", color: "text-red-400",    barColor: "bg-red-500" },
+    { label: "Faible",      color: "text-orange-400", barColor: "bg-orange-500" },
+    { label: "Moyen",       color: "text-yellow-400", barColor: "bg-yellow-500" },
+    { label: "Bon",         color: "text-lime-400",   barColor: "bg-lime-500" },
+    { label: "Fort",        color: "text-emerald-400",barColor: "bg-emerald-500" },
+    { label: "Excellent",   color: "text-cyber-cyan", barColor: "bg-cyber-cyan" },
+  ];
+  return { score, hints, ...levels[score] };
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 interface ProviderMeta {
@@ -129,6 +160,14 @@ export default function SettingsPage() {
   // Google state
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [googleLoading, setGoogleLoading]     = useState(false);
+
+  // Change password state
+  const [currentPwd, setCurrentPwd]     = useState("");
+  const [newPwd, setNewPwd]             = useState("");
+  const [confirmPwd, setConfirmPwd]     = useState("");
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd]         = useState(false);
+  const [savingPwd, setSavingPwd]       = useState(false);
 
   // Desktop state
   const [desktopConnected, setDesktopConnected] = useState<boolean | null>(null);
@@ -398,6 +437,43 @@ export default function SettingsPage() {
       window.URL.revokeObjectURL(url);
     } catch {
       push("error", "Impossible de télécharger la configuration");
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Handlers — Change password
+  // ---------------------------------------------------------------------------
+  const handleChangePassword = async () => {
+    if (savingPwd) return;
+    if (newPwd !== confirmPwd) {
+      push("error", "Les deux nouveaux mots de passe ne correspondent pas.");
+      return;
+    }
+    const strength = checkPasswordStrength(newPwd);
+    if (strength.score < 5) {
+      push("error", "Le mot de passe ne respecte pas les critères de sécurité.");
+      return;
+    }
+    setSavingPwd(true);
+    try {
+      const res = await authFetch(`${API_URL}/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_password: currentPwd, new_password: newPwd }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        push("error", err.detail ?? `Erreur ${res.status}`);
+      } else {
+        push("success", "Mot de passe modifié avec succès.");
+        setCurrentPwd("");
+        setNewPwd("");
+        setConfirmPwd("");
+      }
+    } catch {
+      push("error", "Impossible de contacter le serveur.");
+    } finally {
+      setSavingPwd(false);
     }
   };
 
@@ -859,6 +935,132 @@ export default function SettingsPage() {
 
               </div>
             </section>
+
+            {/* ----------------------------------------------------------------
+                Mon compte — changement de mot de passe (tous les utilisateurs)
+            ---------------------------------------------------------------- */}
+            {(() => {
+              const strength = newPwd ? checkPasswordStrength(newPwd) : null;
+              const mismatch = confirmPwd && newPwd !== confirmPwd;
+
+              return (
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Lock className="w-4 h-4 text-cyber-cyan" />
+                    <h2 className="text-sm font-medium text-text-primary">Mon compte</h2>
+                  </div>
+
+                  <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
+                    <p className="text-xs text-text-muted">
+                      Conformément au RGPD, vous pouvez modifier votre mot de passe à tout moment.
+                      Le mot de passe doit respecter les recommandations de la CNIL.
+                    </p>
+
+                    {/* Mot de passe actuel */}
+                    <div className="space-y-1">
+                      <label className="text-xs text-text-secondary">Mot de passe actuel</label>
+                      <div className="relative">
+                        <input
+                          type={showCurrentPwd ? "text" : "password"}
+                          value={currentPwd}
+                          onChange={(e) => setCurrentPwd(e.target.value)}
+                          placeholder="••••••••••••"
+                          className="w-full bg-bg-primary border border-border-dim rounded-md px-3 py-2 text-sm text-text-primary placeholder-text-muted/40 focus:outline-none focus:border-cyber-cyan/50 pr-9"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCurrentPwd((v) => !v)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                        >
+                          {showCurrentPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Nouveau mot de passe */}
+                    <div className="space-y-1">
+                      <label className="text-xs text-text-secondary">Nouveau mot de passe</label>
+                      <div className="relative">
+                        <input
+                          type={showNewPwd ? "text" : "password"}
+                          value={newPwd}
+                          onChange={(e) => setNewPwd(e.target.value)}
+                          placeholder="••••••••••••"
+                          className="w-full bg-bg-primary border border-border-dim rounded-md px-3 py-2 text-sm text-text-primary placeholder-text-muted/40 focus:outline-none focus:border-cyber-cyan/50 pr-9"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPwd((v) => !v)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                        >
+                          {showNewPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+
+                      {/* Indicateur de force */}
+                      {strength && (
+                        <div className="mt-2 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className="flex gap-0.5 flex-1">
+                              {[1,2,3,4,5].map((i) => (
+                                <div
+                                  key={i}
+                                  className={`h-1 flex-1 rounded-full transition-all ${
+                                    i <= strength.score ? strength.barColor : "bg-border-dim"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className={`text-[10px] font-medium ${strength.color} shrink-0`}>
+                              {strength.label}
+                            </span>
+                          </div>
+                          {strength.hints.length > 0 && (
+                            <ul className="space-y-0.5">
+                              {strength.hints.map((h) => (
+                                <li key={h} className="text-[10px] text-text-muted flex items-center gap-1">
+                                  <XCircle className="w-3 h-3 text-red-400 shrink-0" />
+                                  {h}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Confirmation */}
+                    <div className="space-y-1">
+                      <label className="text-xs text-text-secondary">Confirmer le nouveau mot de passe</label>
+                      <input
+                        type="password"
+                        value={confirmPwd}
+                        onChange={(e) => setConfirmPwd(e.target.value)}
+                        placeholder="••••••••••••"
+                        className={`w-full bg-bg-primary border rounded-md px-3 py-2 text-sm text-text-primary placeholder-text-muted/40 focus:outline-none ${
+                          mismatch
+                            ? "border-red-500/50 focus:border-red-500"
+                            : "border-border-dim focus:border-cyber-cyan/50"
+                        }`}
+                      />
+                      {mismatch && (
+                        <p className="text-[10px] text-red-400 flex items-center gap-1">
+                          <XCircle className="w-3 h-3" /> Les mots de passe ne correspondent pas.
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={savingPwd || !currentPwd || !newPwd || !confirmPwd}
+                      className="w-full py-2 rounded-md text-xs font-medium bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {savingPwd ? "Modification en cours…" : "Modifier le mot de passe"}
+                    </button>
+                  </div>
+                </section>
+              );
+            })()}
 
           </div>
         </div>
