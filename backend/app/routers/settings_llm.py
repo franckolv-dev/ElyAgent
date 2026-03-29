@@ -36,7 +36,7 @@ PROVIDERS_META = [
         "name": "Anthropic Claude",
         "env_key": "ANTHROPIC_API_KEY",
         "config_key": "api_key_anthropic",
-        "models": ["claude-haiku-4-5-20251001", "claude-sonnet-4-5", "claude-opus-4-5"],
+        "models": ["claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929", "claude-sonnet-4-6", "claude-opus-4-5-20251101", "claude-opus-4-6"],
     },
     {
         "id": "mistral",

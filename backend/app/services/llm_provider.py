@@ -326,7 +326,7 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     Tier routing:
         SIMPLE  → Ollama qwen2.5:7b-instruct (local, zero latency)
         MEDIUM  → Mistral mistral-small-latest
-        COMPLEX → Claude claude-3-5-sonnet-latest → Gemini gemini-2.0-flash → Mistral (fallback)
+        COMPLEX → Claude claude-sonnet-4-6 → Gemini gemini-2.0-flash → Mistral (fallback)
         IMAGE   → Gemini gemini-2.0-flash → Mistral (fallback)
 
     Falls back gracefully: if a required API key is unavailable, the next
@@ -386,7 +386,7 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
             try:
                 from langchain_anthropic import ChatAnthropic
                 return ChatAnthropic(
-                    model="claude-3-5-sonnet-latest",
+                    model="claude-sonnet-4-6",
                     api_key=anthropic_key,
                     max_tokens=8192,
                     temperature=0.7,
