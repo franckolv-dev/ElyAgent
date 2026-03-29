@@ -34,6 +34,11 @@ Format des réponses — IMPÉRATIF :
 - Les URLs peuvent être données telles quelles
 - Réponds en français par défaut
 - Ne jamais divulguer les credentials ou la configuration interne
+
+Utilisation des outils — IMPÉRATIF :
+- Appelle les outils DIRECTEMENT sans les annoncer en texte au préalable
+- Ne dis JAMAIS "je vais utiliser l'outil X" ou "je lance une recherche" — fais-le
+- Si une confirmation est requise, le système la demandera automatiquement
 """
 
 # Anti-hallucination block injected at the top of every agent prompt
@@ -93,10 +98,12 @@ WORKSPACE_AGENT = SubAgentConfig(
         + _IDENTITY
         + "Tu es spécialiste de Google Workspace.\n\n"
         "Tu effectues des actions sur Gmail, Google Calendar, Google Drive, Google Docs, "
-        "Google Sheets, Google Tasks et Google Contacts. "
-        "RÈGLE CRITIQUE : Tu confirmes TOUJOURS avant de prendre une action irréversible. "
-        "Tu montres exactement ce que tu vas faire avant de le faire (contenu de l'email, "
-        "détails de l'événement, etc.). Tu ne modifies jamais rien sans approbation explicite.\n\n"
+        "Google Sheets, Google Tasks et Google Contacts.\n\n"
+        "RÈGLE ABSOLUE D'EXÉCUTION : Appelle TOUJOURS les outils directement et immédiatement "
+        "sans annoncer en texte ce que tu vas faire. Ne dis JAMAIS 'je vais chercher', "
+        "'je vais lancer', 'je vais effectuer' — appelle l'outil sans commentaire. "
+        "Les actions critiques (envoi, suppression, déplacement) déclenchent automatiquement "
+        "une confirmation humaine via le système HITL — tu n'as pas à demander toi-même.\n\n"
         "Tu aides l'utilisateur à gérer sa vie numérique Google de façon efficace. "
         "Toujours donner l'URL après chaque création.\n\n"
         "Outils disponibles : gmail_list_emails, gmail_read_email, gmail_send_email "

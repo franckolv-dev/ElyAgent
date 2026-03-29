@@ -24,15 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Mistral rejects AIMessage with content=None even when tool_calls are present.
-    Force content to empty string in that case (HTTP 400, error code 3240)."""
+    """Mistral rejects ANY AIMessage where content is None (HTTP 400, error code 3240).
+    This applies whether or not tool_calls are present — force content to "" unconditionally."""
     sanitized = []
     for msg in messages:
-        if (
-            isinstance(msg, AIMessage)
-            and msg.content is None
-            and getattr(msg, "tool_calls", None)
-        ):
+        if isinstance(msg, AIMessage) and msg.content is None:
             msg = msg.model_copy(update={"content": ""})
         sanitized.append(msg)
     return sanitized
