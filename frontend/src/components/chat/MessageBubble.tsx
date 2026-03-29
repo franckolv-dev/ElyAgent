@@ -48,6 +48,31 @@ function parseImageBlock(content: string): ImageBlock | ImagesBlock | null {
   return null;
 }
 
+/** Format a ISO date string to a short, human-readable time label.
+ *  - Same day  → "14:37"
+ *  - Other day → "24/03 14:37"
+ */
+function formatTimestamp(iso: string | undefined): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    if (sameDay) return `${hh}:${mm}`;
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mo} ${hh}:${mm}`;
+  } catch {
+    return null;
+  }
+}
+
 export function MessageBubble({ message, isStreaming, lastUserMessage, conversationId }: MessageBubbleProps) {
   const t = useTranslations("messageBubble");
   const isUser = message.role === "user";
@@ -83,13 +108,16 @@ export function MessageBubble({ message, isStreaming, lastUserMessage, conversat
     ? null  // don't show badge for LLM (default, expected)
     : null;
 
+  const timestamp = formatTimestamp(message.created_at);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
+      className={`flex flex-col gap-0.5 ${isUser ? "items-end" : "items-start"}`}
     >
+    <div className={`flex gap-3 w-full ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       {/* Avatar icon */}
       <div
         className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
@@ -209,6 +237,16 @@ export function MessageBubble({ message, isStreaming, lastUserMessage, conversat
           </div>
         )}
       </div>
+    </div>
+    {timestamp && (
+      <span
+        className={`text-[10px] text-text-muted/50 font-mono px-1 ${
+          isUser ? "pr-10" : "pl-10"
+        }`}
+      >
+        {timestamp}
+      </span>
+    )}
     </motion.div>
   );
 }

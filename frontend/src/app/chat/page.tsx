@@ -131,6 +131,7 @@ function ChatPageInner() {
           content: msg.content ?? "",
           model_used: msg.model_used,
           routing_score: msg.routing_score,
+          created_at: new Date().toISOString(),
         }]);
         setStreamingContent("");
         setIsLoading(false);
@@ -157,7 +158,11 @@ function ChatPageInner() {
       setConversationId(urlConvId);
       api.getConversationMessages(urlConvId)
         .then((data: { messages: Array<{role: string; content: string}> }) => {
-          setMessages(data.messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })));
+          setMessages(data.messages.map((m: { role: string; content: string; created_at?: string }) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            created_at: m.created_at,
+          })));
         })
         .catch(() => {});
     }
@@ -165,7 +170,7 @@ function ChatPageInner() {
 
   const handleSend = useCallback((content: string, attachments?: Attachment[], screenCapture?: string) => {
     if (!wsRef.current) return;
-    setMessages((prev) => [...prev, { role: "user", content, attachments }]);
+    setMessages((prev) => [...prev, { role: "user", content, attachments, created_at: new Date().toISOString() }]);
     wsRef.current.send(content, conversationId, attachments, screenCapture);
   }, [conversationId]);
 
