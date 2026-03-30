@@ -13,6 +13,7 @@ services:
       - ./data/db:/app/data
       - ./config:/config:ro
       - ${SSH_KEYS_PATH:-~/.ssh}:/root/.ssh:ro
+      - ./desktop/dist:/app/static/desktop:ro
     env_file:
       - .env
     environment:

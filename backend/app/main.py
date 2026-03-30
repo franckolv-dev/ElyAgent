@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import init_db
@@ -195,3 +196,9 @@ app.include_router(settings_llm_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
 app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
 app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])
+
+# ── Static files — ELY Desktop binaries ─────────────────────────────────────
+import os as _os
+_desktop_static = _os.path.join(_os.path.dirname(__file__), "..", "static", "desktop")
+if _os.path.isdir(_desktop_static):
+    app.mount("/static/desktop", StaticFiles(directory=_desktop_static), name="desktop-static")

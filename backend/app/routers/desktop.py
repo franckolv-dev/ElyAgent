@@ -277,32 +277,38 @@ async def desktop_binaries(
     settings = get_settings()
     base = settings.backend_url or str(request.base_url).rstrip("/")
 
-    # These URLs point to where binaries would be hosted.
-    # In production, replace base_url with the actual CDN / release URL.
     binaries = [
         {
             "os": "linux",
             "arch": "amd64",
             "filename": "ely-desktop-linux-amd64",
             "url": f"{base}/static/desktop/ely-desktop-linux-amd64",
+            "installer": f"{base}/static/desktop/install.sh",
+            "installer_filename": "install.sh",
         },
         {
             "os": "macos",
             "arch": "amd64",
             "filename": "ely-desktop-macos-amd64",
             "url": f"{base}/static/desktop/ely-desktop-macos-amd64",
+            "installer": f"{base}/static/desktop/install.sh",
+            "installer_filename": "install.sh",
         },
         {
             "os": "macos",
             "arch": "arm64",
             "filename": "ely-desktop-macos-arm64",
             "url": f"{base}/static/desktop/ely-desktop-macos-arm64",
+            "installer": f"{base}/static/desktop/install.sh",
+            "installer_filename": "install.sh",
         },
         {
             "os": "windows",
             "arch": "amd64",
             "filename": "ely-desktop-windows-amd64.exe",
             "url": f"{base}/static/desktop/ely-desktop-windows-amd64.exe",
+            "installer": f"{base}/static/desktop/install.bat",
+            "installer_filename": "install.bat",
         },
     ]
 
