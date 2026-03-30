@@ -215,7 +215,8 @@ function useToasts() {
 export default function SettingsPage() {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
-  const admin = isAdmin();
+  // admin is read client-side only (localStorage unavailable during SSR)
+  const [admin, setAdmin] = useState(false);
 
   // LLM state
   const [llmLoaded, setLlmLoaded]         = useState(false);
@@ -261,10 +262,17 @@ export default function SettingsPage() {
   const [desktopBinaries, setDesktopBinaries]  = useState<Array<{os: string; arch: string; filename: string; url: string}>>([]);
   const desktopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Active tab — admins start on "modeles", others on "integrations"
-  const [activeTab, setActiveTab] = useState<string>(admin ? "modeles" : "integrations");
+  // Active tab — initialised on mount once we know the role
+  const [activeTab, setActiveTab] = useState<string>("integrations");
 
   const { toasts, push } = useToasts();
+
+  // Initialise admin role and default tab once mounted (client-side only)
+  useEffect(() => {
+    const a = isAdmin();
+    setAdmin(a);
+    setActiveTab(a ? "modeles" : "integrations");
+  }, []);
 
   // Derived: current provider metadata from the API response
   const currentMeta = providersMeta.find((p) => p.id === activeProvider);
