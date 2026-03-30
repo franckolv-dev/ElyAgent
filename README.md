@@ -20,6 +20,7 @@ ELY is a self-hosted AI agent that integrates with your entire digital life — 
 - [Stack](#stack)
 - [Quick Start](#quick-start)
 - [Documentation](#documentation)
+- [⚖️ Licence et Conditions d'Utilisation](#️-licence-et-conditions-dutilisation)
 
 ---
 
@@ -418,6 +419,19 @@ All API keys are managed through the **Settings → LLM Providers** screen in th
 
 ---
 
-## License
+## ⚖️ Licence et Conditions d'Utilisation
 
-MIT License — see [LICENSE](./LICENSE).
+Ce projet est distribué sous la **PolyForm Strict License 1.0.0** — voir [LICENSE](./LICENSE).
+
+**Ce que vous POUVEZ faire :**
+
+- Utiliser cet agent IA pour vos tests personnels, votre apprentissage ou vos projets de recherche non-commerciaux.
+- Consulter le code source pour comprendre son fonctionnement.
+
+**Ce que vous NE POUVEZ PAS faire sans accord écrit :**
+
+- **Utilisation Commerciale** : Vous ne pouvez pas vendre cet agent, l'intégrer dans un service payant, ou l'utiliser pour générer des revenus au sein d'une entreprise.
+- **Modification et Redistribution** : Vous n'êtes pas autorisé à modifier le code et à redistribuer ces versions modifiées (même gratuitement).
+- **Entraînement de Modèles** : L'utilisation des données ou de la structure de cet agent pour entraîner d'autres modèles d'IA est strictement interdite.
+
+> **Note :** Si vous souhaitez obtenir une licence commerciale ou utiliser cet agent dans un cadre professionnel, merci de me contacter directement à : [franck.olv@gmail.com](mailto:franck.olv@gmail.com)
