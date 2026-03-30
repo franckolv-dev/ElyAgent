@@ -177,11 +177,12 @@ async def load_llm_settings_from_db() -> None:
 
         # Load API keys from DB into _runtime so get_llm() can use them.
         key_map = {
-            "anthropic": "api_key_anthropic",
-            "mistral":   "api_key_mistral",
-            "gemini":    "api_key_gemini",
-            "deepseek":  "api_key_deepseek",
-            "zhipu":     "api_key_zhipu",
+            "anthropic":   "api_key_anthropic",
+            "mistral":     "api_key_mistral",
+            "gemini":      "api_key_gemini",
+            "deepseek":    "api_key_deepseek",
+            "zhipu":       "api_key_zhipu",
+            "openrouter":  "api_key_openrouter",
         }
         for prov, cfg_key in key_map.items():
             val = await get_config(cfg_key, "")
@@ -218,6 +219,28 @@ def get_slm() -> BaseChatModel:
         model=settings.slm_model,
         base_url=settings.ollama_base_url,
         temperature=0.7,
+    )
+
+
+def _make_openrouter(model: str, api_key: str, max_tokens: int = 4096, temperature: float = 0.7) -> BaseChatModel:
+    """Instantiate a model via OpenRouter's OpenAI-compatible endpoint.
+
+    OpenRouter is an AI gateway that provides access to 200+ models from various
+    providers (Meta, Google, Mistral, Qwen, DeepSeek, etc.).  Many models are free.
+    Context caching depends on the underlying model.
+    https://openrouter.ai/docs
+    """
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+        max_tokens=max_tokens,
+        temperature=temperature,
+        default_headers={
+            "HTTP-Referer": "https://ely.catalogmaker.fr",
+            "X-Title": "ELY Agent",
+        },
     )
 
 
@@ -312,6 +335,12 @@ def get_llm() -> BaseChatModel:
             temperature=0.7,
         )
 
+    elif provider == "openrouter":
+        return _make_openrouter(
+            model=model,
+            api_key=_key("openrouter", settings.openrouter_api_key),
+        )
+
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
@@ -373,6 +402,16 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
                 api_key=mistral_key,
                 max_tokens=4096,
                 temperature=0.7,
+            )))
+        except Exception:
+            pass
+
+    openrouter_key = _key("openrouter", settings.openrouter_api_key)
+    if openrouter_key and current_provider != "openrouter":
+        try:
+            candidates.append(("openrouter/llama-3.3-70b:free", _make_openrouter(
+                model="meta-llama/llama-3.3-70b-instruct:free",
+                api_key=openrouter_key,
             )))
         except Exception:
             pass
@@ -541,6 +580,18 @@ def _make_llm_for_provider(
             model="deepseek-chat",
             api_key=key,
             base_url="https://api.deepseek.com/v1",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+    if provider_id == "openrouter":
+        key = _key("openrouter", settings.openrouter_api_key)
+        if not key:
+            return None
+        # Default to a good free model when no specific model is set for the tier
+        return _make_openrouter(
+            model="meta-llama/llama-3.3-70b-instruct:free",
+            api_key=key,
             max_tokens=max_tokens,
             temperature=temperature,
         )

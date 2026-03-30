@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     mistral_api_key: str = ""
     gemini_api_key: str = ""
-    zhipu_api_key: str = ""     # Zhipu AI (GLM-4.7) — https://open.bigmodel.cn
+    zhipu_api_key: str = ""          # Zhipu AI (GLM-4.7) — https://open.bigmodel.cn
+    openrouter_api_key: str = ""    # OpenRouter — https://openrouter.ai
     ollama_base_url: str = "http://ollama:11434"
     active_llm_provider: str = "anthropic"
     active_llm_model: str = "claude-haiku-4-5-20251001"

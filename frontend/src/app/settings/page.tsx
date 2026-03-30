@@ -45,6 +45,14 @@ const PROVIDERS = [
     docsUrl: "https://aistudio.google.com/",
   },
   {
+    id: "openrouter",
+    label: "OpenRouter",
+    flag: "🔀",
+    desc: "200+ modèles (Meta, Google, Mistral, Qwen…) — modèles gratuits disponibles — passerelle universelle",
+    tier: "A/B/C",
+    docsUrl: "https://openrouter.ai/",
+  },
+  {
     id: "deepseek",
     label: "DeepSeek",
     flag: "🇨🇳",
@@ -142,6 +150,16 @@ interface TierConfig {
   [tierId: string]: TierEntry;
 }
 
+interface ORModel {
+  id: string;
+  name: string;
+  context_length: number;
+  is_free: boolean;
+  modality: string;
+  prompt_price: string;
+  completion_price: string;
+}
+
 const TIER_BADGE_COLORS: Record<string, string> = {
   emerald: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
   blue:    "bg-blue-500/10 border-blue-500/30 text-blue-400",
@@ -203,6 +221,12 @@ export default function SettingsPage() {
   const [showNewPwd, setShowNewPwd]         = useState(false);
   const [savingPwd, setSavingPwd]       = useState(false);
 
+  // OpenRouter models state
+  const [orModels, setOrModels]           = useState<ORModel[]>([]);
+  const [orLoading, setOrLoading]         = useState(false);
+  const [orFreeOnly, setOrFreeOnly]       = useState(true);
+  const [orSearch, setOrSearch]           = useState("");
+
   // Tier routing state
   const [tierMeta, setTierMeta]           = useState<TierMeta[]>([]);
   const [tierConfig, setTierConfig]       = useState<TierConfig>({});
@@ -252,6 +276,24 @@ export default function SettingsPage() {
   useEffect(() => {
     setApiKeyInput("");
   }, [activeProvider]);
+
+  // Load OpenRouter models when provider = openrouter or freeOnly changes
+  useEffect(() => {
+    if (activeProvider !== "openrouter") return;
+    setOrLoading(true);
+    authFetch(`${API_URL}/api/settings/llm/openrouter-models?free_only=${orFreeOnly}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: ORModel[]) => {
+        setOrModels(data);
+        // Auto-select first model if current one not in list
+        if (data.length > 0 && !data.find((m) => m.id === activeModel)) {
+          handleModelChange(data[0].id);
+        }
+      })
+      .catch(() => setOrModels([]))
+      .finally(() => setOrLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProvider, orFreeOnly]);
 
   // Load tier routing config
   useEffect(() => {
@@ -707,7 +749,89 @@ export default function SettingsPage() {
                         </a>
                       )}
                     </div>
-                    {models.length > 0 ? (
+
+                    {/* OpenRouter: dynamic model browser */}
+                    {activeProvider === "openrouter" ? (
+                      <div className="space-y-2">
+                        {/* Controls */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setOrFreeOnly(!orFreeOnly)}
+                            className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded border transition-all ${
+                              orFreeOnly
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                : "bg-bg-primary border-border-dim text-text-muted hover:border-text-muted"
+                            }`}
+                          >
+                            {orFreeOnly ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
+                            Gratuits uniquement
+                          </button>
+                          <span className="text-[10px] text-text-muted">
+                            {orLoading ? "Chargement…" : `${orModels.length} modèles`}
+                          </span>
+                        </div>
+                        {/* Search */}
+                        <input
+                          type="text"
+                          value={orSearch}
+                          onChange={(e) => setOrSearch(e.target.value)}
+                          placeholder="Rechercher un modèle…"
+                          className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                        />
+                        {/* Model list */}
+                        <div className="max-h-48 overflow-y-auto space-y-1 rounded border border-border-dim bg-bg-primary p-1">
+                          {orLoading ? (
+                            <div className="text-[11px] text-text-muted text-center py-3 animate-pulse">Chargement des modèles…</div>
+                          ) : orModels
+                              .filter((m) =>
+                                !orSearch || m.name.toLowerCase().includes(orSearch.toLowerCase()) || m.id.toLowerCase().includes(orSearch.toLowerCase())
+                              )
+                              .map((m) => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => handleModelChange(m.id)}
+                                  disabled={savingLLM}
+                                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-left transition-all disabled:opacity-50 ${
+                                    activeModel === m.id
+                                      ? "bg-cyber-cyan/10 border border-cyber-cyan/30"
+                                      : "hover:bg-bg-secondary border border-transparent"
+                                  }`}
+                                >
+                                  <div className="min-w-0">
+                                    <div className="text-xs text-text-primary truncate">{m.name}</div>
+                                    <div className="text-[9px] text-text-muted truncate">{m.id}</div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                    {m.is_free && (
+                                      <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                        Gratuit
+                                      </span>
+                                    )}
+                                    {m.modality !== "text->text" && (
+                                      <span className="text-[8px] px-1 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                                        Vision
+                                      </span>
+                                    )}
+                                    <span className="text-[8px] text-text-muted">
+                                      {m.context_length >= 1000 ? `${Math.round(m.context_length / 1000)}k` : m.context_length}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                          {!orLoading && orModels.filter((m) =>
+                            !orSearch || m.name.toLowerCase().includes(orSearch.toLowerCase()) || m.id.toLowerCase().includes(orSearch.toLowerCase())
+                          ).length === 0 && (
+                            <div className="text-[11px] text-text-muted text-center py-3">Aucun modèle trouvé</div>
+                          )}
+                        </div>
+                        {/* Selected model display */}
+                        {activeModel && (
+                          <div className="text-[10px] text-text-muted">
+                            Sélectionné : <code className="text-cyber-cyan">{activeModel}</code>
+                          </div>
+                        )}
+                      </div>
+                    ) : models.length > 0 ? (
                       <select
                         value={activeModel}
                         onChange={(e) => handleModelChange(e.target.value)}

@@ -102,35 +102,51 @@ go build -o ely-desktop ./cmd/daemon
 
 ## Multi-Provider LLM Engine
 
-ELY routes each request to the most cost-effective model that can handle it, with automatic fallback:
+ELY routes each request to the optimal model based on detected complexity, with automatic fallback if a provider is unavailable or over quota. **All tier assignments are fully configurable in Settings — no code change needed.**
 
-| Tier | Primary | Fallback 1 | Fallback 2 |
+### Complexity Tiers (default routing)
+
+| Badge | Tier | Default Chain | Use Case |
 |---|---|---|---|
-| **Simple** | Ollama (local) | — | — |
-| **Medium** | Zhipu GLM-4.7 | Gemini 2.0 Flash | Claude Sonnet |
-| **Complex** | Zhipu GLM-4.7 | Claude Sonnet (cached) | Gemini 1.5 Pro |
-| **Image** | Gemini 2.0 Flash | GLM-4.7 | — |
+| **A** | Simple | Ollama (local) | Quick questions, short answers |
+| **B** | Standard | GLM-4.7 → Gemini → Claude | Everyday tasks, tool use, moderate reasoning |
+| **C** | Complex | GLM-4.7 → Claude (cached) → Gemini | Code, deep analysis, multi-step workflows |
+| **IMG** | Vision | Gemini → GLM-4.7 | Image analysis, screenshots |
+| **SYS** | Maintenance | Ollama (local) | Background tasks: memory extraction, scheduled jobs |
+
+Each tier has an **ordered provider list** and a **fallback toggle** — if disabled, only the first provider is tried. Reorder providers with up/down arrows in **Settings → Routing Levels**.
 
 ### Supported Providers
 
 | Provider | Models | Notes |
 |---|---|---|
-| **Zhipu AI (GLM)** | glm-4.7, glm-4-plus, glm-4-air, glm-4-flash | Automatic prefix caching (~80% cost reduction on repeated context); OpenAI-compatible API |
-| **Anthropic Claude** | claude-sonnet-4-5, claude-opus-4-5, haiku | Prompt caching enabled (up to 90% cost reduction on repeated system prompts) |
-| **Google Gemini** | gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash | Implicit caching |
-| **DeepSeek** | deepseek-chat, deepseek-reasoner | Cost-efficient alternative |
+| **OpenRouter** | 200+ models (Meta, Google, Mistral, Qwen, DeepSeek…) | Universal AI gateway — free models available; browsable in Settings |
+| **Zhipu AI (GLM)** | glm-4.7, glm-4-plus, glm-4-air, glm-4-flash | Automatic prefix caching (~80% cost reduction); OpenAI-compatible API |
+| **Anthropic Claude** | claude-sonnet-4-6, claude-opus-4-6, haiku | Prompt caching enabled (up to 90% cost reduction on system prompts) |
+| **Google Gemini** | gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash | Implicit caching; best multimodal support |
+| **DeepSeek** | deepseek-chat, deepseek-reasoner | Cost-efficient; strong at coding and reasoning |
 | **Mistral AI** | mistral-small, mistral-medium, mistral-large | European servers, GDPR-compliant |
-| **Ollama** | llama3, mistral, phi3, … | 100% local — no data leaves your machine |
+| **Ollama** | qwen2.5, llama3, mistral, phi3, … | 100% local — no data leaves your machine, zero cost |
 
-Switch provider and model at any time in **Settings** — no restart required.
+Switch provider and model at any time in **Settings** — no restart required. If a provider returns a quota or rate-limit error (HTTP 429), ELY **automatically retries** with the next available provider.
+
+### OpenRouter — Universal Gateway
+
+OpenRouter gives access to 200+ models from a single API key. From the **Settings** screen you can:
+
+- Browse the full catalogue live (fetched directly from OpenRouter)
+- Toggle **Free models only** to filter to zero-cost options
+- Search by model name or provider
+- Select any model and save in one click
 
 ### Context Caching
 
 ELY activates context caching on every provider that supports it:
 
 - **GLM** — automatic prefix caching; cached tokens billed at ~1/5 price
-- **Anthropic** — `anthropic-beta: prompt-caching-2024-07-31` header added to every request; system prompt always cached
+- **Anthropic** — `anthropic-beta: prompt-caching-2024-07-31` header; system prompt always cached
 - **Gemini** — implicit caching handled by Google's infrastructure
+- **OpenRouter** — caching depends on the underlying model selected
 
 ---
 
@@ -332,7 +348,7 @@ The admin panel (accessible to the first registered account) lets you:
 | Backend | Python 3.12 · FastAPI · LangGraph · uv |
 | Frontend | Next.js 14 · TypeScript · Tailwind CSS · Three.js |
 | Auth | JWT (python-jose) · Argon2 |
-| LLM | Zhipu GLM · Anthropic Claude · Google Gemini · DeepSeek · Mistral · Ollama |
+| LLM | OpenRouter (200+ models) · Zhipu GLM · Anthropic Claude · Google Gemini · DeepSeek · Mistral · Ollama |
 | Memory | Qdrant (vector) · SQLite FTS5 |
 | Browser automation | Playwright (Chromium, headless) |
 | Desktop daemon | Go (WebSocket, pyautogui bridge) |
@@ -358,7 +374,8 @@ docker compose up -d qdrant ollama
 # 3. Configure backend
 cd backend && cp .env.example .env
 # Edit .env: set at least JWT_SECRET_KEY
-# Optionally add: ANTHROPIC_API_KEY, ZHIPU_API_KEY, GOOGLE_API_KEY, etc.
+# Optionally add: ANTHROPIC_API_KEY, ZHIPU_API_KEY, GEMINI_API_KEY,
+#                  OPENROUTER_API_KEY, MISTRAL_API_KEY, DEEPSEEK_API_KEY, etc.
 
 # 4. Install backend dependencies
 pip install uv && uv sync

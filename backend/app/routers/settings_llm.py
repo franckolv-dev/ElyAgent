@@ -72,6 +72,16 @@ PROVIDERS_META = [
         "models": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
     },
     {
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "env_key": "OPENROUTER_API_KEY",
+        "config_key": "api_key_openrouter",
+        # Models are fetched dynamically from the OpenRouter API
+        # (GET /api/settings/llm/openrouter-models) — this list is a minimal fallback
+        "models": ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free",
+                   "deepseek/deepseek-r1:free", "mistralai/mistral-7b-instruct:free"],
+    },
+    {
         "id": "ollama",
         "name": "Ollama (local)",
         "env_key": None,
@@ -86,11 +96,12 @@ _PROVIDER_IDS = {p["id"] for p in PROVIDERS_META}
 def _env_key_for(provider_id: str) -> str:
     """Return the env-var attribute name on Settings for this provider's API key."""
     mapping = {
-        "anthropic": "anthropic_api_key",
-        "mistral":   "mistral_api_key",
-        "gemini":    "gemini_api_key",
-        "deepseek":  "deepseek_api_key",
-        "zhipu":     "zhipu_api_key",
+        "anthropic":  "anthropic_api_key",
+        "mistral":    "mistral_api_key",
+        "gemini":     "gemini_api_key",
+        "deepseek":   "deepseek_api_key",
+        "zhipu":      "zhipu_api_key",
+        "openrouter": "openrouter_api_key",
     }
     return mapping.get(provider_id, "")
 
@@ -250,6 +261,80 @@ async def update_llm_api_key(
 
     logger.info("API key updated by admin %s for provider=%s", admin.id, provider)
     return {"provider": provider, "has_key": True}
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter — dynamic model catalogue
+# ---------------------------------------------------------------------------
+
+_or_cache: dict = {"data": None, "ts": 0.0}
+_OR_CACHE_TTL = 3600  # 1 hour
+
+
+@router.get("/openrouter-models")
+async def get_openrouter_models(
+    free_only: bool = False,
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Fetch the OpenRouter model catalogue, optionally filtered to free models only.
+
+    Results are cached for 1 hour to avoid rate-limiting the OpenRouter API.
+    Free models are identified by pricing.prompt == "0" AND pricing.completion == "0".
+    """
+    import time
+    import httpx
+
+    now = time.time()
+    if _or_cache["data"] is None or (now - _or_cache["ts"]) > _OR_CACHE_TTL:
+        api_key = await get_config("api_key_openrouter", "")
+        headers: dict[str, str] = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.get(
+                    "https://openrouter.ai/api/v1/models",
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                _or_cache["data"] = resp.json().get("data", [])
+                _or_cache["ts"] = now
+        except Exception as exc:
+            logger.warning("OpenRouter models fetch failed: %s", exc)
+            if _or_cache["data"] is None:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Could not reach OpenRouter API: {exc}",
+                )
+            # Return stale cache on transient error
+
+    raw: list[dict] = _or_cache["data"] or []
+
+    result = []
+    for m in raw:
+        pricing = m.get("pricing", {})
+        prompt_price  = pricing.get("prompt", "1")
+        compl_price   = pricing.get("completion", "1")
+        is_free = (str(prompt_price) == "0" and str(compl_price) == "0")
+
+        if free_only and not is_free:
+            continue
+
+        arch = m.get("architecture", {})
+        result.append({
+            "id":             m.get("id", ""),
+            "name":           m.get("name", m.get("id", "")),
+            "context_length": m.get("context_length", 0),
+            "is_free":        is_free,
+            "modality":       arch.get("modality", "text->text"),
+            "prompt_price":   prompt_price,
+            "completion_price": compl_price,
+        })
+
+    # Sort: free first, then alphabetically by name
+    result.sort(key=lambda x: (not x["is_free"], x["name"].lower()))
+    return result
 
 
 # ---------------------------------------------------------------------------
