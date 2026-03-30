@@ -211,9 +211,12 @@ async def update_llm_settings(
             detail=f"Unknown provider '{body.provider}'. Valid: {sorted(_PROVIDER_IDS)}",
         )
 
-    # Validate model belongs to this provider
+    # Validate model belongs to this provider.
+    # OpenRouter is skipped: its catalogue is fetched dynamically from the API
+    # (GET /openrouter-models) so the static models list is only a fallback —
+    # any model string returned by their API must be accepted.
     meta = next(p for p in PROVIDERS_META if p["id"] == body.provider)
-    if body.model not in meta["models"]:
+    if body.provider != "openrouter" and body.model not in meta["models"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Model '{body.model}' not available for provider '{body.provider}'.",
