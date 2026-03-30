@@ -10,6 +10,7 @@ ELY is a self-hosted AI agent that integrates with your entire digital life — 
 
 - [What ELY Can Do](#what-ely-can-do)
 - [ELY Desktop — Local Automation](#ely-desktop--local-automation)
+- [ELY Trainer — Interactive Demonstrations](#ely-trainer--interactive-demonstrations)
 - [Multi-Provider LLM Engine](#multi-provider-llm-engine)
 - [Security — The Core Difference](#security--the-core-difference)
 - [Memory — ELY Knows You](#memory--ely-knows-you)
@@ -95,9 +96,53 @@ The daemon connects via WebSocket to your ELY server. Your desktop never needs t
 
 ```bash
 cd desktop
-go build -o ely-desktop ./cmd/daemon
-./ely-desktop --server wss://your-ely-server --token YOUR_TOKEN
+./build.sh          # produces binaries for Linux, macOS (Intel + Apple Silicon), Windows
+./ely-desktop       # run the daemon — reads config.toml for server URL and token
 ```
+
+---
+
+## ELY Trainer — Interactive Demonstrations
+
+ELY Trainer is a **step-by-step demonstration mode** where ELY takes control of your workstation to show you how to perform any task, just like having a colleague sit next to you and guide your hands.
+
+### How it works
+
+1. You ask ELY in natural language: *"Show me how to create a pivot table in Excel"*
+2. ELY takes a screenshot of your current screen
+3. A **vision LLM** analyses the screenshot and decides the next action (click, type, shortcut…)
+4. ELY narrates what it is about to do: *"I'm going to click on the Insert tab…"*
+5. ELY executes the action on your screen
+6. Loop — new screenshot, next step — until the task is complete (up to 20 steps)
+
+### Supported actions
+
+| Action | Description |
+|---|---|
+| **screenshot** | Captures the current screen state |
+| **mouse_move** | Moves the cursor to any position |
+| **mouse_click** | Left / right / middle click, single or double |
+| **type_text** | Types any text at the current cursor position |
+| **hotkey** | Presses key combinations (Ctrl+C, Alt+F4, Cmd+Space…) |
+| **get_screen_size** | Reads the display dimensions for accurate positioning |
+
+### Platform support
+
+| Platform | Screenshot tool | Mouse/Keyboard control |
+|---|---|---|
+| **Linux** | scrot / gnome-screenshot / ImageMagick import | xdotool |
+| **macOS** | screencapture (built-in) | cliclick or osascript (System Events) |
+| **Windows** | PowerShell + System.Drawing | PowerShell + user32.dll / SendKeys |
+
+### Usage examples
+
+| Ask ELY | What happens |
+|---|---|
+| "Show me how to make a filter in Excel" | ELY takes over, navigates the ribbon, applies the filter step by step |
+| "Demonstrate how to set up a VPN on Windows" | ELY walks through the network settings screen |
+| "Show me how to create a ZIP archive of a folder" | ELY right-clicks, selects compress, narrates each step |
+
+> **Requires ELY Desktop** to be installed and connected. The Trainer skill is active automatically when a desktop session is open.
 
 ---
 
@@ -317,6 +362,7 @@ The admin panel (accessible to the first registered account) lets you:
 │   │  Web Browser (Playwright) · Weather · News · Translation  │   │
 │   │  SSH · Scheduler · QR Code · PDF · Whisper · YouTube      │   │
 │   │  Desktop (via ELY Desktop daemon)                         │   │
+│   │  Trainer (vision loop: screenshot → analyse → act)        │   │
 │   └──────────────────────────────────────────────────────────┘   │
 │                                                                   │
 │  HITL Manager ──► Web UI / Telegram / ntfy                       │
@@ -352,7 +398,8 @@ The admin panel (accessible to the first registered account) lets you:
 | LLM | OpenRouter (200+ models) · Zhipu GLM · Anthropic Claude · Google Gemini · DeepSeek · Mistral · Ollama |
 | Memory | Qdrant (vector) · SQLite FTS5 |
 | Browser automation | Playwright (Chromium, headless) |
-| Desktop daemon | Go (WebSocket, pyautogui bridge) |
+| Desktop daemon | Go (WebSocket, multi-platform input control) |
+| Trainer | Vision LLM loop (Gemini 2.0 Flash) · screenshot · mouse/keyboard |
 | SSH | Paramiko + command whitelist |
 | TTS | edge-tts |
 | Notifications | ntfy · Telegram Bot API |
