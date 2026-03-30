@@ -24,7 +24,8 @@ import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
   Monitor, Download, Plus, Trash2, Wifi, WifiOff, Lock, Eye, EyeOff,
-  GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight,
+  GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight, User,
+  Plug,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations } from "next-intl";
@@ -259,6 +260,9 @@ export default function SettingsPage() {
   const [savingDesktop, setSavingDesktop]       = useState(false);
   const [desktopBinaries, setDesktopBinaries]  = useState<Array<{os: string; arch: string; filename: string; url: string}>>([]);
   const desktopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Active tab — admins start on "modeles", others on "integrations"
+  const [activeTab, setActiveTab] = useState<string>(admin ? "modeles" : "integrations");
 
   const { toasts, push } = useToasts();
 
@@ -657,6 +661,16 @@ export default function SettingsPage() {
   const needsKey = !["ollama"].includes(activeProvider);
   const hasKey   = currentMeta?.has_key ?? false;
 
+  // Tab definitions — admin-only tabs are hidden for regular users
+  const TABS = [
+    ...(admin ? [
+      { id: "modeles",      label: "Modèles IA",    icon: Cpu        },
+      { id: "routage",      label: "Routage",        icon: GitBranch  },
+    ] : []),
+    { id: "integrations", label: "Intégrations",  icon: Plug       },
+    { id: "compte",       label: "Mon compte",     icon: User       },
+  ];
+
   return (
     <AuthGuard>
       <div className="flex h-screen overflow-hidden">
@@ -683,12 +697,37 @@ export default function SettingsPage() {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-2xl">
+          {/* ── Tab navigation bar ────────────────────────────────────── */}
+          <div className="shrink-0 border-b border-border-dim px-6">
+            <nav className="flex gap-1">
+              {TABS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id)}
+                  className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-all -mb-px ${
+                    activeTab === id
+                      ? "border-cyber-cyan text-cyber-cyan"
+                      : "border-transparent text-text-muted hover:text-text-secondary hover:border-border-dim"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </div>
 
+          {/* ── Tab content ───────────────────────────────────────────── */}
+          <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-3xl space-y-6">
+
+            {/* ================================================================
+                TAB: Modèles IA
+            ================================================================ */}
             {/* ----------------------------------------------------------------
                 LLM Provider — admin only
             ---------------------------------------------------------------- */}
-            {admin && (
+            {admin && activeTab === "modeles" && (
               <section>
                 <div className="flex items-center gap-2 mb-4">
                   <Cpu className="w-4 h-4 text-cyber-cyan" />
@@ -908,10 +947,13 @@ export default function SettingsPage() {
               </section>
             )}
 
+            {/* ================================================================
+                TAB: Routage
+            ================================================================ */}
             {/* ----------------------------------------------------------------
                 Tier Routing — admin only
             ---------------------------------------------------------------- */}
-            {admin && tierMeta.length > 0 && (
+            {admin && activeTab === "routage" && tierMeta.length > 0 && (
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -1052,9 +1094,13 @@ export default function SettingsPage() {
               </section>
             )}
 
+            {/* ================================================================
+                TAB: Intégrations
+            ================================================================ */}
             {/* ----------------------------------------------------------------
                 Google Services — visible by all authenticated users
             ---------------------------------------------------------------- */}
+            {activeTab === "integrations" && (
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-4 h-4 text-cyber-cyan font-bold text-sm">G</div>
@@ -1127,10 +1173,15 @@ export default function SettingsPage() {
                 </details>
               </div>
             </section>
+            )}
 
+            {/* ================================================================
+                TAB: Compte
+            ================================================================ */}
             {/* ----------------------------------------------------------------
-                Language
+                Language — in "compte" tab
             ---------------------------------------------------------------- */}
+            {activeTab === "compte" && (
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Languages className="w-4 h-4 text-cyber-cyan" />
@@ -1154,11 +1205,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </section>
+            )}
 
             {/* ----------------------------------------------------------------
-                SSH Hosts — admin only
+                SSH Hosts — in "integrations" tab, admin only
             ---------------------------------------------------------------- */}
-            {admin && (
+            {activeTab === "integrations" && admin && (
               <section>
                 <div className="flex items-center gap-2 mb-4">
                   <Server className="w-4 h-4 text-cyber-cyan" />
@@ -1188,9 +1240,9 @@ export default function SettingsPage() {
             )}
 
             {/* ----------------------------------------------------------------
-                ELY Desktop
+                ELY Desktop — in "integrations" tab
             ---------------------------------------------------------------- */}
-            <section>
+            {activeTab === "integrations" && (<section>
               <div className="flex items-center gap-2 mb-4">
                 <Monitor className="w-4 h-4 text-cyber-cyan" />
                 <h2 className="text-sm font-medium text-text-primary">ELY Desktop</h2>
@@ -1335,11 +1387,12 @@ export default function SettingsPage() {
 
               </div>
             </section>
+            )}
 
             {/* ----------------------------------------------------------------
-                Mon compte — changement de mot de passe (tous les utilisateurs)
+                Mon compte — changement de mot de passe
             ---------------------------------------------------------------- */}
-            {(() => {
+            {activeTab === "compte" && (() => {
               const strength = newPwd ? checkPasswordStrength(newPwd) : null;
               const mismatch = confirmPwd && newPwd !== confirmPwd;
 
@@ -1462,7 +1515,8 @@ export default function SettingsPage() {
               );
             })()}
 
-          </div>
+          </div>{/* max-w-3xl */}
+          </div>{/* overflow-y-auto tab content */}
         </div>
       </div>
     </AuthGuard>
