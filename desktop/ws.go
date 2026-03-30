@@ -40,7 +40,7 @@ type OutgoingResult struct {
 // ConnectAndRun establishes a WebSocket connection to the ELY backend and
 // processes commands until the context is cancelled (via doneCh).
 // It reconnects automatically with exponential backoff + jitter.
-func ConnectAndRun(cfg *Config, fs *FSHandler, doneCh <-chan struct{}) {
+func ConnectAndRun(cfg *Config, fs *FSHandler, input *InputHandler, doneCh <-chan struct{}) {
 	delay := reconnectBaseDelay
 
 	for {
@@ -52,7 +52,7 @@ func ConnectAndRun(cfg *Config, fs *FSHandler, doneCh <-chan struct{}) {
 		}
 
 		log.Printf("[ws] connecting to %s …", cfg.WebSocketURL())
-		err := runSession(cfg, fs, doneCh)
+		err := runSession(cfg, fs, input, doneCh)
 		if err != nil {
 			log.Printf("[ws] session ended: %v", err)
 		}
@@ -80,9 +80,9 @@ func ConnectAndRun(cfg *Config, fs *FSHandler, doneCh <-chan struct{}) {
 }
 
 // runSession opens one WebSocket session, sends the handshake, then loops
-// reading commands and dispatching them to the FSHandler.
+// reading commands and dispatching them to the FSHandler or InputHandler.
 // Returns when the connection is lost or doneCh fires.
-func runSession(cfg *Config, fs *FSHandler, doneCh <-chan struct{}) error {
+func runSession(cfg *Config, fs *FSHandler, input *InputHandler, doneCh <-chan struct{}) error {
 	headers := http.Header{}
 	conn, _, err := websocket.DefaultDialer.Dial(cfg.WebSocketURL(), headers)
 	if err != nil {
@@ -169,9 +169,17 @@ func runSession(cfg *Config, fs *FSHandler, doneCh <-chan struct{}) error {
 			continue
 		}
 
-		// Dispatch in a goroutine so slow filesystem ops don't block reads
+		// Dispatch in a goroutine so slow ops don't block reads.
+		// Input commands (screenshot, mouse, keyboard) are routed to InputHandler;
+		// filesystem commands go to FSHandler.
 		go func(c IncomingCommand) {
-			result, dispatchErr := fs.Handle(c.Cmd, c.Args)
+			var result interface{}
+			var dispatchErr error
+			if IsInputCmd(c.Cmd) {
+				result, dispatchErr = input.Handle(c.Cmd, c.Args)
+			} else {
+				result, dispatchErr = fs.Handle(c.Cmd, c.Args)
+			}
 			var resp OutgoingResult
 			if dispatchErr != nil {
 				resp = OutgoingResult{

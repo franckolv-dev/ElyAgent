@@ -28,8 +28,9 @@ func main() {
 	// ── Open browser in background ────────────────────────────────────────
 	go OpenBrowser(cfg.FrontendURL())
 
-	// ── Build filesystem handler ──────────────────────────────────────────
-	fsHandler := NewFSHandler(cfg.SandboxDirs)
+	// ── Build handlers ────────────────────────────────────────────────────
+	fsHandler    := NewFSHandler(cfg.SandboxDirs)
+	inputHandler := NewInputHandler()
 
 	// ── Graceful shutdown channel ─────────────────────────────────────────
 	doneCh := make(chan struct{})
@@ -44,7 +45,7 @@ func main() {
 	}()
 
 	// ── WebSocket connection loop (reconnects automatically) ──────────────
-	ConnectAndRun(cfg, fsHandler, doneCh)
+	ConnectAndRun(cfg, fsHandler, inputHandler, doneCh)
 
 	log.Println("ELY Desktop daemon stopped.")
 }
