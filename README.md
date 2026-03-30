@@ -1,10 +1,25 @@
-# ELY — Your Personal AI Agent, Built for Power and Privacy
+# ELY — Exactly Like You
 
-> **All the capabilities of a modern AI assistant. None of the credential exposure. Every irreversible action requires your approval.**
+> **Your personal AI agent. Trained on your habits. Bound by your rules. Never acts without your approval.**
 
-ELY is a self-hosted personal AI agent that connects to your Google Workspace, browses the web, manages your schedule, runs commands on your servers, and remembers you across sessions — while keeping your sensitive data off the LLM and asking before it acts.
+ELY is a self-hosted AI agent that integrates with your entire digital life — Google Workspace, web browsing, servers, smart home, desktop automation — while keeping your sensitive data off the LLM and pausing before every irreversible action.
 
-![ELY dark mode chat interface](./docs/screenshots/chat-dark.png)
+---
+
+## Table of Contents
+
+- [What ELY Can Do](#what-ely-can-do)
+- [ELY Desktop — Local Automation](#ely-desktop--local-automation)
+- [Multi-Provider LLM Engine](#multi-provider-llm-engine)
+- [Security — The Core Difference](#security--the-core-difference)
+- [Memory — ELY Knows You](#memory--ely-knows-you)
+- [Vault — Encrypted Secret Storage](#vault--encrypted-secret-storage)
+- [Analytics Dashboard](#analytics-dashboard)
+- [Admin Panel](#admin-panel)
+- [Architecture](#architecture)
+- [Stack](#stack)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
 
 ---
 
@@ -14,37 +29,108 @@ ELY is a self-hosted personal AI agent that connects to your Google Workspace, b
 
 | Ask ELY | What happens |
 |---|---|
-| "Lis mes 5 derniers emails" | Fetches and summarises your latest Gmail messages |
-| "Envoie un email à alice@exemple.com avec comme sujet Réunion vendredi" | Drafts the email, pauses for your approval, then sends |
-| "Quels sont mes rendez-vous cette semaine ?" | Lists your Google Calendar events |
-| "Crée un rendez-vous Dentiste vendredi 28 mars à 10h30" | Creates the event (approval required) |
-| "Liste mes fichiers Drive récents" | Shows your recent Google Drive files |
-| "Lis le document Rapport Q1 2026" | Reads the document content |
-| "Crée un document Word avec le titre Budget 2026" | Creates a new Google Doc |
-| "Crée une feuille de calcul pour mon budget mensuel" | Creates a new Google Sheets spreadsheet |
-| "Montre ma to-do list" | Lists your Google Tasks |
-| "Ajoute Appeler le médecin à mes tâches" | Creates a new task |
+| "Read my last 5 emails" | Fetches and summarises your latest Gmail messages |
+| "Send an email to alice@company.com: subject Meeting Friday" | Drafts the email, pauses for your approval, then sends |
+| "What are my appointments this week?" | Lists your Google Calendar events |
+| "Create a dentist appointment Friday March 28 at 10:30am" | Creates the event (approval required) |
+| "List my recent Drive files" | Shows your recent Google Drive files |
+| "Read the document Q1 Report 2026" | Reads the document content |
+| "Create a Word document titled Budget 2026" | Creates a new Google Doc |
+| "Create a spreadsheet for my monthly budget" | Creates a new Google Sheets spreadsheet |
+| "Show my to-do list" | Lists your Google Tasks |
+| "Add Call the doctor to my tasks" | Creates a new task |
 
-### Web, News, Weather
-
-| Ask ELY | What happens |
-|---|---|
-| "Cherche le prix d'un vol Paris–New York pour juillet" | Browses the web and summarises results |
-| "Va sur lemonde.fr et lis la une" | Navigates to the page and extracts main content |
-| "Prends une capture d'écran de ce site" | Screenshots the current page |
-| "Quel temps fait-il à Paris ?" | Fetches current weather from wttr.in |
-| "Météo Lyon pour les 3 prochains jours" | Shows a 3-day forecast |
-| "Les dernières actualités en France" | Pulls recent headlines from Google News RSS |
-| "Traduis hello world en français" | Translates text via MyMemory API |
-
-### Automation and Infrastructure
+### Web, News & Weather
 
 | Ask ELY | What happens |
 |---|---|
-| "Rappelle-moi tous les lundis à 9h de consulter mon agenda" | Creates a recurring scheduled task |
-| "Résume mes emails non lus chaque vendredi soir à 18h" | Scheduled task with email tool |
-| "df -h sur mon serveur de prod" | Executes the command via SSH (approval required) |
-| "docker ps sur my-server" | Lists running containers on your server (approval required) |
+| "Search for a flight Paris–New York for July" | Browses the web and summarises results |
+| "Go to lemonde.fr and read the front page" | Navigates to the page and extracts main content |
+| "Take a screenshot of this site" | Screenshots the current page |
+| "What's the weather in Paris?" | Fetches current weather from wttr.in |
+| "Lyon forecast for the next 3 days" | Shows a 3-day forecast |
+| "Latest news in France" | Pulls recent headlines from Google News RSS |
+| "Translate hello world to French" | Translates text via MyMemory API |
+
+### Automation & Infrastructure
+
+| Ask ELY | What happens |
+|---|---|
+| "Remind me every Monday at 9am to check my calendar" | Creates a recurring scheduled task |
+| "Summarise my unread emails every Friday evening at 6pm" | Scheduled task with email tool |
+| "Run df -h on my prod server" | Executes the command via SSH (approval required) |
+| "Run docker ps on my-server" | Lists running containers on your server (approval required) |
+| "Generate a QR code for https://example.com" | Creates a downloadable QR code image |
+| "Read the PDF invoice.pdf and summarise it" | Extracts and summarises PDF content |
+| "Transcribe this audio file" | Converts speech to text via Whisper |
+| "Read the YouTube video at this URL" | Fetches transcript from YouTube |
+
+### Communication Channels
+
+ELY works across multiple channels simultaneously with **the same agent, same security, same memory**:
+
+- **Web UI** — React chat interface with voice output (TTS), file/image attachments, conversation history
+- **Telegram Bot** — full agent access from your mobile, inline HITL approval buttons
+- **ntfy (Android)** — push notifications for HITL approvals with action buttons
+
+---
+
+## ELY Desktop — Local Automation
+
+ELY Desktop is a native Go daemon that runs on your personal computer and connects to the ELY server. It exposes local capabilities that are impossible from a cloud server:
+
+| Capability | What it does |
+|---|---|
+| **Screen capture** | Takes screenshots of your desktop |
+| **Keyboard / mouse control** | Types text, presses keys, clicks anywhere on screen |
+| **App launcher** | Opens applications by name |
+| **Clipboard access** | Reads and writes your clipboard |
+| **Local file operations** | Reads, writes, moves, deletes local files (approval required) |
+| **System info** | CPU, memory, disk, running processes |
+
+The daemon connects via WebSocket to your ELY server. Your desktop never needs to be publicly reachable — the connection is outbound from your machine.
+
+**Building the daemon:**
+
+```bash
+cd desktop
+go build -o ely-desktop ./cmd/daemon
+./ely-desktop --server wss://your-ely-server --token YOUR_TOKEN
+```
+
+---
+
+## Multi-Provider LLM Engine
+
+ELY routes each request to the most cost-effective model that can handle it, with automatic fallback:
+
+| Tier | Primary | Fallback 1 | Fallback 2 |
+|---|---|---|---|
+| **Simple** | Ollama (local) | — | — |
+| **Medium** | Zhipu GLM-4.7 | Gemini 2.0 Flash | Claude Sonnet |
+| **Complex** | Zhipu GLM-4.7 | Claude Sonnet (cached) | Gemini 1.5 Pro |
+| **Image** | Gemini 2.0 Flash | GLM-4.7 | — |
+
+### Supported Providers
+
+| Provider | Models | Notes |
+|---|---|---|
+| **Zhipu AI (GLM)** | glm-4.7, glm-4-plus, glm-4-air, glm-4-flash | Automatic prefix caching (~80% cost reduction on repeated context); OpenAI-compatible API |
+| **Anthropic Claude** | claude-sonnet-4-5, claude-opus-4-5, haiku | Prompt caching enabled (up to 90% cost reduction on repeated system prompts) |
+| **Google Gemini** | gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash | Implicit caching |
+| **DeepSeek** | deepseek-chat, deepseek-reasoner | Cost-efficient alternative |
+| **Mistral AI** | mistral-small, mistral-medium, mistral-large | European servers, GDPR-compliant |
+| **Ollama** | llama3, mistral, phi3, … | 100% local — no data leaves your machine |
+
+Switch provider and model at any time in **Settings** — no restart required.
+
+### Context Caching
+
+ELY activates context caching on every provider that supports it:
+
+- **GLM** — automatic prefix caching; cached tokens billed at ~1/5 price
+- **Anthropic** — `anthropic-beta: prompt-caching-2024-07-31` header added to every request; system prompt always cached
+- **Gemini** — implicit caching handled by Google's infrastructure
 
 ---
 
@@ -58,17 +144,17 @@ Before any input reaches the LLM, ELY's SecurityFilter scans it and replaces sen
 
 ```
 Your input:
-  "Envoie 500€ à alice@entreprise.com depuis le compte FR76 3000 ..."
+  "Transfer €500 to alice@company.com from account FR76 3000 ..."
 
 What the LLM receives:
-  "Envoie 500€ à [EMAIL_0] depuis le compte [IBAN_0] ..."
+  "Transfer €500 to [EMAIL_0] from account [IBAN_0] ..."
 
 What you see in the response:
-  "J'envoie 500€ à alice@entreprise.com ..."  ← real values restored
+  "Transferring €500 to alice@company.com ..."  ← real values restored
 ```
 
 Detected and masked automatically:
-- Email addresses → `[EMAIL_0]`, `[EMAIL_1]`, ...
+- Email addresses → `[EMAIL_0]`, `[EMAIL_1]`, …
 - Credit card numbers → `[CARD_0]`
 - IBAN numbers → `[IBAN_0]`
 - API tokens and secrets → `[TOKEN_0]`
@@ -81,72 +167,161 @@ Every irreversible action is **paused** before execution. ELY presents what it w
 ```
 ELY wants to execute:
   Tool   : send_email
-  To     : alice@exemple.com
-  Subject: "Réunion vendredi"
+  To     : alice@example.com
+  Subject: "Meeting Friday"
 
   [ ✅ Allow once ]   [ ❌ Deny once ]   [ 🛡️ Ban permanently ]
 ```
 
-- **Allow once**: the action runs this time. ELY will ask again next time.
-- **Deny once**: the action is cancelled. ELY continues the conversation.
-- **Ban permanently**: the action is cancelled AND a permanent rule is stored in Qdrant. ELY will never propose this action again, even in future sessions.
+- **Allow once** — the action runs this time. ELY will ask again next time.
+- **Deny once** — the action is cancelled. ELY continues the conversation.
+- **Ban permanently** — the action is cancelled AND a permanent rule is stored in memory. ELY will never propose this action again, even in future sessions.
 
 HITL works on three channels simultaneously:
 - Inline cards in the **web UI**
 - Inline keyboard buttons in **Telegram**
-- Push notifications via **ntfy** (Android)
+- Push notification action buttons via **ntfy** (Android)
 
 ### No Credential Exposure
 
 Your Google OAuth tokens and API keys are stored locally and injected at execution time via `InjectedToolArg`. The AI model only receives the result of a tool call (e.g., a list of email subjects), never the credentials used to call it.
 
-### RGPD-Friendly Options
+### GDPR-Friendly Options
 
 If you do not want your data processed outside Europe or your own infrastructure:
 
 | Provider | Data location |
 |---|---|
-| **Anthropic Claude** | US servers (default) |
-| **Mistral AI** | European servers, RGPD-compliant |
 | **Ollama** | 100% local — no data ever leaves your machine |
-| **DeepSeek** | Cloud, cost-efficient alternative |
+| **Mistral AI** | European servers, GDPR-compliant |
+| **Zhipu AI (GLM)** | China-based cloud, cost-efficient |
+| **Anthropic Claude** | US servers |
+| **Google Gemini** | US servers |
+| **DeepSeek** | China-based cloud |
 
-Switch providers at any time in Settings — no restart required.
+### CNIL-Compliant Password Policy
+
+Passwords are enforced at both frontend (real-time strength indicator) and backend to meet French CNIL recommendations:
+
+- Minimum 12 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+- At least one special character
+
+Users can change their own password at any time in **Settings**. Admins can reset any user's password from the **Admin Panel**.
+
+---
+
+## Memory — ELY Knows You
+
+ELY maintains a persistent, multi-layer memory that survives across sessions and conversations.
+
+### Memory Layers
+
+| Layer | Storage | Purpose |
+|---|---|---|
+| **Semantic memory** | Qdrant (vector DB) | Facts, preferences, context — retrieved by similarity |
+| **Keyword memory** | SQLite FTS5 | Fast exact-match recall of names, dates, IDs |
+| **Temporal decay** | Score weighting | Recent memories are prioritised; old ones fade |
+| **Permanent constraints** | Qdrant (constraint collection) | "Ban" HITL decisions — never forgotten, always enforced |
+
+### What ELY Remembers
+
+ELY automatically extracts and stores:
+- Your preferences ("I prefer dark mode", "always use formal tone")
+- Important facts ("my cat is named Luna", "my manager is Sarah")
+- Recurring patterns ("I check emails every morning")
+- Security rules ("never send files to external addresses")
+
+### User Memory Profile
+
+Each user has a queryable memory profile accessible from Settings. You can view, search, and delete any stored memory.
+
+---
+
+## Vault — Encrypted Secret Storage
+
+The Vault is an encrypted key-value store for your secrets (API keys, passwords, tokens) that are injected into tool calls at runtime without ever being sent to the LLM.
+
+- Secrets encrypted at rest with AES-256-GCM
+- Master password protected (bcrypt)
+- Referenced by name in tool configurations: `{{vault:my_api_key}}`
+- Automatic injection before LLM call, automatic masking in output
+
+---
+
+## Analytics Dashboard
+
+The dashboard gives you full visibility into how ELY is using LLM resources:
+
+| Widget | What it shows |
+|---|---|
+| **Summary cards** | Total requests, tokens, and estimated cost for the selected period |
+| **Daily usage chart** | Token consumption and cost per day (line chart) |
+| **Top skills** | Which tools/skills are used most often |
+| **HITL breakdown** | Allow / Deny / Ban decision counts |
+| **Provider breakdown** | Token usage and cost per LLM provider and model |
+
+Data is retained per-user. Filter by period (7, 14, 30 days).
+
+---
+
+## Admin Panel
+
+The admin panel (accessible to the first registered account) lets you:
+
+- **Create users** with email, username, password, and role
+- **Enable/disable accounts** (toggle active status)
+- **Reset passwords** for any user
+- **View usage stats** per user
+- **Manage MCP servers** (Model Context Protocol)
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      Channels                           │
-│   Web UI (React)          Telegram Bot                  │
-└───────────────┬───────────────────┬─────────────────────┘
-                │                   │
-┌───────────────▼───────────────────▼─────────────────────┐
-│                   FastAPI Backend                        │
-│                                                          │
-│   SecurityFilter ──► LangGraph Agent ──► Tool Router     │
-│   (data masking)       (Claude/Mistral/     │             │
-│                         Ollama/DeepSeek)   │             │
-│                                            ▼             │
-│   Skills: Gmail · Calendar · Drive · Docs · Sheets ·    │
-│           Tasks · Scheduler · Weather · News ·          │
-│           Translation · Web Browser · SSH · TTS         │
-└──────────────────────────────┬──────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────┐
-│                     Storage                              │
-│   Qdrant (vector)    SQLite FTS5 (keyword)               │
-│   Memory + HITL rules + embeddings                       │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                           Channels                               │
+│   Web UI (Next.js)    Telegram Bot    ntfy (Android push)        │
+└──────────┬────────────────┬──────────────────┬───────────────────┘
+           │                │                  │
+┌──────────▼────────────────▼──────────────────▼───────────────────┐
+│                        FastAPI Backend                            │
+│                                                                   │
+│  SecurityFilter ──► Complexity Router ──► LangGraph Agent        │
+│  (PII masking)        (SIMPLE / MEDIUM /   (tool calling loop)   │
+│                        COMPLEX / IMAGE)           │               │
+│                                                   ▼               │
+│   ┌──────────────────────────────────────────────────────────┐   │
+│   │                      Tool Router                          │   │
+│   │  Gmail · Calendar · Drive · Docs · Sheets · Tasks         │   │
+│   │  Web Browser (Playwright) · Weather · News · Translation  │   │
+│   │  SSH · Scheduler · QR Code · PDF · Whisper · YouTube      │   │
+│   │  Desktop (via ELY Desktop daemon)                         │   │
+│   └──────────────────────────────────────────────────────────┘   │
+│                                                                   │
+│  HITL Manager ──► Web UI / Telegram / ntfy                       │
+│  Analytics Logger ──► usage_logs table                           │
+└───────────────────────────────────┬──────────────────────────────┘
+                                    │
+┌───────────────────────────────────▼──────────────────────────────┐
+│                           Storage                                 │
+│   Qdrant (vector)       SQLite FTS5 (keyword)                    │
+│   Memory · constraints  Conversations · usage logs · settings    │
+│   Vault (AES-256-GCM)   User profiles · scheduled tasks          │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 **Key design points:**
-- **Skill plugin system**: each capability is a `Skill` dataclass — one file, one import, fully decoupled. Enable/disable per user.
-- **Hybrid memory**: Qdrant semantic search + SQLite FTS5 keyword search + temporal decay. ELY remembers facts about you automatically across sessions.
-- **Multi-channel**: same agent graph, same security, same memory — web or Telegram.
-- **Isolated browser contexts**: each user gets their own sandboxed Playwright Chromium instance.
+
+- **Skill plugin system** — each capability is a `Skill` dataclass: one file, one import, fully decoupled. Enable/disable per user.
+- **Complexity-based routing** — requests are classified before reaching the LLM so that simple questions use cheap local models and complex tasks get the most capable model.
+- **Hybrid memory** — Qdrant semantic search + SQLite FTS5 keyword search + temporal decay. ELY remembers facts about you automatically across sessions.
+- **Multi-channel** — same agent graph, same security, same memory — web, Telegram, or push notification.
+- **Isolated browser contexts** — each user gets their own sandboxed Playwright Chromium instance.
+- **MCP support** — connect any Model Context Protocol server and expose its tools to the agent automatically.
 
 ---
 
@@ -155,14 +330,16 @@ Switch providers at any time in Settings — no restart required.
 | Component | Technology |
 |---|---|
 | Backend | Python 3.12 · FastAPI · LangGraph · uv |
-| Frontend | React · Vite · Tailwind CSS · Three.js |
+| Frontend | Next.js 14 · TypeScript · Tailwind CSS · Three.js |
 | Auth | JWT (python-jose) · Argon2 |
-| LLM | Anthropic Claude · Mistral AI · Ollama · DeepSeek |
+| LLM | Zhipu GLM · Anthropic Claude · Google Gemini · DeepSeek · Mistral · Ollama |
 | Memory | Qdrant (vector) · SQLite FTS5 |
-| Browser | Playwright (Chromium, headless) |
+| Browser automation | Playwright (Chromium, headless) |
+| Desktop daemon | Go (WebSocket, pyautogui bridge) |
 | SSH | Paramiko + command whitelist |
 | TTS | edge-tts |
 | Notifications | ntfy · Telegram Bot API |
+| Vault | AES-256-GCM (Python cryptography) |
 
 ---
 
@@ -175,15 +352,15 @@ Switch providers at any time in Settings — no restart required.
 git clone https://github.com/your-username/ely-agent.git
 cd ely-agent
 
-# 2. Start Qdrant
-docker run -d --name qdrant -p 6333:6333 \
-  -v qdrant_storage:/qdrant/storage qdrant/qdrant
+# 2. Start infrastructure (Qdrant + Ollama)
+docker compose up -d qdrant ollama
 
 # 3. Configure backend
 cd backend && cp .env.example .env
-# Edit .env: set ANTHROPIC_API_KEY and JWT_SECRET_KEY
+# Edit .env: set at least JWT_SECRET_KEY
+# Optionally add: ANTHROPIC_API_KEY, ZHIPU_API_KEY, GOOGLE_API_KEY, etc.
 
-# 4. Install backend
+# 4. Install backend dependencies
 pip install uv && uv sync
 uv run playwright install chromium
 
@@ -194,9 +371,19 @@ cd ../frontend && npm install
 cd .. && ./start.sh
 ```
 
-Open **http://localhost:3000** — register (first account = admin) and start chatting.
+Open **http://localhost:3000** — register (first account becomes admin) and start chatting.
 
-For detailed instructions including macOS, Windows, and Google OAuth setup, see the **[Installation Guide](./docs/installation.md)**.
+### Docker Compose (recommended for VPS)
+
+```bash
+docker compose up -d
+```
+
+The full stack (backend, frontend, Qdrant, Ollama, ntfy) starts automatically.
+
+### API Keys
+
+All API keys are managed through the **Settings → LLM Providers** screen in the UI — no restart needed. Keys are stored encrypted in the database. You can also set them as environment variables in `.env` as fallback defaults.
 
 ---
 
@@ -209,13 +396,8 @@ For detailed instructions including macOS, Windows, and Google OAuth setup, see 
 | [Architecture](./docs/architecture.md) | Technical architecture deep-dive |
 | [Security](./docs/security.md) | Security model and threat analysis |
 | [Memory](./docs/memory.md) | How hybrid memory works |
+| [Desktop Daemon](./docs/desktop.md) | ELY Desktop setup and capabilities |
 | [Roadmap](./docs/roadmap.md) | Completed phases and future plans |
-
----
-
-## Language Note
-
-The ELY interface is in **French by default** (it was built as a personal assistant for a French-speaking user). The underlying system prompts, code, and API are fully in English. UI language configuration is on the roadmap.
 
 ---
 
