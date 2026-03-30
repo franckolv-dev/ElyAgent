@@ -18,10 +18,11 @@ logger = logging.getLogger(__name__)
 
 class ComplexityTier(str, Enum):
     """Message complexity tiers for LLM routing."""
-    SIMPLE = "simple"    # Tier 1 — Ollama local (qwen2.5:7b-instruct)
-    MEDIUM = "medium"    # Tier 2 — GLM-4.7 → Gemini → Claude (fallback chain)
-    COMPLEX = "complex"  # Tier 3 — GLM-4.7 → Claude → Gemini (fallback chain)
-    IMAGE = "image"      # Tier 4 — Gemini → GLM (fallback)
+    SIMPLE      = "simple"      # Tier A — fast, local (Ollama)
+    MEDIUM      = "medium"      # Tier B — standard tasks, tools
+    COMPLEX     = "complex"     # Tier C — deep reasoning, multi-step
+    IMAGE       = "image"       # Tier IMG — multimodal / vision
+    MAINTENANCE = "maintenance" # Tier SYS — background tasks (memory, scheduler)
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +107,32 @@ def classify_complexity(message: str) -> ComplexityTier:
 # ---------------------------------------------------------------------------
 _runtime: dict[str, str] = {}
 
+# ---------------------------------------------------------------------------
+# Tier routing config — persisted in DB, cached here in memory.
+# Shape: { "simple": {"providers": ["ollama"], "fallback_enabled": true}, … }
+# ---------------------------------------------------------------------------
+DEFAULT_TIER_CONFIG: dict[str, dict] = {
+    "simple":      {"providers": ["ollama"],                        "fallback_enabled": True},
+    "medium":      {"providers": ["zhipu", "gemini", "anthropic"],  "fallback_enabled": True},
+    "complex":     {"providers": ["zhipu", "anthropic", "gemini"],  "fallback_enabled": True},
+    "image":       {"providers": ["gemini", "zhipu"],               "fallback_enabled": True},
+    "maintenance": {"providers": ["ollama"],                        "fallback_enabled": False},
+}
+
+_tier_config: dict[str, dict] = {}   # empty = use DEFAULT_TIER_CONFIG
+
+
+def set_tier_config(config: dict) -> None:
+    """Replace the in-memory tier routing config (called on startup + after PUT /tiers)."""
+    global _tier_config
+    _tier_config = config
+    logger.info("Tier config updated: %s", list(config.keys()))
+
+
+def get_tier_config() -> dict[str, dict]:
+    """Return the active tier routing config (DB override or defaults)."""
+    return _tier_config if _tier_config else DEFAULT_TIER_CONFIG
+
 
 def set_runtime_llm(provider: str, model: str) -> None:
     """Update active provider and model in memory."""
@@ -160,6 +187,15 @@ async def load_llm_settings_from_db() -> None:
             val = await get_config(cfg_key, "")
             if val:
                 _runtime[f"key_{prov}"] = val
+
+        # Load tier routing config
+        import json as _json
+        tier_raw = await get_config("tier_routing_config", "")
+        if tier_raw:
+            try:
+                set_tier_config(_json.loads(tier_raw))
+            except Exception as _tc_exc:
+                logger.warning("Failed to parse tier_routing_config: %s", _tc_exc)
 
         logger.info(
             "LLM settings loaded from DB: provider=%s model=%s",
@@ -432,151 +468,126 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
 
 
 # ---------------------------------------------------------------------------
-# Tier-based LLM selector
+# Low-level provider factory — shared by tier routing and fallback helpers
+# ---------------------------------------------------------------------------
+
+def _make_llm_for_provider(
+    provider_id: str,
+    settings,
+    max_tokens: int = 4096,
+    temperature: float = 0.7,
+) -> Optional[BaseChatModel]:
+    """Instantiate an LLM for the given provider_id using runtime keys.
+
+    Returns None (does NOT raise) when the provider has no key configured,
+    so the tier loop can safely skip it.  Raises only on hard import/config
+    errors that the caller should surface.
+    """
+    def _key(prov: str, env_val: str) -> Optional[str]:
+        return _runtime.get(f"key_{prov}") or env_val or None
+
+    if provider_id == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=settings.slm_model or "qwen2.5:7b-instruct",
+            base_url=settings.ollama_base_url,
+            temperature=temperature,
+        )
+
+    if provider_id == "zhipu":
+        key = _key("zhipu", settings.zhipu_api_key)
+        if not key:
+            return None
+        return _make_glm(model="glm-4.7", api_key=key,
+                         max_tokens=max_tokens, temperature=temperature)
+
+    if provider_id == "gemini":
+        key = _key("gemini", settings.gemini_api_key)
+        if not key:
+            return None
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            google_api_key=key,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+    if provider_id == "anthropic":
+        key = _key("anthropic", settings.anthropic_api_key)
+        if not key:
+            return None
+        return _make_anthropic(model="claude-sonnet-4-6", api_key=key,
+                               max_tokens=max_tokens, temperature=temperature)
+
+    if provider_id == "mistral":
+        key = _key("mistral", settings.mistral_api_key)
+        if not key:
+            return None
+        from langchain_mistralai import ChatMistralAI
+        return ChatMistralAI(
+            model="mistral-small-latest",
+            api_key=key,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+    if provider_id == "deepseek":
+        key = _key("deepseek", settings.deepseek_api_key)
+        if not key:
+            return None
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model="deepseek-chat",
+            api_key=key,
+            base_url="https://api.deepseek.com/v1",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+    logger.warning("_make_llm_for_provider: unknown provider '%s'", provider_id)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Tier-based LLM selector — driven by dynamic DB config
 # ---------------------------------------------------------------------------
 
 def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     """Return the appropriate LLM for a given complexity tier.
 
-    Tier routing (Mistral removed — replaced by GLM-4.7 as primary):
-        SIMPLE  → Ollama qwen2.5:7b-instruct  (local, free, zero latency)
-        MEDIUM  → GLM-4.7 → Gemini 2.0 Flash → Claude Sonnet (fallback chain)
-        COMPLEX → GLM-4.7 → Claude Sonnet (prompt-caching) → Gemini (fallback)
-        IMAGE   → Gemini 2.0 Flash → GLM (fallback)
-
-    GLM-4.7 (Zhipu AI) advantages:
-      - Excellent function-calling / tool-use for agentic tasks
-      - Handles complex JSON schemas correctly
-      - Automatic prefix caching (cached tokens billed at ~1/5 price)
-      - OpenAI-compatible API — no content="" serialization bug
-
-    Falls back gracefully: if a required API key is unavailable, the next
-    option in the chain is tried.  If all fail, get_llm() is returned.
+    The provider chain for each tier is read from the in-memory tier config
+    (loaded from DB on startup, editable via PUT /api/settings/llm/tiers).
+    Falls back through the configured list; if fallback_enabled=False, only
+    the first provider is tried.  If all fail, get_llm() is returned.
     """
     settings = get_settings()
+    config = get_tier_config()
+    tier_cfg = config.get(tier.value, DEFAULT_TIER_CONFIG.get(tier.value, {}))
 
-    def _key(prov: str, env_val: str) -> Optional[str]:
-        return _runtime.get(f"key_{prov}") or env_val or None
+    providers: list[str] = tier_cfg.get("providers", ["ollama"])
+    fallback_enabled: bool = tier_cfg.get("fallback_enabled", True)
+    max_tokens = 8192 if tier in (ComplexityTier.COMPLEX, ComplexityTier.MAINTENANCE) else 4096
 
-    if tier == ComplexityTier.SIMPLE:
+    last_exc: Optional[Exception] = None
+    for i, provider_id in enumerate(providers):
         try:
-            from langchain_ollama import ChatOllama
-            return ChatOllama(
-                model="qwen2.5:7b-instruct",
-                base_url=settings.ollama_base_url,
-                temperature=0.5,
-            )
+            llm = _make_llm_for_provider(provider_id, settings,
+                                         max_tokens=max_tokens, temperature=0.7)
+            if llm is not None:
+                return llm
+            # llm is None = no key for this provider → skip silently
+            logger.debug("Tier %s: no key for '%s' — skipping", tier.value, provider_id)
         except Exception as exc:
-            logger.warning("Tier SIMPLE: Ollama unavailable (%s) — falling back to global LLM", exc)
-            return get_llm()
+            last_exc = exc
+            logger.warning("Tier %s: '%s' failed (%s)", tier.value, provider_id, exc)
 
-    if tier == ComplexityTier.MEDIUM:
-        # GLM-4.7 — primary for MEDIUM: strong function-calling, automatic prefix caching,
-        # no content="" serialization bug (unlike Mistral), affordable pricing.
-        zhipu_key = _key("zhipu", settings.zhipu_api_key)
-        if zhipu_key:
-            try:
-                return _make_glm(model="glm-4.7", api_key=zhipu_key)
-            except Exception as exc:
-                logger.warning("Tier MEDIUM: GLM-4.7 unavailable (%s) — trying Gemini", exc)
-        else:
-            logger.debug("Tier MEDIUM: no Zhipu key — trying Gemini")
+        if not fallback_enabled:
+            break   # stop after first attempt when fallback is disabled
 
-        # Gemini as first fallback
-        gemini_key = _key("gemini", settings.gemini_api_key)
-        if gemini_key:
-            try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                return ChatGoogleGenerativeAI(
-                    model="gemini-2.0-flash",
-                    google_api_key=gemini_key,
-                    max_output_tokens=4096,
-                    temperature=0.7,
-                )
-            except Exception as exc:
-                logger.warning("Tier MEDIUM: Gemini unavailable (%s) — trying Claude", exc)
+    if last_exc:
+        logger.warning("Tier %s: all providers failed, using global LLM", tier.value)
+    else:
+        logger.debug("Tier %s: no provider available, using global LLM", tier.value)
 
-        # Claude as last resort for MEDIUM
-        anthropic_key = _key("anthropic", settings.anthropic_api_key)
-        if anthropic_key:
-            try:
-                return _make_anthropic(
-                    model="claude-sonnet-4-6",
-                    api_key=anthropic_key,
-                    max_tokens=4096,
-                )
-            except Exception as exc:
-                logger.warning("Tier MEDIUM: Claude unavailable (%s) — using global LLM", exc)
-
-        return get_llm()
-
-    if tier == ComplexityTier.COMPLEX:
-        # GLM-4.7 — tested first even for COMPLEX: excels at multi-step tool use
-        # and JSON schemas. Automatic prefix caching reduces cost on repeated system prompts.
-        zhipu_key = _key("zhipu", settings.zhipu_api_key)
-        if zhipu_key:
-            try:
-                return _make_glm(model="glm-4.7", api_key=zhipu_key, max_tokens=8192)
-            except Exception as exc:
-                logger.warning("Tier COMPLEX: GLM-4.7 unavailable (%s) — trying Claude", exc)
-        else:
-            logger.debug("Tier COMPLEX: no Zhipu key — trying Claude")
-
-        # Claude as primary fallback — prompt caching enabled (system prompt cached,
-        # up to 90 % cost reduction on subsequent turns with the same system prompt)
-        anthropic_key = _key("anthropic", settings.anthropic_api_key)
-        if anthropic_key:
-            try:
-                return _make_anthropic(
-                    model="claude-sonnet-4-6",
-                    api_key=anthropic_key,
-                    max_tokens=8192,
-                )
-            except Exception as exc:
-                logger.warning("Tier COMPLEX: Claude unavailable (%s) — trying Gemini", exc)
-
-        # Gemini as final fallback
-        gemini_key = _key("gemini", settings.gemini_api_key)
-        if gemini_key:
-            try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                return ChatGoogleGenerativeAI(
-                    model="gemini-2.0-flash",
-                    google_api_key=gemini_key,
-                    max_output_tokens=8192,
-                    temperature=0.7,
-                )
-            except Exception as exc:
-                logger.warning("Tier COMPLEX: Gemini unavailable (%s) — using global LLM", exc)
-
-        logger.warning("Tier COMPLEX: all providers unavailable — using global LLM")
-        return get_llm()
-
-    if tier == ComplexityTier.IMAGE:
-        # Gemini first — best image understanding/generation support
-        gemini_key = _key("gemini", settings.gemini_api_key)
-        if gemini_key:
-            try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                return ChatGoogleGenerativeAI(
-                    model="gemini-2.0-flash",
-                    google_api_key=gemini_key,
-                    max_output_tokens=4096,
-                    temperature=0.7,
-                )
-            except Exception as exc:
-                logger.warning("Tier IMAGE: Gemini unavailable (%s) — trying GLM", exc)
-
-        # GLM as fallback for IMAGE
-        zhipu_key = _key("zhipu", settings.zhipu_api_key)
-        if zhipu_key:
-            try:
-                return _make_glm(model="glm-4.7", api_key=zhipu_key)
-            except Exception as exc:
-                logger.warning("Tier IMAGE: GLM unavailable (%s) — using global LLM", exc)
-
-        logger.warning("Tier IMAGE: all providers unavailable — using global LLM")
-        return get_llm()
-
-    # Should never reach here
     return get_llm()

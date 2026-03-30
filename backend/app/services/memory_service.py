@@ -129,9 +129,9 @@ async def extract_and_store_facts(
 
         conversation_text = "\n".join(conversation_parts)
 
-        # Use Ollama (local, fast, zero cost)
-        from app.services.llm_provider import get_slm
-        llm = get_slm()
+        # Use MAINTENANCE tier (configurable via Settings → Niveaux de routage)
+        from app.services.llm_provider import get_llm_for_tier, ComplexityTier
+        llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
 
         prompt = _EXTRACTION_PROMPT.format(conversation=conversation_text)
         # config={"callbacks": []} isolates this call from any active LangGraph
@@ -291,10 +291,10 @@ async def consolidate_user_memory(user_id: str) -> int:
         else:
             existing_profile_text = "(aucun profil existant)"
 
-        # Step 3: Use local Ollama (SLM) for consolidation — background task,
-        # no real-time interaction required, zero cloud cost.
-        from app.services.llm_provider import get_slm
-        llm = get_slm()
+        # Step 3: Use MAINTENANCE tier for consolidation — background task,
+        # no real-time interaction required. Configurable via Settings → Niveaux de routage.
+        from app.services.llm_provider import get_llm_for_tier, ComplexityTier
+        llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
 
         prompt = _CONSOLIDATION_PROMPT.format(
             raw_facts=raw_facts_text,

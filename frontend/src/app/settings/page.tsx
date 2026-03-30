@@ -8,6 +8,7 @@ import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
   Monitor, Download, Plus, Trash2, Wifi, WifiOff, Lock, Eye, EyeOff,
+  GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations } from "next-intl";
@@ -124,6 +125,31 @@ interface LLMSettings {
   providers: ProviderMeta[];
 }
 
+interface TierMeta {
+  id: string;
+  label: string;
+  badge: string;
+  color: string;
+  description: string;
+}
+
+interface TierEntry {
+  providers: string[];
+  fallback_enabled: boolean;
+}
+
+interface TierConfig {
+  [tierId: string]: TierEntry;
+}
+
+const TIER_BADGE_COLORS: Record<string, string> = {
+  emerald: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
+  blue:    "bg-blue-500/10 border-blue-500/30 text-blue-400",
+  violet:  "bg-violet-500/10 border-violet-500/30 text-violet-400",
+  amber:   "bg-amber-500/10 border-amber-500/30 text-amber-400",
+  slate:   "bg-slate-500/10 border-slate-500/30 text-slate-400",
+};
+
 type ToastKind = "success" | "error";
 interface Toast {
   id: number;
@@ -177,6 +203,13 @@ export default function SettingsPage() {
   const [showNewPwd, setShowNewPwd]         = useState(false);
   const [savingPwd, setSavingPwd]       = useState(false);
 
+  // Tier routing state
+  const [tierMeta, setTierMeta]           = useState<TierMeta[]>([]);
+  const [tierConfig, setTierConfig]       = useState<TierConfig>({});
+  const [tierProviderIds, setTierProviderIds] = useState<string[]>([]);
+  const [savingTiers, setSavingTiers]     = useState(false);
+  const [tierTooltip, setTierTooltip]     = useState<string | null>(null);
+
   // Desktop state
   const [desktopConnected, setDesktopConnected] = useState<boolean | null>(null);
   const [desktopPlatform, setDesktopPlatform]   = useState<string>("");
@@ -219,6 +252,19 @@ export default function SettingsPage() {
   useEffect(() => {
     setApiKeyInput("");
   }, [activeProvider]);
+
+  // Load tier routing config
+  useEffect(() => {
+    authFetch(`${API_URL}/api/settings/llm/tiers`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (!d) return;
+        setTierMeta(d.tiers ?? []);
+        setTierConfig(d.config ?? {});
+        setTierProviderIds(d.provider_ids ?? []);
+      })
+      .catch(() => {});
+  }, []);
 
   // Check Google connection status
   useEffect(() => {
@@ -389,6 +435,68 @@ export default function SettingsPage() {
       setGoogleConnected(false);
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Handlers — Tier routing
+  // ---------------------------------------------------------------------------
+
+  const moveTierProvider = (tierId: string, index: number, dir: -1 | 1) => {
+    setTierConfig((prev) => {
+      const entry = prev[tierId];
+      if (!entry) return prev;
+      const providers = [...entry.providers];
+      const newIndex = index + dir;
+      if (newIndex < 0 || newIndex >= providers.length) return prev;
+      [providers[index], providers[newIndex]] = [providers[newIndex], providers[index]];
+      return { ...prev, [tierId]: { ...entry, providers } };
+    });
+  };
+
+  const removeTierProvider = (tierId: string, provId: string) => {
+    setTierConfig((prev) => {
+      const entry = prev[tierId];
+      if (!entry) return prev;
+      return { ...prev, [tierId]: { ...entry, providers: entry.providers.filter((p) => p !== provId) } };
+    });
+  };
+
+  const addTierProvider = (tierId: string, provId: string) => {
+    setTierConfig((prev) => {
+      const entry = prev[tierId] ?? { providers: [], fallback_enabled: true };
+      if (entry.providers.includes(provId)) return prev;
+      return { ...prev, [tierId]: { ...entry, providers: [...entry.providers, provId] } };
+    });
+  };
+
+  const toggleTierFallback = (tierId: string) => {
+    setTierConfig((prev) => {
+      const entry = prev[tierId];
+      if (!entry) return prev;
+      return { ...prev, [tierId]: { ...entry, fallback_enabled: !entry.fallback_enabled } };
+    });
+  };
+
+  const handleSaveTiers = async () => {
+    if (savingTiers) return;
+    setSavingTiers(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/settings/llm/tiers`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: tierConfig }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        push("error", err.detail ?? `Erreur ${res.status}`);
+      } else {
+        push("success", "Niveaux de routage sauvegardés");
+      }
+    } catch {
+      push("error", "Impossible de contacter le serveur");
+    } finally {
+      setSavingTiers(false);
     }
   };
 
@@ -656,6 +764,150 @@ export default function SettingsPage() {
                       </p>
                     </div>
                   )}
+                </div>
+              </section>
+            )}
+
+            {/* ----------------------------------------------------------------
+                Tier Routing — admin only
+            ---------------------------------------------------------------- */}
+            {admin && tierMeta.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="w-4 h-4 text-cyber-cyan" />
+                    <h2 className="text-sm font-medium text-text-primary">Niveaux de routage</h2>
+                  </div>
+                  <button
+                    onClick={handleSaveTiers}
+                    disabled={savingTiers}
+                    className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all disabled:opacity-50"
+                  >
+                    {savingTiers ? "…" : "Enregistrer"}
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-text-muted mb-3">
+                  Définissez quel modèle est utilisé selon la complexité détectée. Les modèles en tête de liste sont prioritaires ; le fallback tente le suivant en cas d'erreur.
+                </p>
+
+                <div className="space-y-3">
+                  {tierMeta.map((tier) => {
+                    const entry: TierEntry = tierConfig[tier.id] ?? { providers: [], fallback_enabled: true };
+                    const badgeCls = TIER_BADGE_COLORS[tier.color] ?? TIER_BADGE_COLORS.slate;
+                    const availableToAdd = tierProviderIds.filter((pid) => !entry.providers.includes(pid));
+
+                    return (
+                      <div key={tier.id} className="bg-bg-secondary border border-border-dim rounded-lg p-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>
+                              {tier.badge}
+                            </span>
+                            <span className="text-xs font-medium text-text-primary">{tier.label}</span>
+                            <button
+                              onClick={() => setTierTooltip(tierTooltip === tier.id ? null : tier.id)}
+                              className="text-text-muted hover:text-text-secondary transition-colors shrink-0"
+                              title="Explication"
+                            >
+                              <Info className="w-3 h-3" />
+                            </button>
+                          </div>
+                          {/* Fallback toggle */}
+                          <button
+                            onClick={() => toggleTierFallback(tier.id)}
+                            className="flex items-center gap-1.5 text-[10px] shrink-0 transition-colors"
+                            title={entry.fallback_enabled ? "Désactiver le fallback" : "Activer le fallback"}
+                          >
+                            {entry.fallback_enabled
+                              ? <ToggleRight className="w-4 h-4 text-cyber-cyan" />
+                              : <ToggleLeft className="w-4 h-4 text-text-muted" />}
+                            <span className={entry.fallback_enabled ? "text-cyber-cyan" : "text-text-muted"}>
+                              Fallback {entry.fallback_enabled ? "activé" : "désactivé"}
+                            </span>
+                          </button>
+                        </div>
+
+                        {/* Tooltip description */}
+                        {tierTooltip === tier.id && (
+                          <p className="text-[11px] text-text-muted bg-bg-primary rounded px-3 py-2 mb-3 border border-border-dim">
+                            {tier.description}
+                          </p>
+                        )}
+
+                        {/* Ordered provider list */}
+                        <div className="space-y-1.5">
+                          {entry.providers.length === 0 && (
+                            <p className="text-[11px] text-text-muted italic">Aucun modèle configuré — le provider global sera utilisé.</p>
+                          )}
+                          {entry.providers.map((provId, idx) => {
+                            const provLabel = PROVIDERS.find((p) => p.id === provId);
+                            return (
+                              <div key={provId} className="flex items-center gap-2">
+                                {/* Priority number */}
+                                <span className="text-[9px] text-text-muted w-4 text-right shrink-0">{idx + 1}.</span>
+                                {/* Provider pill */}
+                                <div className="flex-1 flex items-center gap-2 bg-bg-primary border border-border-dim rounded px-2 py-1 text-xs text-text-primary">
+                                  {provLabel && <span className="text-base leading-none">{provLabel.flag}</span>}
+                                  <span>{provLabel?.label ?? provId}</span>
+                                </div>
+                                {/* Move up */}
+                                <button
+                                  onClick={() => moveTierProvider(tier.id, idx, -1)}
+                                  disabled={idx === 0}
+                                  className="text-text-muted hover:text-text-secondary disabled:opacity-30 transition-colors"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                {/* Move down */}
+                                <button
+                                  onClick={() => moveTierProvider(tier.id, idx, 1)}
+                                  disabled={idx === entry.providers.length - 1}
+                                  className="text-text-muted hover:text-text-secondary disabled:opacity-30 transition-colors"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                                {/* Remove */}
+                                <button
+                                  onClick={() => removeTierProvider(tier.id, provId)}
+                                  className="text-text-muted hover:text-cyber-red transition-colors"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Add provider dropdown */}
+                        {availableToAdd.length > 0 && (
+                          <div className="mt-2">
+                            <select
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  addTierProvider(tier.id, e.target.value);
+                                  e.target.value = "";
+                                }
+                              }}
+                              className="text-[11px] bg-bg-primary border border-border-dim rounded px-2 py-1 text-text-muted w-full"
+                            >
+                              <option value="">+ Ajouter un provider…</option>
+                              {availableToAdd.map((pid) => {
+                                const p = PROVIDERS.find((pp) => pp.id === pid);
+                                return (
+                                  <option key={pid} value={pid}>
+                                    {p ? `${p.flag} ${p.label}` : pid}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             )}

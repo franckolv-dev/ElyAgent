@@ -1,13 +1,16 @@
-"""Router — LLM provider / model / API-key management.
+"""Router — LLM provider / model / API-key / tier-routing management.
 
 Endpoints
 ---------
 GET  /api/settings/llm               — any authenticated user
 PUT  /api/settings/llm               — admin only
 PUT  /api/settings/llm/keys/{provider} — admin only
+GET  /api/settings/llm/tiers         — any authenticated user
+PUT  /api/settings/llm/tiers         — admin only
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Optional
 
@@ -21,6 +24,7 @@ from app.services.system_config import get_config, set_config
 from app.services.llm_provider import (
     set_runtime_llm, set_runtime_key, has_runtime_key,
     get_active_provider, get_active_model,
+    set_tier_config, DEFAULT_TIER_CONFIG,
 )
 
 logger = logging.getLogger(__name__)
@@ -246,3 +250,135 @@ async def update_llm_api_key(
 
     logger.info("API key updated by admin %s for provider=%s", admin.id, provider)
     return {"provider": provider, "has_key": True}
+
+
+# ---------------------------------------------------------------------------
+# Tier routing config
+# ---------------------------------------------------------------------------
+
+TIER_META = [
+    {
+        "id": "simple",
+        "label": "Niveau A — Simple",
+        "badge": "A",
+        "color": "emerald",
+        "description": (
+            "Questions courtes, calculs rapides, réponses directes sans outil. "
+            "Un modèle local (Ollama) est idéal : zéro latence réseau, coût nul, "
+            "100 % privé. Le score de complexité est < 30."
+        ),
+    },
+    {
+        "id": "medium",
+        "label": "Niveau B — Standard",
+        "badge": "B",
+        "color": "blue",
+        "description": (
+            "Conversations standards, utilisation des outils (agenda, e-mail, recherche), "
+            "raisonnement modéré. Représente la majorité des échanges. "
+            "Score de complexité 30-70."
+        ),
+    },
+    {
+        "id": "complex",
+        "label": "Niveau C — Complexe",
+        "badge": "C",
+        "color": "violet",
+        "description": (
+            "Analyses approfondies, génération de code, workflows multi-étapes, "
+            "documents longs. Nécessite un modèle performant avec une grande fenêtre "
+            "de contexte. Score de complexité > 70."
+        ),
+    },
+    {
+        "id": "image",
+        "label": "Niveau IMG — Vision",
+        "badge": "IMG",
+        "color": "amber",
+        "description": (
+            "Analyse d'images, reconnaissance visuelle, description de photos ou "
+            "captures d'écran jointes à un message. Nécessite un modèle multimodal."
+        ),
+    },
+    {
+        "id": "maintenance",
+        "label": "Niveau SYS — Maintenance",
+        "badge": "SYS",
+        "color": "slate",
+        "description": (
+            "Tâches de fond : extraction de faits pour la mémoire utilisateur, "
+            "maintenance des profils, exécution des tâches planifiées. "
+            "Recommandé : Ollama local (zéro coût, disponible 24/7, sans quota)."
+        ),
+    },
+]
+
+
+class TierEntry(BaseModel):
+    providers: list[str]
+    fallback_enabled: bool = True
+
+
+class TierConfigUpdate(BaseModel):
+    config: dict[str, TierEntry]
+
+
+@router.get("/tiers")
+async def get_tier_config_endpoint(
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Return tier routing config, tier metadata, and available provider ids."""
+    raw = await get_config("tier_routing_config", "")
+    if raw:
+        try:
+            config = json.loads(raw)
+        except Exception:
+            config = DEFAULT_TIER_CONFIG
+    else:
+        config = DEFAULT_TIER_CONFIG
+
+    # Ensure all tiers are present (add missing ones with defaults)
+    for tier_id, default_cfg in DEFAULT_TIER_CONFIG.items():
+        if tier_id not in config:
+            config[tier_id] = default_cfg
+
+    return {
+        "tiers": TIER_META,
+        "config": config,
+        "provider_ids": [p["id"] for p in PROVIDERS_META],
+    }
+
+
+@router.put("/tiers", status_code=status.HTTP_200_OK)
+async def update_tier_config_endpoint(
+    body: TierConfigUpdate,
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Persist tier routing config and update in-memory cache."""
+    # Validate that all provider ids are known
+    valid_ids = {p["id"] for p in PROVIDERS_META}
+    for tier_id, tier_entry in body.config.items():
+        for prov_id in tier_entry.providers:
+            if prov_id not in valid_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown provider '{prov_id}' in tier '{tier_id}'.",
+                )
+
+    serializable = {
+        tier_id: {"providers": entry.providers, "fallback_enabled": entry.fallback_enabled}
+        for tier_id, entry in body.config.items()
+    }
+
+    await set_config(
+        "tier_routing_config",
+        json.dumps(serializable),
+        is_secret=False,
+        description="Tier routing configuration (provider chains per complexity tier)",
+    )
+
+    # Hot-reload in memory
+    set_tier_config(serializable)
+
+    logger.info("Tier routing config updated by admin %s", admin.id)
+    return {"ok": True, "config": serializable}
