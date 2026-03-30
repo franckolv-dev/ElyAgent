@@ -289,6 +289,72 @@ def get_llm() -> BaseChatModel:
         raise ValueError(f"Unknown LLM provider: {provider}")
 
 
+def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
+    """Return a list of (label, llm) tuples for all available providers,
+    in priority order, excluding the currently active one.
+
+    Used to retry a failed LLM call (e.g. 429 / quota exhausted) with the
+    next available provider — without changing the user's saved settings.
+    Priority: Gemini → Claude → Mistral → Ollama.
+    """
+    settings = get_settings()
+    current_provider = _runtime.get("provider") or settings.active_llm_provider
+
+    def _key(prov: str, env_val: str) -> Optional[str]:
+        return _runtime.get(f"key_{prov}") or env_val or None
+
+    candidates: list[tuple[str, BaseChatModel]] = []
+
+    gemini_key = _key("gemini", settings.gemini_api_key)
+    if gemini_key and current_provider != "gemini":
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            candidates.append(("gemini/gemini-2.0-flash", ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash",
+                google_api_key=gemini_key,
+                max_output_tokens=4096,
+                temperature=0.7,
+            )))
+        except Exception:
+            pass
+
+    anthropic_key = _key("anthropic", settings.anthropic_api_key)
+    if anthropic_key and current_provider != "anthropic":
+        try:
+            candidates.append(("anthropic/claude-sonnet-4-6", _make_anthropic(
+                model="claude-sonnet-4-6",
+                api_key=anthropic_key,
+            )))
+        except Exception:
+            pass
+
+    mistral_key = _key("mistral", settings.mistral_api_key)
+    if mistral_key and current_provider != "mistral":
+        try:
+            from langchain_mistralai import ChatMistralAI
+            candidates.append(("mistral/mistral-small-latest", ChatMistralAI(
+                model="mistral-small-latest",
+                api_key=mistral_key,
+                max_tokens=4096,
+                temperature=0.7,
+            )))
+        except Exception:
+            pass
+
+    if current_provider != "ollama":
+        try:
+            from langchain_ollama import ChatOllama
+            candidates.append(("ollama/qwen2.5:7b-instruct", ChatOllama(
+                model="qwen2.5:7b-instruct",
+                base_url=settings.ollama_base_url,
+                temperature=0.7,
+            )))
+        except Exception:
+            pass
+
+    return candidates
+
+
 def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignore[name-defined]
     """Instantiate a LLM for a specific sub-agent.
 

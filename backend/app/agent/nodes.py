@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from app.agent.state import AgentState
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
-from app.services.llm_provider import get_llm
+from app.services.llm_provider import get_llm, get_fallback_llms
 from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
@@ -395,10 +395,41 @@ def create_agent_node():
                     system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
                     system += "\n".join(f"- {m}" for m in memories)
 
-            response = await _llm_with_tools.ainvoke(
+            _invoke_msgs = (
                 [{"role": "system", "content": system}]
                 + _sanitize_messages_for_mistral(messages)
             )
+            try:
+                response = await _llm_with_tools.ainvoke(_invoke_msgs)
+            except Exception as primary_exc:
+                # Detect recoverable API errors: quota exhausted, rate limit,
+                # authentication failure, service unavailable.
+                _exc_str = str(primary_exc).lower()
+                _recoverable = any(k in _exc_str for k in (
+                    "429", "rate", "quota", "insuffi", "401", "403",
+                    "overloaded", "503", "unavailable",
+                ))
+                if not _recoverable:
+                    raise
+
+                logger.warning(
+                    "Primary LLM failed (%s): %s — trying fallbacks",
+                    type(primary_exc).__name__, primary_exc,
+                )
+                response = None
+                for fallback_label, fallback_llm in get_fallback_llms():
+                    try:
+                        fallback_with_tools = fallback_llm.bind_tools(registry.all_tools)
+                        response = await fallback_with_tools.ainvoke(_invoke_msgs)
+                        logger.info("Fallback succeeded with %s", fallback_label)
+                        break
+                    except Exception as fallback_exc:
+                        logger.warning(
+                            "Fallback %s also failed: %s", fallback_label, fallback_exc
+                        )
+
+                if response is None:
+                    raise primary_exc
 
         # Fire-and-forget: extract facts from this exchange for user memory
         if user_id:
