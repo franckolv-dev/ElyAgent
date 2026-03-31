@@ -413,18 +413,11 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
         except Exception:
             pass
 
-    mistral_key = _key("mistral", settings.mistral_api_key)
-    if mistral_key and current_provider != "mistral":
-        try:
-            from langchain_mistralai import ChatMistralAI
-            candidates.append(("mistral/mistral-small-latest", ChatMistralAI(
-                model="mistral-small-latest",
-                api_key=mistral_key,
-                max_tokens=4096,
-                temperature=0.7,
-            )))
-        except Exception:
-            pass
+    # Mistral intentionally excluded from automatic fallback:
+    # - Requires content="" sanitization on AIMessage (not None)
+    # - Breaks on multi-step tool-calling history (error code 3240)
+    # - Poor tool choice compliance with large tool lists
+    # Mistral remains selectable manually via settings, but never used as auto-fallback.
 
     openrouter_key = _key("openrouter", settings.openrouter_api_key)
     if openrouter_key and current_provider != "openrouter":
