@@ -86,7 +86,7 @@ async def vision_analyze_image(
 
         import google.generativeai as genai
         genai.configure(api_key=settings.gemini_api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        model = genai.GenerativeModel("gemini-2.5-flash")
 
         if image_path.startswith(("http://", "https://")):
             # Image distante — on la télécharge nous-mêmes pour rester dans les limites d'upload

@@ -269,7 +269,7 @@ async def _validate_gemini(key: str) -> ValidateKeyResponse:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={key}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}",
                 headers={"Content-Type": "application/json"},
                 json={
                     "contents": [{"parts": [{"text": "Hi"}]}],
@@ -282,7 +282,7 @@ async def _validate_gemini(key: str) -> ValidateKeyResponse:
             if "API_KEY_INVALID" in err_msg or resp.status_code in (401, 403):
                 return ValidateKeyResponse(valid=False, error="Clé invalide ou accès refusé")
         if resp.status_code == 200:
-            return ValidateKeyResponse(valid=True, model_hint="gemini-1.5-flash-latest")
+            return ValidateKeyResponse(valid=True, model_hint="gemini-2.5-flash")
         return ValidateKeyResponse(
             valid=False,
             error=f"Erreur Gemini : {resp.status_code}",
