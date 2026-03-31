@@ -14,9 +14,10 @@
 # fichier LICENSE à la racine du projet ou visiter :
 # https://polyformproject.org/licenses/strict/1.0.0/
 # -----------------------------------------------------------------------------
-"""Vision skill — analyser des images avec Gemini multimodal.
+"""Vision skill — analyser des images et des PDF avec Gemini multimodal.
 
-vision_analyze_image    Analyse une image locale ou URL et répond à une question
+vision_analyze_image        Analyse une image locale ou URL et répond à une question
+pdf_analyze_with_vision     Analyse un PDF avec Gemini Vision (layout, tableaux, catalogues)
 """
 from __future__ import annotations
 
@@ -115,15 +116,89 @@ async def vision_analyze_image(
         return f"Je n'ai pas pu analyser l'image : {exc}"
 
 
+@tool
+async def pdf_analyze_with_vision(
+    pdf_path: str,
+    question: str = "Décris le contenu structuré de ce document.",
+) -> str:
+    """Analyser un PDF avec Gemini Vision — PRÉFÉRER cet outil pour les catalogues, factures et documents structurés.
+
+    Utilise cet outil PLUTÔT QUE pdf_read quand :
+    - Le fichier est un catalogue produit, une facture, un bon de commande, un tarif
+    - La mise en page est complexe : tableaux, colonnes multiples, images avec texte
+    - L'utilisateur demande d'extraire des données structurées (références, prix, libellés)
+    - Le message contient "📎 Fichiers joints" avec un fichier .pdf
+    - pdf_read retourne un texte confus, vide ou mal formaté
+
+    Gemini comprend la mise en page visuelle du PDF, pas seulement le texte brut.
+
+    Args:
+        pdf_path: Chemin local du PDF (ex: /app/uploads/user_id/fichier.pdf)
+        question: Question précise sur le contenu (ex: "Liste tous les produits avec référence et prix")
+    """
+    try:
+        from app.config import get_settings
+        settings = get_settings()
+
+        if not settings.gemini_api_key:
+            return (
+                "Je n'ai pas de clé API Gemini configurée — la vision PDF nécessite Gemini. "
+                "Tu peux ajouter la clé dans Paramètres → Clés API."
+            )
+
+        # Vérification du chemin (anti-LFI)
+        p = Path(pdf_path).resolve()
+        if not any(str(p).startswith(root) for root in _ALLOWED_ROOTS):
+            return f"Chemin non autorisé : {pdf_path}. Seuls les chemins dans {_ALLOWED_ROOTS} sont acceptés."
+        if not p.exists():
+            return f"Fichier introuvable : {pdf_path}"
+        if p.suffix.lower() != ".pdf":
+            return f"Ce fichier n'est pas un PDF : {pdf_path}"
+
+        pdf_bytes = await asyncio.to_thread(p.read_bytes)
+
+        # Envoi direct à Gemini via langchain_google_genai (supporte application/pdf nativement)
+        import base64
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import HumanMessage
+
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=settings.gemini_api_key,
+            max_output_tokens=8192,
+            temperature=0.2,
+        )
+
+        message = HumanMessage(content=[
+            {
+                "type": "media",
+                "mime_type": "application/pdf",
+                "data": base64.b64encode(pdf_bytes).decode(),
+            },
+            {
+                "type": "text",
+                "text": question,
+            },
+        ])
+
+        response = await llm.ainvoke([message])
+        text = response.content if isinstance(response.content, str) else str(response.content)
+        return text.strip() if text else "Je n'ai pas pu analyser ce PDF."
+
+    except Exception as exc:
+        logger.error("pdf_analyze_with_vision error: %s", exc)
+        return f"Erreur lors de l'analyse du PDF : {exc}"
+
+
 get_skill_registry().register(Skill(
     name="vision",
     display_name="Vision IA",
     description=(
-        "Analyse des images avec Gemini Vision : captures d'écran partagées, photos jointes, "
-        "documents visuels. Ély peut décrire, lire du texte ou répondre à des questions "
-        "sur n'importe quelle image."
+        "Analyse des images et des PDF avec Gemini Vision : captures d'écran partagées, photos jointes, "
+        "documents visuels, catalogues produits, factures. Ély peut décrire, lire du texte, "
+        "extraire des données structurées ou répondre à des questions sur n'importe quelle image ou PDF."
     ),
     icon="👁️",
     scopes=["local"],
-    tools=[vision_analyze_image],
+    tools=[vision_analyze_image, pdf_analyze_with_vision],
 ))

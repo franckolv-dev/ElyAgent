@@ -28,7 +28,11 @@ _MAX_CHARS = 15_000  # ~5 pages de texte dense
 
 @tool
 async def pdf_read(source: str, pages: str = "") -> str:
-    """Read and extract text from a PDF file (local path or URL).
+    """Read and extract raw text from a PDF file (local path or URL).
+
+    USE THIS for simple text-based PDFs (reports, articles, contracts with plain text).
+    PREFER pdf_analyze_with_vision instead for: catalogs, invoices, tables, multi-column
+    layouts, or any document where visual layout matters for understanding the content.
 
     Args:
         source: File path (e.g. '/tmp/contract.pdf') or URL (https://example.com/doc.pdf)

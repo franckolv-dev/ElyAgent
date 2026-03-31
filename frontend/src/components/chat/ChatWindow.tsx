@@ -26,6 +26,8 @@ import { useTranslations } from "next-intl";
 const TOOL_LABELS: Record<string, string> = {
   pdf_read:               "Lecture du PDF…",
   pdf_info:               "Analyse du PDF…",
+  pdf_analyze_with_vision: "Analyse visuelle du PDF…",
+  vision_analyze_image:   "Analyse de l'image…",
   python_execute:         "Exécution du code…",
   search_web:             "Recherche sur le web…",
   navigate:               "Navigation web…",

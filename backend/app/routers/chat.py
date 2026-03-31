@@ -131,12 +131,23 @@ async def websocket_chat(websocket: WebSocket):
             # Enrich content with attached file paths so the agent can process them
             attachments = msg.get("attachments") or []
             if attachments:
-                file_lines = "\n".join(
-                    f"• {a.get('filename', '?')} → {a.get('path', '?')}"
-                    for a in attachments
-                    if a.get("path")
-                )
-                user_content = f"{user_content}\n\n📎 Fichiers joints :\n{file_lines}".strip()
+                file_lines = []
+                for a in attachments:
+                    if not a.get("path"):
+                        continue
+                    fname = a.get("filename", "?")
+                    fpath = a.get("path", "?")
+                    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+                    if ext == "pdf":
+                        hint = " [PDF — utilise pdf_analyze_with_vision pour analyser la mise en page, les tableaux et les données structurées]"
+                    elif ext in ("jpg", "jpeg", "png", "gif", "webp"):
+                        hint = " [Image — utilise vision_analyze_image]"
+                    else:
+                        hint = ""
+                    file_lines.append(f"• {fname} → {fpath}{hint}")
+                if file_lines:
+                    user_content = f"{user_content}\n\n📎 Fichiers joints :\n" + "\n".join(file_lines)
+                    user_content = user_content.strip()
 
             # Screen capture — save base64 PNG to uploads dir, inject path into content
             screen_b64 = msg.get("screen_capture")

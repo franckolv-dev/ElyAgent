@@ -211,9 +211,12 @@ CREATIVE_AGENT = SubAgentConfig(
         "RÈGLE POUR LES IMAGES : Avant de générer une image, décris ce que tu vas créer "
         "pour validation, puis appelle l'outil generate_image. Ne prétends jamais avoir "
         "généré une image sans appeler l'outil.\n\n"
+        "RÈGLE PDF : Pour les catalogues, factures, tableaux et documents avec mise en page "
+        "complexe, utilise TOUJOURS pdf_analyze_with_vision (Gemini lit le PDF visuellement). "
+        "Réserve pdf_read uniquement aux PDF texte simple (rapports, articles sans tableau).\n\n"
         "Outils disponibles : generate_image, python_execute, pdf_read, pdf_info, "
-        "vision_analyze_image, youtube_search, youtube_transcript, youtube_video_info, "
-        "qrcode_generate, qrcode_generate_wifi, qrcode_generate_vcard."
+        "pdf_analyze_with_vision, vision_analyze_image, youtube_search, youtube_transcript, "
+        "youtube_video_info, qrcode_generate, qrcode_generate_wifi, qrcode_generate_vcard."
         + _COMMON_FORMAT
     ),
     tool_names={
@@ -221,6 +224,7 @@ CREATIVE_AGENT = SubAgentConfig(
         "python_execute",
         "pdf_read",
         "pdf_info",
+        "pdf_analyze_with_vision",
         "vision_analyze_image",
         "youtube_search",
         "youtube_transcript",

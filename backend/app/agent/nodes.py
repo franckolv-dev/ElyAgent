@@ -91,7 +91,9 @@ Comportement attendu :
 - "mes contacts" / "cherche le contact" / "numéro de [personne]" / "email de [personne]" → utiliser contacts_search ou contacts_list
 - "ajoute un contact" / "crée un contact" → utiliser contacts_create
 - "calcule" / "code python" / "exécute" / "analyse ces données" / "fais un graphique" → utiliser python_execute avec du code Python complet utilisant print() pour les résultats
-- "lis ce PDF" / "analyse ce document PDF" / "extrait le texte de" → utiliser pdf_read avec le chemin ou l'URL du fichier ; utiliser pdf_info pour les métadonnées
+- quand le message contient "📎 Fichiers joints" avec un fichier .pdf et [PDF — utilise pdf_analyze_with_vision] → utiliser IMMÉDIATEMENT pdf_analyze_with_vision (Gemini lit le PDF visuellement, comprend les tableaux et la mise en page)
+- "lis ce PDF" / "analyse ce document PDF" / catalogue / facture / tableau → utiliser pdf_analyze_with_vision ; réserver pdf_read uniquement aux PDF texte simple (rapport, article sans mise en page complexe)
+- "extrait le texte de" (PDF simple) → utiliser pdf_read avec le chemin ou l'URL du fichier ; utiliser pdf_info pour les métadonnées
 - "regarde mon écran" / "qu'est-ce que tu vois" / "analyse cette image" / "que dit ce document" / quand le message contient "📸 Capture d'écran partagée →" → utiliser vision_analyze_image avec le chemin fourni et la question de l'utilisateur
 - "montre-moi comment faire" / "démontre" / "tuteur" / "apprends-moi à utiliser" / "fais une démo de" → utiliser os_screenshot pour voir l'écran, puis expliquer ou démontrer avec os_click/os_type_text (après validation HITL)
 - "prends une capture de mon écran" / "screenshot de l'écran" (PAS du navigateur) → utiliser os_screenshot
