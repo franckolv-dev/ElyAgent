@@ -252,6 +252,16 @@ async def websocket_chat(websocket: WebSocket):
                     tool_name = event.get("name", "")
                     if tool_name:
                         tools_called.append(tool_name)
+                        await websocket.send_text(json.dumps({
+                            "type": "tool_start",
+                            "tool": tool_name,
+                        }))
+                elif event["event"] == "on_tool_end":
+                    tool_name = event.get("name", "")
+                    await websocket.send_text(json.dumps({
+                        "type": "tool_end",
+                        "tool": tool_name,
+                    }))
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
                     model_used_out = output.get("model_used", "") or model_used_out

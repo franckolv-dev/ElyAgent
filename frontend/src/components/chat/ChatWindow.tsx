@@ -22,15 +22,52 @@ import { MessageBubble } from "./MessageBubble";
 import { Bot } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+// Maps backend tool names → human-readable French labels
+const TOOL_LABELS: Record<string, string> = {
+  pdf_read:               "Lecture du PDF…",
+  pdf_info:               "Analyse du PDF…",
+  python_execute:         "Exécution du code…",
+  search_web:             "Recherche sur le web…",
+  navigate:               "Navigation web…",
+  get_text:               "Lecture de la page…",
+  screenshot:             "Capture d'écran…",
+  click:                  "Interaction avec la page…",
+  fill:                   "Remplissage du formulaire…",
+  google_sheets_create:   "Création du fichier Excel…",
+  google_sheets_read:     "Lecture du fichier…",
+  google_sheets_append_rows: "Mise à jour du fichier…",
+  google_docs_create:     "Création du document…",
+  google_docs_read:       "Lecture du document…",
+  google_drive_list:      "Parcours de Drive…",
+  google_gmail_send:      "Envoi de l'email…",
+  google_gmail_list:      "Lecture des emails…",
+  google_calendar_create: "Création de l'événement…",
+  google_calendar_list:   "Lecture du calendrier…",
+  ssh_execute:            "Exécution de la commande…",
+  weather_get:            "Récupération de la météo…",
+  news_get_headlines:     "Chargement des actualités…",
+  generate_image:         "Génération de l'image…",
+  translate_text:         "Traduction…",
+  notes_create:           "Création de la note…",
+  notes_search:           "Recherche dans les notes…",
+  trainer_screenshot:     "Capture de l'écran…",
+  trainer_start:          "Démarrage de la démonstration…",
+};
+
+function toolLabel(tool: string): string {
+  return TOOL_LABELS[tool] ?? `${tool.replace(/_/g, " ")}…`;
+}
+
 interface ChatWindowProps {
   messages: ChatMessage[];
   isLoading?: boolean;
   onSuggestion?: (text: string) => void;
   streamingContent?: string;
   conversationId?: string;
+  activeTool?: string | null;
 }
 
-export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent, conversationId }: ChatWindowProps) {
+export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent, conversationId, activeTool }: ChatWindowProps) {
   const t = useTranslations("chat");
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -101,8 +138,22 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
         </div>
       )}
 
-      {/* Thinking indicator — shown only before first token arrives */}
-      {isLoading && !streamingContent && messages[messages.length - 1]?.role !== "assistant" && (
+      {/* Tool execution indicator — shown when a tool is running */}
+      {isLoading && activeTool && (
+        <div className="flex gap-3 items-center">
+          <div className="w-7 h-7 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
+            <Bot className="w-3.5 h-3.5 text-cyber-cyan" />
+          </div>
+          <div className="bg-bg-card border border-cyber-cyan/20 rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-xs text-cyber-cyan">
+            {/* Spinning ring */}
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-cyber-cyan/30 border-t-cyber-cyan animate-spin shrink-0" />
+            {toolLabel(activeTool)}
+          </div>
+        </div>
+      )}
+
+      {/* Thinking indicator — shown before first token and when no tool is active */}
+      {isLoading && !streamingContent && !activeTool && messages[messages.length - 1]?.role !== "assistant" && (
         <div className="flex gap-3">
           <div className="w-7 h-7 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
             <Bot className="w-3.5 h-3.5 text-cyber-cyan" />

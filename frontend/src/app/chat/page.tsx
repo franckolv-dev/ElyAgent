@@ -101,6 +101,7 @@ function ChatPageInner() {
   const [suggestion,      setSuggestion]      = useState<string>("");
   const [streamingContent,setStreamingContent]= useState<string>("");
   const [browserFrame,    setBrowserFrame]    = useState<BrowserFrame | null>(null);
+  const [activeTool,      setActiveTool]      = useState<string | null>(null);
   const wsRef = useRef<AgentWebSocket | null>(null);
   const router = useRouter();
 
@@ -139,7 +140,13 @@ function ChatPageInner() {
         setConversationId(msg.conversation_id);
         setIsLoading(true);
         setStreamingContent("");
+        setActiveTool(null);
+      } else if (msg.type === "tool_start") {
+        setActiveTool(msg.tool ?? null);
+      } else if (msg.type === "tool_end") {
+        setActiveTool(null);
       } else if (msg.type === "token") {
+        setActiveTool(null);
         setStreamingContent((prev) => prev + (msg.content ?? ""));
       } else if (msg.type === "message" && msg.role === "assistant") {
         setMessages((prev) => [...prev, {
@@ -150,10 +157,12 @@ function ChatPageInner() {
           created_at: new Date().toISOString(),
         }]);
         setStreamingContent("");
+        setActiveTool(null);
         setIsLoading(false);
       } else if (msg.type === "error") {
         setMessages((prev) => [...prev, { role: "assistant", content: t("error", { message: msg.content ?? "" }) }]);
         setStreamingContent("");
+        setActiveTool(null);
         setIsLoading(false);
       } else if (msg.type === "browser_frame" && msg.data) {
         setBrowserFrame({ data: msg.data, url: msg.url ?? "", title: msg.title ?? "" });
@@ -207,6 +216,7 @@ function ChatPageInner() {
                 onSuggestion={setSuggestion}
                 streamingContent={streamingContent}
                 conversationId={conversationId}
+                activeTool={activeTool}
               />
               {/* ── Live Browser Copilot — visible whenever Ély uses the browser ── */}
               {browserFrame && (
