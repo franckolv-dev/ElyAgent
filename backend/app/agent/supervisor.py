@@ -391,10 +391,25 @@ def _make_dispatch_node(domain: str):
             # like pdf_read, search_web, etc. are actually executed and the
             # user gets a real response instead of an empty bubble.
             from app.agent.nodes import tool_node as _tool_node
-            from langchain_core.messages import AIMessage as _AI
+            from langchain_core.messages import AIMessage as _AI, BaseMessage as _BM
+            from langchain_core.messages import messages_from_dict as _mfd
+
+            def _ensure_base_messages(msgs: list) -> list:
+                """Convert any serialized dict messages to BaseMessage objects."""
+                result = []
+                for m in msgs:
+                    if isinstance(m, _BM):
+                        result.append(m)
+                    elif isinstance(m, dict):
+                        try:
+                            result.extend(_mfd([m]))
+                        except Exception:
+                            pass  # skip malformed
+                return result
 
             general = create_agent_node()
             current_state = dict(state)
+            current_state["messages"] = _ensure_base_messages(current_state.get("messages", []))
             MAX_STEPS = 10
             for _ in range(MAX_STEPS):
                 result = await general(current_state)

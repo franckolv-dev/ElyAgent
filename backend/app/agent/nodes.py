@@ -249,7 +249,22 @@ def create_agent_node():
         nonlocal _llm_with_tools, _llm_version, _llm_provider_key, _slm_with_tools, _slm_version
         messages = state["messages"]
         user_id = state.get("user_id", "")
-        user_query = messages[-1].content if messages else ""
+        # Defensive: LangGraph may pass messages as dicts (serialized form)
+        # when a node receives state that was built outside the graph runner.
+        _last = messages[-1] if messages else None
+        if isinstance(_last, dict):
+            user_query = _last.get("content") or ""
+            if isinstance(user_query, list):  # multi-block content
+                user_query = " ".join(
+                    b.get("text", "") if isinstance(b, dict) else str(b)
+                    for b in user_query
+                )
+        else:
+            _c = _last.content if _last else ""
+            user_query = " ".join(
+                b.get("text", "") if isinstance(b, dict) else str(b)
+                for b in _c
+            ) if isinstance(_c, list) else (_c or "")
 
         # Hot-reload: rebuild LLM if provider/model changed OR tools changed
         current_version = registry.tools_version
