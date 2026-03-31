@@ -442,6 +442,7 @@ def create_agent_node():
                     "429", "rate", "quota", "insuffi", "401", "403", "404",
                     "not_found", "not found", "overloaded", "503", "unavailable",
                     "deprecated", "no longer available",
+                    "invalid_argument", "bad request", "400",
                 ))
                 if not _recoverable:
                     raise

@@ -36,7 +36,7 @@ async def _get_sheets_service(user_google_credentials_json: str | None):
 async def sheets_create_spreadsheet(
     title: str,
     headers: list[str] | None = None,
-    rows: list[list] | None = None,
+    rows: list[list[str]] | None = None,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new Google Sheets spreadsheet (equivalent to an Excel file).
@@ -125,7 +125,7 @@ async def sheets_read_spreadsheet(
 @tool
 async def sheets_append_rows(
     spreadsheet_id: str,
-    rows: list[list],
+    rows: list[list[str]],
     sheet_name: str = "Sheet1",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
 ) -> str:

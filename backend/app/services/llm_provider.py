@@ -387,17 +387,21 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
     candidates: list[tuple[str, BaseChatModel]] = []
 
     gemini_key = _key("gemini", settings.gemini_api_key)
-    if gemini_key and current_provider != "gemini":
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            candidates.append(("gemini/gemini-2.5-flash", ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                google_api_key=gemini_key,
-                max_output_tokens=4096,
-                temperature=0.7,
-            )))
-        except Exception:
-            pass
+    if gemini_key:
+        current_model = _runtime.get("model") or settings.active_llm_model or ""
+        # If current model IS gemini-2.5-flash, skip (no point retrying same model).
+        # Otherwise always include gemini-2.5-flash as a reliable fallback.
+        if current_provider != "gemini" or current_model != "gemini-2.5-flash":
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                candidates.append(("gemini/gemini-2.5-flash", ChatGoogleGenerativeAI(
+                    model="gemini-2.5-flash",
+                    google_api_key=gemini_key,
+                    max_output_tokens=4096,
+                    temperature=0.7,
+                )))
+            except Exception:
+                pass
 
     anthropic_key = _key("anthropic", settings.anthropic_api_key)
     if anthropic_key and current_provider != "anthropic":
