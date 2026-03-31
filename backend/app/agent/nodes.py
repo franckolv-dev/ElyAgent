@@ -437,8 +437,9 @@ def create_agent_node():
                 # authentication failure, service unavailable.
                 _exc_str = str(primary_exc).lower()
                 _recoverable = any(k in _exc_str for k in (
-                    "429", "rate", "quota", "insuffi", "401", "403",
-                    "overloaded", "503", "unavailable",
+                    "429", "rate", "quota", "insuffi", "401", "403", "404",
+                    "not_found", "not found", "overloaded", "503", "unavailable",
+                    "deprecated", "no longer available",
                 ))
                 if not _recoverable:
                     raise

@@ -390,8 +390,8 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
     if gemini_key and current_provider != "gemini":
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
-            candidates.append(("gemini/gemini-2.0-flash", ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
+            candidates.append(("gemini/gemini-1.5-flash-latest", ChatGoogleGenerativeAI(
+                model="gemini-1.5-flash-latest",
                 google_api_key=gemini_key,
                 max_output_tokens=4096,
                 temperature=0.7,
@@ -562,7 +562,7 @@ def _make_llm_for_provider(
             return None
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash-latest",
             google_api_key=key,
             max_output_tokens=max_tokens,
             temperature=temperature,

@@ -50,8 +50,7 @@ _PRICING: dict[str, tuple[float, float]] = {
     "deepseek-chat": (0.014, 0.028),
     "deepseek-reasoner": (0.55, 2.19),
     # Gemini
-    "gemini-2.0-flash": (0.10, 0.40),
-    "gemini-2.0-flash-lite": (0.075, 0.30),
+    "gemini-1.5-flash-latest": (0.075, 0.30),
     "gemini-1.5-pro": (1.25, 5.0),
     "gemini-1.5-flash": (0.075, 0.30),
     # Generic fallback

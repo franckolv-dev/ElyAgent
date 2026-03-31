@@ -71,7 +71,7 @@ PROVIDERS_META = [
         "name": "Google Gemini",
         "env_key": "GEMINI_API_KEY",
         "config_key": "api_key_gemini",
-        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+        "models": ["gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-1.5-flash"],
     },
     {
         "id": "deepseek",
