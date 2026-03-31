@@ -17,12 +17,13 @@
 // -----------------------------------------------------------------------------
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
-import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode, Monitor } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode, Monitor, Square } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import { getAccessToken } from "@/lib/auth";
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: Attachment[], screenCapture?: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
   isLoading?: boolean;
   prefill?: string;
@@ -89,7 +90,7 @@ function formatSize(bytes: number): string {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsumed }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPrefillConsumed }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [micError, setMicError] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -345,9 +346,13 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (isLoading) {
+        onStop?.();
+      } else {
+        handleSend();
+      }
     }
-  }, [handleSend]);
+  }, [handleSend, isLoading, onStop]);
 
   const handleInput = useCallback(() => {
     const el = textareaRef.current;
@@ -507,18 +512,24 @@ export function ChatInput({ onSend, disabled, isLoading, prefill, onPrefillConsu
           )}
         </button>
 
-        {/* Send button */}
-        <button
-          onClick={handleSend}
-          disabled={!canSend}
-          className="w-8 h-8 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-        >
-          {isLoading ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
+        {/* Send / Stop button */}
+        {isLoading ? (
+          <button
+            onClick={onStop}
+            title="Interrompre"
+            className="w-8 h-8 rounded-md bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-all shrink-0"
+          >
+            <Square className="w-3.5 h-3.5 fill-current" />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!canSend}
+            className="w-8 h-8 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+          >
             <Send className="w-3.5 h-3.5" />
-          )}
-        </button>
+          </button>
+        )}
       </div>
 
       {/* ── Mic error panel ── */}

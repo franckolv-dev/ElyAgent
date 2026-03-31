@@ -107,6 +107,12 @@ export class AgentWebSocket {
     }
   }
 
+  sendStop() {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "stop" }));
+    }
+  }
+
   onMessage(cb: (msg: WSMessage) => void)  { this.onMessageCallback = cb; }
   onStatus(cb:  (status: "connected" | "disconnected" | "connecting") => void) {
     this.onStatusCallback = cb;

@@ -125,6 +125,10 @@ async def websocket_chat(websocket: WebSocket):
                 }))
                 continue
 
+            # Stop signal with no agent running — just acknowledge and continue
+            if msg.get("type") == "stop":
+                continue
+
             user_content = msg.get("content", "")
             conversation_id = msg.get("conversation_id") or conversation_id
 
@@ -219,7 +223,29 @@ async def websocket_chat(websocket: WebSocket):
             input_tokens_total: int = 0
             output_tokens_total: int = 0
             tools_called: list[str] = []   # track tool invocations for analytics
-            async for event in agent.astream_events(
+
+            # ── Stop-signal watcher ──────────────────────────────────────────────
+            # Run a parallel task that listens for {"type":"stop"} from the client
+            # while the agent stream is in progress.
+            stop_event = asyncio.Event()
+
+            async def _watch_for_stop() -> None:
+                while not stop_event.is_set():
+                    try:
+                        raw = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+                        inner = json.loads(raw)
+                        if inner.get("type") == "stop":
+                            stop_event.set()
+                            return
+                    except asyncio.TimeoutError:
+                        pass
+                    except Exception:
+                        stop_event.set()
+                        return
+
+            watcher_task = asyncio.create_task(_watch_for_stop())
+            try:
+              async for event in agent.astream_events(
                 {
                     "messages": history_msgs,
                     "user_id": user_id,
@@ -228,7 +254,9 @@ async def websocket_chat(websocket: WebSocket):
                 },
                 version="v2",
                 config={"recursion_limit": 100},
-            ):
+              ):
+                if stop_event.is_set():
+                    break
                 if event["event"] == "on_chat_model_stream":
                     # Only stream tokens from specialist nodes, not the router
                     node = event.get("metadata", {}).get("langgraph_node", "")
@@ -303,8 +331,28 @@ async def websocket_chat(websocket: WebSocket):
                                 ai_content = _candidate
                                 break
 
+            finally:
+                # Always clean up the stop watcher, whether agent finished or was interrupted
+                stop_event.set()
+                watcher_task.cancel()
+                try:
+                    await watcher_task
+                except asyncio.CancelledError:
+                    pass
+
+            was_stopped = stop_event.is_set() and not ai_content
+
+            # If interrupted with no content, notify client and skip saving
+            if was_stopped:
+                await websocket.send_text(json.dumps({"type": "stopped"}))
+                continue
+
             # Restore real values in the response
             ai_content = sf.deanonymize(ai_content)
+
+            # If interrupted but partial content exists, send it as a normal message
+            if stop_event.is_set() and ai_content:
+                ai_content = ai_content.rstrip() + " ✋"
 
             async with async_session() as db:
                 ai_msg = Message(

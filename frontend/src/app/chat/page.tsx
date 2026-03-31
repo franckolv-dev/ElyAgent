@@ -159,6 +159,20 @@ function ChatPageInner() {
         setStreamingContent("");
         setActiveTool(null);
         setIsLoading(false);
+      } else if (msg.type === "stopped") {
+        // Agent was interrupted — finalize any partial content already streamed
+        setStreamingContent((partial) => {
+          if (partial) {
+            setMessages((prev) => [...prev, {
+              role: "assistant",
+              content: partial,
+              created_at: new Date().toISOString(),
+            }]);
+          }
+          return "";
+        });
+        setActiveTool(null);
+        setIsLoading(false);
       } else if (msg.type === "error") {
         setMessages((prev) => [...prev, { role: "assistant", content: t("error", { message: msg.content ?? "" }) }]);
         setStreamingContent("");
@@ -229,6 +243,7 @@ function ChatPageInner() {
               )}
               <ChatInput
                 onSend={handleSend}
+                onStop={() => wsRef.current?.sendStop()}
                 isLoading={isLoading}
                 disabled={wsStatus === "disconnected"}
                 prefill={suggestion}

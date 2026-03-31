@@ -57,7 +57,7 @@ export interface Conversation {
 }
 
 export interface WSMessage {
-  type: "start" | "message" | "error" | "stream" | "token" | "hitl_pending" | "hitl_resolved" | "browser_frame" | "tool_start" | "tool_end";
+  type: "start" | "message" | "error" | "stream" | "token" | "hitl_pending" | "hitl_resolved" | "browser_frame" | "tool_start" | "tool_end" | "stopped";
   tool?: string;
   content?: string;
   role?: string;
