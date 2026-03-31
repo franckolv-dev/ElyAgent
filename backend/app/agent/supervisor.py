@@ -384,10 +384,34 @@ def _make_dispatch_node(domain: str):
             return {"messages": new_messages, "domain": domain}
         except Exception as exc:
             logger.error(
-                "Sub-agent '%s' failed (%s) — falling back to general agent", domain, exc
+                "Sub-agent '%s' failed (%s) — running general agent with tools loop",
+                domain, exc,
             )
+            # Run a full agent+tools loop (not just one turn) so tool_calls
+            # like pdf_read, search_web, etc. are actually executed and the
+            # user gets a real response instead of an empty bubble.
+            from app.agent.nodes import tool_node as _tool_node
+            from langchain_core.messages import AIMessage as _AI
+
             general = create_agent_node()
-            return await general(state)
+            current_state = dict(state)
+            MAX_STEPS = 10
+            for _ in range(MAX_STEPS):
+                result = await general(current_state)
+                new_msgs = result.get("messages", [])
+                all_msgs = list(current_state["messages"]) + new_msgs
+                current_state = {**current_state, "messages": all_msgs}
+                last = all_msgs[-1] if all_msgs else None
+                if not (isinstance(last, _AI) and getattr(last, "tool_calls", None)):
+                    break  # No pending tool calls — final answer reached
+                # Execute tools and continue the loop
+                tool_result = await _tool_node(current_state)
+                tool_msgs = tool_result.get("messages", [])
+                all_msgs = all_msgs + tool_msgs
+                current_state = {**current_state, "messages": all_msgs}
+
+            new_messages = current_state["messages"][len(state["messages"]):]
+            return {"messages": new_messages, "domain": domain}
 
     dispatch_node.__name__ = f"{domain}_dispatch_node"
     return dispatch_node

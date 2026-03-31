@@ -239,10 +239,43 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                         f"-> R: {p.get('assistant_message', '')[:120]}\n"
                     )
 
-            response = await llm_with_tools.ainvoke(
+            _invoke_msgs = (
                 [{"role": "system", "content": system}]
                 + _sanitize_messages_for_mistral(messages)
             )
+            try:
+                response = await llm_with_tools.ainvoke(_invoke_msgs)
+            except Exception as _primary_exc:
+                # Recover from quota/rate-limit/auth errors by trying fallbacks
+                from app.services.llm_provider import get_fallback_llms
+                _exc_str = str(_primary_exc).lower()
+                _recoverable = any(k in _exc_str for k in (
+                    "429", "rate", "quota", "insuffi", "401", "403",
+                    "overloaded", "503", "unavailable",
+                ))
+                if not _recoverable:
+                    raise
+                logger.warning(
+                    "Sub-agent '%s' primary LLM failed (%s) — trying fallbacks",
+                    cfg.name, _primary_exc,
+                )
+                response = None
+                for _fb_label, _fb_llm in get_fallback_llms():
+                    try:
+                        _fb_with_tools = _fb_llm.bind_tools(agent_tools)
+                        response = await _fb_with_tools.ainvoke(_invoke_msgs)
+                        logger.info(
+                            "Sub-agent '%s' fallback succeeded with %s",
+                            cfg.name, _fb_label,
+                        )
+                        break
+                    except Exception as _fb_exc:
+                        logger.warning(
+                            "Sub-agent '%s' fallback %s failed: %s",
+                            cfg.name, _fb_label, _fb_exc,
+                        )
+                if response is None:
+                    raise _primary_exc
 
             # Fire-and-forget: extract facts from this exchange for user memory
             if user_id:
