@@ -25,6 +25,9 @@ func main() {
 
 	log.Printf("Config loaded: vps_url=%s, sandbox_dirs=%v", cfg.VPSURL, cfg.SandboxDirs)
 
+	// ── Auto-install system dependencies (scrot, xdotool on Linux, etc.) ─
+	EnsureDependencies()
+
 	// ── Open browser in background ────────────────────────────────────────
 	go OpenBrowser(cfg.FrontendURL())
 
