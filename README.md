@@ -172,6 +172,16 @@ cd desktop
 ./ely-desktop       # run the daemon — reads config.toml for server URL and token
 ```
 
+**Required system packages (install once on the machine running the daemon):**
+
+| Platform | Command |
+|---|---|
+| **Linux (Debian/Ubuntu/Mint)** | `sudo apt install scrot xdotool` |
+| **macOS** | `brew install cliclick` *(screencapture is built-in)* |
+| **Windows** | Nothing — PowerShell + user32.dll are used natively |
+
+> On Linux, `scrot` handles screenshots and `xdotool` controls the mouse and keyboard. These must be installed on the machine running `ely-desktop`, not on the server.
+
 ---
 
 ## ELY Trainer — Interactive Demonstrations
