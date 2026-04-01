@@ -36,7 +36,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly", # kept so Google's scope response matches exactly
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",          # full Drive access (create, edit, delete)
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/tasks",
