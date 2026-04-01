@@ -18,6 +18,9 @@
 from __future__ import annotations
 
 import base64
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Annotated
 
@@ -404,3 +407,267 @@ async def gmail_search_for_cleanup(
         return "\n".join(summary)
     except Exception as e:
         return f"Erreur recherche emails: {e}"
+
+
+@tool
+async def gmail_reply_email(
+    email_id: str,
+    body: str,
+    reply_all: bool = False,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Répond à un email. ALWAYS ask user confirmation before sending.
+
+    Args:
+        email_id: The email ID to reply to (from gmail_list_emails)
+        body: Reply body (plain text)
+        reply_all: If True, reply to all recipients (To + Cc)
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        # Fetch original message metadata
+        original = service.users().messages().get(
+            userId="me", id=email_id, format="metadata",
+            metadataHeaders=["Message-ID", "References", "Subject", "From", "To", "Cc"]
+        ).execute()
+        headers = {h["name"]: h["value"] for h in original.get("payload", {}).get("headers", [])}
+
+        original_message_id = headers.get("Message-ID", "")
+        references = headers.get("References", "")
+        subject = headers.get("Subject", "")
+        from_addr = headers.get("From", "")
+        to_addr = headers.get("To", "")
+        cc_addr = headers.get("Cc", "")
+
+        # Build reply subject
+        if not subject.lower().startswith("re:"):
+            subject = f"Re: {subject}"
+
+        # Build reply message
+        message = MIMEText(body)
+        message["Subject"] = subject
+        message["In-Reply-To"] = original_message_id
+        message["References"] = f"{references} {original_message_id}".strip()
+
+        if reply_all:
+            # Reply to sender
+            message["To"] = from_addr
+            # Get user's own email to exclude from Cc
+            profile = service.users().getProfile(userId="me").execute()
+            my_email = profile.get("emailAddress", "").lower()
+            # Combine original To + Cc, exclude own email
+            all_recipients = f"{to_addr}, {cc_addr}".strip(", ")
+            cc_list = [
+                addr.strip() for addr in all_recipients.split(",")
+                if addr.strip() and my_email not in addr.lower()
+            ]
+            if cc_list:
+                message["Cc"] = ", ".join(cc_list)
+        else:
+            message["To"] = from_addr
+
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        thread_id = original.get("threadId", "")
+        send_body = {"raw": raw}
+        if thread_id:
+            send_body["threadId"] = thread_id
+
+        service.users().messages().send(userId="me", body=send_body).execute()
+        dest = from_addr if not reply_all else f"{from_addr} (+ Cc)"
+        return f"Réponse envoyée avec succès à {dest} (sujet: {subject})"
+    except Exception as e:
+        return f"Erreur réponse email: {e}"
+
+
+@tool
+async def gmail_send_with_attachment(
+    to: str,
+    subject: str,
+    body: str,
+    drive_file_id: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Send an email with an attachment from Google Drive. ALWAYS ask user confirmation before sending.
+
+    Args:
+        to: Recipient email address
+        subject: Email subject
+        body: Email body (plain text)
+        drive_file_id: Google Drive file ID to attach (optional)
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        message = MIMEMultipart()
+        message["to"] = to
+        message["subject"] = subject
+        message.attach(MIMEText(body))
+
+        if drive_file_id:
+            from googleapiclient.discovery import build
+            from app.services.google_auth import get_user_credentials
+
+            creds = await get_user_credentials(user_google_credentials_json)
+            if not creds:
+                return "Google non connecté (Drive)."
+
+            drive_service = build("drive", "v3", credentials=creds)
+            file_meta = drive_service.files().get(
+                fileId=drive_file_id, fields="name,mimeType"
+            ).execute()
+            file_name = file_meta.get("name", "attachment")
+            mime_type = file_meta.get("mimeType", "application/octet-stream")
+
+            file_content = drive_service.files().get_media(fileId=drive_file_id).execute()
+
+            maintype, subtype = mime_type.split("/", 1) if "/" in mime_type else ("application", "octet-stream")
+            attachment = MIMEBase(maintype, subtype)
+            attachment.set_payload(file_content)
+            encoders.encode_base64(attachment)
+            attachment.add_header("Content-Disposition", "attachment", filename=file_name)
+            message.attach(attachment)
+
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        service.users().messages().send(userId="me", body={"raw": raw}).execute()
+
+        attachment_info = f" avec pièce jointe (Drive: {drive_file_id})" if drive_file_id else ""
+        return f"Email envoyé avec succès à {to} (sujet: {subject}){attachment_info}"
+    except Exception as e:
+        return f"Erreur envoi email avec pièce jointe: {e}"
+
+
+@tool
+async def gmail_mark_read(
+    email_ids: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Mark emails as read.
+
+    Args:
+        email_ids: Comma-separated email IDs (e.g. 'id1,id2,id3')
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        ids = [eid.strip() for eid in email_ids.split(",") if eid.strip()]
+        if not ids:
+            return "Aucun ID d'email fourni."
+
+        service.users().messages().batchModify(
+            userId="me",
+            body={"ids": ids, "removeLabelIds": ["UNREAD"]},
+        ).execute()
+        return f"{len(ids)} email(s) marqué(s) comme lu(s)."
+    except Exception as e:
+        return f"Erreur marquage emails lus: {e}"
+
+
+@tool
+async def gmail_mark_unread(
+    email_ids: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Mark emails as unread.
+
+    Args:
+        email_ids: Comma-separated email IDs (e.g. 'id1,id2,id3')
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        ids = [eid.strip() for eid in email_ids.split(",") if eid.strip()]
+        if not ids:
+            return "Aucun ID d'email fourni."
+
+        service.users().messages().batchModify(
+            userId="me",
+            body={"ids": ids, "addLabelIds": ["UNREAD"]},
+        ).execute()
+        return f"{len(ids)} email(s) marqué(s) comme non lu(s)."
+    except Exception as e:
+        return f"Erreur marquage emails non lus: {e}"
+
+
+@tool
+async def gmail_create_draft(
+    to: str,
+    subject: str,
+    body: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Create a draft email (not sent).
+
+    Args:
+        to: Recipient email address
+        subject: Email subject
+        body: Email body (plain text)
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        message = MIMEText(body)
+        message["to"] = to
+        message["subject"] = subject
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+        draft = service.users().drafts().create(
+            userId="me", body={"message": {"raw": raw}}
+        ).execute()
+        draft_id = draft.get("id", "?")
+        return f"Brouillon créé avec succès (id: {draft_id}, destinataire: {to}, sujet: {subject})"
+    except Exception as e:
+        return f"Erreur création brouillon: {e}"
+
+
+@tool
+async def gmail_list_drafts(
+    max_results: int = 10,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """List draft emails from Gmail.
+
+    Args:
+        max_results: Number of drafts to return (default 10)
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        result = service.users().drafts().list(
+            userId="me", maxResults=max_results
+        ).execute()
+        drafts = result.get("drafts", [])
+
+        if not drafts:
+            return "Aucun brouillon trouvé."
+
+        items = []
+        for draft in drafts:
+            draft_detail = service.users().drafts().get(
+                userId="me", id=draft["id"], format="metadata"
+            ).execute()
+            msg = draft_detail.get("message", {})
+            headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+            snippet = msg.get("snippet", "")[:100]
+            items.append(
+                f"ID: {draft['id']}\n"
+                f"À: {headers.get('To', 'Non défini')}\n"
+                f"Sujet: {headers.get('Subject', 'Sans sujet')}\n"
+                f"Aperçu: {snippet}"
+            )
+
+        return f"{len(items)} brouillon(s) trouvé(s):\n\n" + "\n---\n".join(items)
+    except Exception as e:
+        return f"Erreur liste brouillons: {e}"

@@ -167,15 +167,29 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "Tu maîtrises Gmail, Google Calendar, Google Drive, Google Docs, Google "
         "Sheets, Google Tasks et Google Contacts. Tu aides l'utilisateur à gérer "
         "sa vie numérique Google de façon efficace. Toujours donner l'URL après chaque création.\n\n"
-        "Outils disponibles : gmail_list_emails, gmail_read_email, gmail_send_email "
-        "(HITL), gmail_search_for_cleanup (trouve newsletters/promos/démarchage), "
-        "gmail_list_labels, gmail_create_label, gmail_move_emails (HITL), "
-        "gmail_trash_emails (HITL — confirmation OBLIGATOIRE avant appel), "
-        "calendar_list_events, calendar_create_event (HITL), drive_list_files, "
-        "drive_read_file, docs_create_document, docs_read_document, docs_append_text, "
-        "sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
-        "tasks_list, tasks_create, tasks_complete, "
-        "contacts_search, contacts_list, contacts_create." + _COMMON_FORMAT
+        "RÈGLE ABSOLUE D'EXÉCUTION : Appelle TOUJOURS les outils directement et immédiatement "
+        "sans annoncer en texte ce que tu vas faire. Ne dis JAMAIS 'je vais chercher', "
+        "'je vais lancer', 'je vais effectuer' — appelle l'outil sans commentaire. "
+        "Les actions critiques déclenchent automatiquement une confirmation HITL.\n\n"
+        "Outils disponibles :\n"
+        "Gmail : gmail_list_emails, gmail_read_email, gmail_send_email (HITL), "
+        "gmail_reply_email (HITL), gmail_send_with_attachment (HITL), "
+        "gmail_mark_read, gmail_mark_unread, gmail_create_draft, gmail_list_drafts, "
+        "gmail_search_for_cleanup, gmail_list_labels, gmail_create_label, "
+        "gmail_move_emails (HITL), gmail_trash_emails (HITL).\n"
+        "Calendar : calendar_list_events, calendar_create_event (HITL), "
+        "calendar_get_event, calendar_update_event, calendar_delete_event (HITL), "
+        "calendar_check_availability, calendar_list_calendars.\n"
+        "Drive : drive_list_files, drive_read_file, drive_create_folder, drive_create_file, "
+        "drive_update_file, drive_move_file (HITL), drive_rename_file, drive_delete_file (HITL).\n"
+        "Docs : docs_create_document, docs_read_document, docs_append_text, "
+        "docs_replace_text, docs_insert_table.\n"
+        "Sheets : sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
+        "sheets_update_cells, sheets_delete_rows, sheets_add_sheet, sheets_list_sheets.\n"
+        "Tasks : tasks_list, tasks_create, tasks_complete, tasks_update, "
+        "tasks_delete (HITL), tasks_list_tasklists, tasks_create_tasklist.\n"
+        "Contacts : contacts_search, contacts_list, contacts_create, "
+        "contacts_get, contacts_update, contacts_delete (HITL)." + _COMMON_FORMAT
     ),
     "infra": (
         _IDENTITY +
@@ -207,15 +221,33 @@ _RESEARCH_SKILLS = {
 }
 
 _WORKSPACE_SKILLS = {
+    # Gmail
     "gmail_list_emails", "gmail_read_email", "gmail_send_email",
-    "gmail_list_labels", "gmail_create_label", "gmail_move_emails",
-    "gmail_trash_emails", "gmail_search_for_cleanup",
+    "gmail_reply_email", "gmail_send_with_attachment",
+    "gmail_mark_read", "gmail_mark_unread",
+    "gmail_create_draft", "gmail_list_drafts",
+    "gmail_list_labels", "gmail_create_label",
+    "gmail_move_emails", "gmail_trash_emails", "gmail_search_for_cleanup",
+    # Calendar
     "calendar_list_events", "calendar_create_event",
+    "calendar_get_event", "calendar_update_event", "calendar_delete_event",
+    "calendar_check_availability", "calendar_list_calendars",
+    # Drive
     "drive_list_files", "drive_read_file",
+    "drive_create_folder", "drive_create_file", "drive_update_file",
+    "drive_move_file", "drive_rename_file", "drive_delete_file",
+    # Docs
     "docs_create_document", "docs_read_document", "docs_append_text",
+    "docs_replace_text", "docs_insert_table",
+    # Sheets
     "sheets_create_spreadsheet", "sheets_read_spreadsheet", "sheets_append_rows",
+    "sheets_update_cells", "sheets_delete_rows", "sheets_add_sheet", "sheets_list_sheets",
+    # Tasks
     "tasks_list", "tasks_create", "tasks_complete",
+    "tasks_update", "tasks_delete", "tasks_list_tasklists", "tasks_create_tasklist",
+    # Contacts
     "contacts_search", "contacts_list", "contacts_create",
+    "contacts_get", "contacts_update", "contacts_delete",
 }
 
 _INFRA_SKILLS = {

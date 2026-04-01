@@ -26,6 +26,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+
+# Google may return additional scopes (e.g. drive.readonly alongside drive).
+# This tells oauthlib to accept expanded scopes instead of raising an error.
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 from app.config import get_settings
 

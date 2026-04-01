@@ -17,13 +17,30 @@
 """Google Contacts skill."""
 from app.skills.base import Skill
 from app.skills.registry import get_skill_registry
-from app.agent.tools.contacts_tool import contacts_search, contacts_list, contacts_create
+from app.agent.tools.contacts_tool import (
+    contacts_search,
+    contacts_list,
+    contacts_create,
+    contacts_get,
+    contacts_update,
+    contacts_delete,
+)
 
 get_skill_registry().register(Skill(
     name="google_contacts",
     display_name="Contacts Google",
-    description="Rechercher, lister et créer des contacts Google",
+    description=(
+        "Rechercher, lister, créer, modifier et supprimer des contacts Google. "
+        "Accéder aux détails complets (email, téléphone, entreprise, adresse)."
+    ),
     icon="👤",
     scopes=["google_oauth"],
-    tools=[contacts_search, contacts_list, contacts_create],
+    tools=[
+        contacts_search,
+        contacts_list,
+        contacts_create,
+        contacts_get,
+        contacts_update,
+        contacts_delete,
+    ],
 ))

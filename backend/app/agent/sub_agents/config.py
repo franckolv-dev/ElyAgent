@@ -55,6 +55,7 @@ Utilisation des outils — IMPÉRATIF :
 - Appelle les outils DIRECTEMENT sans les annoncer en texte au préalable
 - Ne dis JAMAIS "je vais utiliser l'outil X" ou "je lance une recherche" — fais-le
 - Si une confirmation est requise, le système la demandera automatiquement
+- N'écris JAMAIS de code Python pour représenter un appel d'outil. Appelle toujours l'outil directement via le mécanisme de function calling. Écrire `print(tool_name(...))` ou tout autre code est INTERDIT.
 """
 
 # Anti-hallucination block injected at the top of every agent prompt
@@ -122,41 +123,89 @@ WORKSPACE_AGENT = SubAgentConfig(
         "une confirmation humaine via le système HITL — tu n'as pas à demander toi-même.\n\n"
         "Tu aides l'utilisateur à gérer sa vie numérique Google de façon efficace. "
         "Toujours donner l'URL après chaque création.\n\n"
-        "Outils disponibles : gmail_list_emails, gmail_read_email, gmail_send_email "
-        "(HITL), gmail_search_for_cleanup, gmail_list_labels, gmail_create_label, "
-        "gmail_move_emails (HITL), gmail_trash_emails (HITL — confirmation OBLIGATOIRE), "
-        "calendar_list_events, calendar_create_event (HITL), drive_list_files, "
-        "drive_read_file, docs_create_document, docs_read_document, docs_append_text, "
-        "sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
-        "tasks_list, tasks_create, tasks_complete, "
-        "contacts_search, contacts_list, contacts_create."
+        "Outils disponibles :\n"
+        "Gmail : gmail_list_emails, gmail_read_email, gmail_send_email (HITL), "
+        "gmail_reply_email (HITL), gmail_send_with_attachment (HITL), "
+        "gmail_mark_read, gmail_mark_unread, gmail_create_draft, gmail_list_drafts, "
+        "gmail_search_for_cleanup, gmail_list_labels, gmail_create_label, "
+        "gmail_move_emails (HITL), gmail_trash_emails (HITL).\n"
+        "Calendar : calendar_list_events, calendar_create_event (HITL), "
+        "calendar_get_event, calendar_update_event, calendar_delete_event (HITL), "
+        "calendar_check_availability, calendar_list_calendars.\n"
+        "Drive : drive_list_files, drive_read_file, drive_create_folder, drive_create_file, "
+        "drive_update_file, drive_move_file (HITL), drive_rename_file, drive_delete_file (HITL).\n"
+        "Docs : docs_create_document, docs_read_document, docs_append_text, "
+        "docs_replace_text, docs_insert_table.\n"
+        "Sheets : sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
+        "sheets_update_cells, sheets_delete_rows, sheets_add_sheet, sheets_list_sheets.\n"
+        "Tasks : tasks_list, tasks_create, tasks_complete, tasks_update, "
+        "tasks_delete (HITL), tasks_list_tasklists, tasks_create_tasklist.\n"
+        "Contacts : contacts_search, contacts_list, contacts_create, "
+        "contacts_get, contacts_update, contacts_delete (HITL)."
         + _COMMON_FORMAT
     ),
     tool_names={
+        # Gmail
         "gmail_list_emails",
         "gmail_read_email",
         "gmail_send_email",
+        "gmail_reply_email",
+        "gmail_send_with_attachment",
+        "gmail_mark_read",
+        "gmail_mark_unread",
+        "gmail_create_draft",
+        "gmail_list_drafts",
         "gmail_list_labels",
         "gmail_create_label",
         "gmail_move_emails",
         "gmail_trash_emails",
         "gmail_search_for_cleanup",
+        # Calendar
         "calendar_list_events",
         "calendar_create_event",
+        "calendar_get_event",
+        "calendar_update_event",
+        "calendar_delete_event",
+        "calendar_check_availability",
+        "calendar_list_calendars",
+        # Drive
         "drive_list_files",
         "drive_read_file",
+        "drive_create_folder",
+        "drive_create_file",
+        "drive_update_file",
+        "drive_move_file",
+        "drive_rename_file",
+        "drive_delete_file",
+        # Docs
         "docs_create_document",
         "docs_read_document",
         "docs_append_text",
+        "docs_replace_text",
+        "docs_insert_table",
+        # Sheets
         "sheets_create_spreadsheet",
         "sheets_read_spreadsheet",
         "sheets_append_rows",
+        "sheets_update_cells",
+        "sheets_delete_rows",
+        "sheets_add_sheet",
+        "sheets_list_sheets",
+        # Tasks
         "tasks_list",
         "tasks_create",
         "tasks_complete",
+        "tasks_update",
+        "tasks_delete",
+        "tasks_list_tasklists",
+        "tasks_create_tasklist",
+        # Contacts
         "contacts_search",
         "contacts_list",
         "contacts_create",
+        "contacts_get",
+        "contacts_update",
+        "contacts_delete",
     },
     llm_provider=None,
     llm_model=None,

@@ -29,18 +29,89 @@ ELY is a self-hosted AI agent that integrates with your entire digital life — 
 
 ### Google Workspace
 
+ELY has full read/write access across the entire Google Workspace suite. Every destructive action (delete, send, move) pauses for your approval via HITL.
+
+**Gmail (14 tools)**
+
 | Ask ELY | What happens |
 |---|---|
-| "Read my last 5 emails" | Fetches and summarises your latest Gmail messages |
+| "Read my last 5 unread emails" | Fetches and summarises your latest Gmail messages |
 | "Send an email to alice@company.com: subject Meeting Friday" | Drafts the email, pauses for your approval, then sends |
+| "Reply to Bob's email and say I'll be there" | Replies in-thread with proper headers (approval required) |
+| "Create a draft for my weekly report" | Saves a draft without sending |
+| "List my drafts" | Shows all saved drafts |
+| "Mark these emails as read" | Marks messages read/unread |
+| "Move newsletters to the Newsletters label" | Applies labels, removes from inbox (approval required) |
+| "Clean up my promotions folder" | Smart cleanup by category (newsletters, promos, social…) |
+
+**Calendar (6 tools)**
+
+| Ask ELY | What happens |
+|---|---|
 | "What are my appointments this week?" | Lists your Google Calendar events |
-| "Create a dentist appointment Friday March 28 at 10:30am" | Creates the event (approval required) |
+| "Create a dentist appointment Friday at 10:30am" | Creates the event (approval required) |
+| "Move my 3pm meeting to 4pm" | Updates an existing event |
+| "Cancel tomorrow's standup" | Deletes the event (approval required) |
+| "Am I free Thursday between 2pm and 4pm?" | Checks your availability (freebusy query) |
+| "List all my calendars" | Shows every calendar you're subscribed to |
+
+**Drive (8 tools)**
+
+| Ask ELY | What happens |
+|---|---|
 | "List my recent Drive files" | Shows your recent Google Drive files |
-| "Read the document Q1 Report 2026" | Reads the document content |
-| "Create a Word document titled Budget 2026" | Creates a new Google Doc |
-| "Create a spreadsheet for my monthly budget" | Creates a new Google Sheets spreadsheet |
+| "Read the document Q1 Report 2026" | Reads the file content |
+| "Create a folder Projects/2026" | Creates a folder structure |
+| "Create a file notes.txt with this content…" | Creates a new text file |
+| "Update the file budget.csv with these new rows" | Overwrites file content |
+| "Move invoice.pdf to the Archive folder" | Moves a file (approval required) |
+| "Rename draft.docx to final.docx" | Renames a file |
+| "Delete the temp file" | Moves to trash (approval required) |
+
+**Google Docs (5 tools)**
+
+| Ask ELY | What happens |
+|---|---|
+| "Create a document titled Budget 2026" | Creates a new Google Doc |
+| "Read the document Q1 Report" | Extracts the text content |
+| "Add a conclusion paragraph to my document" | Appends text at the end |
+| "Replace all occurrences of 'draft' with 'final'" | Find & replace across the document |
+| "Insert a 3×4 table" | Inserts a formatted table |
+
+**Google Sheets (7 tools)**
+
+| Ask ELY | What happens |
+|---|---|
+| "Create a spreadsheet for my monthly budget" | Creates with optional headers + initial rows |
+| "Read cells A1:D10 from my Budget sheet" | Reads a cell range |
+| "Add these 3 rows to my expenses sheet" | Appends rows |
+| "Update cell B5 to 1500" | Updates a specific cell range |
+| "Delete rows 10 to 15" | Removes rows |
+| "Add a sheet tab called Summary" | Creates a new sheet tab |
+| "List all tabs in my spreadsheet" | Shows every sheet tab |
+
+**Tasks (7 tools)**
+
+| Ask ELY | What happens |
+|---|---|
 | "Show my to-do list" | Lists your Google Tasks |
-| "Add Call the doctor to my tasks" | Creates a new task |
+| "Add Call the doctor to my tasks for tomorrow" | Creates a task with due date |
+| "Mark the dentist task as complete" | Completes a task |
+| "Update the task title to Meeting prep" | Modifies a task (title, notes, date) |
+| "Delete the empty task" | Removes a task (approval required) |
+| "List all my task lists" | Shows every task list |
+| "Create a new list called Work Q2" | Creates a task list |
+
+**Contacts / People API (6 tools)**
+
+| Ask ELY | What happens |
+|---|---|
+| "Find Bob's phone number" | Searches contacts by name / email / phone |
+| "List my recent contacts" | Shows most recently modified contacts |
+| "Create a contact: John Doe, john@example.com" | Creates a new contact |
+| "Get full details for Alice Martin" | Reads a single contact record |
+| "Update Bob's email to bob@newcompany.com" | Modifies a contact |
+| "Delete the Test ELY contact" | Removes a contact (approval required) |
 
 ### Web, News & Weather
 
@@ -64,6 +135,7 @@ ELY is a self-hosted AI agent that integrates with your entire digital life — 
 | "Run docker ps on my-server" | Lists running containers on your server (approval required) |
 | "Generate a QR code for https://example.com" | Creates a downloadable QR code image |
 | "Read the PDF invoice.pdf and summarise it" | Extracts and summarises PDF content |
+| "Extract the product list from this catalogue PDF into a CSV" | Vision-based PDF analysis — Gemini reads layout, tables and images |
 | "Transcribe this audio file" | Converts speech to text via Whisper |
 | "Read the YouTube video at this URL" | Fetches transcript from YouTube |
 
@@ -71,7 +143,7 @@ ELY is a self-hosted AI agent that integrates with your entire digital life — 
 
 ELY works across multiple channels simultaneously with **the same agent, same security, same memory**:
 
-- **Web UI** — React chat interface with voice output (TTS), file/image attachments, conversation history
+- **Web UI** — React chat interface with voice output (TTS), file/image attachments, conversation history, Markdown rendering with clickable links, real-time tool activity indicator, **Stop button** to interrupt ELY mid-task
 - **Telegram Bot** — full agent access from your mobile, inline HITL approval buttons
 - **ntfy (Android)** — push notifications for HITL approvals with action buttons
 
@@ -155,9 +227,9 @@ ELY routes each request to the optimal model based on detected complexity, with 
 | Badge | Tier | Default Chain | Use Case |
 |---|---|---|---|
 | **A** | Simple | Ollama (local) | Quick questions, short answers |
-| **B** | Standard | GLM-4.7 → Gemini → Claude | Everyday tasks, tool use, moderate reasoning |
-| **C** | Complex | GLM-4.7 → Claude (cached) → Gemini | Code, deep analysis, multi-step workflows |
-| **IMG** | Vision | Gemini → GLM-4.7 | Image analysis, screenshots |
+| **B** | Standard | Gemini 2.5 Flash → Claude | Everyday tasks, tool use, moderate reasoning |
+| **C** | Complex | Gemini 2.5 Pro → Claude (cached) | Code, deep analysis, multi-step workflows |
+| **IMG** | Vision | Gemini 2.5 Flash | Image/PDF analysis, screenshots |
 | **SYS** | Maintenance | Ollama (local) | Background tasks: memory extraction, scheduled jobs |
 
 Each tier has an **ordered provider list** and a **fallback toggle** — if disabled, only the first provider is tried. Reorder providers with up/down arrows in **Settings → Routing Levels**.
@@ -167,11 +239,10 @@ Each tier has an **ordered provider list** and a **fallback toggle** — if disa
 | Provider | Models | Notes |
 |---|---|---|
 | **OpenRouter** | 200+ models (Meta, Google, Mistral, Qwen, DeepSeek…) | Universal AI gateway — free models available; browsable in Settings |
-| **Zhipu AI (GLM)** | glm-4.7, glm-4-plus, glm-4-air, glm-4-flash | Automatic prefix caching (~80% cost reduction); OpenAI-compatible API |
 | **Anthropic Claude** | claude-sonnet-4-6, claude-opus-4-6, haiku | Prompt caching enabled (up to 90% cost reduction on system prompts) |
-| **Google Gemini** | gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash | Implicit caching; best multimodal support |
+| **Google Gemini** | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-1.5-pro | Implicit caching; best multimodal & PDF support |
 | **DeepSeek** | deepseek-chat, deepseek-reasoner | Cost-efficient; strong at coding and reasoning |
-| **Mistral AI** | mistral-small, mistral-medium, mistral-large | European servers, GDPR-compliant |
+| **Mistral AI** | mistral-small, mistral-medium, mistral-large | European servers, GDPR-compliant (manual selection only) |
 | **Ollama** | qwen2.5, llama3, mistral, phi3, … | 100% local — no data leaves your machine, zero cost |
 
 Switch provider and model at any time in **Settings** — no restart required. If a provider returns a quota or rate-limit error (HTTP 429), ELY **automatically retries** with the next available provider.

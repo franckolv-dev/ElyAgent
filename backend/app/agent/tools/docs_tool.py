@@ -128,3 +128,91 @@ async def docs_append_text(
         return f"Texte ajouté au document '{title}' (ID: {document_id})"
     except Exception as e:
         return f"Erreur modification document : {e}"
+
+
+@tool
+async def docs_replace_text(
+    document_id: str,
+    find_text: str,
+    replace_text: str,
+    match_case: bool = True,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Replace all occurrences of a text string in a Google Docs document.
+
+    Args:
+        document_id: The document ID
+        find_text: The text to find
+        replace_text: The replacement text
+        match_case: Whether the search is case-sensitive (default True)
+    """
+    service = await _get_docs_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        result = service.documents().batchUpdate(
+            documentId=document_id,
+            body={
+                "requests": [
+                    {
+                        "replaceAllText": {
+                            "containsText": {
+                                "text": find_text,
+                                "matchCase": match_case,
+                            },
+                            "replaceText": replace_text,
+                        }
+                    }
+                ]
+            },
+        ).execute()
+
+        replies = result.get("replies", [{}])
+        count = replies[0].get("replaceAllText", {}).get("occurrencesChanged", 0)
+        return f"{count} remplacement(s) effectué(s) dans le document (ID: {document_id})"
+    except Exception as e:
+        return f"Erreur remplacement texte : {e}"
+
+
+@tool
+async def docs_insert_table(
+    document_id: str,
+    rows: int,
+    columns: int,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Insert a table at the end of a Google Docs document.
+
+    Args:
+        document_id: The document ID
+        rows: Number of rows
+        columns: Number of columns
+    """
+    service = await _get_docs_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        doc = service.documents().get(documentId=document_id).execute()
+        content = doc.get("body", {}).get("content", [])
+        end_index = content[-1].get("endIndex", 1) - 1 if content else 1
+
+        service.documents().batchUpdate(
+            documentId=document_id,
+            body={
+                "requests": [
+                    {
+                        "insertTable": {
+                            "rows": rows,
+                            "columns": columns,
+                            "location": {"index": end_index},
+                        }
+                    }
+                ]
+            },
+        ).execute()
+
+        return f"Tableau {rows}x{columns} inséré dans le document (ID: {document_id})"
+    except Exception as e:
+        return f"Erreur insertion tableau : {e}"

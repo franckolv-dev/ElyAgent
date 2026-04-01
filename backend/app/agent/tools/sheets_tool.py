@@ -154,3 +154,160 @@ async def sheets_append_rows(
         return f"{updated_rows} ligne(s) ajoutée(s) à la feuille '{sheet_name}' (ID: {spreadsheet_id})"
     except Exception as e:
         return f"Erreur ajout lignes : {e}"
+
+
+@tool
+async def sheets_update_cells(
+    spreadsheet_id: str,
+    sheet_range: str,
+    values: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Update specific cells in a Google Sheets spreadsheet.
+
+    Args:
+        spreadsheet_id: The spreadsheet ID
+        sheet_range: Range to update, e.g. 'Sheet1!A1:C3'
+        values: JSON string of list of lists, e.g. '[["Name","Age"],["Alice","30"]]'
+    """
+    service = await _get_sheets_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        parsed_values = json.loads(values)
+        result = service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=sheet_range,
+            valueInputOption="USER_ENTERED",
+            body={"values": parsed_values},
+        ).execute()
+
+        updated = result.get("updatedCells", 0)
+        return f"{updated} cellule(s) mise(s) à jour dans '{sheet_range}' (ID: {spreadsheet_id})"
+    except json.JSONDecodeError:
+        return "Erreur : le paramètre 'values' doit être un JSON valide (liste de listes)."
+    except Exception as e:
+        return f"Erreur mise à jour cellules : {e}"
+
+
+@tool
+async def sheets_delete_rows(
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_row: int,
+    end_row: int,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Delete rows from a Google Sheets spreadsheet.
+
+    Args:
+        spreadsheet_id: The spreadsheet ID
+        sheet_id: Numeric tab ID (0 for the first sheet)
+        start_row: Start row index (0-indexed, inclusive)
+        end_row: End row index (0-indexed, exclusive)
+    """
+    service = await _get_sheets_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={
+                "requests": [
+                    {
+                        "deleteDimension": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "dimension": "ROWS",
+                                "startIndex": start_row,
+                                "endIndex": end_row,
+                            }
+                        }
+                    }
+                ]
+            },
+        ).execute()
+
+        count = end_row - start_row
+        return f"{count} ligne(s) supprimée(s) (lignes {start_row} à {end_row - 1}) (ID: {spreadsheet_id})"
+    except Exception as e:
+        return f"Erreur suppression lignes : {e}"
+
+
+@tool
+async def sheets_add_sheet(
+    spreadsheet_id: str,
+    title: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Add a new sheet tab to an existing Google Sheets spreadsheet.
+
+    Args:
+        spreadsheet_id: The spreadsheet ID
+        title: Name of the new sheet tab
+    """
+    service = await _get_sheets_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        result = service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={
+                "requests": [
+                    {
+                        "addSheet": {
+                            "properties": {"title": title}
+                        }
+                    }
+                ]
+            },
+        ).execute()
+
+        replies = result.get("replies", [{}])
+        new_id = replies[0].get("addSheet", {}).get("properties", {}).get("sheetId", "?")
+        return f"Onglet '{title}' ajouté (sheetId: {new_id}) (ID: {spreadsheet_id})"
+    except Exception as e:
+        return f"Erreur ajout onglet : {e}"
+
+
+@tool
+async def sheets_list_sheets(
+    spreadsheet_id: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """List all sheet tabs in a Google Sheets spreadsheet.
+
+    Args:
+        spreadsheet_id: The spreadsheet ID
+    """
+    service = await _get_sheets_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        result = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets.properties",
+        ).execute()
+
+        sheets = result.get("sheets", [])
+        if not sheets:
+            return "Aucun onglet trouvé."
+
+        lines = [f"{len(sheets)} onglet(s) :"]
+        for s in sheets:
+            props = s.get("properties", {})
+            lines.append(
+                f"• {props.get('title', 'Sans titre')} — "
+                f"sheetId: {props.get('sheetId')}, "
+                f"index: {props.get('index')}, "
+                f"{props.get('gridProperties', {}).get('rowCount', '?')} lignes × "
+                f"{props.get('gridProperties', {}).get('columnCount', '?')} colonnes"
+            )
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Erreur liste onglets : {e}"

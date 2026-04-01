@@ -16,13 +16,32 @@
 # -----------------------------------------------------------------------------
 from app.skills.base import Skill
 from app.skills.registry import get_skill_registry
-from app.agent.tools.calendar_tool import calendar_list_events, calendar_create_event
+from app.agent.tools.calendar_tool import (
+    calendar_list_events,
+    calendar_create_event,
+    calendar_get_event,
+    calendar_update_event,
+    calendar_delete_event,
+    calendar_check_availability,
+    calendar_list_calendars,
+)
 
 get_skill_registry().register(Skill(
     name="google_calendar",
     display_name="Google Calendar",
-    description="Consulter et créer des événements dans Google Calendar",
+    description=(
+        "Consulter, créer, modifier et supprimer des événements Google Calendar. "
+        "Vérifier les disponibilités et lister les agendas."
+    ),
     icon="📅",
     scopes=["google_oauth"],
-    tools=[calendar_list_events, calendar_create_event],
+    tools=[
+        calendar_list_events,
+        calendar_create_event,
+        calendar_get_event,
+        calendar_update_event,
+        calendar_delete_event,
+        calendar_check_availability,
+        calendar_list_calendars,
+    ],
 ))

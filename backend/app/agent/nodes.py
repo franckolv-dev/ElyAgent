@@ -172,31 +172,36 @@ USER_ID_TOOLS = {
 }
 
 GOOGLE_TOOLS = {
-    "gmail_list_emails",
-    "gmail_read_email",
-    "gmail_send_email",
-    "gmail_list_labels",
-    "gmail_create_label",
-    "gmail_move_emails",
-    "gmail_trash_emails",
-    "gmail_search_for_cleanup",
-    "calendar_list_events",
-    "calendar_create_event",
-    "drive_list_files",
-    "drive_read_file",
-    "docs_create_document",
-    "docs_read_document",
-    "docs_append_text",
-    "sheets_create_spreadsheet",
-    "sheets_read_spreadsheet",
-    "sheets_append_rows",
-    "tasks_list",
-    "tasks_create",
-    "tasks_complete",
+    # Gmail
+    "gmail_list_emails", "gmail_read_email", "gmail_send_email",
+    "gmail_reply_email", "gmail_send_with_attachment",
+    "gmail_mark_read", "gmail_mark_unread",
+    "gmail_create_draft", "gmail_list_drafts",
+    "gmail_list_labels", "gmail_create_label",
+    "gmail_move_emails", "gmail_trash_emails", "gmail_search_for_cleanup",
+    # Calendar
+    "calendar_list_events", "calendar_create_event",
+    "calendar_update_event", "calendar_delete_event",
+    "calendar_check_availability", "calendar_list_calendars",
+    # Drive
+    "drive_list_files", "drive_read_file",
+    "drive_create_folder", "drive_create_file",
+    "drive_update_file", "drive_move_file",
+    "drive_rename_file", "drive_delete_file",
+    # Docs
+    "docs_create_document", "docs_read_document", "docs_append_text",
+    "docs_replace_text", "docs_insert_table",
+    # Sheets
+    "sheets_create_spreadsheet", "sheets_read_spreadsheet", "sheets_append_rows",
+    "sheets_update_cells", "sheets_delete_rows",
+    "sheets_add_sheet", "sheets_list_sheets",
+    # Tasks
+    "tasks_list", "tasks_create", "tasks_complete",
+    "tasks_update", "tasks_delete",
+    "tasks_list_tasklists", "tasks_create_tasklist",
     # Contacts (People API)
-    "contacts_search",
-    "contacts_list",
-    "contacts_create",
+    "contacts_search", "contacts_list", "contacts_create",
+    "contacts_get", "contacts_update", "contacts_delete",
 }
 
 

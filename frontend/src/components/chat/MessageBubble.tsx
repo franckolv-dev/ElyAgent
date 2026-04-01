@@ -22,6 +22,8 @@ import { useState, useCallback } from "react";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -204,12 +206,48 @@ export function MessageBubble({ message, isStreaming, lastUserMessage, conversat
             </div>
           </div>
         ) : (
-          <pre className="whitespace-pre-wrap font-mono text-sm break-words">
-            {message.content}
+          <div className="text-sm break-words prose-cyber">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ href, children }) => (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-cyber-cyan underline hover:text-cyber-cyan/70 transition-colors"
+                  >
+                    {children}
+                  </a>
+                ),
+                p: ({ children }) => (
+                  <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>
+                ),
+                code: ({ children, className }) => {
+                  const isBlock = className?.includes("language-");
+                  return isBlock ? (
+                    <pre className="bg-bg-primary/60 border border-border-dim rounded p-2 overflow-x-auto my-2">
+                      <code className="font-mono text-xs text-text-secondary">{children}</code>
+                    </pre>
+                  ) : (
+                    <code className="font-mono text-xs bg-bg-primary/60 px-1 py-0.5 rounded text-cyber-cyan/80">{children}</code>
+                  );
+                },
+                ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
+                li: ({ children }) => <li className="text-sm">{children}</li>,
+                strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
+                h1: ({ children }) => <h1 className="text-base font-bold text-cyber-cyan mb-1">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-sm font-bold text-cyber-cyan mb-1">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-sm font-semibold text-text-primary mb-1">{children}</h3>,
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
             {isStreaming && (
               <span className="inline-block w-2 h-4 bg-cyber-cyan ml-0.5 animate-pulse" />
             )}
-          </pre>
+          </div>
         )}
 
         {/* Feedback + model badge — assistant messages only, not while streaming */}

@@ -64,6 +64,7 @@ async def contacts_search(
         lines = [f"{len(results)} contact(s) trouvé(s) pour « {query} » :"]
         for r in results:
             p = r.get("person", {})
+            resource = p.get("resourceName", "")
             names = p.get("names", [{}])
             name = names[0].get("displayName", "Sans nom") if names else "Sans nom"
 
@@ -75,6 +76,7 @@ async def contacts_search(
             if emails: line += f" — {', '.join(emails)}"
             if phones: line += f" — {', '.join(phones)}"
             if orgs:   line += f" ({', '.join(o for o in orgs if o)})"
+            if resource: line += f"\n  resourceName: {resource}"
             lines.append(line)
 
         return "\n".join(lines)
@@ -113,6 +115,7 @@ async def contacts_list(
 
         lines = [f"{len(connections)} contact(s) :"]
         for p in connections:
+            resource = p.get("resourceName", "")
             names  = p.get("names", [{}])
             name   = names[0].get("displayName", "Sans nom") if names else "Sans nom"
             emails = [e["value"] for e in p.get("emailAddresses", [])]
@@ -121,6 +124,7 @@ async def contacts_list(
             line = f"• {name}"
             if emails: line += f" — {', '.join(emails)}"
             if phones: line += f" — {', '.join(phones)}"
+            if resource: line += f"\n  resourceName: {resource}"
             lines.append(line)
 
         return "\n".join(lines)
@@ -159,7 +163,138 @@ async def contacts_create(
             lambda: service.people().createContact(body=body).execute()
         )
         display = result.get("names", [{}])[0].get("displayName", name)
-        return f"Contact créé : {display}" + (f" ({email})" if email else "")
+        resource = result.get("resourceName", "")
+        return f"Contact créé : {display}" + (f" ({email})" if email else "") + f"\nresourceName: {resource}"
 
     except Exception as exc:
         return f"Erreur lors de la création du contact : {exc}"
+
+
+@tool
+async def contacts_get(
+    resource_name: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Get full details of a Google Contact.
+
+    Args:
+        resource_name: The contact resource name (e.g. 'people/c1234567890')
+    """
+    service = await _get_people_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connecte ton compte Google dans les paramètres."
+
+    try:
+        person = await asyncio.to_thread(
+            lambda: service.people().get(
+                resourceName=resource_name,
+                personFields="names,emailAddresses,phoneNumbers,organizations,addresses,birthdays,biographies",
+            ).execute()
+        )
+
+        names = person.get("names", [{}])
+        name = names[0].get("displayName", "Sans nom") if names else "Sans nom"
+        emails = [e["value"] for e in person.get("emailAddresses", [])]
+        phones = [ph["value"] for ph in person.get("phoneNumbers", [])]
+        orgs = [o.get("name", "") for o in person.get("organizations", [])]
+        addresses = [a.get("formattedValue", "") for a in person.get("addresses", [])]
+        birthdays = person.get("birthdays", [])
+        bios = [b.get("value", "") for b in person.get("biographies", [])]
+
+        lines = [f"Contact : {name}", f"resourceName: {resource_name}"]
+        if emails:    lines.append(f"Email : {', '.join(emails)}")
+        if phones:    lines.append(f"Téléphone : {', '.join(phones)}")
+        if orgs:      lines.append(f"Organisation : {', '.join(o for o in orgs if o)}")
+        if addresses: lines.append(f"Adresse : {', '.join(a for a in addresses if a)}")
+        if birthdays:
+            bd = birthdays[0].get("date", {})
+            lines.append(f"Anniversaire : {bd.get('year', '??')}-{bd.get('month', '??'):02}-{bd.get('day', '??'):02}")
+        if bios:      lines.append(f"Notes : {'; '.join(b for b in bios if b)}")
+
+        return "\n".join(lines)
+
+    except Exception as exc:
+        return f"Erreur lors de la récupération du contact : {exc}"
+
+
+@tool
+async def contacts_update(
+    resource_name: str,
+    name: str = "",
+    email: str = "",
+    phone: str = "",
+    company: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Update an existing Google Contact. Only non-empty fields are modified.
+
+    Args:
+        resource_name: The contact resource name (e.g. 'people/c1234567890')
+        name: New full name (optional)
+        email: New email address (optional)
+        phone: New phone number (optional)
+        company: New company or organization (optional)
+    """
+    service = await _get_people_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connecte ton compte Google dans les paramètres."
+
+    try:
+        # Fetch current contact to get etag
+        current = await asyncio.to_thread(
+            lambda: service.people().get(
+                resourceName=resource_name,
+                personFields="names,emailAddresses,phoneNumbers,organizations",
+            ).execute()
+        )
+
+        body: dict = {"etag": current["etag"]}
+        if name:    body["names"] = [{"givenName": name}]
+        else:       body["names"] = current.get("names", [])
+        if email:   body["emailAddresses"] = [{"value": email}]
+        else:       body["emailAddresses"] = current.get("emailAddresses", [])
+        if phone:   body["phoneNumbers"] = [{"value": phone}]
+        else:       body["phoneNumbers"] = current.get("phoneNumbers", [])
+        if company: body["organizations"] = [{"name": company}]
+        else:       body["organizations"] = current.get("organizations", [])
+
+        result = await asyncio.to_thread(
+            lambda: service.people().updateContact(
+                resourceName=resource_name,
+                updatePersonFields="names,emailAddresses,phoneNumbers,organizations",
+                body=body,
+            ).execute()
+        )
+
+        display = result.get("names", [{}])[0].get("displayName", resource_name)
+        return f"Contact mis à jour : {display} ({resource_name})"
+
+    except Exception as exc:
+        return f"Erreur lors de la mise à jour du contact : {exc}"
+
+
+@tool
+async def contacts_delete(
+    resource_name: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Delete a Google Contact. This action is irreversible — requires user confirmation (HITL).
+
+    Args:
+        resource_name: The contact resource name (e.g. 'people/c1234567890')
+    """
+    service = await _get_people_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connecte ton compte Google dans les paramètres."
+
+    try:
+        await asyncio.to_thread(
+            lambda: service.people().deleteContact(
+                resourceName=resource_name,
+            ).execute()
+        )
+
+        return f"Contact supprimé : {resource_name}"
+
+    except Exception as exc:
+        return f"Erreur lors de la suppression du contact : {exc}"

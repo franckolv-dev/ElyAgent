@@ -57,6 +57,17 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "desktop_write_file",
     "desktop_move_file",
     "desktop_delete_file",
+    # Google Workspace — actions critiques
+    "gmail_reply_email",
+    "gmail_send_with_attachment",
+    "gmail_move_emails",
+    "gmail_trash_emails",
+    "calendar_create_event",
+    "calendar_delete_event",
+    "drive_move_file",
+    "drive_delete_file",
+    "contacts_delete",
+    "tasks_delete",
 })
 
 # Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation
