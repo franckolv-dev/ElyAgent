@@ -103,9 +103,12 @@ _DOMAIN_DESCRIPTIONS = {
         "envoi de messages WhatsApp, gestion de la mémoire personnelle."
     ),
     "desktop": (
-        "Accès au système de fichiers local de l'utilisateur via ELY Desktop : "
-        "lister, lire, écrire, déplacer, supprimer des fichiers, créer des répertoires, "
-        "calculer des hash, rechercher des fichiers sur la machine locale."
+        "Tout ce qui implique le bureau ou la machine locale de l'utilisateur : "
+        "démonstrations interactives (montrer comment faire quelque chose, tutoriels pas-à-pas, "
+        "prendre le contrôle de la souris et du clavier), captures d'écran, "
+        "lancer des applications, automatisation du bureau (ELY Trainer). "
+        "Aussi : accès au système de fichiers local via ELY Desktop — "
+        "lister, lire, écrire, déplacer, supprimer des fichiers, créer des répertoires."
     ),
     "general": (
         "Requête complexe impliquant plusieurs domaines à la fois, ou ne "

@@ -96,6 +96,11 @@ func (h *InputHandler) Screenshot(delayMs int) (map[string]interface{}, error) {
 
 	case "linux":
 		if _, err := exec.LookPath("scrot"); err == nil {
+			// Capture all monitors combined (virtual desktop).
+			// --overwrite replaces the file if it already exists.
+			// Note: on multi-monitor setups this produces a wide image
+			// (e.g. 5760×1080 for 3×1920). The vision LLM receives the
+			// full image and coordinates are absolute across all screens.
 			cmd = exec.Command("scrot", "--overwrite", tmpFile)
 		} else if _, err := exec.LookPath("gnome-screenshot"); err == nil {
 			cmd = exec.Command("gnome-screenshot", "--file="+tmpFile)
