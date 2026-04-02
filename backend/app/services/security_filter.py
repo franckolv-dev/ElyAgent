@@ -29,11 +29,16 @@ _MAX_REGEX_INPUT = 50_000   # caractères
 #   IBAN   — alternances d'espaces optionnels → risque faible mais garde ajoutée.
 #   Tous les patterns utilisent re.compile() pour bénéficier du cache NFA.
 _PATTERNS: dict[str, re.Pattern] = {
-    "CARD":  re.compile(r"\b(?:\d[ -]*?){13,16}\b"),
-    "EMAIL": re.compile(r"[a-zA-Z0-9_.+-]{1,64}@[a-zA-Z0-9-]{1,63}\.[a-zA-Z0-9-.]{1,63}"),
+    # CARD: possessive-style via atomic boundaries — no nested quantifiers
+    "CARD":  re.compile(r"\b\d(?:[ -]?\d){12,15}\b"),
+    # EMAIL: explicit character classes, bounded lengths, no ambiguous overlap
+    "EMAIL": re.compile(r"\b[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,62}[a-zA-Z0-9]@[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]\.[a-zA-Z]{2,10}\b"),
+    # TOKEN: non-greedy match on keyword, fixed-width value range
     "TOKEN": re.compile(r"(?:api[_-]?key|token|auth|password|secret|bearer)[:\s=]+([a-zA-Z0-9\-_.]{16,256})", re.IGNORECASE),
-    "IBAN":  re.compile(r"\b[A-Z]{2}\d{2}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}[ ]?\d{2,}\b"),
-    "PHONE": re.compile(r"\b(?:\+33|0)[1-9](?:[\s.\-]?\d{2}){4}\b"),
+    # IBAN: no optional spaces to avoid alternation backtracking — strip spaces first
+    "IBAN":  re.compile(r"\b[A-Z]{2}\d{2}(?:\d{4}){4}\d{2,}\b"),
+    # PHONE: no optional separator inside repeating group
+    "PHONE": re.compile(r"\b(?:\+33|0)[1-9](?:\d{2}){4}\b"),
 }
 
 # Tool names that always require human validation

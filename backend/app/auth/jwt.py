@@ -43,10 +43,39 @@ def create_refresh_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
+class TokenExpiredError(Exception):
+    """Raised when the token signature is valid but the exp claim has passed."""
+
+
+class TokenInvalidError(Exception):
+    """Raised when the token cannot be decoded (bad signature, malformed, etc.)."""
+
+
 def decode_token(token: str) -> dict | None:
+    """Decode and verify a JWT. Returns payload or None (legacy callers).
+
+    Prefer decode_token_strict() for new code that needs to distinguish
+    expired vs. invalid tokens.
+    """
     settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        return payload
+        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
     except JWTError:
         return None
+
+
+def decode_token_strict(token: str) -> dict:
+    """Decode and verify a JWT, raising a typed exception on failure (SEC-16).
+
+    Raises:
+        TokenExpiredError  — valid signature but token has expired
+        TokenInvalidError  — bad signature, malformed, or any other JWTError
+    """
+    from jose.exceptions import ExpiredSignatureError
+    settings = get_settings()
+    try:
+        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    except ExpiredSignatureError as exc:
+        raise TokenExpiredError("Token has expired") from exc
+    except JWTError as exc:
+        raise TokenInvalidError("Token is invalid") from exc

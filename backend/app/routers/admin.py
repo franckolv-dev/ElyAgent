@@ -61,6 +61,13 @@ async def admin_reset_password(
             detail="Utilisez /auth/change-password pour modifier votre propre mot de passe.",
         )
     user.hashed_password = await hash_password(req.new_password)
+    db.add(AuditLog(
+        user_id=str(admin.id),
+        action="admin_reset_password",
+        target_host=None,
+        command=None,
+        details=f"Reset password for user '{user.username}' (id={user_id})",
+    ))
     await db.commit()
     return {"message": f"Mot de passe de '{user.username}' réinitialisé."}
 
@@ -79,8 +86,15 @@ async def admin_toggle_user_active(
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="Impossible de désactiver son propre compte.")
     user.is_active = not user.is_active
-    await db.commit()
     state = "activé" if user.is_active else "désactivé"
+    db.add(AuditLog(
+        user_id=str(admin.id),
+        action="admin_toggle_user",
+        target_host=None,
+        command=None,
+        details=f"User '{user.username}' (id={user_id}) {state}",
+    ))
+    await db.commit()
     return {"message": f"Compte '{user.username}' {state}.", "is_active": user.is_active}
 
 
@@ -136,6 +150,7 @@ async def get_configs(
 async def upsert_config(
     body: ConfigUpsertRequest,
     admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create or update a system config value (admin only)."""
     await set_config(
@@ -144,6 +159,14 @@ async def upsert_config(
         is_secret=body.is_secret,
         description=body.description,
     )
+    db.add(AuditLog(
+        user_id=str(admin.id),
+        action="admin_config_set",
+        target_host=None,
+        command=None,
+        details=f"Set config key='{body.key}' secret={body.is_secret}",
+    ))
+    await db.commit()
     return {"message": f"Config '{body.key}' saved."}
 
 
@@ -151,7 +174,16 @@ async def upsert_config(
 async def remove_config(
     key: str,
     admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a system config entry."""
     await delete_config(key)
+    db.add(AuditLog(
+        user_id=str(admin.id),
+        action="admin_config_delete",
+        target_host=None,
+        command=None,
+        details=f"Deleted config key='{key}'",
+    ))
+    await db.commit()
     return {"message": f"Config '{key}' deleted."}

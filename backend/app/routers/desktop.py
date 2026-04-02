@@ -49,6 +49,33 @@ from app.services.system_config import get_config, set_config
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Simple rate limiter for WebSocket connection attempts (SEC-15)
+# Protects against brute-force token guessing on the WS endpoint.
+# ---------------------------------------------------------------------------
+import time as _time
+import threading as _threading
+from collections import defaultdict as _defaultdict
+
+_ws_attempts: dict[str, list[float]] = _defaultdict(list)
+_ws_lock = _threading.Lock()
+_WS_MAX_ATTEMPTS = 10   # max connection attempts
+_WS_WINDOW_SEC   = 60   # per minute per IP
+
+
+def _ws_rate_check(ip: str) -> bool:
+    """Return True if the IP is within the allowed rate, False if exceeded."""
+    now = _time.monotonic()
+    with _ws_lock:
+        attempts = _ws_attempts[ip]
+        # Keep only timestamps within the window
+        _ws_attempts[ip] = [t for t in attempts if now - t < _WS_WINDOW_SEC]
+        if len(_ws_attempts[ip]) >= _WS_MAX_ATTEMPTS:
+            return False
+        _ws_attempts[ip].append(now)
+        return True
+
+
 # WS routes — mounted under /ws
 ws_router = APIRouter()
 
@@ -96,6 +123,13 @@ async def websocket_desktop(websocket: WebSocket):
     Auth pattern mirrors /ws/chat:
       accept() → receive JSON handshake → decode_token → process or close 4001
     """
+    # Rate-limit connection attempts per IP (SEC-15)
+    client_ip = (websocket.client.host if websocket.client else "unknown")
+    if not _ws_rate_check(client_ip):
+        await websocket.close(code=4029, reason="Too many connection attempts")
+        logger.warning("[desktop-ws] rate limit exceeded for %s", client_ip)
+        return
+
     await websocket.accept()
     logger.debug("[desktop-ws] connection accepted, waiting for handshake…")
 
