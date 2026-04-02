@@ -97,26 +97,31 @@ async def websocket_desktop(websocket: WebSocket):
       accept() → receive JSON handshake → decode_token → process or close 4001
     """
     await websocket.accept()
+    logger.debug("[desktop-ws] connection accepted, waiting for handshake…")
 
     try:
         raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         data = json.loads(raw)
         token = data.get("token", "")
-    except (asyncio.TimeoutError, json.JSONDecodeError, KeyError):
+    except (asyncio.TimeoutError, json.JSONDecodeError, KeyError) as exc:
+        logger.warning("[desktop-ws] handshake failed: %s", exc)
         await websocket.close(code=1008)
         return
 
     if not token:
+        logger.warning("[desktop-ws] empty token")
         await websocket.close(code=4001, reason="Missing token")
         return
 
     payload = decode_token(token)
     if not payload or payload.get("type") != "access":
+        logger.warning("[desktop-ws] token invalid or wrong type")
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     user_id = payload.get("sub")
     if not user_id:
+        logger.warning("[desktop-ws] no sub in token")
         await websocket.close(code=4001, reason="Invalid token payload")
         return
 
@@ -126,15 +131,17 @@ async def websocket_desktop(websocket: WebSocket):
         )
         user = result.scalar_one_or_none()
         if not user:
+            logger.warning("[desktop-ws] user %s not found or inactive", user_id)
             await websocket.close(code=4001, reason="User not found")
             return
 
     # Register connection — merges handshake fields (platform, version, sandbox_dirs)
     desktop_registry.register(user_id, websocket, data)
+    logger.info("[desktop-ws] registered user=%s platform=%s", user_id, data.get("platform"))
 
     try:
-        # Send acknowledgement
         await websocket.send_text(json.dumps({"type": "connected", "user_id": user_id}))
+        logger.debug("[desktop-ws] ack sent, entering read loop for user %s", user_id)
 
         while True:
             raw_msg = await websocket.receive_text()
@@ -157,13 +164,12 @@ async def websocket_desktop(websocket: WebSocket):
                 )
 
     except WebSocketDisconnect:
-        logger.debug("Desktop daemon disconnected for user %s", user_id)
+        logger.info("[desktop-ws] daemon disconnected for user %s", user_id)
     except Exception as exc:
-        logger.error(
-            "Desktop daemon WebSocket error for user %s: %s", user_id, exc, exc_info=True
-        )
+        logger.error("[desktop-ws] unexpected error for user %s: %s", user_id, exc, exc_info=True)
     finally:
         desktop_registry.unregister(user_id)
+        logger.debug("[desktop-ws] unregistered user %s", user_id)
 
 
 # ---------------------------------------------------------------------------

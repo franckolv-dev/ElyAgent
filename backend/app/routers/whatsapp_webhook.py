@@ -63,8 +63,12 @@ async def whatsapp_webhook(request: Request):
 
     body = await request.body()
 
-    # Verify Meta signature (skip if app_secret not configured)
+    # Verify Meta signature.
+    # If whatsapp_phone_number_id is set (channel is active), app_secret MUST also
+    # be set — otherwise ANY request would be accepted, allowing spoofed messages.
     s = get_settings()
+    if s.whatsapp_phone_number_id and not s.whatsapp_app_secret:
+        raise HTTPException(503, "WhatsApp webhook misconfigured: WHATSAPP_APP_SECRET is required")
     if s.whatsapp_app_secret:
         sig = request.headers.get("X-Hub-Signature-256", "")
         if not verify_signature(body, sig, s.whatsapp_app_secret):

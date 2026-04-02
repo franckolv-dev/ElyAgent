@@ -205,7 +205,7 @@ async def trainer_start(
         gemini_key = _runtime.get("key_gemini") or settings.gemini_api_key
         if gemini_key:
             vision_llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 google_api_key=gemini_key,
                 max_output_tokens=1024,
                 temperature=0.3,
@@ -221,7 +221,13 @@ async def trainer_start(
         "Tu es un assistant formateur qui aide un utilisateur en analysant son écran. "
         "Tes réponses doivent être concises et précises. "
         "Quand on te montre un screenshot, tu identifies les éléments UI visibles "
-        "et tu décides de la prochaine action à effectuer pour démontrer la tâche demandée."
+        "et tu décides de la prochaine action à effectuer pour démontrer la tâche demandée.\n\n"
+        "IMPORTANT :\n"
+        "- L'image peut contenir PLUSIEURS moniteurs côte à côte (bureau étendu). "
+        "Concentre-toi UNIQUEMENT sur la fenêtre de l'application cible (celle liée à la tâche demandée), "
+        "IGNORE les autres fenêtres (navigateur, terminal, chat, etc.).\n"
+        "- Les coordonnées x,y sont ABSOLUES sur l'image complète (pas relatives à une fenêtre).\n"
+        "- RÉPONDS TOUJOURS en JSON valide et rien d'autre. Pas de texte avant ou après le JSON."
     )
 
     steps_log: list[str] = []
@@ -235,17 +241,33 @@ async def trainer_start(
     except Exception:
         screen_w, screen_h = 1920, 1080
 
-    # ── Initial screenshot ────────────────────────────────────────────────
+    # ── Initial screenshot (active window mode for better accuracy) ───────
+    # win_offset tracks the top-left corner of the captured region so we can
+    # translate LLM coordinates back to absolute virtual-desktop coordinates.
+    win_offset_x, win_offset_y = 0, 0
+
     try:
         shot = await desktop_registry.send_command(
-            user_id, "screenshot", {"delay_ms": 500}, timeout=15.0
+            user_id, "screenshot", {"delay_ms": 500, "active_window": True}, timeout=15.0
         )
         image_b64 = shot.get("image_b64", "")
+        # If daemon returned window geometry, use it for coordinate translation
+        if "win_x" in shot:
+            win_offset_x = shot["win_x"]
+            win_offset_y = shot["win_y"]
+            # Override screen_w/h with window size for LLM prompts
+            screen_w = shot.get("win_w", screen_w)
+            screen_h = shot.get("win_h", screen_h)
     except Exception as e:
         return f"❌ Impossible de capturer l'écran : {e}"
 
     if not image_b64:
         return "❌ Capture d'écran vide — vérifiez que ELY Desktop est bien connecté."
+
+    logger.warning(
+        "Trainer: screenshot captured, size=%d bytes, window=%dx%d at (%d,%d)",
+        len(image_b64) * 3 // 4, screen_w, screen_h, win_offset_x, win_offset_y,
+    )
 
     # ── Main trainer loop ─────────────────────────────────────────────────
     intro = (
@@ -257,30 +279,32 @@ async def trainer_start(
     while step < MAX_TRAINER_STEPS:
         step += 1
 
-        # Build vision prompt
+        # Build vision prompt — image is cropped to active window for precision
+        is_windowed = (win_offset_x > 0 or win_offset_y > 0)
         analysis_prompt = (
             f"L'utilisateur veut apprendre : « {goal} »\n"
-            f"Étape actuelle : {step}/{MAX_TRAINER_STEPS}\n\n"
-            "Analyse ce screenshot et réponds en JSON strict :\n"
+            f"Étape actuelle : {step}/{MAX_TRAINER_STEPS}\n"
+            f"Image : {screen_w}×{screen_h} pixels "
+            f"({'fenêtre active extraite du bureau multi-écrans' if is_windowed else 'bureau complet'})\n\n"
+            "Analyse ce screenshot et réponds UNIQUEMENT en JSON strict (rien d'autre) :\n"
             "{\n"
-            '  "observation": "Ce que tu vois à l\'écran (1-2 phrases)",\n'
+            '  "observation": "Ce que tu vois dans la fenêtre (1-2 phrases)",\n'
             '  "action": "click|double_click|right_click|type|hotkey|move|done|error",\n'
             '  "x": 0,\n'
             '  "y": 0,\n'
             '  "text": "",\n'
             '  "keys": "",\n'
-            '  "narration": "Explication à voix haute de cette étape pour l\'utilisateur (1-2 phrases claires)",\n'
+            '  "narration": "Explication pédagogique en français de cette étape (1-2 phrases)",\n'
             '  "done": false\n'
             "}\n\n"
             "Règles :\n"
+            "- Les coordonnées x,y sont relatives à CETTE IMAGE (coin supérieur gauche = 0,0).\n"
             "- action='done' quand la démonstration est complète\n"
-            "- action='error' si l'application cible n'est pas visible à l'écran\n"
-            "- Pour click/double_click/right_click : fournis x,y en pixels\n"
-            "- Pour type : fournis text\n"
-            "- Pour hotkey : fournis keys (ex: 'ctrl+shift+l')\n"
-            "- Pour move : déplace le curseur pour pointer un élément\n"
-            "- narration doit être en français, pédagogique et concis\n"
-            "RÉPONDS UNIQUEMENT EN JSON VALIDE, sans markdown."
+            "- action='error' si l'application cible n'est pas visible dans l'image\n"
+            "- Pour click/double_click/right_click : fournis x,y exacts en pixels dans cette image\n"
+            "- Pour type : fournis le texte à saisir dans 'text'\n"
+            "- Pour hotkey : fournis les touches dans 'keys' (ex: 'ctrl+shift+l', 'alt+d')\n"
+            "RÉPONDS UNIQUEMENT AVEC LE JSON, sans aucun texte avant ou après."
         )
 
         # Call vision LLM with screenshot
@@ -297,27 +321,47 @@ async def trainer_start(
                 config={"callbacks": []},
             )
             raw = response.content.strip()
+            logger.warning("Trainer vision LLM response (step %d, len=%d): %s", step, len(raw), raw[:300])
         except Exception as e:
+            logger.warning("Trainer vision LLM error at step %d: %s", step, e)
             steps_log.append(f"\n⚠️ Erreur analyse LLM à l'étape {step} : {e}")
             break
 
-        # Parse JSON decision
+        # Parse JSON decision — with robust extraction
         import json as _json
         import re as _re
+
+        decision = None
+        # Strip markdown code blocks if present
+        raw_clean = _re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=_re.MULTILINE).strip()
+        # Attempt 1: direct parse
         try:
-            # Strip markdown code blocks if present
-            raw_clean = _re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=_re.MULTILINE).strip()
             decision = _json.loads(raw_clean)
         except Exception:
-            logger.warning("Trainer LLM returned non-JSON: %s", raw[:200])
+            pass
+        # Attempt 2: extract first JSON object from response
+        if decision is None:
+            json_match = _re.search(r"\{[\s\S]*\}", raw_clean)
+            if json_match:
+                try:
+                    decision = _json.loads(json_match.group())
+                except Exception:
+                    pass
+        if decision is None:
+            logger.warning("Trainer LLM returned non-JSON (step %d): %s", step, raw[:500])
+            # Retry once with a simpler prompt
+            if step == 1:
+                steps_log.append(f"\n🔄 Nouvelle analyse de l'écran…")
+                continue
             steps_log.append(f"\n⚠️ Réponse LLM non parseable à l'étape {step}.")
             break
 
         action     = decision.get("action", "done")
         narration  = decision.get("narration", "")
         observation = decision.get("observation", "")
-        x          = int(decision.get("x", 0))
-        y          = int(decision.get("y", 0))
+        # Translate window-relative coordinates to absolute virtual-desktop coords
+        x          = int(decision.get("x", 0)) + win_offset_x
+        y          = int(decision.get("y", 0)) + win_offset_y
         text       = decision.get("text", "")
         keys       = decision.get("keys", "")
         is_done    = decision.get("done", False) or action == "done"
@@ -368,9 +412,15 @@ async def trainer_start(
         await _asyncio.sleep(0.8)  # let the UI settle
         try:
             shot = await desktop_registry.send_command(
-                user_id, "screenshot", {"delay_ms": 200}, timeout=15.0
+                user_id, "screenshot", {"delay_ms": 200, "active_window": True}, timeout=15.0
             )
             image_b64 = shot.get("image_b64", "")
+            # Update window offset if it changed (e.g. new window focused)
+            if "win_x" in shot:
+                win_offset_x = shot["win_x"]
+                win_offset_y = shot["win_y"]
+                screen_w = shot.get("win_w", screen_w)
+                screen_h = shot.get("win_h", screen_h)
         except Exception as e:
             steps_log.append(f"\n⚠️ Impossible de capturer l'écran à l'étape {step} : {e}")
             break

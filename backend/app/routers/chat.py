@@ -112,6 +112,16 @@ async def websocket_chat(websocket: WebSocket):
 
     conversation_id: str | None = None
 
+    # Load google_credentials into the server-side store (SEC-1 — credentials
+    # must never travel through the agent graph state or appear in logs).
+    # We keep a local TTL and refresh from DB every 5 min (PERF-1).
+    import time as _time
+    from app.services.credential_store import get_credential_store as _get_cred_store
+    _cred_store = _get_cred_store()
+    _cred_store.set(user_id, user.google_credentials)
+    _google_creds_ts: float = _time.monotonic()
+    _CREDS_TTL = 300.0  # seconds
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -168,12 +178,17 @@ async def websocket_chat(websocket: WebSocket):
                 except Exception as exc:
                     logger.warning("Failed to save screen capture: %s", exc)
 
-            async with async_session() as db:
-                # Re-read user on each message to pick up latest google_credentials
-                u_result = await db.execute(select(User).where(User.id == user_id))
-                fresh_user = u_result.scalar_one_or_none()
-                google_credentials = fresh_user.google_credentials if fresh_user else None
+            # Refresh google_credentials in the store every 5 min
+            now = _time.monotonic()
+            if now - _google_creds_ts > _CREDS_TTL:
+                async with async_session() as _creds_db:
+                    _u = await _creds_db.execute(select(User).where(User.id == user_id))
+                    _fresh = _u.scalar_one_or_none()
+                    if _fresh:
+                        _cred_store.set(user_id, _fresh.google_credentials)
+                _google_creds_ts = now
 
+            async with async_session() as db:
                 if not conversation_id:
                     conv = Conversation(user_id=user_id, title=user_content[:50])
                     db.add(conv)
@@ -250,7 +265,8 @@ async def websocket_chat(websocket: WebSocket):
                     "messages": history_msgs,
                     "user_id": user_id,
                     "conversation_id": conversation_id,
-                    "google_credentials": google_credentials or "",
+                    # google_credentials intentionally omitted — stored server-side
+                    # in credential_store, looked up by user_id at tool exec (SEC-1)
                 },
                 version="v2",
                 config={"recursion_limit": 100},

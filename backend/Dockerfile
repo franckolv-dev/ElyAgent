@@ -27,10 +27,18 @@ COPY app/ ./app/
 
 # Config files (hosts, providers) mounted via volume at runtime
 # but we create the dir so the app doesn't fail if not mounted
-RUN mkdir -p /config
+RUN mkdir -p /config /app/uploads
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+# Keep uv cache inside /app so the non-root user has write access
+ENV UV_CACHE_DIR=/app/.cache/uv
+
+# Run as non-root for container security (SEC-7)
+RUN adduser --system --no-create-home --uid 1001 appuser \
+    && mkdir -p /app/.cache/uv \
+    && chown -R appuser /app /config
+USER appuser
 
 EXPOSE 8000
 

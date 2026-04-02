@@ -89,6 +89,14 @@ _USER_ID_TOOLS = {
     "desktop_stat_file",
     "desktop_hash_file",
     "desktop_search_files",
+    # Trainer tools — need user_id for desktop daemon connection
+    "trainer_start",
+    "trainer_screenshot",
+    "trainer_click",
+    "trainer_move",
+    "trainer_type",
+    "trainer_hotkey",
+    "trainer_get_screen_size",
 }
 
 _GOOGLE_TOOLS = {
@@ -329,10 +337,13 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 args = dict(tool_call["args"])
                 tc_id = tool_call["id"]
 
-                # Inject hidden arguments
+                # Inject hidden arguments — credentials fetched from server-side
+                # store, never from graph state (SEC-1).
                 if tool_name in _GOOGLE_TOOLS:
+                    from app.services.credential_store import get_credential_store
+                    _uid = state.get("user_id") or ""
                     args["user_google_credentials_json"] = (
-                        state.get("google_credentials") or ""
+                        get_credential_store().get(_uid) or ""
                     )
                 if tool_name in _USER_ID_TOOLS:
                     args["user_id"] = state.get("user_id") or ""

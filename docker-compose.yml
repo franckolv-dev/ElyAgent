@@ -14,6 +14,7 @@ services:
       - ./config:/config:ro
       - ${SSH_KEYS_PATH:-~/.ssh}:/root/.ssh:ro
       - ./desktop/dist:/app/static/desktop:ro
+      - ./data/backups/qdrant:/backups/qdrant
     env_file:
       - .env
     environment:

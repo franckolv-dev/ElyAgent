@@ -114,6 +114,9 @@ async def disconnect(
     """Remove stored Google credentials for the current user."""
     current_user.google_credentials = None
     await db.commit()
+    # Also evict from the in-process credential store (SEC-1)
+    from app.services.credential_store import get_credential_store
+    get_credential_store().clear(str(current_user.id))
     return {"message": "Google disconnected"}
 
 

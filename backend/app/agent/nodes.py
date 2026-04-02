@@ -169,6 +169,14 @@ USER_ID_TOOLS = {
     "desktop_stat_file",
     "desktop_hash_file",
     "desktop_search_files",
+    # Trainer tools — need user_id for desktop daemon connection
+    "trainer_start",
+    "trainer_screenshot",
+    "trainer_click",
+    "trainer_move",
+    "trainer_type",
+    "trainer_hotkey",
+    "trainer_get_screen_size",
 }
 
 GOOGLE_TOOLS = {
@@ -506,9 +514,12 @@ async def tool_node(state: AgentState) -> dict:
         tool_name = tool_call["name"]
         args = dict(tool_call["args"])
 
-        # Inject hidden arguments
+        # Inject hidden arguments — credentials are fetched from the server-side
+        # store (never stored in graph state) to prevent exposure in logs/events.
         if tool_name in GOOGLE_TOOLS:
-            args["user_google_credentials_json"] = state.get("google_credentials") or ""
+            from app.services.credential_store import get_credential_store
+            _uid = state.get("user_id") or ""
+            args["user_google_credentials_json"] = get_credential_store().get(_uid) or ""
         if tool_name in USER_ID_TOOLS:
             args["user_id"] = state.get("user_id") or ""
 

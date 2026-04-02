@@ -57,6 +57,9 @@ from app.services.fts_store import get_fts_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging as _logging
+    _startup_logger = _logging.getLogger("app.startup")
+
     # Register all built-in skills BEFORE the agent graph is built
     from app.skills.builtin import register_all
     register_all()
@@ -72,19 +75,31 @@ async def lifespan(app: FastAPI):
 
     # Start Telegram bot if configured
     from app.channels.telegram_bot import start_telegram_bot, stop_telegram_bot
-    await start_telegram_bot()
+    try:
+        await start_telegram_bot()
+    except Exception:
+        _startup_logger.warning("Telegram bot failed to start — channel disabled", exc_info=True)
 
     # Load WhatsApp linked users
     from app.channels.whatsapp import load_linked_whatsapp_users
-    await load_linked_whatsapp_users()
+    try:
+        await load_linked_whatsapp_users()
+    except Exception:
+        _startup_logger.warning("WhatsApp linked users failed to load", exc_info=True)
 
     # Start scheduled tasks
     from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
-    await load_and_schedule_tasks()
+    try:
+        await load_and_schedule_tasks()
+    except Exception:
+        _startup_logger.warning("Scheduler failed to load tasks", exc_info=True)
 
     # Start watchdog service
     from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
-    await load_and_schedule_watch_tasks()
+    try:
+        await load_and_schedule_watch_tasks()
+    except Exception:
+        _startup_logger.warning("Watchdog failed to start", exc_info=True)
 
     # Ensure uploads directory exists
     from app.routers.upload import UPLOADS_DIR
@@ -92,11 +107,17 @@ async def lifespan(app: FastAPI):
 
     # Start headless browser (graceful no-op if playwright is not installed)
     from app.services.browser_manager import get_browser_manager
-    await get_browser_manager().start()
+    try:
+        await get_browser_manager().start()
+    except Exception:
+        _startup_logger.warning("Browser manager failed to start — web browsing disabled", exc_info=True)
 
     # Load external MCP servers (graceful: no crash if none configured or SDK absent)
     from app.services.mcp_client import get_mcp_client_manager
-    await get_mcp_client_manager().reload_all()
+    try:
+        await get_mcp_client_manager().reload_all()
+    except Exception:
+        _startup_logger.warning("MCP client manager failed to load", exc_info=True)
 
     # Warm up SLM — loads model into RAM so the first real request has no cold-start
     from app.services.slm_warmup import warmup_slm
@@ -125,6 +146,22 @@ async def lifespan(app: FastAPI):
         minutes=5,
         id="vault_auto_lock",
     )
+    # Schedule OAuth state cleanup every 5 min to prevent memory leak (SEC-3)
+    from app.routers.google import _cleanup_expired_states as _cleanup_oauth_states
+    _vault_scheduler.add_job(
+        _cleanup_oauth_states,
+        trigger="interval",
+        minutes=5,
+        id="oauth_state_cleanup",
+    )
+    # Evict stale entries from the credential store every hour (SEC-1)
+    from app.services.credential_store import get_credential_store as _get_cred_store
+    _vault_scheduler.add_job(
+        _get_cred_store().evict_expired,
+        trigger="interval",
+        hours=1,
+        id="credential_store_eviction",
+    )
     _vault_scheduler.start()
 
     # Schedule nightly user memory consolidation at 3:00 AM
@@ -136,6 +173,15 @@ async def lifespan(app: FastAPI):
         hour=3,
         minute=0,
         id="memory_consolidation",
+    )
+    # Schedule nightly Qdrant snapshot backup at 2:00 AM (ARCH-2)
+    from app.services.qdrant_backup import run_backup as _qdrant_backup
+    _memory_scheduler.add_job(
+        _qdrant_backup,
+        trigger="cron",
+        hour=2,
+        minute=0,
+        id="qdrant_backup",
     )
     _memory_scheduler.start()
 

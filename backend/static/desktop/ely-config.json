@@ -1,0 +1,6 @@
+{
+  "vps_url": "https://ely.catalogmaker.fr/",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjOWU4MGQ2Zi0xYThjLTQ4ZTEtYTY5ZC02NTg1MWI4MGU2NTEiLCJ0eXBlIjoiYWNjZXNzIiwiY2xpZW50IjoiZGVza3RvcCIsInVzZXJuYW1lIjoiZnJhbmNrIiwiZXhwIjoxNzc3NDgyNjg2fQ.SXLXHgH5Bfmv1nx7rRJHp_QOMNaSnUcnllKremEpfsc",
+  "sandbox_dirs": ["/home/franck/Documents"],
+  "version": "1"
+}

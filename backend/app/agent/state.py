@@ -24,7 +24,9 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     user_id: str
     conversation_id: str
-    google_credentials: str
+    # google_credentials removed — credentials are kept server-side in
+    # app.services.credential_store (SEC-1) and looked up by user_id at
+    # tool execution time. They never travel through the graph state.
     domain: str        # routing field: "research" | "workspace" | "infra" | "general"
     model_used: str    # "slm:<model>" or "llm:<model>" — set by agent_node for feedback
     routing_score: int # IntentRouter score 0-100 — stored for Phase 2 training
