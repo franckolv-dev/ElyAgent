@@ -1,21 +1,34 @@
 # SSH Host Definitions
-# Each host has a whitelist of allowed commands
+#
+# Pour obtenir le fingerprint d'un serveur (à mettre dans host_key) :
+#   ssh-keyscan -t ed25519 <hostname>
+#   → retourne : hostname ssh-ed25519 AAAAC3NzaC1lZD...
+#   Copier la partie "ssh-ed25519 AAAA..." dans host_key.
+#
+# Sans host_key : WarningPolicy (risque MITM, déconseillé en prod).
+# Avec host_key : RejectPolicy (sécurisé — refus si clé différente).
+#
+# allowed_commands : whitelist stricte par token.
+#   - Chaque token doit correspondre exactement, sauf "*" = UN seul argument
+#   - "docker logs *"  → OK "docker logs myapp" | KO "docker logs a b"
+#   - Les métacaractères shell (; | & ` $ < >) sont toujours bloqués
+
 hosts:
-  # Example: local machine
-  # localhost:
-  #   hostname: 127.0.0.1
+  # Exemple : VPS de production
+  # vps:
+  #   hostname: ely.catalogmaker.fr
   #   port: 22
-  #   username: user
-  #   key_file: ~/.ssh/id_rsa
+  #   username: root
+  #   key_file: ~/.ssh/id_ed25519
+  #   host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   #   allowed_commands:
-  #     - "ls *"
-  #     - "cat *"
+  #     - "docker ps"
+  #     - "docker logs *"
+  #     - "docker restart *"
+  #     - "systemctl status *"
   #     - "df -h"
   #     - "free -m"
   #     - "uptime"
-  #     - "systemctl status *"
-  #     - "docker ps"
-  #     - "docker logs *"
   #   blocked_patterns:
   #     - "rm -rf"
   #     - "dd if="
