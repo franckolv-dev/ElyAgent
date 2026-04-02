@@ -14,6 +14,7 @@
 # fichier LICENSE à la racine du projet ou visiter :
 # https://polyformproject.org/licenses/strict/1.0.0/
 # -----------------------------------------------------------------------------
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -30,10 +31,15 @@ def create_access_token(data: dict) -> str:
 
 
 def create_refresh_token(data: dict) -> str:
+    """Create a refresh token with a unique jti claim for blacklist support (ARCH-3)."""
     settings = get_settings()
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
-    to_encode.update({"exp": expire, "type": "refresh"})
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh",
+        "jti": str(uuid.uuid4()),  # unique ID — stored on revocation
+    })
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 

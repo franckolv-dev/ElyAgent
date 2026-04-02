@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.rate_limit import limiter
 from app.models.user import User
+from app.models.revoked_token import RevokedToken
 from app.schemas.auth import (
     RegisterRequest, LoginRequest,
     TokenResponse, AccessTokenResponse, UserResponse,
@@ -138,6 +139,15 @@ async def refresh(
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
+    # Check blacklist — reject if this token was revoked (ARCH-3)
+    jti = payload.get("jti")
+    if jti:
+        revoked = await db.execute(
+            select(RevokedToken).where(RevokedToken.jti == jti)
+        )
+        if revoked.scalar_one_or_none():
+            raise HTTPException(status_code=401, detail="Token revoked")
+
     result = await db.execute(select(User).where(User.id == payload.get("sub")))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
@@ -145,15 +155,36 @@ async def refresh(
 
     new_access = create_access_token(_make_token_payload(user))
 
-    # Rotate the refresh token on each use (sliding window)
+    # Rotate the refresh token — revoke old one, issue a fresh one (ARCH-3)
+    if jti:
+        from datetime import datetime
+        exp_ts = payload.get("exp", 0)
+        expires_at = datetime.utcfromtimestamp(exp_ts)
+        db.add(RevokedToken(jti=jti, expires_at=expires_at))
+        await db.commit()
     _set_refresh_cookie(response, create_refresh_token({"sub": user.id}))
 
     return AccessTokenResponse(access_token=new_access)
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    """Clear the refresh cookie server-side."""
+async def logout(
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=_COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke the refresh token and clear the cookie (ARCH-3)."""
+    # Revoke the current token so it can't be reused even if captured
+    if refresh_token:
+        payload = decode_token(refresh_token)
+        jti = payload.get("jti") if payload else None
+        if jti:
+            from datetime import datetime
+            exp_ts = payload.get("exp", 0)
+            expires_at = datetime.utcfromtimestamp(exp_ts)
+            db.add(RevokedToken(jti=jti, expires_at=expires_at))
+            await db.commit()
+
     settings = get_settings()
     response.delete_cookie(
         key=_COOKIE_NAME,

@@ -183,6 +183,27 @@ async def lifespan(app: FastAPI):
         minute=0,
         id="qdrant_backup",
     )
+    # Purge expired revoked tokens nightly at 4:00 AM (ARCH-3)
+    async def _purge_revoked_tokens():
+        from datetime import datetime
+        from sqlalchemy import delete
+        from app.models.revoked_token import RevokedToken as _RT
+        from app.database import async_session as _session
+        async with _session() as _db:
+            result = await _db.execute(
+                delete(_RT).where(_RT.expires_at < datetime.utcnow())
+            )
+            await _db.commit()
+            _startup_logger.info(
+                "[auth] purged %d expired revoked tokens", result.rowcount
+            )
+    _memory_scheduler.add_job(
+        _purge_revoked_tokens,
+        trigger="cron",
+        hour=4,
+        minute=0,
+        id="purge_revoked_tokens",
+    )
     _memory_scheduler.start()
 
     yield
