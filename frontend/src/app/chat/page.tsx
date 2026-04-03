@@ -28,7 +28,7 @@ import { LiveBrowserPanel }    from "@/components/browser/LiveBrowserPanel";
 import { AgentWebSocket }      from "@/lib/websocket";
 import { api }                 from "@/lib/api";
 import { authFetch }           from "@/lib/auth";
-import type { Attachment, BrowserFrame, ChatMessage, WSMessage } from "@/lib/types";
+import type { Attachment, BrowserFrame, ChatMessage, ToolImage, WSMessage } from "@/lib/types";
 import { useTranslations } from "next-intl";
 
 const API_URL_CHAT = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -102,6 +102,7 @@ function ChatPageInner() {
   const [streamingContent,setStreamingContent]= useState<string>("");
   const [browserFrame,    setBrowserFrame]    = useState<BrowserFrame | null>(null);
   const [activeTool,      setActiveTool]      = useState<string | null>(null);
+  const pendingToolImages = useRef<ToolImage[]>([]);
   const wsRef = useRef<AgentWebSocket | null>(null);
   const router = useRouter();
 
@@ -141,20 +142,24 @@ function ChatPageInner() {
         setIsLoading(true);
         setStreamingContent("");
         setActiveTool(null);
+        pendingToolImages.current = [];
       } else if (msg.type === "tool_start") {
         setActiveTool(msg.tool ?? null);
       } else if (msg.type === "tool_end") {
         setActiveTool(null);
+        if (msg.image) pendingToolImages.current.push(msg.image);
       } else if (msg.type === "token") {
         setActiveTool(null);
         setStreamingContent((prev) => prev + (msg.content ?? ""));
       } else if (msg.type === "message" && msg.role === "assistant") {
+        const imgs = pendingToolImages.current.splice(0);
         setMessages((prev) => [...prev, {
           role: "assistant",
           content: msg.content ?? "",
           model_used: msg.model_used,
           routing_score: msg.routing_score,
           created_at: new Date().toISOString(),
+          ...(imgs.length > 0 ? { toolImages: imgs } : {}),
         }]);
         setStreamingContent("");
         setActiveTool(null);

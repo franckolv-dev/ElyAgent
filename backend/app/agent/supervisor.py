@@ -416,6 +416,33 @@ def _make_dispatch_node(domain: str):
             )
             # Return only the messages produced by the sub-agent
             new_messages = result["messages"][len(state["messages"]):]
+            # ── Image pass-through (QR code, Imagen, etc.) ────────────────
+            # If a ToolMessage contains {"type":"image",...} JSON and the
+            # final AIMessage doesn't already include it, prepend the JSON so
+            # the frontend can render the image (parseImageBlock in MessageBubble).
+            import json as _json
+            _image_jsons: list[str] = []
+            from langchain_core.messages import ToolMessage as _TM
+            for _m in new_messages:
+                if isinstance(_m, _TM):
+                    _c = _m.content or ""
+                    if isinstance(_c, str) and _c.startswith("{"):
+                        try:
+                            _obj = _json.loads(_c)
+                            if isinstance(_obj, dict) and _obj.get("type") == "image":
+                                _image_jsons.append(_c)
+                        except Exception:
+                            pass
+            if _image_jsons:
+                _last = new_messages[-1] if new_messages else None
+                _last_content = (_last.content or "") if _last else ""
+                if isinstance(_last, AIMessage) and not any(j in _last_content for j in _image_jsons):
+                    _separator = "\n\n" if _last_content else ""
+                    _combined = _last_content + _separator + "\n\n".join(_image_jsons)
+                    new_messages = list(new_messages[:-1]) + [
+                        _last.model_copy(update={"content": _combined})
+                    ]
+            # ─────────────────────────────────────────────────────────────
             return {"messages": new_messages, "domain": domain}
         except Exception as exc:
             logger.error(

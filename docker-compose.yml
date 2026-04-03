@@ -15,10 +15,12 @@ services:
       - ${SSH_KEYS_PATH:-~/.ssh}:/root/.ssh:ro
       - ./desktop/dist:/app/static/desktop:ro
       - ./data/backups/qdrant:/backups/qdrant
+      - ./data/playwright:/app/.cache/playwright
     env_file:
       - .env
     environment:
       - JWT_ALGORITHM=HS256
+      - PLAYWRIGHT_BROWSERS_PATH=/app/.cache/playwright
       - ACCESS_TOKEN_EXPIRE_MINUTES=10080
       - REFRESH_TOKEN_EXPIRE_DAYS=7
       - DATABASE_URL=sqlite+aiosqlite:////app/data/cyberentity.db

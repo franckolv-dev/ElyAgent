@@ -37,12 +37,21 @@ export interface Attachment {
   mime_type: string;
 }
 
+export interface ToolImage {
+  type: "image";
+  mime: string;
+  data: string;    // base64
+  prompt?: string;
+}
+
 export interface ChatMessage {
   id?: string;
   role: "user" | "assistant" | "system";
   content: string;
   created_at?: string;
   attachments?: Attachment[];
+  /** Images produced by tools (QR code, Imagen, etc.) */
+  toolImages?: ToolImage[];
   /** "slm:qwen2.5:3b-instruct" or "llm:anthropic/claude-..." — set by backend */
   model_used?: string;
   /** IntentRouter score 0-100 — for feedback context */
@@ -59,6 +68,7 @@ export interface Conversation {
 export interface WSMessage {
   type: "start" | "message" | "error" | "stream" | "token" | "hitl_pending" | "hitl_resolved" | "browser_frame" | "tool_start" | "tool_end" | "stopped";
   tool?: string;
+  image?: ToolImage;   // present on tool_end when tool produced an image
   content?: string;
   role?: string;
   conversation_id?: string;

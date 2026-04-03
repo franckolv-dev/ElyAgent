@@ -19,7 +19,7 @@
 import { motion } from "framer-motion";
 import { Bot, User, FileText, Image, FileCode, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useState, useCallback } from "react";
-import type { Attachment, ChatMessage } from "@/lib/types";
+import type { Attachment, ChatMessage, ToolImage } from "@/lib/types";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import ReactMarkdown from "react-markdown";
@@ -46,24 +46,50 @@ function AttachmentFileIcon({ filename }: { filename: string }) {
   return <FileText className="w-3 h-3 shrink-0" />;
 }
 
-/** Tente de parser un bloc image(s) JSON retourné par generate_image ou browser_search_images. */
-function parseImageBlock(content: string): ImageBlock | ImagesBlock | null {
-  const trimmed = content.trim();
-  if (!trimmed.startsWith("{")) return null;
-  // Types MIME autorisés — SVG exclu (peut contenir des <script> → XSS)
-  const SAFE_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]);
+// Types MIME autorisés — SVG exclu (peut contenir des <script> → XSS)
+const SAFE_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]);
 
+function _tryParseImageJSON(raw: string): ImageBlock | ImagesBlock | null {
   try {
-    const obj = JSON.parse(trimmed);
+    const obj = JSON.parse(raw.trim());
     if (obj.type === "image" && obj.data && obj.mime && SAFE_MIME.has(obj.mime))
       return obj as ImageBlock;
     if (obj.type === "images" && Array.isArray(obj.items)) {
-      // Filtrer les items avec des MIME non sûrs
       obj.items = obj.items.filter((img: { mime?: string }) => img.mime && SAFE_MIME.has(img.mime));
       if (obj.items.length > 0) return obj as ImagesBlock;
     }
   } catch { /* not JSON */ }
   return null;
+}
+
+interface ParsedContent {
+  text: string;
+  imageBlock: ImageBlock | ImagesBlock | null;
+}
+
+/** Tente de parser un bloc image(s) JSON retourné par generate_image, qrcode_generate, etc.
+ *  Gère deux cas :
+ *  1. Tout le contenu est du JSON image (cas original)
+ *  2. Du texte suivi d'un JSON image (QR code / Imagen via sous-agent)
+ */
+function parseContent(content: string): ParsedContent {
+  const trimmed = content.trim();
+
+  // Cas 1 : tout le contenu est un JSON image
+  if (trimmed.startsWith("{")) {
+    const imageBlock = _tryParseImageJSON(trimmed);
+    if (imageBlock) return { text: "", imageBlock };
+  }
+
+  // Cas 2 : JSON image à la fin du contenu (après texte)
+  const jsonStart = trimmed.lastIndexOf("\n{");
+  if (jsonStart !== -1) {
+    const jsonPart = trimmed.slice(jsonStart + 1); // skip the \n
+    const imageBlock = _tryParseImageJSON(jsonPart);
+    if (imageBlock) return { text: trimmed.slice(0, jsonStart).trim(), imageBlock };
+  }
+
+  return { text: content, imageBlock: null };
 }
 
 /** Format a ISO date string to a short, human-readable time label.
@@ -94,7 +120,9 @@ function formatTimestamp(iso: string | undefined): string | null {
 export function MessageBubble({ message, isStreaming, lastUserMessage, conversationId }: MessageBubbleProps) {
   const t = useTranslations("messageBubble");
   const isUser = message.role === "user";
-  const imageBlock = !isUser ? parseImageBlock(message.content) : null;
+  const { text: parsedText, imageBlock } = !isUser
+    ? parseContent(message.content)
+    : { text: message.content, imageBlock: null };
   const [feedbackSent, setFeedbackSent] = useState<1 | -1 | null>(null);
 
   function formatSize(bytes: number): string {
@@ -176,77 +204,96 @@ export function MessageBubble({ message, isStreaming, lastUserMessage, conversat
           </div>
         )}
 
-        {imageBlock?.type === "image" ? (
-          /* Image unique — Gemini Imagen ou screenshot */
-          <div className="flex flex-col gap-2">
-            <img
-              src={`data:${imageBlock.mime};base64,${imageBlock.data}`}
-              alt={imageBlock.prompt}
-              className="rounded-md max-w-full border border-cyber-cyan/20"
-              style={{ maxHeight: "400px", objectFit: "contain" }}
-            />
-            <p className="text-xs text-text-muted italic">{imageBlock.prompt}</p>
-          </div>
-        ) : imageBlock?.type === "images" ? (
-          /* Grille d'images — recherche web */
-          <div className="flex flex-col gap-2">
-            <p className="text-xs text-text-muted mb-1">{t("imagesFor", { query: imageBlock.query })}</p>
-            <div className="grid grid-cols-2 gap-2">
-              {imageBlock.items.map((img, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <img
-                    src={`data:${img.mime};base64,${img.data}`}
-                    alt={img.title}
-                    className="rounded-md w-full border border-cyber-cyan/20"
-                    style={{ maxHeight: "180px", objectFit: "cover" }}
-                  />
-                  <p className="text-xs text-text-muted truncate">{img.title}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
+        {(
           <div className="text-sm break-words prose-cyber">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ href, children }) => (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-cyber-cyan underline hover:text-cyber-cyan/70 transition-colors"
-                  >
-                    {children}
-                  </a>
-                ),
-                p: ({ children }) => (
-                  <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>
-                ),
-                code: ({ children, className }) => {
-                  const isBlock = className?.includes("language-");
-                  return isBlock ? (
-                    <pre className="bg-bg-primary/60 border border-border-dim rounded p-2 overflow-x-auto my-2">
-                      <code className="font-mono text-xs text-text-secondary">{children}</code>
-                    </pre>
-                  ) : (
-                    <code className="font-mono text-xs bg-bg-primary/60 px-1 py-0.5 rounded text-cyber-cyan/80">{children}</code>
-                  );
-                },
-                ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
-                li: ({ children }) => <li className="text-sm">{children}</li>,
-                strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
-                h1: ({ children }) => <h1 className="text-base font-bold text-cyber-cyan mb-1">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-sm font-bold text-cyber-cyan mb-1">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-sm font-semibold text-text-primary mb-1">{children}</h3>,
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
+            {parsedText && (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cyber-cyan underline hover:text-cyber-cyan/70 transition-colors"
+                    >
+                      {children}
+                    </a>
+                  ),
+                  p: ({ children }) => (
+                    <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>
+                  ),
+                  code: ({ children, className }) => {
+                    const isBlock = className?.includes("language-");
+                    return isBlock ? (
+                      <pre className="bg-bg-primary/60 border border-border-dim rounded p-2 overflow-x-auto my-2">
+                        <code className="font-mono text-xs text-text-secondary">{children}</code>
+                      </pre>
+                    ) : (
+                      <code className="font-mono text-xs bg-bg-primary/60 px-1 py-0.5 rounded text-cyber-cyan/80">{children}</code>
+                    );
+                  },
+                  ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
+                  li: ({ children }) => <li className="text-sm">{children}</li>,
+                  strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
+                  h1: ({ children }) => <h1 className="text-base font-bold text-cyber-cyan mb-1">{children}</h1>,
+                  h2: ({ children }) => <h2 className="text-sm font-bold text-cyber-cyan mb-1">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-sm font-semibold text-text-primary mb-1">{children}</h3>,
+                }}
+              >
+                {parsedText}
+              </ReactMarkdown>
+            )}
+            {imageBlock?.type === "image" && (
+              <div className="flex flex-col gap-2 mt-1">
+                <img
+                  src={`data:${imageBlock.mime};base64,${imageBlock.data}`}
+                  alt={imageBlock.prompt ?? "image"}
+                  className="rounded-md max-w-full border border-cyber-cyan/20"
+                  style={{ maxHeight: "400px", objectFit: "contain" }}
+                />
+                {imageBlock.prompt && (
+                  <p className="text-xs text-text-muted italic">{imageBlock.prompt}</p>
+                )}
+              </div>
+            )}
+            {imageBlock?.type === "images" && (
+              <div className="flex flex-col gap-2 mt-1">
+                <p className="text-xs text-text-muted mb-1">{t("imagesFor", { query: imageBlock.query })}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {imageBlock.items.map((img, i) => (
+                    <div key={i} className="flex flex-col gap-1">
+                      <img
+                        src={`data:${img.mime};base64,${img.data}`}
+                        alt={img.title}
+                        className="rounded-md w-full border border-cyber-cyan/20"
+                        style={{ maxHeight: "180px", objectFit: "cover" }}
+                      />
+                      <p className="text-xs text-text-muted truncate">{img.title}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {isStreaming && (
               <span className="inline-block w-2 h-4 bg-cyber-cyan ml-0.5 animate-pulse" />
             )}
+          </div>
+        )}
+
+        {/* Tool-generated images (QR codes, generated images, etc.) */}
+        {!isUser && message.toolImages && message.toolImages.length > 0 && (
+          <div className="flex flex-col gap-2 mt-2">
+            {message.toolImages.map((img: ToolImage, i: number) => (
+              <img
+                key={i}
+                src={`data:${img.mime};base64,${img.data}`}
+                alt={img.prompt ?? "generated image"}
+                className="rounded-md max-w-xs border border-cyber-cyan/20"
+                style={{ maxHeight: "300px", objectFit: "contain" }}
+              />
+            ))}
           </div>
         )}
 

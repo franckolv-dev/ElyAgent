@@ -19,9 +19,6 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies (no editable install in production)
 RUN uv sync --frozen --no-dev --no-editable
 
-# Install Playwright Chromium browser
-RUN uv run playwright install chromium
-
 # Copy application code
 COPY app/ ./app/
 
@@ -33,12 +30,17 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 # Keep uv cache inside /app so the non-root user has write access
 ENV UV_CACHE_DIR=/app/.cache/uv
+# Keep Playwright browsers inside /app so the non-root user has write access
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/playwright
 
 # Run as non-root for container security (SEC-7)
 RUN adduser --system --no-create-home --uid 1001 appuser \
-    && mkdir -p /app/.cache/uv \
+    && mkdir -p /app/.cache/uv /app/.cache/playwright \
     && chown -R appuser /app /config
+
+# Install Playwright Chromium as appuser (browsers land in PLAYWRIGHT_BROWSERS_PATH)
 USER appuser
+RUN uv run playwright install chromium
 
 EXPOSE 8000
 

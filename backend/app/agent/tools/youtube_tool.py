@@ -94,39 +94,44 @@ async def youtube_search(
         except Exception as exc:
             logger.warning("YouTube API search failed: %s — falling back to Invidious", exc)
 
-    # ── Invidious fallback ───────────────────────────────────────────────────
+    # ── yt-dlp fallback ──────────────────────────────────────────────────────
     import urllib.parse
-    q_enc = urllib.parse.quote_plus(query)
+    try:
+        import yt_dlp  # type: ignore
 
-    for instance in _INVIDIOUS_INSTANCES:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{instance}/api/v1/search",
-                    params={"q": q_enc, "type": "video", "page": "1"},
-                )
-                resp.raise_for_status()
-                items = resp.json()
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "playlistend": max_results,
+        }
+        search_url = f"ytsearch{max_results}:{query}"
+        loop = __import__("asyncio").get_event_loop()
 
-            if not items:
-                continue
+        def _search():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(search_url, download=False)
 
+        info = await loop.run_in_executor(None, _search)
+        entries = (info or {}).get("entries", [])
+        if entries:
             lines = [f"Résultats YouTube pour « {query} » :"]
-            for item in items[:max_results]:
-                vid_id = item.get("videoId", "")
-                title = item.get("title", "")
-                author = item.get("author", "")
-                length_sec = item.get("lengthSeconds", 0)
-                dur = f"{length_sec // 60}:{length_sec % 60:02d}" if length_sec else "?"
+            for entry in entries[:max_results]:
+                vid_id = entry.get("id", "")
+                title = entry.get("title", "")
+                author = entry.get("uploader") or entry.get("channel", "")
+                dur_sec = entry.get("duration") or 0
+                dur = f"{int(dur_sec) // 60}:{int(dur_sec) % 60:02d}" if dur_sec else "?"
                 lines.append(
                     f"\n• {title}\n"
                     f"  Chaîne : {author}  |  Durée : {dur}\n"
                     f"  URL    : {_video_url(vid_id)}"
                 )
             return "\n".join(lines)
-        except Exception:
-            continue
+    except Exception as exc:
+        logger.warning("yt-dlp search failed: %s", exc)
 
+    import urllib.parse
     return f"Impossible de chercher sur YouTube pour l'instant. Essaie directement sur https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}"
 
 
@@ -161,30 +166,34 @@ async def youtube_transcript(
     try:
         from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled  # type: ignore
 
-        transcript_list = YouTubeTranscriptApi.list_transcripts(vid_id)
+        ytt_api = YouTubeTranscriptApi()
 
-        # Try preferred language, then English, then any
-        transcript = None
-        for lang in [language, "en", "fr"]:
-            try:
-                transcript = transcript_list.find_transcript([lang])
-                break
-            except NoTranscriptFound:
-                continue
+        # Build preferred language list
+        langs = list(dict.fromkeys([language, "en", "fr"]))
+        try:
+            fetched = ytt_api.fetch(vid_id, languages=langs)
+            lang_used = getattr(fetched, "language", language)
+        except NoTranscriptFound:
+            # Fallback: take whatever is available
+            transcript_list = ytt_api.list(vid_id)
+            first = next(iter(transcript_list), None)
+            if first is None:
+                return f"Aucune transcription disponible pour cette vidéo ({vid_id})."
+            fetched = ytt_api.fetch(vid_id, languages=[first.language_code])
+            lang_used = first.language
 
-        if transcript is None:
-            # Take the first available (auto-generated)
-            transcript = next(iter(transcript_list))
-
-        entries = transcript.fetch()
-        full_text = " ".join(e["text"] for e in entries)
+        entries = list(fetched)
+        full_text = " ".join(
+            e.get("text", "") if isinstance(e, dict) else str(getattr(e, "text", e))
+            for e in entries
+        )
 
         # Truncate to 4000 chars
         if len(full_text) > 4000:
             full_text = full_text[:4000] + "\n\n[… transcription tronquée]"
 
         return (
-            f"Transcription de https://youtu.be/{vid_id} ({transcript.language}) :\n\n"
+            f"Transcription de https://youtu.be/{vid_id} ({lang_used}) :\n\n"
             + full_text
         )
 

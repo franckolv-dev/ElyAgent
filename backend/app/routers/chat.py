@@ -313,10 +313,20 @@ async def websocket_chat(websocket: WebSocket):
                         }))
                 elif event["event"] == "on_tool_end":
                     tool_name = event.get("name", "")
-                    await websocket.send_text(json.dumps({
-                        "type": "tool_end",
-                        "tool": tool_name,
-                    }))
+                    tool_output = event.get("data", {}).get("output", "")
+                    # Detect image results from tools (e.g. qrcode_generate, generate_image)
+                    _image_payload: dict | None = None
+                    if isinstance(tool_output, str) and tool_output.startswith("{"):
+                        try:
+                            _parsed = json.loads(tool_output)
+                            if isinstance(_parsed, dict) and _parsed.get("type") == "image":
+                                _image_payload = _parsed
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    _msg: dict = {"type": "tool_end", "tool": tool_name}
+                    if _image_payload:
+                        _msg["image"] = _image_payload
+                    await websocket.send_text(json.dumps(_msg))
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
                     model_used_out = output.get("model_used", "") or model_used_out

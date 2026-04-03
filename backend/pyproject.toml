@@ -41,6 +41,7 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "pypdf>=4.0.0",
     "youtube-transcript-api>=0.6.0",
+    "yt-dlp>=2024.0.0",
     "qrcode[pil]>=7.4.0",
     "duckduckgo-search>=6.0.0",
     "tavily-python>=0.3.0",
