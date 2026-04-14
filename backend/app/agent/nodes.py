@@ -177,6 +177,12 @@ USER_ID_TOOLS = {
     "trainer_type",
     "trainer_hotkey",
     "trainer_get_screen_size",
+    # Memory / preferences tools
+    "save_user_preference",
+    "save_constraint",
+    # Knowledge base tools
+    "knowledge_search",
+    "knowledge_list",
 }
 
 GOOGLE_TOOLS = {
@@ -384,13 +390,25 @@ def create_agent_node():
                         f"→ R: {p.get('assistant_message', '')[:120]}\n"
                     )
 
+        # ── Context fitting (prevent overflow) ────────────────────────────
+        from app.services.context_manager import fit_messages_to_context
+        from app.services.llm_provider import get_active_model
+
+        _sanitized = _sanitize_messages_for_mistral(messages)
+
         # ── Inference ──────────────────────────────────────────────────────
         if use_slm:
             try:
+                _slm_fitted = fit_messages_to_context(
+                    messages=_sanitized,
+                    system_prompt=system,
+                    model=settings.slm_model,
+                    reserve_for_response=1024,
+                )
                 response = await asyncio.wait_for(
                     _slm_with_tools.ainvoke(
                         [{"role": "system", "content": system}]
-                        + _sanitize_messages_for_mistral(messages)
+                        + _slm_fitted
                     ),
                     timeout=settings.slm_timeout,
                 )
@@ -441,9 +459,15 @@ def create_agent_node():
                     system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
                     system += "\n".join(f"- {m}" for m in memories)
 
+            _fitted = fit_messages_to_context(
+                messages=_sanitized,
+                system_prompt=system,
+                model=get_active_model(),
+                reserve_for_response=1024,
+            )
             _invoke_msgs = (
                 [{"role": "system", "content": system}]
-                + _sanitize_messages_for_mistral(messages)
+                + _fitted
             )
             try:
                 response = await _llm_with_tools.ainvoke(_invoke_msgs)

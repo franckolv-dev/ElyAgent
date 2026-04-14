@@ -113,6 +113,13 @@ class Settings(BaseSettings):
     # Firebase Cloud Messaging (optional — Android push notifications)
     firebase_credentials_path: str = ""
 
+    # Slack bot (optional — configurer via Admin ou .env)
+    slack_bot_token: str = ""      # xoxb-... Bot User OAuth Token
+    slack_app_token: str = ""      # xapp-... App-Level Token (Socket Mode)
+
+    # Discord bot (optional — configurer via Admin ou .env)
+    discord_bot_token: str = ""    # Bot Token from Discord Developer Portal
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

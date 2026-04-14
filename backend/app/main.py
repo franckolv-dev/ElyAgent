@@ -49,6 +49,7 @@ from app.routers import mcp as mcp_router
 from app.routers import telegram_webhook as telegram_webhook_router
 from app.routers import vault as vault_router
 from app.routers import conversations as conversations_router
+from app.routers import knowledge as knowledge_router
 from app.routers import settings_llm as settings_llm_router
 from app.routers import setup as setup_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
@@ -74,12 +75,30 @@ async def lifespan(app: FastAPI):
     await get_memory_manager().init_collections()
     await get_fts_store().init()
 
+    # Init RAG knowledge collection
+    from app.services.rag_service import get_rag_service
+    await get_rag_service().init_collection()
+
     # Start Telegram bot if configured
     from app.channels.telegram_bot import start_telegram_bot, stop_telegram_bot
     try:
         await start_telegram_bot()
     except Exception:
         _startup_logger.warning("Telegram bot failed to start — channel disabled", exc_info=True)
+
+    # Start Slack bot if configured
+    from app.channels.slack_bot import start_slack_bot, stop_slack_bot
+    try:
+        await start_slack_bot()
+    except Exception:
+        _startup_logger.warning("Slack bot failed to start — channel disabled", exc_info=True)
+
+    # Start Discord bot if configured
+    from app.channels.discord_bot import start_discord_bot, stop_discord_bot
+    try:
+        await start_discord_bot()
+    except Exception:
+        _startup_logger.warning("Discord bot failed to start — channel disabled", exc_info=True)
 
     # Load WhatsApp linked users
     from app.channels.whatsapp import load_linked_whatsapp_users
@@ -214,6 +233,8 @@ async def lifespan(app: FastAPI):
     await stop_scheduler()
     await stop_watchdog()
     await stop_telegram_bot()
+    await stop_slack_bot()
+    await stop_discord_bot()
     await get_browser_manager().stop()
 
 
@@ -260,6 +281,7 @@ app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)
 app.include_router(conversations_router.router)
+app.include_router(knowledge_router.router, prefix="/api", tags=["knowledge"])
 app.include_router(settings_llm_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
 app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])

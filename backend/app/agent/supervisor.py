@@ -104,7 +104,8 @@ _DOMAIN_DESCRIPTIONS = {
     ),
     "memory": (
         "Notes personnelles (créer, lire, modifier, supprimer, chercher), "
-        "envoi de messages WhatsApp, gestion de la mémoire personnelle."
+        "envoi de messages WhatsApp, gestion de la mémoire personnelle, "
+        "recherche dans la base de connaissances (documents indexés par l'utilisateur)."
     ),
     "desktop": (
         "Tout ce qui implique le bureau ou la machine locale de l'utilisateur : "
@@ -233,7 +234,7 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
 
 # Tools available in every specialist domain — user preferences and constraints
 # must be saveable regardless of the current routing domain.
-_MEMORY_SKILLS = {"save_user_preference", "save_constraint"}
+_MEMORY_SKILLS = {"save_user_preference", "save_constraint", "knowledge_search", "knowledge_list"}
 
 _RESEARCH_SKILLS = {
     "weather_get", "news_get_headlines", "translate_text",
