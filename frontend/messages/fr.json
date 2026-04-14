@@ -22,7 +22,16 @@
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",
-    "recent": "Récentes"
+    "recent": "Récentes",
+    "searchPlaceholder": "Rechercher...",
+    "loadMore": "Charger plus",
+    "noResults": "Aucun resultat",
+    "rename": "Renommer",
+    "delete": "Supprimer",
+    "export": "Exporter",
+    "confirmDelete": "Supprimer cette conversation ?",
+    "renameTitle": "Nouveau titre",
+    "exported": "Conversation exportee"
   },
   "chat": {
     "placeholder": "Demandez à Ély n'importe quoi…",
@@ -34,7 +43,9 @@
     },
     "welcome": "Votre agent IA est prêt. Demandez-lui d'exécuter des commandes, analyser des fichiers ou gérer vos systèmes.",
     "resize": "Redimensionner le panneau",
-    "error": "Erreur : {message}"
+    "error": "Erreur : {message}",
+    "newConversation": "Nouvelle conversation",
+    "clickToRename": "Cliquer pour renommer"
   },
   "messageBubble": {
     "goodResponse": "Bonne réponse",

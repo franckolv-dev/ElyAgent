@@ -19,7 +19,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { MessageSquare, LayoutDashboard, Settings, Shield, LogOut, Cpu, Plus, Clock } from "lucide-react";
+import { MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut, Cpu, Plus, Clock } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
@@ -37,6 +37,7 @@ const BASE_NAV = [
 
 const ADMIN_NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/security",  label: "Securite",  icon: ShieldCheck     },
   { href: "/admin",     label: "Admin",     icon: Shield          },
 ];
 

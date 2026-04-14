@@ -69,9 +69,26 @@ export const api = {
       body: JSON.stringify(params),
     }),
 
-  getConversations: (limit = 15) =>
-    authFetch(`${API_URL}/api/conversations?limit=${limit}`).then((r) => r.json()),
+  getConversations: (params?: { limit?: number; offset?: number; q?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    if (params?.q) sp.set("q", params.q);
+    return authFetch(`${API_URL}/api/conversations?${sp}`).then((r) => r.json());
+  },
 
   getConversationMessages: (id: string) =>
     authFetch(`${API_URL}/api/conversations/${id}/messages`).then((r) => r.json()),
+
+  renameConversation: (id: string, title: string) =>
+    fetchAPI(`/api/conversations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ title }),
+    }),
+
+  deleteConversation: (id: string) =>
+    fetchAPI(`/api/conversations/${id}`, { method: "DELETE" }),
+
+  exportConversation: (id: string) =>
+    fetchAPI(`/api/conversations/${id}/export`, { method: "POST" }),
 };

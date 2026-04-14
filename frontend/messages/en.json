@@ -22,7 +22,16 @@
   },
   "sidebar": {
     "newConversation": "New conversation",
-    "recent": "Recent"
+    "recent": "Recent",
+    "searchPlaceholder": "Search...",
+    "loadMore": "Load more",
+    "noResults": "No results",
+    "rename": "Rename",
+    "delete": "Delete",
+    "export": "Export",
+    "confirmDelete": "Delete this conversation?",
+    "renameTitle": "New title",
+    "exported": "Conversation exported"
   },
   "chat": {
     "placeholder": "Ask ELY anything…",
@@ -34,7 +43,9 @@
     },
     "welcome": "Your AI agent is ready. Ask it to run commands, analyse files or manage your systems.",
     "resize": "Resize panel",
-    "error": "Error: {message}"
+    "error": "Error: {message}",
+    "newConversation": "New conversation",
+    "clickToRename": "Click to rename"
   },
   "messageBubble": {
     "goodResponse": "Good response",

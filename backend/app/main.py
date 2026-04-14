@@ -31,6 +31,7 @@ from app.models import note as _note              # ensure Note table is registe
 from app.models import feedback as _feedback      # ensure Feedback table is registered
 from app.models import mcp_server as _mcp_server  # ensure MCPServer table is registered
 from app.models import llm_instance as _llm_instance  # ensure LLMInstance table is registered
+from app.models import community_skill as _community_skill  # ensure CommunitySkill table
 from app.models import vault as _vault_models      # ensure VaultConfig + VaultEntry tables
 from app.models import conversation as _conversation  # ensure Conversation + Message tables
 from app.models import user_memory as _user_memory    # ensure UserMemoryLog + UserProfile tables
@@ -43,6 +44,7 @@ from app.routers import whatsapp_webhook as whatsapp_router
 from app.routers import upload as upload_router
 from app.routers import watchdog as watchdog_router
 from app.routers import analytics as analytics_router
+from app.routers import audit as audit_router
 from app.routers.device_token import router as device_token_router
 from app.routers import feedback as feedback_router
 from app.routers import mcp as mcp_router
@@ -51,6 +53,7 @@ from app.routers import vault as vault_router
 from app.routers import conversations as conversations_router
 from app.routers import knowledge as knowledge_router
 from app.routers import settings_llm as settings_llm_router
+from app.routers import marketplace as marketplace_router
 from app.routers import setup as setup_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
 from app.middleware.rate_limit import setup_rate_limiter
@@ -142,6 +145,13 @@ async def lifespan(app: FastAPI):
     # Warm up SLM — loads model into RAM so the first real request has no cold-start
     from app.services.slm_warmup import warmup_slm
     await warmup_slm()
+
+    # Load approved community skills into the skill registry
+    from app.services.marketplace import get_marketplace_service
+    try:
+        await get_marketplace_service().load_approved_skills()
+    except Exception:
+        _startup_logger.warning("Community skills failed to load", exc_info=True)
 
     # Compile and register all sub-agent subgraphs
     from app.agent.sub_agents.registry import get_sub_agent_registry
@@ -275,6 +285,7 @@ app.include_router(upload_router.router, prefix="/api", tags=["upload"])
 app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
 app.include_router(watchdog_router.router, prefix="/watchdog", tags=["watchdog"])
 app.include_router(analytics_router.router, prefix="/analytics", tags=["analytics"])
+app.include_router(audit_router.router, prefix="/api", tags=["audit"])
 app.include_router(device_token_router)
 app.include_router(feedback_router.router)
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
@@ -282,6 +293,7 @@ app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)
 app.include_router(conversations_router.router)
 app.include_router(knowledge_router.router, prefix="/api", tags=["knowledge"])
+app.include_router(marketplace_router.router, prefix="/api/marketplace", tags=["marketplace"])
 app.include_router(settings_llm_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
 app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])

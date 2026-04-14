@@ -26,9 +26,17 @@ class AuditLogResponse(BaseModel):
     command: str | None
     result_code: int | None
     details: str | None
+    channel: str | None = None
+    tool_used: str | None = None
+    ip_address: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AuditLogDetailResponse(AuditLogResponse):
+    """Réponse enrichie avec le username (via jointure User)."""
+    username: str | None = None
 
 
 class UserAdminResponse(BaseModel):
