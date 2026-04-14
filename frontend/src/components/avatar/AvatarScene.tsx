@@ -19,7 +19,7 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { useRef, useMemo, useState, Component, type ReactNode, type ErrorInfo } from "react";
+import { useRef, useMemo, useState, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
 import * as THREE from "three";
 import type { AvatarState } from "./CyberpunkAvatar";
 
@@ -284,6 +284,27 @@ function AvatarFallback({ state }: { state: AvatarState }) {
   );
 }
 
+// ─── PostFX — monté seulement après le premier frame du renderer ───────────
+function DeferredPostFX() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    // Délai d'un tick pour s'assurer que le renderer WebGL est pleinement initialisé
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  if (!ready) return null;
+  return (
+    <EffectComposer>
+      <Bloom
+        luminanceThreshold={0.15}
+        luminanceSmoothing={0.9}
+        intensity={1.2}
+        mipmapBlur
+      />
+    </EffectComposer>
+  );
+}
+
 // ─── Scene wrapper ─────────────────────────────────────────────────────────
 export function AvatarScene({ state }: { state: AvatarState }) {
   const [failed, setFailed] = useState(false);
@@ -315,15 +336,7 @@ export function AvatarScene({ state }: { state: AvatarState }) {
         dpr={[1, 1.5]}
       >
         <FaceModel state={state} />
-
-        <EffectComposer>
-          <Bloom
-            luminanceThreshold={0.15}
-            luminanceSmoothing={0.9}
-            intensity={1.2}
-            mipmapBlur
-          />
-        </EffectComposer>
+        <DeferredPostFX />
       </Canvas>
     </WebGLErrorBoundary>
   );

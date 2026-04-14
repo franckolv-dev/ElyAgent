@@ -34,7 +34,7 @@ import { setLocale } from "@/lib/locale";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ---------------------------------------------------------------------------
-// Provider catalogue (UI-side)
+// Provider catalogue (UI-side) — used in the "Add instance" modal
 // ---------------------------------------------------------------------------
 const PROVIDERS = [
   {
@@ -42,7 +42,8 @@ const PROVIDERS = [
     label: "Zhipu AI — GLM",
     flag: "🇨🇳",
     desc: "GLM-4.7 · Excellent function-calling · Prefix caching auto (−80 % coût) · API OpenAI-compatible",
-    tier: "A/B",
+    needsKey: true,
+    defaultModel: "glm-4.7",
     docsUrl: "https://open.bigmodel.cn/",
   },
   {
@@ -50,7 +51,8 @@ const PROVIDERS = [
     label: "Anthropic Claude",
     flag: "🇺🇸",
     desc: "Fiable, rapide — prompt caching activé (−90 % sur system prompt) · serveurs US",
-    tier: "B/C",
+    needsKey: true,
+    defaultModel: "claude-haiku-4-5-20251001",
     docsUrl: "https://console.anthropic.com/",
   },
   {
@@ -58,15 +60,17 @@ const PROVIDERS = [
     label: "Google Gemini",
     flag: "🇺🇸",
     desc: "Gemini 2.0 Flash / Pro — caching implicite activé",
-    tier: "B",
+    needsKey: true,
+    defaultModel: "gemini-2.5-flash",
     docsUrl: "https://aistudio.google.com/",
   },
   {
     id: "openrouter",
     label: "OpenRouter",
     flag: "🔀",
-    desc: "200+ modèles (Meta, Google, Mistral, Qwen…) — modèles gratuits disponibles — passerelle universelle",
-    tier: "A/B/C",
+    desc: "200+ modèles (Meta, Google, Mistral, Qwen…) — modèles gratuits disponibles",
+    needsKey: true,
+    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
     docsUrl: "https://openrouter.ai/",
   },
   {
@@ -74,7 +78,8 @@ const PROVIDERS = [
     label: "DeepSeek",
     flag: "🇨🇳",
     desc: "Coût très faible — serveurs en Chine",
-    tier: "C",
+    needsKey: true,
+    defaultModel: "deepseek-chat",
     docsUrl: "https://platform.deepseek.com/",
   },
   {
@@ -82,18 +87,18 @@ const PROVIDERS = [
     label: "Mistral AI",
     flag: "🇫🇷",
     desc: "IA française, serveurs en Europe (RGPD) — fallback uniquement",
-    tier: "C",
+    needsKey: true,
+    defaultModel: "mistral-small-latest",
     docsUrl: "https://console.mistral.ai/",
-    rgpd: true,
   },
   {
     id: "ollama",
     label: "Ollama (Local)",
     flag: "🖥️",
     desc: "100 % local, zéro données transmises — tâches de fond (mémoire)",
-    tier: "A",
+    needsKey: false,
+    defaultModel: "",
     docsUrl: "https://ollama.com/",
-    rgpd: true,
   },
 ];
 
@@ -137,17 +142,13 @@ function checkPasswordStrength(pwd: string): PasswordStrength {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-interface ProviderMeta {
+interface LLMInstance {
   id: string;
-  name: string;
-  models: string[];
-  has_key: boolean;
-}
-
-interface LLMSettings {
+  label: string;
   provider: string;
   model: string;
-  providers: ProviderMeta[];
+  has_key: boolean;
+  created_at: string;
 }
 
 interface TierMeta {
@@ -167,14 +168,12 @@ interface TierConfig {
   [tierId: string]: TierEntry;
 }
 
-interface ORModel {
-  id: string;
-  name: string;
-  context_length: number;
-  is_free: boolean;
-  modality: string;
-  prompt_price: string;
-  completion_price: string;
+// Represents either a legacy provider id or a LLM instance for display in routing
+interface RoutingItem {
+  id: string;        // provider id or instance uuid
+  label: string;     // display name
+  flag: string;      // emoji flag/icon
+  isInstance: boolean;
 }
 
 const TIER_BADGE_COLORS: Record<string, string> = {
@@ -218,14 +217,18 @@ export default function SettingsPage() {
   // admin is read client-side only (localStorage unavailable during SSR)
   const [admin, setAdmin] = useState(false);
 
-  // LLM state
-  const [llmLoaded, setLlmLoaded]         = useState(false);
-  const [activeProvider, setActiveProvider] = useState("anthropic");
-  const [activeModel, setActiveModel]       = useState("");
-  const [providersMeta, setProvidersMeta]   = useState<ProviderMeta[]>([]);
-  const [apiKeyInput, setApiKeyInput]       = useState("");
-  const [savingLLM, setSavingLLM]           = useState(false);
-  const [savingKey, setSavingKey]           = useState(false);
+  // LLM Instances state
+  const [instances, setInstances]   = useState<LLMInstance[]>([]);
+  const [instancesLoading, setInstancesLoading] = useState(false);
+
+  // Add instance modal state
+  const [showAddModal, setShowAddModal]       = useState(false);
+  const [modalProvider, setModalProvider]     = useState("ollama");
+  const [modalModel, setModalModel]           = useState("");
+  const [modalLabel, setModalLabel]           = useState("");
+  const [modalApiKey, setModalApiKey]         = useState("");
+  const [modalOllamaModels, setModalOllamaModels] = useState<string[]>([]);
+  const [modalSaving, setModalSaving]         = useState(false);
 
   // Google state
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
@@ -239,16 +242,11 @@ export default function SettingsPage() {
   const [showNewPwd, setShowNewPwd]         = useState(false);
   const [savingPwd, setSavingPwd]       = useState(false);
 
-  // OpenRouter models state
-  const [orModels, setOrModels]           = useState<ORModel[]>([]);
-  const [orLoading, setOrLoading]         = useState(false);
-  const [orFreeOnly, setOrFreeOnly]       = useState(true);
-  const [orSearch, setOrSearch]           = useState("");
-
   // Tier routing state
   const [tierMeta, setTierMeta]           = useState<TierMeta[]>([]);
   const [tierConfig, setTierConfig]       = useState<TierConfig>({});
   const [tierProviderIds, setTierProviderIds] = useState<string[]>([]);
+  const [tierInstances, setTierInstances] = useState<Array<{id: string; label: string; provider: string; model: string; has_key: boolean}>>([]);
   const [savingTiers, setSavingTiers]     = useState(false);
   const [tierTooltip, setTierTooltip]     = useState<string | null>(null);
 
@@ -274,67 +272,45 @@ export default function SettingsPage() {
     setActiveTab(a ? "modeles" : "integrations");
   }, []);
 
-  // Derived: current provider metadata from the API response
-  const currentMeta = providersMeta.find((p) => p.id === activeProvider);
-  const uiProvider  = PROVIDERS.find((p) => p.id === activeProvider);
-  const models      = currentMeta?.models ?? [];
-
   // ---------------------------------------------------------------------------
-  // Load LLM settings from API
+  // Load LLM instances from API
   // ---------------------------------------------------------------------------
-  const loadLLMSettings = useCallback(async () => {
+  const loadInstances = useCallback(async () => {
+    setInstancesLoading(true);
     try {
-      const res = await authFetch(`${API_URL}/api/settings/llm`);
+      const res = await authFetch(`${API_URL}/api/settings/llm/instances`);
       if (!res.ok) return;
-      const data: LLMSettings = await res.json();
-      setActiveProvider(data.provider);
-      setActiveModel(data.model);
-      setProvidersMeta(data.providers);
-      setLlmLoaded(true);
+      const data: LLMInstance[] = await res.json();
+      setInstances(data);
     } catch {
-      // silently ignore — env defaults remain
+      // silently ignore
+    } finally {
+      setInstancesLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadLLMSettings();
-  }, [loadLLMSettings]);
-
-  // Clear key input whenever provider changes
-  useEffect(() => {
-    setApiKeyInput("");
-  }, [activeProvider]);
-
-  // Load OpenRouter models when provider = openrouter or freeOnly changes
-  useEffect(() => {
-    if (activeProvider !== "openrouter") return;
-    setOrLoading(true);
-    authFetch(`${API_URL}/api/settings/llm/openrouter-models?free_only=${orFreeOnly}`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: ORModel[]) => {
-        setOrModels(data);
-        // Auto-select first model if current one not in list
-        if (data.length > 0 && !data.find((m) => m.id === activeModel)) {
-          handleModelChange(data[0].id);
-        }
-      })
-      .catch(() => setOrModels([]))
-      .finally(() => setOrLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProvider, orFreeOnly]);
+    if (admin) loadInstances();
+  }, [admin, loadInstances]);
 
   // Load tier routing config
-  useEffect(() => {
-    authFetch(`${API_URL}/api/settings/llm/tiers`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (!d) return;
-        setTierMeta(d.tiers ?? []);
-        setTierConfig(d.config ?? {});
-        setTierProviderIds(d.provider_ids ?? []);
-      })
-      .catch(() => {});
+  const loadTierConfig = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/settings/llm/tiers`);
+      if (!res.ok) return;
+      const d = await res.json();
+      setTierMeta(d.tiers ?? []);
+      setTierConfig(d.config ?? {});
+      setTierProviderIds(d.provider_ids ?? []);
+      setTierInstances(d.instances ?? []);
+    } catch {
+      // silently ignore
+    }
   }, []);
+
+  useEffect(() => {
+    loadTierConfig();
+  }, [loadTierConfig]);
 
   // Check Google connection status
   useEffect(() => {
@@ -403,80 +379,116 @@ export default function SettingsPage() {
   }, [loadDesktopStatus, loadDesktopConfig, loadDesktopBinaries]);
 
   // ---------------------------------------------------------------------------
-  // Handlers — LLM
+  // Modal: load Ollama models when provider changes to "ollama"
   // ---------------------------------------------------------------------------
-  const handleProviderClick = async (providerId: string) => {
-    if (!admin || savingLLM) return;
-    const meta = providersMeta.find((p) => p.id === providerId);
-    const defaultModel = meta?.models[0] ?? "";
+  useEffect(() => {
+    if (modalProvider !== "ollama") {
+      // Auto-set default model for cloud providers
+      const p = PROVIDERS.find((pp) => pp.id === modalProvider);
+      if (p) {
+        setModalModel(p.defaultModel);
+        setModalLabel(`${p.label} — ${p.defaultModel}`);
+      }
+      return;
+    }
+    setModalModel("");
+    setModalLabel("");
+    authFetch(`${API_URL}/api/settings/llm/ollama-models`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: string[]) => {
+        setModalOllamaModels(data);
+        if (data.length > 0) {
+          setModalModel(data[0]);
+          setModalLabel(`Ollama — ${data[0]}`);
+        }
+      })
+      .catch(() => setModalOllamaModels([]));
+  }, [modalProvider]);
 
-    setActiveProvider(providerId);
-    setActiveModel(defaultModel);
-    setSavingLLM(true);
+  // Update label when model changes in modal
+  useEffect(() => {
+    if (!modalModel) return;
+    const p = PROVIDERS.find((pp) => pp.id === modalProvider);
+    if (!p) return;
+    // Only auto-update label if it looks like it was auto-generated (contains provider label)
+    const autoPrefix = modalProvider === "ollama" ? "Ollama — " : `${p.label} — `;
+    setModalLabel((prev) => {
+      if (!prev || prev.startsWith(autoPrefix)) {
+        return `${autoPrefix}${modalModel}`;
+      }
+      return prev;
+    });
+  }, [modalModel, modalProvider]);
+
+  // ---------------------------------------------------------------------------
+  // Handlers — LLM Instances
+  // ---------------------------------------------------------------------------
+
+  const openAddModal = () => {
+    setModalProvider("ollama");
+    setModalModel("");
+    setModalLabel("");
+    setModalApiKey("");
+    setShowAddModal(true);
+  };
+
+  const handleCreateInstance = async () => {
+    if (modalSaving || !modalLabel.trim() || !modalModel.trim()) return;
+    setModalSaving(true);
     try {
-      const res = await authFetch(`${API_URL}/api/settings/llm`, {
-        method: "PUT",
+      const body: { label: string; provider: string; model: string; api_key?: string } = {
+        label: modalLabel.trim(),
+        provider: modalProvider,
+        model: modalModel.trim(),
+      };
+      if (modalApiKey.trim()) body.api_key = modalApiKey.trim();
+
+      const res = await authFetch(`${API_URL}/api/settings/llm/instances`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: providerId, model: defaultModel }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         push("error", err.detail ?? `Erreur ${res.status}`);
-      } else {
-        push("success", "Fournisseur sauvegardé");
+        return;
       }
+      push("success", "Instance créée");
+      setShowAddModal(false);
+      await loadInstances();
+      // Refresh tier config to get updated instances list
+      await loadTierConfig();
     } catch {
       push("error", "Impossible de contacter le serveur");
     } finally {
-      setSavingLLM(false);
+      setModalSaving(false);
     }
   };
 
-  const handleModelChange = async (model: string) => {
-    if (!admin || savingLLM) return;
-    setActiveModel(model);
-    setSavingLLM(true);
+  const handleDeleteInstance = async (id: string) => {
     try {
-      const res = await authFetch(`${API_URL}/api/settings/llm`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: activeProvider, model }),
+      const res = await authFetch(`${API_URL}/api/settings/llm/instances/${id}`, {
+        method: "DELETE",
       });
-      if (!res.ok) {
+      if (!res.ok && res.status !== 204) {
         const err = await res.json().catch(() => ({}));
         push("error", err.detail ?? `Erreur ${res.status}`);
-      } else {
-        push("success", "Modèle sauvegardé");
+        return;
       }
-    } catch {
-      push("error", "Impossible de contacter le serveur");
-    } finally {
-      setSavingLLM(false);
-    }
-  };
-
-  const handleSaveKey = async () => {
-    if (!admin || savingKey || !apiKeyInput.trim()) return;
-    setSavingKey(true);
-    try {
-      const res = await authFetch(`${API_URL}/api/settings/llm/keys/${activeProvider}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKeyInput.trim() }),
+      push("success", "Instance supprimée");
+      setInstances((prev) => prev.filter((i) => i.id !== id));
+      // Remove from tier configs that reference this instance
+      setTierConfig((prev) => {
+        const next: TierConfig = {};
+        for (const [tid, entry] of Object.entries(prev)) {
+          next[tid] = { ...entry, providers: entry.providers.filter((p) => p !== id) };
+        }
+        return next;
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        push("error", err.detail ?? `Erreur ${res.status}`);
-      } else {
-        push("success", "Clé API sauvegardée");
-        setApiKeyInput("");
-        // Refresh metadata so has_key badge updates
-        await loadLLMSettings();
-      }
+      // Refresh tier config to get updated instances list
+      await loadTierConfig();
     } catch {
       push("error", "Impossible de contacter le serveur");
-    } finally {
-      setSavingKey(false);
     }
   };
 
@@ -511,6 +523,34 @@ export default function SettingsPage() {
   // ---------------------------------------------------------------------------
   // Handlers — Tier routing
   // ---------------------------------------------------------------------------
+
+  // Build the combined routing items list (instances + legacy providers for routing tab display)
+  const buildRoutingItems = (): RoutingItem[] => {
+    const items: RoutingItem[] = [];
+    // Named instances first
+    for (const inst of tierInstances) {
+      const p = PROVIDERS.find((pp) => pp.id === inst.provider);
+      items.push({
+        id: inst.id,
+        label: inst.label,
+        flag: p?.flag ?? "🤖",
+        isInstance: true,
+      });
+    }
+    // Legacy provider IDs
+    for (const pid of tierProviderIds) {
+      const p = PROVIDERS.find((pp) => pp.id === pid);
+      items.push({
+        id: pid,
+        label: p?.label ?? pid,
+        flag: p?.flag ?? "🤖",
+        isInstance: false,
+      });
+    }
+    return items;
+  };
+
+  const routingItems = buildRoutingItems();
 
   const moveTierProvider = (tierId: string, index: number, dir: -1 | 1) => {
     setTierConfig((prev) => {
@@ -664,10 +704,18 @@ export default function SettingsPage() {
   };
 
   // ---------------------------------------------------------------------------
-  // Render
+  // Render helpers
   // ---------------------------------------------------------------------------
-  const needsKey = !["ollama"].includes(activeProvider);
-  const hasKey   = currentMeta?.has_key ?? false;
+
+  // Resolve a routing item id to a RoutingItem for display
+  const resolveRoutingItem = (id: string): RoutingItem => {
+    const found = routingItems.find((ri) => ri.id === id);
+    if (found) return found;
+    const p = PROVIDERS.find((pp) => pp.id === id);
+    return { id, label: p?.label ?? id, flag: p?.flag ?? "🤖", isInstance: false };
+  };
+
+  const selectedModalProvider = PROVIDERS.find((p) => p.id === modalProvider);
 
   // Tab definitions — admin-only tabs are hidden for regular users
   const TABS = [
@@ -730,237 +778,83 @@ export default function SettingsPage() {
           <div className="max-w-3xl space-y-6">
 
             {/* ================================================================
-                TAB: Modèles IA
+                TAB: Modèles IA — instance list
             ================================================================ */}
-            {/* ----------------------------------------------------------------
-                LLM Provider — admin only
-            ---------------------------------------------------------------- */}
             {admin && activeTab === "modeles" && (
               <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <Cpu className="w-4 h-4 text-cyber-cyan" />
-                  <h2 className="text-sm font-medium text-text-primary">{t("llmProvider")}</h2>
-                  {savingLLM && (
-                    <span className="text-[10px] text-text-muted animate-pulse">{tc("saving")}</span>
-                  )}
-                </div>
-
-                {/* Provider cards */}
-                <div className="space-y-2">
-                  {PROVIDERS.map((p) => {
-                    const isActive = activeProvider === p.id;
-                    const meta = providersMeta.find((m) => m.id === p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => handleProviderClick(p.id)}
-                        disabled={savingLLM}
-                        className={`w-full flex items-center justify-between p-4 rounded-lg border text-left transition-all disabled:opacity-60 ${
-                          isActive
-                            ? "bg-cyber-cyan/5 border-cyber-cyan/30 text-text-primary"
-                            : "bg-bg-secondary border-border-dim text-text-secondary hover:border-text-muted"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3 min-w-0">
-                          <span className="text-base mt-0.5 shrink-0">{p.flag}</span>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium">{p.label}</span>
-                              {p.rgpd && (
-                                <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
-                                  <ShieldCheck className="w-2.5 h-2.5" />
-                                  RGPD
-                                </span>
-                              )}
-                              {llmLoaded && meta && meta.has_key && p.id !== "ollama" && (
-                                <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
-                                  <Check className="w-2.5 h-2.5" />
-                                  {t("keyConfigured")}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-text-muted mt-0.5">{p.desc}</div>
-                          </div>
-                        </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded border shrink-0 ml-3 ${
-                          isActive
-                            ? "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan"
-                            : "bg-bg-primary border-border-dim text-text-muted"
-                        }`}>
-                          Tier {p.tier}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Model selector + API key input */}
-                <div className="mt-4 bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
-
-                  {/* Model selector */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-text-muted uppercase tracking-wider">{t("activeModel")}</span>
-                      {uiProvider && (
-                        <a
-                          href={uiProvider.docsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[10px] text-cyber-cyan hover:underline"
-                        >
-                          Console →
-                        </a>
-                      )}
-                    </div>
-
-                    {/* OpenRouter: dynamic model browser */}
-                    {activeProvider === "openrouter" ? (
-                      <div className="space-y-2">
-                        {/* Controls */}
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setOrFreeOnly(!orFreeOnly)}
-                            className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded border transition-all ${
-                              orFreeOnly
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                                : "bg-bg-primary border-border-dim text-text-muted hover:border-text-muted"
-                            }`}
-                          >
-                            {orFreeOnly ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
-                            Gratuits uniquement
-                          </button>
-                          <span className="text-[10px] text-text-muted">
-                            {orLoading ? "Chargement…" : `${orModels.length} modèles`}
-                          </span>
-                        </div>
-                        {/* Search */}
-                        <input
-                          type="text"
-                          value={orSearch}
-                          onChange={(e) => setOrSearch(e.target.value)}
-                          placeholder="Rechercher un modèle…"
-                          className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
-                        />
-                        {/* Model list */}
-                        <div className="max-h-48 overflow-y-auto space-y-1 rounded border border-border-dim bg-bg-primary p-1">
-                          {orLoading ? (
-                            <div className="text-[11px] text-text-muted text-center py-3 animate-pulse">Chargement des modèles…</div>
-                          ) : orModels
-                              .filter((m) =>
-                                !orSearch || m.name.toLowerCase().includes(orSearch.toLowerCase()) || m.id.toLowerCase().includes(orSearch.toLowerCase())
-                              )
-                              .map((m) => (
-                                <button
-                                  key={m.id}
-                                  onClick={() => handleModelChange(m.id)}
-                                  disabled={savingLLM}
-                                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-left transition-all disabled:opacity-50 ${
-                                    activeModel === m.id
-                                      ? "bg-cyber-cyan/10 border border-cyber-cyan/30"
-                                      : "hover:bg-bg-secondary border border-transparent"
-                                  }`}
-                                >
-                                  <div className="min-w-0">
-                                    <div className="text-xs text-text-primary truncate">{m.name}</div>
-                                    <div className="text-[9px] text-text-muted truncate">{m.id}</div>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                                    {m.is_free && (
-                                      <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                                        Gratuit
-                                      </span>
-                                    )}
-                                    {m.modality !== "text->text" && (
-                                      <span className="text-[8px] px-1 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                                        Vision
-                                      </span>
-                                    )}
-                                    <span className="text-[8px] text-text-muted">
-                                      {m.context_length >= 1000 ? `${Math.round(m.context_length / 1000)}k` : m.context_length}
-                                    </span>
-                                  </div>
-                                </button>
-                              ))}
-                          {!orLoading && orModels.filter((m) =>
-                            !orSearch || m.name.toLowerCase().includes(orSearch.toLowerCase()) || m.id.toLowerCase().includes(orSearch.toLowerCase())
-                          ).length === 0 && (
-                            <div className="text-[11px] text-text-muted text-center py-3">Aucun modèle trouvé</div>
-                          )}
-                        </div>
-                        {/* Selected model display */}
-                        {activeModel && (
-                          <div className="text-[10px] text-text-muted">
-                            Sélectionné : <code className="text-cyber-cyan">{activeModel}</code>
-                          </div>
-                        )}
-                      </div>
-                    ) : models.length > 0 ? (
-                      <select
-                        value={activeModel}
-                        onChange={(e) => handleModelChange(e.target.value)}
-                        disabled={savingLLM}
-                        className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary focus:outline-none focus:border-cyber-cyan/40 disabled:opacity-60"
-                      >
-                        {models.map((m) => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {PROVIDERS.find((p) => p.id === activeProvider) &&
-                          <code className="text-[11px] px-2 py-0.5 rounded bg-bg-primary border border-border-dim text-text-secondary">
-                            {activeModel}
-                          </code>
-                        }
-                      </div>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-cyber-cyan" />
+                    <h2 className="text-sm font-medium text-text-primary">Modèles configurés</h2>
+                    {instancesLoading && (
+                      <span className="text-[10px] text-text-muted animate-pulse">Chargement…</span>
                     )}
                   </div>
-
-                  {/* API key section */}
-                  {needsKey && (
-                    <div className="space-y-2 pt-3 border-t border-border-dim">
-                      <div className="flex items-center gap-2">
-                        <Key className="w-3.5 h-3.5 text-cyber-cyan" />
-                        <span className="text-xs text-text-muted uppercase tracking-wider">{t("apiKey")}</span>
-                        {hasKey && (
-                          <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                            <Check className="w-2.5 h-2.5" />
-                            {t("keyConfigured")}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <input
-                          type="password"
-                          value={apiKeyInput}
-                          onChange={(e) => setApiKeyInput(e.target.value)}
-                          placeholder="sk-••••••••"
-                          autoComplete="new-password"
-                          className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
-                        />
-                        <button
-                          onClick={handleSaveKey}
-                          disabled={savingKey || !apiKeyInput.trim()}
-                          className="text-xs px-3 py-2 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-40 shrink-0"
-                        >
-                          {savingKey ? "…" : tc("save")}
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-text-muted">
-                        {t("keyStoredEncrypted")}
-                      </p>
-                    </div>
-                  )}
+                  <button
+                    onClick={openAddModal}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Ajouter
+                  </button>
                 </div>
+
+                <p className="text-[11px] text-text-muted mb-3">
+                  Chaque instance combine un provider, un modèle et une clé API optionnelle. Vous pouvez créer plusieurs instances du même provider (ex. plusieurs modèles Ollama) et les assigner librement aux niveaux de routage.
+                </p>
+
+                {/* Instance list */}
+                {instances.length === 0 && !instancesLoading ? (
+                  <div className="bg-bg-secondary border border-border-dim rounded-lg p-6 text-center">
+                    <p className="text-[11px] text-text-muted italic">
+                      Aucune instance configurée. Cliquez sur "Ajouter" pour créer votre première instance.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {instances.map((inst) => {
+                      const p = PROVIDERS.find((pp) => pp.id === inst.provider);
+                      return (
+                        <div
+                          key={inst.id}
+                          className="flex items-center justify-between gap-3 bg-bg-secondary border border-border-dim rounded-lg px-4 py-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-base shrink-0">{p?.flag ?? "🤖"}</span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-medium text-text-primary">{inst.label}</span>
+                                {inst.has_key && (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                                    <Key className="w-2 h-2" />
+                                    Clé
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-text-muted mt-0.5">
+                                {inst.provider}/{inst.model}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteInstance(inst.id)}
+                            className="shrink-0 text-text-muted hover:text-cyber-red transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </section>
             )}
 
             {/* ================================================================
                 TAB: Routage
             ================================================================ */}
-            {/* ----------------------------------------------------------------
-                Tier Routing — admin only
-            ---------------------------------------------------------------- */}
             {admin && activeTab === "routage" && tierMeta.length > 0 && (
               <section>
                 <div className="flex items-center justify-between mb-4">
@@ -979,13 +873,22 @@ export default function SettingsPage() {
 
                 <p className="text-[11px] text-text-muted mb-3">
                   Définissez quel modèle est utilisé selon la complexité détectée. Les modèles en tête de liste sont prioritaires ; le fallback tente le suivant en cas d'erreur.
+                  Vous pouvez utiliser des instances nommées (configurées dans l'onglet "Modèles IA") ou les providers génériques.
                 </p>
+
+                {routingItems.length === 0 && (
+                  <div className="mb-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+                    <p className="text-[11px] text-amber-400">
+                      Aucune instance configurée. Allez dans l'onglet "Modèles IA" pour créer des instances, ou utilisez les providers génériques.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   {tierMeta.map((tier) => {
                     const entry: TierEntry = tierConfig[tier.id] ?? { providers: [], fallback_enabled: true };
                     const badgeCls = TIER_BADGE_COLORS[tier.color] ?? TIER_BADGE_COLORS.slate;
-                    const availableToAdd = tierProviderIds.filter((pid) => !entry.providers.includes(pid));
+                    const availableToAdd = routingItems.filter((ri) => !entry.providers.includes(ri.id));
 
                     return (
                       <div key={tier.id} className="bg-bg-secondary border border-border-dim rounded-lg p-4">
@@ -1026,21 +929,26 @@ export default function SettingsPage() {
                           </p>
                         )}
 
-                        {/* Ordered provider list */}
+                        {/* Ordered provider / instance list */}
                         <div className="space-y-1.5">
                           {entry.providers.length === 0 && (
                             <p className="text-[11px] text-text-muted italic">Aucun modèle configuré — le provider global sera utilisé.</p>
                           )}
                           {entry.providers.map((provId, idx) => {
-                            const provLabel = PROVIDERS.find((p) => p.id === provId);
+                            const item = resolveRoutingItem(provId);
                             return (
                               <div key={provId} className="flex items-center gap-2">
                                 {/* Priority number */}
                                 <span className="text-[9px] text-text-muted w-4 text-right shrink-0">{idx + 1}.</span>
-                                {/* Provider pill */}
+                                {/* Item pill */}
                                 <div className="flex-1 flex items-center gap-2 bg-bg-primary border border-border-dim rounded px-2 py-1 text-xs text-text-primary">
-                                  {provLabel && <span className="text-base leading-none">{provLabel.flag}</span>}
-                                  <span>{provLabel?.label ?? provId}</span>
+                                  <span className="text-base leading-none">{item.flag}</span>
+                                  <span className="truncate">{item.label}</span>
+                                  {item.isInstance && (
+                                    <span className="ml-auto text-[8px] px-1 py-0.5 rounded bg-cyber-cyan/10 border border-cyber-cyan/20 text-cyber-cyan shrink-0">
+                                      instance
+                                    </span>
+                                  )}
                                 </div>
                                 {/* Move up */}
                                 <button
@@ -1070,7 +978,7 @@ export default function SettingsPage() {
                           })}
                         </div>
 
-                        {/* Add provider dropdown */}
+                        {/* Add dropdown */}
                         {availableToAdd.length > 0 && (
                           <div className="mt-2">
                             <select
@@ -1083,15 +991,27 @@ export default function SettingsPage() {
                               }}
                               className="text-[11px] bg-bg-primary border border-border-dim rounded px-2 py-1 text-text-muted w-full"
                             >
-                              <option value="">+ Ajouter un provider…</option>
-                              {availableToAdd.map((pid) => {
-                                const p = PROVIDERS.find((pp) => pp.id === pid);
-                                return (
-                                  <option key={pid} value={pid}>
-                                    {p ? `${p.flag} ${p.label}` : pid}
-                                  </option>
-                                );
-                              })}
+                              <option value="">+ Ajouter un modèle…</option>
+                              {/* Instances group */}
+                              {availableToAdd.filter((ri) => ri.isInstance).length > 0 && (
+                                <optgroup label="— Instances nommées">
+                                  {availableToAdd.filter((ri) => ri.isInstance).map((ri) => (
+                                    <option key={ri.id} value={ri.id}>
+                                      {ri.flag} {ri.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {/* Legacy providers group */}
+                              {availableToAdd.filter((ri) => !ri.isInstance).length > 0 && (
+                                <optgroup label="— Providers génériques">
+                                  {availableToAdd.filter((ri) => !ri.isInstance).map((ri) => (
+                                    <option key={ri.id} value={ri.id}>
+                                      {ri.flag} {ri.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
                             </select>
                           </div>
                         )}
@@ -1105,9 +1025,6 @@ export default function SettingsPage() {
             {/* ================================================================
                 TAB: Intégrations
             ================================================================ */}
-            {/* ----------------------------------------------------------------
-                Google Services — visible by all authenticated users
-            ---------------------------------------------------------------- */}
             {activeTab === "integrations" && (
             <section>
               <div className="flex items-center gap-2 mb-4">
@@ -1144,7 +1061,7 @@ export default function SettingsPage() {
 
                 <p className="text-[11px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
                   <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-emerald-400" />
-                  ELY n'accède à ces services que sur demande explicite. Un token OAuth2 est stocké localement — aucune donnée ne transite par un serveur tiers.
+                  ELY n&apos;accède à ces services que sur demande explicite. Un token OAuth2 est stocké localement — aucune donnée ne transite par un serveur tiers.
                 </p>
 
                 <div className="pt-1">
@@ -1174,9 +1091,9 @@ export default function SettingsPage() {
                     <li>Aller sur <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">console.cloud.google.com</a></li>
                     <li>Créer un projet → API &amp; Services → Identifiants</li>
                     <li>Créer un ID client OAuth 2.0 (application Web)</li>
-                    <li>Ajouter l'URI de redirection : <code className="text-cyber-cyan">http://localhost:8000/api/google/callback</code></li>
+                    <li>Ajouter l&apos;URI de redirection : <code className="text-cyber-cyan">http://localhost:8000/api/google/callback</code></li>
                     <li>Renseigner le Client ID et Secret dans <a href="/admin" className="text-cyber-cyan hover:underline">Admin → OAuth Google</a> (sans redémarrage)</li>
-                    <li>Revenir ici et cliquer sur "Connecter mon compte Google"</li>
+                    <li>Revenir ici et cliquer sur &quot;Connecter mon compte Google&quot;</li>
                   </ol>
                 </details>
               </div>
@@ -1186,9 +1103,6 @@ export default function SettingsPage() {
             {/* ================================================================
                 TAB: Compte
             ================================================================ */}
-            {/* ----------------------------------------------------------------
-                Language — in "compte" tab
-            ---------------------------------------------------------------- */}
             {activeTab === "compte" && (
             <section>
               <div className="flex items-center gap-2 mb-4">
@@ -1228,7 +1142,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-text-muted">
                     Configurer les hôtes SSH et leurs commandes autorisées dans{" "}
                     <code className="text-cyber-cyan">config/hosts.yaml</code>.
-                    Chaque hôte requiert une liste explicite de commandes — l'agent ne peut pas
+                    Chaque hôte requiert une liste explicite de commandes — l&apos;agent ne peut pas
                     exécuter de commandes arbitraires.
                   </p>
                   <pre className="mt-3 text-[11px] text-text-secondary bg-bg-primary border border-border-dim rounded p-3 overflow-x-auto">
@@ -1339,7 +1253,7 @@ export default function SettingsPage() {
                 <div className="pt-3 border-t border-border-dim space-y-2">
                   <p className="text-[11px] text-text-muted">
                     Téléchargez le fichier de configuration et placez-le dans le même répertoire
-                    que le daemon ELY Desktop. Il contient un token d'authentification valable
+                    que le daemon ELY Desktop. Il contient un token d&apos;authentification valable
                     30 jours.
                   </p>
                   <button
@@ -1377,17 +1291,17 @@ export default function SettingsPage() {
                     </div>
                     <details className="text-[11px] text-text-muted">
                       <summary className="cursor-pointer hover:text-text-secondary">
-                        Instructions d'installation
+                        Instructions d&apos;installation
                       </summary>
                       <ol className="mt-2 space-y-1 pl-3 list-decimal">
                         <li>Télécharger le binaire correspondant à votre OS</li>
                         <li>Télécharger <code className="text-cyber-cyan">ely-config.json</code> (bouton ci-dessus)</li>
                         <li>Placer les deux fichiers dans le même répertoire</li>
                         <li>
-                          Linux/macOS : <code className="text-cyber-cyan">chmod +x ely-desktop-* && ./ely-desktop-*</code>
+                          Linux/macOS : <code className="text-cyber-cyan">chmod +x ely-desktop-* &amp;&amp; ./ely-desktop-*</code>
                         </li>
                         <li>Windows : double-cliquer sur <code className="text-cyber-cyan">ely-desktop-windows-amd64.exe</code></li>
-                        <li>Le statut ci-dessus passera à "Connecté" en quelques secondes</li>
+                        <li>Le statut ci-dessus passera à &quot;Connecté&quot; en quelques secondes</li>
                       </ol>
                     </details>
                   </div>
@@ -1527,6 +1441,135 @@ export default function SettingsPage() {
           </div>{/* overflow-y-auto tab content */}
         </div>
       </div>
+
+      {/* ================================================================
+          Modal — Ajouter une instance LLM
+      ================================================================ */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-bg-secondary border border-border-dim rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-5">
+            {/* Modal header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-cyber-cyan" />
+                <h3 className="text-sm font-medium text-text-primary">Ajouter un modèle</h3>
+              </div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="text-text-muted hover:text-text-secondary transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Step 1: Provider */}
+            <div className="space-y-2">
+              <label className="text-xs text-text-muted uppercase tracking-wider">Provider</label>
+              <div className="grid grid-cols-2 gap-2">
+                {PROVIDERS.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setModalProvider(p.id)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-xs transition-all ${
+                      modalProvider === p.id
+                        ? "bg-cyber-cyan/5 border-cyber-cyan/30 text-text-primary"
+                        : "bg-bg-primary border-border-dim text-text-muted hover:border-text-muted"
+                    }`}
+                  >
+                    <span className="text-sm">{p.flag}</span>
+                    <span className="truncate">{p.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Step 2: Model */}
+            <div className="space-y-2">
+              <label className="text-xs text-text-muted uppercase tracking-wider">Modèle</label>
+              {modalProvider === "ollama" ? (
+                modalOllamaModels.length > 0 ? (
+                  <select
+                    value={modalModel}
+                    onChange={(e) => setModalModel(e.target.value)}
+                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary focus:outline-none focus:border-cyber-cyan/40"
+                  >
+                    {modalOllamaModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={modalModel}
+                      onChange={(e) => setModalModel(e.target.value)}
+                      placeholder="gemma4:26b, phi4-mini, qwen2.5:7b…"
+                      className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                    />
+                    <p className="text-[10px] text-text-muted">Ollama non joignable — saisir le nom du modèle manuellement.</p>
+                  </div>
+                )
+              ) : (
+                <input
+                  type="text"
+                  value={modalModel}
+                  onChange={(e) => setModalModel(e.target.value)}
+                  placeholder={selectedModalProvider?.defaultModel ?? "nom-du-modele"}
+                  className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                />
+              )}
+            </div>
+
+            {/* Step 3: API Key (cloud providers only) */}
+            {selectedModalProvider?.needsKey && (
+              <div className="space-y-2">
+                <label className="text-xs text-text-muted uppercase tracking-wider">Clé API</label>
+                <input
+                  type="password"
+                  value={modalApiKey}
+                  onChange={(e) => setModalApiKey(e.target.value)}
+                  placeholder="sk-••••••••"
+                  autoComplete="new-password"
+                  className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                />
+                <p className="text-[10px] text-text-muted">
+                  Optionnelle si déjà configurée globalement. Stockée en clair dans la base locale.
+                </p>
+              </div>
+            )}
+
+            {/* Step 4: Label */}
+            <div className="space-y-2">
+              <label className="text-xs text-text-muted uppercase tracking-wider">Nom (label)</label>
+              <input
+                type="text"
+                value={modalLabel}
+                onChange={(e) => setModalLabel(e.target.value)}
+                placeholder="Ex : Ollama — Gemma 4 26B"
+                className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 text-xs py-2 rounded border border-border-dim text-text-muted hover:text-text-secondary transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleCreateInstance}
+                disabled={modalSaving || !modalLabel.trim() || !modalModel.trim()}
+                className="flex-1 text-xs py-2 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {modalSaving ? "Création…" : "Créer l'instance"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </AuthGuard>
   );
 }

@@ -30,6 +30,7 @@ from app.models import usage_log as _usage_log    # ensure UsageLog table is reg
 from app.models import note as _note              # ensure Note table is registered
 from app.models import feedback as _feedback      # ensure Feedback table is registered
 from app.models import mcp_server as _mcp_server  # ensure MCPServer table is registered
+from app.models import llm_instance as _llm_instance  # ensure LLMInstance table is registered
 from app.models import vault as _vault_models      # ensure VaultConfig + VaultEntry tables
 from app.models import conversation as _conversation  # ensure Conversation + Message tables
 from app.models import user_memory as _user_memory    # ensure UserMemoryLog + UserProfile tables

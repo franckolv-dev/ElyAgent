@@ -28,19 +28,25 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from app.auth.dependencies import get_current_user, require_admin
 from app.config import get_settings
+from app.database import async_session
+from app.models.llm_instance import LLMInstance
 from app.models.user import User
 from app.services.system_config import get_config, set_config
 from app.services.llm_provider import (
     set_runtime_llm, set_runtime_key, has_runtime_key,
     get_active_provider, get_active_model,
     set_tier_config, DEFAULT_TIER_CONFIG,
+    register_instance_cache, unregister_instance_cache,
 )
 
 logger = logging.getLogger(__name__)
@@ -173,6 +179,32 @@ class APIKeyUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# LLM Instance schemas
+# ---------------------------------------------------------------------------
+
+class LLMInstanceCreate(BaseModel):
+    label: str
+    provider: str
+    model: str
+    api_key: Optional[str] = None
+
+
+class LLMInstanceUpdate(BaseModel):
+    label: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class LLMInstanceResponse(BaseModel):
+    id: str
+    label: str
+    provider: str
+    model: str
+    has_key: bool
+    created_at: str
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -300,6 +332,161 @@ async def update_llm_api_key(
 
     logger.info("API key updated by admin %s for provider=%s", admin.id, provider)
     return {"provider": provider, "has_key": True}
+
+
+# ---------------------------------------------------------------------------
+# Ollama — dynamic model list
+# ---------------------------------------------------------------------------
+
+@router.get("/ollama-models")
+async def get_ollama_models(
+    current_user: User = Depends(get_current_user),
+) -> list[str]:
+    """Return installed Ollama models from the local daemon."""
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{get_settings().ollama_base_url}/api/tags")
+        if resp.status_code == 200:
+            return [m.get("name", "") for m in resp.json().get("models", []) if m.get("name")]
+    except Exception:
+        pass
+    return []
+
+
+# ---------------------------------------------------------------------------
+# LLM Instances — CRUD
+# ---------------------------------------------------------------------------
+
+@router.get("/instances", response_model=list[LLMInstanceResponse])
+async def list_llm_instances(
+    current_user: User = Depends(get_current_user),
+) -> list[LLMInstanceResponse]:
+    """Return all configured LLM instances (API key masked as ***)."""
+    async with async_session() as db:
+        result = await db.execute(select(LLMInstance).order_by(LLMInstance.created_at))
+        instances = result.scalars().all()
+    return [
+        LLMInstanceResponse(
+            id=inst.id,
+            label=inst.label,
+            provider=inst.provider,
+            model=inst.model,
+            has_key=bool(inst.api_key),
+            created_at=inst.created_at.isoformat(),
+        )
+        for inst in instances
+    ]
+
+
+@router.post("/instances", status_code=status.HTTP_201_CREATED, response_model=LLMInstanceResponse)
+async def create_llm_instance(
+    body: LLMInstanceCreate,
+    admin: User = Depends(require_admin),
+) -> LLMInstanceResponse:
+    """Create a new LLM instance."""
+    if body.provider not in _PROVIDER_IDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown provider '{body.provider}'. Valid: {sorted(_PROVIDER_IDS)}",
+        )
+    if not body.label or not body.label.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="label must not be empty.",
+        )
+    if not body.model or not body.model.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="model must not be empty.",
+        )
+
+    inst = LLMInstance(
+        id=str(uuid.uuid4()),
+        label=body.label.strip(),
+        provider=body.provider,
+        model=body.model.strip(),
+        api_key=body.api_key.strip() if body.api_key and body.api_key.strip() else None,
+        created_at=datetime.now(timezone.utc),
+    )
+    async with async_session() as db:
+        db.add(inst)
+        await db.commit()
+        await db.refresh(inst)
+
+    # Update in-memory instance cache so tier routing can use this instance immediately
+    register_instance_cache(inst.id, inst.provider, inst.model, inst.api_key)
+
+    logger.info("LLM instance created by admin %s: id=%s provider=%s model=%s", admin.id, inst.id, inst.provider, inst.model)
+    return LLMInstanceResponse(
+        id=inst.id,
+        label=inst.label,
+        provider=inst.provider,
+        model=inst.model,
+        has_key=bool(inst.api_key),
+        created_at=inst.created_at.isoformat(),
+    )
+
+
+@router.patch("/instances/{instance_id}", response_model=LLMInstanceResponse)
+async def update_llm_instance(
+    instance_id: str,
+    body: LLMInstanceUpdate,
+    admin: User = Depends(require_admin),
+) -> LLMInstanceResponse:
+    """Update label, model, or API key of an existing instance."""
+    async with async_session() as db:
+        result = await db.execute(select(LLMInstance).where(LLMInstance.id == instance_id))
+        inst = result.scalar_one_or_none()
+        if inst is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instance not found.")
+
+        if body.label is not None:
+            if not body.label.strip():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="label must not be empty.")
+            inst.label = body.label.strip()
+        if body.model is not None:
+            if not body.model.strip():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="model must not be empty.")
+            inst.model = body.model.strip()
+        if body.api_key is not None:
+            inst.api_key = body.api_key.strip() if body.api_key.strip() else None
+
+        await db.commit()
+        await db.refresh(inst)
+
+    # Sync in-memory cache
+    register_instance_cache(inst.id, inst.provider, inst.model, inst.api_key)
+
+    logger.info("LLM instance updated by admin %s: id=%s", admin.id, instance_id)
+    return LLMInstanceResponse(
+        id=inst.id,
+        label=inst.label,
+        provider=inst.provider,
+        model=inst.model,
+        has_key=bool(inst.api_key),
+        created_at=inst.created_at.isoformat(),
+    )
+
+
+@router.delete("/instances/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_llm_instance(
+    instance_id: str,
+    admin: User = Depends(require_admin),
+) -> None:
+    """Delete a LLM instance by ID."""
+    async with async_session() as db:
+        result = await db.execute(select(LLMInstance).where(LLMInstance.id == instance_id))
+        inst = result.scalar_one_or_none()
+        if inst is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instance not found.")
+        await db.delete(inst)
+        await db.commit()
+
+    # Remove from in-memory cache
+    unregister_instance_cache(instance_id)
+
+    logger.info("LLM instance deleted by admin %s: id=%s", admin.id, instance_id)
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +638,7 @@ class TierConfigUpdate(BaseModel):
 async def get_tier_config_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Return tier routing config, tier metadata, and available provider ids."""
+    """Return tier routing config, tier metadata, available provider ids, and LLM instances."""
     raw = await get_config("tier_routing_config", "")
     if raw:
         try:
@@ -466,10 +653,27 @@ async def get_tier_config_endpoint(
         if tier_id not in config:
             config[tier_id] = default_cfg
 
+    # Fetch instances to allow the frontend to display them in the routing UI
+    async with async_session() as db:
+        result = await db.execute(select(LLMInstance).order_by(LLMInstance.created_at))
+        instances = result.scalars().all()
+
+    instances_out = [
+        {
+            "id": inst.id,
+            "label": inst.label,
+            "provider": inst.provider,
+            "model": inst.model,
+            "has_key": bool(inst.api_key),
+        }
+        for inst in instances
+    ]
+
     return {
         "tiers": TIER_META,
         "config": config,
         "provider_ids": [p["id"] for p in PROVIDERS_META],
+        "instances": instances_out,
     }
 
 
@@ -478,15 +682,25 @@ async def update_tier_config_endpoint(
     body: TierConfigUpdate,
     admin: User = Depends(require_admin),
 ) -> dict:
-    """Persist tier routing config and update in-memory cache."""
-    # Validate that all provider ids are known
-    valid_ids = {p["id"] for p in PROVIDERS_META}
+    """Persist tier routing config and update in-memory cache.
+
+    The providers list can contain either:
+    - A known provider name ("ollama", "anthropic", …) — backward compat
+    - A UUID of a LLMInstance in DB
+    """
+    valid_provider_ids = {p["id"] for p in PROVIDERS_META}
+
+    # Collect known instance IDs from DB for validation
+    async with async_session() as db:
+        result = await db.execute(select(LLMInstance.id))
+        known_instance_ids = {row[0] for row in result.all()}
+
     for tier_id, tier_entry in body.config.items():
         for prov_id in tier_entry.providers:
-            if prov_id not in valid_ids:
+            if prov_id not in valid_provider_ids and prov_id not in known_instance_ids:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unknown provider '{prov_id}' in tier '{tier_id}'.",
+                    detail=f"Unknown provider or instance ID '{prov_id}' in tier '{tier_id}'.",
                 )
 
     serializable = {

@@ -219,6 +219,10 @@ async def load_llm_settings_from_db() -> None:
             _runtime.get("provider", "<env>"),
             _runtime.get("model", "<env>"),
         )
+
+        # Load LLM instances into in-memory cache
+        await load_llm_instances_from_db()
+
     except Exception as exc:
         logger.warning("load_llm_settings_from_db failed (will use env defaults): %s", exc)
 
@@ -617,6 +621,110 @@ def _make_llm_for_provider(
 # Tier-based LLM selector — driven by dynamic DB config
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# In-memory instance cache — populated at startup and updated on CRUD ops.
+# Shape: { "<uuid>": {"provider": str, "model": str, "api_key": str | None} }
+# ---------------------------------------------------------------------------
+_instance_cache: dict[str, dict] = {}
+
+
+def register_instance_cache(instance_id: str, provider: str, model: str, api_key: Optional[str]) -> None:
+    """Add or update an instance in the in-memory cache."""
+    _instance_cache[instance_id] = {"provider": provider, "model": model, "api_key": api_key}
+
+
+def unregister_instance_cache(instance_id: str) -> None:
+    """Remove an instance from the in-memory cache."""
+    _instance_cache.pop(instance_id, None)
+
+
+async def load_llm_instances_from_db() -> None:
+    """Load all LLMInstance rows into the in-memory cache.  Called at startup."""
+    try:
+        from app.database import async_session as _async_session
+        from app.models.llm_instance import LLMInstance
+        from sqlalchemy import select as _select
+
+        async with _async_session() as db:
+            result = await db.execute(_select(LLMInstance))
+            instances = result.scalars().all()
+
+        for inst in instances:
+            register_instance_cache(inst.id, inst.provider, inst.model, inst.api_key)
+
+        logger.info("Loaded %d LLM instances from DB into cache", len(instances))
+    except Exception as exc:
+        logger.warning("load_llm_instances_from_db failed: %s", exc)
+
+
+def _is_instance_id(value: str) -> bool:
+    """Return True if value is a known instance UUID (present in cache)."""
+    return value in _instance_cache
+
+
+def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature: float = 0.7) -> Optional[BaseChatModel]:
+    """Instantiate an LLM from the in-memory instance cache.
+
+    Returns None if the instance is unknown or has no API key for a cloud provider.
+    """
+    inst = _instance_cache.get(instance_id)
+    if inst is None:
+        logger.warning("_make_llm_for_instance: instance '%s' not in cache", instance_id)
+        return None
+
+    settings = get_settings()
+    provider = inst["provider"]
+    model = inst["model"]
+    # Instance key takes priority, then fall back to runtime/env key for the provider.
+    api_key: Optional[str] = inst.get("api_key") or _runtime.get(f"key_{provider}") or None
+
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(model=model, base_url=settings.ollama_base_url, temperature=temperature)
+
+    if provider == "anthropic":
+        key = api_key or settings.anthropic_api_key
+        if not key:
+            return None
+        return _make_anthropic(model=model, api_key=key, max_tokens=max_tokens, temperature=temperature)
+
+    if provider == "zhipu":
+        key = api_key or settings.zhipu_api_key
+        if not key:
+            return None
+        return _make_glm(model=model, api_key=key, max_tokens=max_tokens, temperature=temperature)
+
+    if provider == "gemini":
+        key = api_key or settings.gemini_api_key
+        if not key:
+            return None
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(model=model, google_api_key=key, max_output_tokens=max_tokens, temperature=temperature)
+
+    if provider == "deepseek":
+        key = api_key or settings.deepseek_api_key
+        if not key:
+            return None
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model=model, api_key=key, base_url="https://api.deepseek.com/v1", max_tokens=max_tokens, temperature=temperature)
+
+    if provider == "mistral":
+        key = api_key or settings.mistral_api_key
+        if not key:
+            return None
+        from langchain_mistralai import ChatMistralAI
+        return ChatMistralAI(model=model, api_key=key, max_tokens=max_tokens, temperature=temperature)
+
+    if provider == "openrouter":
+        key = api_key or settings.openrouter_api_key
+        if not key:
+            return None
+        return _make_openrouter(model=model, api_key=key, max_tokens=max_tokens, temperature=temperature)
+
+    logger.warning("_make_llm_for_instance: unknown provider '%s' for instance '%s'", provider, instance_id)
+    return None
+
+
 def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     """Return the appropriate LLM for a given complexity tier.
 
@@ -624,6 +732,10 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     (loaded from DB on startup, editable via PUT /api/settings/llm/tiers).
     Falls back through the configured list; if fallback_enabled=False, only
     the first provider is tried.  If all fail, get_llm() is returned.
+
+    Each entry in the providers list can be:
+    - A known provider name ("ollama", "anthropic", …) — legacy behavior
+    - A UUID of a LLMInstance present in _instance_cache — named-instance routing
     """
     settings = get_settings()
     config = get_tier_config()
@@ -636,11 +748,14 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     last_exc: Optional[Exception] = None
     for i, provider_id in enumerate(providers):
         try:
-            llm = _make_llm_for_provider(provider_id, settings,
-                                         max_tokens=max_tokens, temperature=0.7)
+            if _is_instance_id(provider_id):
+                llm = _make_llm_for_instance(provider_id, max_tokens=max_tokens, temperature=0.7)
+            else:
+                llm = _make_llm_for_provider(provider_id, settings,
+                                             max_tokens=max_tokens, temperature=0.7)
             if llm is not None:
                 return llm
-            # llm is None = no key for this provider → skip silently
+            # llm is None = no key for this provider/instance → skip silently
             logger.debug("Tier %s: no key for '%s' — skipping", tier.value, provider_id)
         except Exception as exc:
             last_exc = exc
