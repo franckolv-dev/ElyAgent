@@ -192,12 +192,24 @@ async def get_llm_settings(
     if not model:
         model = get_active_model()
 
+    # Fetch real Ollama models dynamically
+    ollama_models: list[str] = []
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=3.0) as _client:
+            _resp = await _client.get(f"{get_settings().ollama_base_url}/api/tags")
+        if _resp.status_code == 200:
+            ollama_models = [m.get("name", "") for m in _resp.json().get("models", []) if m.get("name")]
+    except Exception:
+        pass  # Ollama unreachable — fallback to static list below
+
     providers_out = []
     for meta in PROVIDERS_META:
+        models = ollama_models if (meta["id"] == "ollama" and ollama_models) else meta["models"]
         providers_out.append({
             "id":      meta["id"],
             "name":    meta["name"],
-            "models":  meta["models"],
+            "models":  models,
             "has_key": await _has_key(meta),
         })
 
@@ -221,11 +233,10 @@ async def update_llm_settings(
         )
 
     # Validate model belongs to this provider.
-    # OpenRouter is skipped: its catalogue is fetched dynamically from the API
-    # (GET /openrouter-models) so the static models list is only a fallback —
-    # any model string returned by their API must be accepted.
+    # OpenRouter is skipped (dynamic catalogue).
+    # Ollama is skipped: models are fetched live from the local daemon.
     meta = next(p for p in PROVIDERS_META if p["id"] == body.provider)
-    if body.provider != "openrouter" and body.model not in meta["models"]:
+    if body.provider not in ("openrouter", "ollama") and body.model not in meta["models"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Model '{body.model}' not available for provider '{body.provider}'.",

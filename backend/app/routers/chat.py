@@ -167,7 +167,7 @@ async def websocket_chat(websocket: WebSocket):
             screen_b64 = msg.get("screen_capture")
             if screen_b64:
                 try:
-                    upload_dir = Path("/app/uploads") / user_id
+                    upload_dir = Path(__file__).parents[2] / "uploads" / user_id
                     upload_dir.mkdir(parents=True, exist_ok=True)
                     screen_path = upload_dir / f"screen_{uuid.uuid4().hex[:8]}.png"
                     screen_path.write_bytes(base64.b64decode(screen_b64))

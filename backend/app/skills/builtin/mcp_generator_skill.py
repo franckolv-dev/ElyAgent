@@ -63,8 +63,9 @@ from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
 
-_MCP_LIBRARY_DIR = Path("/app/data/mcp_library")
-_MCP_VENV_DIR    = Path("/app/data/mcp_venvs")
+_DATA_DIR        = Path(__file__).parents[3] / "data"
+_MCP_LIBRARY_DIR = _DATA_DIR / "mcp_library"
+_MCP_VENV_DIR    = _DATA_DIR / "mcp_venvs"
 
 # Template minimal d'un serveur MCP stdio Python
 _SERVER_TEMPLATE = '''#!/usr/bin/env python3

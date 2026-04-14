@@ -334,7 +334,7 @@ def get_llm() -> BaseChatModel:
         )
 
     elif provider == "ollama":
-        from langchain_community.chat_models import ChatOllama
+        from langchain_ollama import ChatOllama
         return ChatOllama(
             model=model,
             base_url=settings.ollama_base_url,
@@ -489,7 +489,7 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
         )
 
     elif provider == "ollama":
-        from langchain_community.chat_models import ChatOllama
+        from langchain_ollama import ChatOllama
         return ChatOllama(
             model=model,
             base_url=settings.ollama_base_url,

@@ -36,7 +36,7 @@ from langchain_core.tools import tool
 # Ajouter ici tout nouveau répertoire jugé nécessaire (jamais la racine /).
 
 _ALLOWED_DIRS: list[Path] = [
-    Path("/app/uploads").resolve(),
+    (Path(__file__).parents[3] / "uploads").resolve(),
     Path("/tmp").resolve(),
     Path(tempfile.gettempdir()).resolve(),
 ]

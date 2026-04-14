@@ -31,7 +31,7 @@ from app.auth.jwt import decode_token
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-UPLOADS_DIR = Path("/app/uploads")
+UPLOADS_DIR = Path(__file__).parents[2] / "uploads"
 MAX_FILE_SIZE = 50 * 1024 * 1024   # 50 MB
 
 # Extensions + MIME types accepted
