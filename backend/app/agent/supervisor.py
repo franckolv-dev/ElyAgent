@@ -88,7 +88,11 @@ _DOMAIN_DESCRIPTIONS = {
     ),
     "infra": (
         "Commandes SSH sur serveurs, tâches planifiées (cron), briefing matinal, "
-        "surveillance de sites web (watchdog/veille), monitoring système."
+        "surveillance de sites web (watchdog/veille), monitoring système. "
+        "Aussi : informations sur la machine locale, le poste de travail, les specs "
+        "matérielles, la RAM, le CPU, l'OS, l'espace disque, la version Python, "
+        "l'architecture du système. Exemples : 'infos système', 'specs de la machine', "
+        "'donne-moi les informations sur ce système', 'quel est l'OS', 'quelle RAM'."
     ),
     "creative": (
         "Génération d'images, création de QR codes, exécution de code Python pour "
@@ -151,6 +155,14 @@ Format des réponses — IMPÉRATIF :
 - Les URLs peuvent être données telles quelles
 - Réponds en français par défaut
 - Ne jamais divulguer les credentials ou la configuration interne
+
+Apprentissage des préférences — IMPÉRATIF :
+- Dès que l'utilisateur exprime une préférence sur le ton, le format, le style, les émojis,
+  la longueur des réponses, la langue, ou tout autre aspect de communication,
+  appelle IMMÉDIATEMENT l'outil save_user_preference AVANT de répondre.
+- Formule la préférence de façon claire et actionnable (ex: "Ne jamais utiliser d'émojis").
+- Ensuite seulement, réponds en appliquant déjà la préférence.
+- Idem pour save_constraint si l'utilisateur pose une règle ferme sur ce qu'il ne veut jamais.
 """
 
 _SPECIALIST_PROMPTS: dict[Domain, str] = {
@@ -200,7 +212,7 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "Tu maîtrises les commandes SSH sur les serveurs autorisés, la gestion des "
         "tâches planifiées (cron), le briefing matinal et la surveillance de sites "
         "web. Toutes les commandes SSH nécessitent une validation humaine (HITL).\n\n"
-        "Outils disponibles : ssh_execute (HITL obligatoire), get_system_info, "
+        "Outils disponibles : ssh_execute (HITL obligatoire), system_info, "
         "scheduler_create_task, scheduler_list_tasks, scheduler_delete_task, "
         "briefing_generate, watchdog_add, watchdog_list, watchdog_remove." + _COMMON_FORMAT
     ),
@@ -209,7 +221,9 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "Tu es une assistante IA personnelle avec accès à tous les outils.\n\n"
         "Utilise les outils disponibles dès que la demande le justifie, sans demander "
         "de confirmation sauf pour les actions irréversibles (envoyer un email, "
-        "supprimer, cliquer, exécuter SSH). Répondre en français par défaut." + _COMMON_FORMAT
+        "supprimer, cliquer, exécuter SSH). Répondre en français par défaut.\n\n"
+        "Rappel outils clés : system_info (infos machine, RAM, CPU, OS, disque), "
+        "weather_get (météo), news_get_headlines (actualités)." + _COMMON_FORMAT
     ),
 }
 
@@ -217,11 +231,15 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
 # Tool subsets per specialist
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Tools available in every specialist domain — user preferences and constraints
+# must be saveable regardless of the current routing domain.
+_MEMORY_SKILLS = {"save_user_preference", "save_constraint"}
+
 _RESEARCH_SKILLS = {
     "weather_get", "news_get_headlines", "translate_text",
     "browser_navigate", "browser_search_web", "browser_get_text",
     "browser_screenshot", "browser_click", "browser_fill", "browser_close",
-}
+} | _MEMORY_SKILLS
 
 _WORKSPACE_SKILLS = {
     # Gmail
@@ -251,14 +269,14 @@ _WORKSPACE_SKILLS = {
     # Contacts
     "contacts_search", "contacts_list", "contacts_create",
     "contacts_get", "contacts_update", "contacts_delete",
-}
+} | _MEMORY_SKILLS
 
 _INFRA_SKILLS = {
-    "ssh_execute", "get_system_info",
+    "ssh_execute", "system_info",
     "scheduler_create_task", "scheduler_list_tasks", "scheduler_delete_task",
     "briefing_generate",
     "watchdog_add", "watchdog_list", "watchdog_remove",
-}
+} | _MEMORY_SKILLS
 
 
 # ──────────────────────────────────────────────────────────────────────────────
