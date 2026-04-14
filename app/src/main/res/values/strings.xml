@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ELY</string>
+    <string name="login_title">Connexion</string>
+    <string name="login_subtitle">Connectez-vous à votre agent ELY</string>
+    <string name="email_hint">Adresse e-mail</string>
+    <string name="password_hint">Mot de passe</string>
+    <string name="login_button">Se connecter</string>
+    <string name="server_url_hint">URL du serveur</string>
+    <string name="chat_hint">Demandez quelque chose à ELY…</string>
+    <string name="settings_title">Paramètres</string>
+    <string name="dashboard_title">Tableau de bord</string>
+    <string name="hitl_approve">Approuver</string>
+    <string name="hitl_deny">Refuser</string>
+    <string name="hitl_notification_title">ELY demande votre autorisation</string>
+    <string name="channel_hitl_name">Autorisations ELY</string>
+    <string name="channel_hitl_desc">Demandes d\'autorisation pour les actions sensibles</string>
+    <string name="biometric_prompt_title">Vérification requise</string>
+    <string name="biometric_prompt_subtitle">Confirmez votre identité pour accéder à ELY</string>
+    <string name="voice_start">Démarrer l\'enregistrement</string>
+    <string name="voice_stop">Arrêter l\'enregistrement</string>
+    <string name="theme_system">Système</string>
+    <string name="theme_light">Clair</string>
+    <string name="theme_dark">Sombre</string>
+    <string name="skills_title">Compétences actives</string>
+    <string name="save">Enregistrer</string>
+    <string name="error_network">Erreur réseau. Vérifiez votre connexion.</string>
+    <string name="error_auth">Identifiants incorrects.</string>
+</resources>
