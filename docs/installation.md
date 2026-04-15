@@ -1,462 +1,308 @@
-# ELY Agent — Installation Guide
+# ELY Agent — Installation
 
-This guide covers installing ELY on Linux (Ubuntu/Debian), macOS, and Windows. Choose the section for your platform.
-
----
-
-## Table of Contents
-
-1. [Prerequisites](#1-prerequisites)
-2. [Linux — Ubuntu / Debian](#2-linux--ubuntu--debian)
-3. [macOS](#3-macos)
-4. [Windows](#4-windows)
-5. [Environment Variables Reference](#5-environment-variables-reference)
-6. [First Run](#6-first-run)
-7. [Google OAuth Setup](#7-google-oauth-setup)
-8. [Verifying the Installation](#8-verifying-the-installation)
+Ce guide couvre l'installation locale d'ELY sur macOS, Linux et Windows.  
+Pour l'accès depuis l'extérieur (téléphone en 4G, webhooks…), consultez [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ---
 
-## 1. Prerequisites
+## Table des matières
 
-ELY requires the following on all platforms:
-
-| Dependency | Minimum version | Purpose |
-|---|---|---|
-| Python | 3.12+ | Backend runtime |
-| Node.js | 18+ | Frontend build and dev server |
-| npm | 9+ | Frontend package manager (bundled with Node.js) |
-| Docker | 24+ | Runs the Qdrant vector database |
-| Git | any | Clone the repository |
+1. [Prérequis](#1-prérequis)
+2. [macOS](#2-macos)
+3. [Linux — Ubuntu / Debian](#3-linux--ubuntu--debian)
+4. [Windows (WSL2)](#4-windows-wsl2)
+5. [Configuration initiale](#5-configuration-initiale)
+6. [Premier démarrage](#6-premier-démarrage)
+7. [Google OAuth (optionnel)](#7-google-oauth-optionnel)
+8. [Référence des variables d'environnement](#8-référence-des-variables-denvironnement)
 
 ---
 
-## 2. Linux — Ubuntu / Debian
+## 1. Prérequis
 
-These instructions are tested on Ubuntu 22.04 LTS and 24.04 LTS.
+| Dépendance | Version minimum | Usage |
+|-----------|----------------|-------|
+| Docker | 24+ | Fait tourner tous les services |
+| Git | any | Cloner le dépôt |
+| Ollama *(optionnel)* | latest | Modèles IA locaux (gratuit) |
 
-### Step 1 — Install system dependencies
+> **Docker suffit.** L'architecture est entièrement conteneurisée — Python, Node.js, nginx sont gérés dans les containers. Pas besoin de les installer sur la machine hôte.
+
+---
+
+## 2. macOS
+
+### Étape 1 — Installer Docker Desktop
+
+Téléchargez et installez [Docker Desktop pour Mac](https://www.docker.com/products/docker-desktop/).  
+Démarrez Docker Desktop depuis vos Applications.
+
+### Étape 2 — Installer Ollama (recommandé pour les modèles locaux)
 
 ```bash
-sudo apt update
-sudo apt install -y git python3.12 python3.12-venv python3-pip curl
+brew install ollama
+# ou téléchargez depuis https://ollama.com
 
-# Install Node.js 20 via NodeSource
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
+# Démarrer Ollama
+ollama serve &
 
-# Install Docker
+# Télécharger un modèle (exemples)
+ollama pull gemma4:26b      # Excellent rapport qualité/vitesse (26B, ~17 Go)
+ollama pull qwen2.5:7b      # Léger et rapide (~4.7 Go)
+ollama pull phi4-mini       # Ultra-léger (~2.5 Go)
+```
+
+> **Apple Silicon** (M1/M2/M3/M4) : Ollama exploite le GPU Metal nativement — les inférences sont très rapides même sur les grands modèles.
+
+### Étape 3 — Cloner le dépôt
+
+```bash
+git clone https://github.com/franckolv-dev/PhysicalAgent.git
+cd PhysicalAgent
+```
+
+### Étape 4 — Configurer l'environnement
+
+```bash
+cp .env.example .env
+# Éditez .env avec vos valeurs (voir section 5)
+```
+
+---
+
+## 3. Linux — Ubuntu / Debian
+
+### Étape 1 — Installer Docker
+
+```bash
 curl -fsSL https://get.docker.com | sudo bash
 sudo usermod -aG docker $USER
-# Log out and back in, or run: newgrp docker
+newgrp docker   # ou déconnectez/reconnectez-vous
 ```
 
-### Step 2 — Clone the repository
+### Étape 2 — Installer Ollama (optionnel)
 
 ```bash
-git clone https://github.com/your-username/ely-agent.git
-cd ely-agent
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Activer le service
+sudo systemctl enable ollama
+sudo systemctl start ollama
+
+# Télécharger un modèle
+ollama pull qwen2.5:7b
 ```
 
-### Step 3 — Start Qdrant (vector database)
+### Étape 3 — Cloner et configurer
 
 ```bash
-docker run -d \
-  --name qdrant \
-  --restart unless-stopped \
-  -p 6333:6333 \
-  -v qdrant_storage:/qdrant/storage \
-  qdrant/qdrant
-```
-
-Verify it is running:
-```bash
-curl http://localhost:6333/readyz
-# Expected: {"status":"ok"}
-```
-
-### Step 4 — Configure the backend
-
-```bash
-cd backend
+git clone https://github.com/franckolv-dev/PhysicalAgent.git
+cd PhysicalAgent
 cp .env.example .env
+# Éditez .env
 ```
-
-Open `.env` in your editor and fill in the required values at minimum:
-
-```env
-ANTHROPIC_API_KEY=sk-ant-api03-...   # Required if using Claude
-JWT_SECRET_KEY=...                    # Generate with: openssl rand -hex 32
-```
-
-Generate a secure `JWT_SECRET_KEY`:
-```bash
-openssl rand -hex 32
-```
-
-### Step 5 — Install backend dependencies
-
-```bash
-# Install uv (fast Python package manager)
-pip install uv
-
-# Install all Python dependencies from pyproject.toml / uv.lock
-uv sync
-
-# Install Playwright's Chromium browser (needed for web browsing tools)
-uv run playwright install chromium
-```
-
-### Step 6 — Install frontend dependencies
-
-```bash
-cd ../frontend
-npm install
-```
-
-### Step 7 — Launch ELY
-
-From the repository root:
-
-```bash
-cd ..
-chmod +x start.sh
-./start.sh
-```
-
-The `start.sh` script starts both the backend (FastAPI on port 8000) and the frontend (Vite dev server on port 3000) concurrently.
-
-Alternatively, start them in separate terminals:
-
-```bash
-# Terminal 1 — backend
-cd backend
-uv run uvicorn app.main:app --reload --port 8000
-
-# Terminal 2 — frontend
-cd frontend
-npm run dev
-```
-
-### Step 8 — Open the app
-
-Navigate to **http://localhost:3000** in your browser.
 
 ---
 
-## 3. macOS
+## 4. Windows (WSL2)
 
-Tested on macOS 13 (Ventura) and 14 (Sonoma), Apple Silicon and Intel.
+WSL2 est fortement recommandé pour la meilleure compatibilité.
 
-### Step 1 — Install Homebrew
+### Étape 1 — Activer WSL2
 
-If you do not have Homebrew installed:
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-### Step 2 — Install system dependencies
-
-```bash
-brew install python@3.12 node@20 git
-
-# Add Python 3.12 to PATH (Apple Silicon)
-echo 'export PATH="/opt/homebrew/opt/python@3.12/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# Verify
-python3.12 --version
-node --version
-```
-
-### Step 3 — Install Docker Desktop
-
-Download and install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/). After installation, start Docker Desktop from your Applications folder.
-
-### Step 4 — Follow Linux steps 2–8
-
-Once Docker, Python 3.12, and Node.js 20 are installed, the remaining steps are identical to the Linux instructions above (Steps 2 through 8).
-
-> **Tip**: If you encounter permission errors with npm, do NOT use `sudo npm install`. Instead, fix npm's permissions by running `npm config set prefix ~/.npm-global` and adding `~/.npm-global/bin` to your `PATH`.
-
----
-
-## 4. Windows
-
-There are two approaches for Windows. **WSL2 is strongly recommended** for the best compatibility.
-
----
-
-### Option A — WSL2 (Recommended)
-
-WSL2 runs a real Ubuntu environment inside Windows. It provides the best compatibility with all ELY features.
-
-#### Step 1 — Enable WSL2
-
-Open PowerShell as Administrator:
+Dans PowerShell en administrateur :
 ```powershell
 wsl --install
 ```
-Restart your computer when prompted. By default, this installs Ubuntu.
+Redémarrez, puis ouvrez **Ubuntu** depuis le menu Démarrer.
 
-#### Step 2 — Open Ubuntu terminal
+### Étape 2 — Dans le terminal Ubuntu, suivez les instructions Linux
 
-From the Start menu, open **Ubuntu**. Set your username and password.
+### Étape 3 — Docker Desktop pour Windows
 
-#### Step 3 — Follow the Linux instructions
-
-Inside the Ubuntu terminal, follow the [Linux — Ubuntu / Debian](#2-linux--ubuntu--debian) instructions exactly.
-
-> **Accessing ELY**: open `http://localhost:3000` in your Windows browser. WSL2 automatically forwards ports.
+Installez [Docker Desktop pour Windows](https://www.docker.com/products/docker-desktop/) et activez l'intégration WSL2 dans les paramètres Docker.
 
 ---
 
-### Option B — Native Windows (PowerShell)
+## 5. Configuration initiale
 
-Use this only if WSL2 is not available on your machine.
-
-#### Step 1 — Install prerequisites
-
-- **Python 3.12**: download from [python.org](https://www.python.org/downloads/). During installation, check "Add Python to PATH".
-- **Node.js 20**: download from [nodejs.org](https://nodejs.org/).
-- **Docker Desktop**: download from [docker.com](https://www.docker.com/products/docker-desktop/).
-- **Git**: download from [git-scm.com](https://git-scm.com/).
-
-#### Step 2 — Clone the repository
-
-```powershell
-git clone https://github.com/your-username/ely-agent.git
-cd ely-agent
-```
-
-#### Step 3 — Start Qdrant
-
-```powershell
-docker run -d `
-  --name qdrant `
-  --restart unless-stopped `
-  -p 6333:6333 `
-  -v qdrant_storage:/qdrant/storage `
-  qdrant/qdrant
-```
-
-#### Step 4 — Configure the backend
-
-```powershell
-cd backend
-copy .env.example .env
-# Edit .env with notepad or VS Code
-```
-
-#### Step 5 — Install backend dependencies
-
-```powershell
-pip install uv
-uv sync
-uv run playwright install chromium
-```
-
-#### Step 6 — Install frontend dependencies
-
-```powershell
-cd ..\frontend
-npm install
-```
-
-#### Step 7 — Launch ELY
-
-```powershell
-# Terminal 1 — backend
-cd backend
-uv run uvicorn app.main:app --reload --port 8000
-
-# Terminal 2 — frontend
-cd frontend
-npm run dev
-```
-
-Navigate to **http://localhost:3000**.
-
----
-
-## 5. Environment Variables Reference
-
-The `.env` file lives at `backend/.env`. Below is the complete reference.
-
-### Required
-
-| Variable | Description | Example |
-|---|---|---|
-| `JWT_SECRET_KEY` | Secret key for signing JWT tokens. Generate with `openssl rand -hex 32`. | `a3f8c...` |
-
-### LLM Providers (at least one required)
-
-| Variable | Description | Default |
-|---|---|---|
-| `ACTIVE_LLM_PROVIDER` | Active LLM provider: `anthropic`, `mistral`, `ollama`, or `deepseek` | `anthropic` |
-| `ACTIVE_LLM_MODEL` | Model identifier for the active provider | `claude-sonnet-4-5` |
-| `ANTHROPIC_API_KEY` | API key from [console.anthropic.com](https://console.anthropic.com) | — |
-| `MISTRAL_API_KEY` | API key from [console.mistral.ai](https://console.mistral.ai) | — |
-| `DEEPSEEK_API_KEY` | API key from [platform.deepseek.com](https://platform.deepseek.com) | — |
-| `OLLAMA_BASE_URL` | URL of your local Ollama instance | `http://localhost:11434` |
-
-**Provider + model combinations:**
+Éditez le fichier `.env` à la racine du projet. Valeurs minimales requises :
 
 ```env
-# Anthropic Claude (cloud, highest capability)
-ACTIVE_LLM_PROVIDER=anthropic
-ACTIVE_LLM_MODEL=claude-sonnet-4-5
+# ── Sécurité (OBLIGATOIRE) ────────────────────────────────────────────
+# Générez avec : python -c "import secrets; print(secrets.token_hex(32))"
+JWT_SECRET_KEY=remplacez-par-une-vraie-clé-secrète
 
-# Mistral AI (cloud, European servers, RGPD-compliant)
-ACTIVE_LLM_PROVIDER=mistral
-ACTIVE_LLM_MODEL=mistral-small-latest
-
-# Ollama (100% local, no data leaves your machine)
+# ── Modèle IA ─────────────────────────────────────────────────────────
 ACTIVE_LLM_PROVIDER=ollama
 ACTIVE_LLM_MODEL=qwen2.5:7b
 
-# DeepSeek (cloud, cost-efficient)
-ACTIVE_LLM_PROVIDER=deepseek
-ACTIVE_LLM_MODEL=deepseek-chat
+# Ollama sur macOS/Linux avec Docker : utiliser host.docker.internal
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+# ── URLs (accès local uniquement) ────────────────────────────────────
+FRONTEND_URL=http://localhost:3000
+BACKEND_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_WS_URL=ws://localhost:3000
+COOKIE_SECURE=false
 ```
 
-### Infrastructure
-
-| Variable | Description | Default |
-|---|---|---|
-| `QDRANT_URL` | URL of the Qdrant instance | `http://localhost:6333` |
-| `FRONTEND_URL` | URL of the frontend, used for CORS | `http://localhost:3000` |
-| `DATABASE_URL` | SQLite database path | `sqlite+aiosqlite:///./ely.db` |
-
-### Optional — Notifications
-
-| Variable | Description |
-|---|---|
-| `NTFY_URL` | URL of your ntfy server (e.g., `https://ntfy.sh`) |
-| `NTFY_TOPIC` | ntfy topic name for push notifications |
-
-When both are set, ELY sends HITL approval requests as push notifications to the [ntfy Android app](https://ntfy.sh).
-
-### Optional — Telegram
-
-| Variable | Description |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
-
-### Optional — SSH
-
-| Variable | Description | Default |
-|---|---|---|
-| `SSH_CONFIG_PATH` | Path to the SSH hosts YAML config file | `config/hosts.yaml` |
+> Pour un accès depuis l'extérieur (autre appareil, 4G…), consultez [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ---
 
-## 6. First Run
+## 6. Premier démarrage
 
-### Creating the admin account
-
-The first time you open `http://localhost:3000`, you will see the login screen. Click the **"Créer un compte"** tab and register.
-
-**The first account created automatically receives the Admin role.** Subsequent accounts are regular users.
-
-### Verifying the backend is running
-
-The FastAPI backend exposes interactive API documentation at:
-```
-http://localhost:8000/docs
+```bash
+# Depuis la racine du projet
+make up        # Démarre tous les services (build automatique au premier lancement)
+make ps        # Vérifie l'état des containers
 ```
 
-This Swagger UI is useful for debugging and exploring the API.
+Attendez que tous les containers soient `healthy` (30-60 secondes). Puis :
 
-### Database initialisation
+```
+http://localhost:3000   → Interface ELY
+http://localhost:8000/docs → API Swagger (debug)
+```
 
-ELY automatically creates and migrates the SQLite database on first startup. No manual database setup is required.
+### Créer le compte administrateur
+
+La base de données est vide au premier démarrage. Créez votre compte :
+
+```bash
+docker exec cyberentity-backend uv run python -c "
+import asyncio
+from app.database import async_session
+from app.models.user import User
+from app.auth.passwords import hash_password
+
+async def create():
+    async with async_session() as db:
+        user = User(
+            email='admin',
+            username='admin',
+            hashed_password=await hash_password('votre-mot-de-passe'),
+            role='admin',
+            is_active=True
+        )
+        db.add(user)
+        await db.commit()
+        print('Compte admin créé !')
+
+asyncio.run(create())
+"
+```
+
+> Remplacez `admin` et `votre-mot-de-passe` par vos valeurs.
+
+### Configurer les modèles IA dans l'interface
+
+1. Connectez-vous → **Settings → Modèles IA**
+2. Cliquez **+ Ajouter** → choisissez votre provider (Ollama, Anthropic, Gemini…)
+3. Allez dans **Routage** pour assigner les modèles aux niveaux de complexité
+
+### Commandes utiles
+
+```bash
+make up                   # Démarrer tout
+make down                 # Arrêter tout
+make restart s=backend    # Redémarrer un service
+make logs s=backend       # Logs en temps réel
+make build                # Rebuild complet (après modification du code)
+
+# Modèles Ollama
+make slm-pull m=llama3:8b  # Télécharger un modèle
+make slm-enable            # Activer le SLM (modèle léger pour tâches simples)
+```
 
 ---
 
-## 7. Google OAuth Setup
+## 7. Google OAuth (optionnel)
 
-To enable Gmail, Calendar, Drive, Docs, Sheets, and Tasks, you need OAuth2 credentials from Google Cloud Console.
+Permet à ELY d'accéder à Gmail, Calendar, Drive, Docs, Sheets et Tasks.
 
-### Step 1 — Create a Google Cloud project
+### Étape 1 — Créer un projet Google Cloud
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (e.g., "ELY Agent")
+1. Allez sur [console.cloud.google.com](https://console.cloud.google.com)
+2. Créez un projet (ex: `ELY Agent`)
+3. Activez les APIs : Gmail, Calendar, Drive, Docs, Sheets, Tasks
 
-### Step 2 — Enable APIs
+### Étape 2 — Créer des identifiants OAuth2
 
-In the project, go to **APIs & Services** > **Enabled APIs** and enable:
-- Gmail API
-- Google Calendar API
-- Google Drive API
-- Google Docs API
-- Google Sheets API
-- Google Tasks API
-
-### Step 3 — Create OAuth2 credentials
-
-1. Go to **APIs & Services** > **Credentials**
-2. Click **Create Credentials** > **OAuth client ID**
-3. Application type: **Web application**
-4. Add the following to **Authorised redirect URIs**:
+1. **APIs & Services → Credentials → Create Credentials → OAuth client ID**
+2. Type : **Web application**
+3. URI de redirection autorisée :
    ```
    http://localhost:8000/auth/google/callback
    ```
-5. Click **Create** and download the JSON file
+   (ou `https://votre-domaine.fr/auth/google/callback` en production)
+4. Téléchargez le fichier JSON
 
-### Step 4 — Configure ELY
+### Étape 3 — Placer le fichier credentials
 
-Place the downloaded credentials file at:
+```bash
+cp ~/Téléchargements/client_secret_*.json backend/credentials.json
 ```
-backend/credentials.json
-```
 
-ELY will automatically detect this file on startup and enable the Google OAuth flow.
+### Étape 4 — Autoriser dans l'interface
 
-### Step 5 — Authorise in the app
-
-In ELY's **Settings** > **Intégrations Google**, click **"Connecter Google"** and complete the OAuth flow in the browser.
-
-> **Note for production use**: you must verify your Google OAuth application with Google before accounts outside your organisation can authorise it. For personal use, add your own Google account as a **test user** in the OAuth consent screen settings.
+**Settings → Intégrations → Connecter Google** → suivez le flux OAuth.
 
 ---
 
-## 8. Verifying the Installation
+## 8. Référence des variables d'environnement
 
-Run through this checklist to confirm everything is working:
+### LLM (au moins un provider requis)
 
-```
-[ ] http://localhost:3000 loads the ELY login page
-[ ] You can create an account and log in
-[ ] The chat interface loads with the 3D avatar visible
-[ ] ELY responds to "bonjour" in the chat
-[ ] http://localhost:6333/readyz returns {"status":"ok"}
-[ ] http://localhost:8000/docs loads the API documentation
-```
+| Variable | Description | Exemple |
+|----------|-------------|---------|
+| `ACTIVE_LLM_PROVIDER` | Provider actif | `ollama` / `anthropic` / `gemini` / `mistral` / `deepseek` |
+| `ACTIVE_LLM_MODEL` | Modèle par défaut | `gemma4:26b` |
+| `ANTHROPIC_API_KEY` | Clé API Anthropic | `sk-ant-api03-...` |
+| `GEMINI_API_KEY` | Clé API Google Gemini | `AIzaSy...` |
+| `MISTRAL_API_KEY` | Clé API Mistral | — |
+| `DEEPSEEK_API_KEY` | Clé API DeepSeek | — |
+| `OPENROUTER_API_KEY` | Clé API OpenRouter | — |
+| `ZHIPU_API_KEY` | Clé API Zhipu (GLM) | — |
+| `OLLAMA_BASE_URL` | URL Ollama | `http://host.docker.internal:11434` |
 
-### Common issues
+### Sécurité
 
-**Backend fails to start — "qdrant connection refused"**
-Make sure the Qdrant Docker container is running:
-```bash
-docker ps | grep qdrant
-# If not running:
-docker start qdrant
-```
+| Variable | Description |
+|----------|-------------|
+| `JWT_SECRET_KEY` | Clé secrète JWT (obligatoire) — générez avec `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `JWT_ALGORITHM` | Algorithme JWT (défaut: `HS256`) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Durée du token d'accès (défaut: `60`) |
+| `COOKIE_SECURE` | `true` en HTTPS, `false` en local |
 
-**Frontend shows "Cannot connect to backend"**
-Check that the backend is running on port 8000 and that `FRONTEND_URL` in `.env` matches the frontend address.
+### URLs
 
-**Playwright install fails**
-Run with verbose output:
-```bash
-uv run playwright install chromium --with-deps
-```
-On Ubuntu, this also installs required system libraries automatically.
+| Variable | Description | Local | Production |
+|----------|-------------|-------|------------|
+| `FRONTEND_URL` | Origine autorisée CORS | `http://localhost:3000` | `https://votre-domaine.fr` |
+| `BACKEND_URL` | URL publique du backend | `http://localhost:8000` | `https://votre-domaine.fr` |
+| `NEXT_PUBLIC_API_URL` | URL API (baked dans le frontend) | `http://localhost:3000` | `https://votre-domaine.fr` |
+| `NEXT_PUBLIC_WS_URL` | URL WebSocket | `ws://localhost:3000` | `wss://votre-domaine.fr` |
 
-**Google OAuth "redirect_uri_mismatch" error**
-Ensure the redirect URI in your Google Cloud Console credentials exactly matches:
-```
-http://localhost:8000/auth/google/callback
-```
-(including the `/callback` path, with no trailing slash)
+### Notifications push (optionnel)
+
+| Variable | Description |
+|----------|-------------|
+| `NTFY_URL` | URL du serveur ntfy (`https://ntfy.sh` ou auto-hébergé) |
+| `NTFY_TOPIC` | Topic ntfy (défaut: `cyberentity`) |
+
+### Voix
+
+| Variable | Description | Défaut |
+|----------|-------------|--------|
+| `TTS_VOICE` | Voix edge-tts | `fr-FR-DeniseNeural` |
+
+Autres voix françaises : `fr-FR-HenriNeural` (H), `fr-BE-CharlineNeural` (F)
+
+### SSH
+
+| Variable | Description |
+|----------|-------------|
+| `SSH_KEYS_PATH` | Chemin vers les clés SSH (défaut: `~/.ssh`) |
