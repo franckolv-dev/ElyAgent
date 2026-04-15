@@ -146,3 +146,32 @@
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.7; }
 }
+
+/* ── Voice mode animations ────────────────────────────────────────────────── */
+@keyframes voice-pulse {
+  0%   { transform: scale(0.95); opacity: 0.7; }
+  50%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+@keyframes voice-pulse-slow {
+  0%   { transform: scale(0.97); opacity: 0.4; }
+  50%  { transform: scale(1.03); opacity: 0.7; }
+  100% { transform: scale(0.97); opacity: 0.4; }
+}
+
+@keyframes voice-pulse-slower {
+  0%   { transform: scale(0.98); opacity: 0.2; }
+  50%  { transform: scale(1.02); opacity: 0.5; }
+  100% { transform: scale(0.98); opacity: 0.2; }
+}
+
+@keyframes voice-rotate {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes voice-fade-in {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}

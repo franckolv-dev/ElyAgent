@@ -17,7 +17,7 @@
 // -----------------------------------------------------------------------------
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
-import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode, Monitor, Square } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode, Monitor, Square, Headphones } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import { getAccessToken } from "@/lib/auth";
 
@@ -28,6 +28,8 @@ interface ChatInputProps {
   isLoading?: boolean;
   prefill?: string;
   onPrefillConsumed?: () => void;
+  onVoiceModeToggle?: () => void;
+  isVoiceModeActive?: boolean;
 }
 
 // ── Attachment state (client-side, before/during upload) ─────────────────────
@@ -90,7 +92,7 @@ function formatSize(bytes: number): string {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPrefillConsumed }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPrefillConsumed, onVoiceModeToggle, isVoiceModeActive }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [micError, setMicError] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -492,6 +494,23 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
         >
           <Monitor className="w-3.5 h-3.5" />
         </button>
+
+        {/* Voice mode button */}
+        {onVoiceModeToggle && (
+          <button
+            type="button"
+            onClick={onVoiceModeToggle}
+            disabled={disabled}
+            title={isVoiceModeActive ? "Quitter le mode vocal" : "Mode vocal"}
+            className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
+              isVoiceModeActive
+                ? "bg-cyber-cyan/20 border-cyber-cyan/50 text-cyber-cyan shadow-[0_0_8px_rgba(0,229,255,0.3)]"
+                : "border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10"
+            }`}
+          >
+            <Headphones className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         {/* Mic button */}
         <button

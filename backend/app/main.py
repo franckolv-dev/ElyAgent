@@ -55,6 +55,7 @@ from app.routers import knowledge as knowledge_router
 from app.routers import settings_llm as settings_llm_router
 from app.routers import marketplace as marketplace_router
 from app.routers import setup as setup_router
+from app.routers import voice as voice_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
@@ -296,6 +297,7 @@ app.include_router(knowledge_router.router, prefix="/api", tags=["knowledge"])
 app.include_router(marketplace_router.router, prefix="/api/marketplace", tags=["marketplace"])
 app.include_router(settings_llm_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
+app.include_router(voice_router.router, prefix="/ws", tags=["voice"])
 app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
 app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])
 

@@ -18,6 +18,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { Pencil, Check, X, Mic } from "lucide-react";
 import { AuthGuard }          from "@/components/layout/AuthGuard";
 import { Sidebar }             from "@/components/layout/Sidebar";
 import { Header }              from "@/components/layout/Header";
@@ -25,9 +26,11 @@ import { ChatWindow }          from "@/components/chat/ChatWindow";
 import { ChatInput }           from "@/components/chat/ChatInput";
 import { AvatarPanel }         from "@/components/avatar/AvatarPanel";
 import { LiveBrowserPanel }    from "@/components/browser/LiveBrowserPanel";
+import { VoiceModeOverlay }    from "@/components/chat/VoiceModeOverlay";
 import { AgentWebSocket }      from "@/lib/websocket";
 import { api }                 from "@/lib/api";
 import { authFetch }           from "@/lib/auth";
+import { useVoiceConversation } from "@/hooks/useVoiceConversation";
 import type { Attachment, BrowserFrame, ChatMessage, ToolImage, WSMessage } from "@/lib/types";
 import { useTranslations } from "next-intl";
 
@@ -102,6 +105,11 @@ function ChatPageInner() {
   const [streamingContent,setStreamingContent]= useState<string>("");
   const [browserFrame,    setBrowserFrame]    = useState<BrowserFrame | null>(null);
   const [activeTool,      setActiveTool]      = useState<string | null>(null);
+  const [convTitle,       setConvTitle]       = useState<string>("");
+  const [editingTitle,    setEditingTitle]    = useState(false);
+  const [editTitleValue,  setEditTitleValue]  = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const pendingToolImages = useRef<ToolImage[]>([]);
   const wsRef = useRef<AgentWebSocket | null>(null);
   const router = useRouter();
@@ -198,10 +206,13 @@ function ChatPageInner() {
     if (isNewConv) {
       setMessages([]);
       setConversationId(undefined);
+      setConvTitle("");
+      setEditingTitle(false);
     } else if (urlConvId) {
       setConversationId(urlConvId);
       api.getConversationMessages(urlConvId)
-        .then((data: { messages: Array<{role: string; content: string}> }) => {
+        .then((data: { title?: string; messages: Array<{role: string; content: string}> }) => {
+          setConvTitle(data.title || "");
           setMessages(data.messages.map((m: { role: string; content: string; created_at?: string }) => ({
             role: m.role as "user" | "assistant",
             content: m.content,
@@ -212,11 +223,64 @@ function ChatPageInner() {
     }
   }, [urlConvId, isNewConv]);
 
+  // -- Title rename helpers ---------------------------------------------------
+  const startTitleEdit = () => {
+    setEditTitleValue(convTitle);
+    setEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.select(), 50);
+  };
+
+  const commitTitleEdit = async () => {
+    setEditingTitle(false);
+    const newTitle = editTitleValue.trim();
+    if (!newTitle || !conversationId || newTitle === convTitle) return;
+    setConvTitle(newTitle);
+    try {
+      await api.renameConversation(conversationId, newTitle);
+    } catch {
+      // revert on failure
+      setConvTitle(convTitle);
+    }
+  };
+
   const handleSend = useCallback((content: string, attachments?: Attachment[], screenCapture?: string) => {
     if (!wsRef.current) return;
     setMessages((prev) => [...prev, { role: "user", content, attachments, created_at: new Date().toISOString() }]);
     wsRef.current.send(content, conversationId, attachments, screenCapture);
   }, [conversationId]);
+
+  // ── Voice conversation hook ──────────────────────────────────────────────
+  const voiceConv = useVoiceConversation({
+    onSend: useCallback((message: string) => {
+      if (!wsRef.current) return;
+      setMessages((prev) => [...prev, { role: "user", content: message, created_at: new Date().toISOString() }]);
+      wsRef.current.send(message, conversationId);
+    }, [conversationId]),
+    apiUrl: API_URL_CHAT,
+    enabled: voiceModeEnabled,
+  });
+
+  // Feed agent responses to the voice hook when voice mode is active
+  useEffect(() => {
+    if (!voiceConv.state.isActive) return;
+    if (!lastWsMessage) return;
+    if (lastWsMessage.type === "message" && lastWsMessage.role === "assistant" && lastWsMessage.content) {
+      voiceConv.responseComplete(lastWsMessage.content);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastWsMessage]);
+
+  const handleToggleVoiceMode = useCallback(() => {
+    if (voiceConv.state.isActive) {
+      voiceConv.stop();
+      setVoiceModeEnabled(false);
+    } else {
+      setVoiceModeEnabled(true);
+      // Small delay to let the hook's useEffect pick up the enabled change,
+      // then explicitly start active listening
+      setTimeout(() => voiceConv.start(), 100);
+    }
+  }, [voiceConv]);
 
   return (
     <AuthGuard>
@@ -224,7 +288,56 @@ function ChatPageInner() {
         <Sidebar />
 
         <div className="flex flex-col flex-1 overflow-hidden">
-          <Header wsStatus={wsStatus} />
+          <Header wsStatus={wsStatus}>
+            <button
+              onClick={handleToggleVoiceMode}
+              title="Mode vocal"
+              className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all ${
+                voiceConv.state.isActive
+                  ? "bg-cyber-cyan/20 border-cyber-cyan/50 text-cyber-cyan shadow-[0_0_8px_rgba(0,229,255,0.3)]"
+                  : "border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10"
+              }`}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+          </Header>
+
+          {/* Conversation title bar */}
+          {conversationId && convTitle && (
+            <div className="px-4 py-1.5 border-b border-border-dim bg-bg-secondary/40 flex items-center gap-2 shrink-0">
+              {editingTitle ? (
+                <div className="flex items-center gap-1 flex-1">
+                  <input
+                    ref={titleInputRef}
+                    value={editTitleValue}
+                    onChange={(e) => setEditTitleValue(e.target.value)}
+                    onBlur={commitTitleEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitTitleEdit();
+                      if (e.key === "Escape") setEditingTitle(false);
+                    }}
+                    className="flex-1 px-2 py-0.5 text-sm bg-bg-tertiary border border-cyber-cyan/30 rounded text-text-primary focus:outline-none"
+                    autoFocus
+                  />
+                  <button onClick={commitTitleEdit} className="text-cyber-cyan hover:text-cyber-cyan/80">
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => setEditingTitle(false)} className="text-text-muted hover:text-text-secondary">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={startTitleEdit}
+                  className="group flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                  title={t("clickToRename")}
+                >
+                  <span className="truncate max-w-md">{convTitle}</span>
+                  <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-1 overflow-hidden">
             {/* ── Chat column ── */}
@@ -253,6 +366,8 @@ function ChatPageInner() {
                 disabled={wsStatus === "disconnected"}
                 prefill={suggestion}
                 onPrefillConsumed={() => setSuggestion("")}
+                onVoiceModeToggle={handleToggleVoiceMode}
+                isVoiceModeActive={voiceConv.state.isActive}
               />
             </div>
 
@@ -281,6 +396,17 @@ function ChatPageInner() {
           </div>
         </div>
       </div>
+
+      {/* Voice conversation overlay */}
+      {voiceConv.state.isActive && (
+        <VoiceModeOverlay
+          state={voiceConv.state}
+          onClose={() => {
+            voiceConv.stop();
+            setVoiceModeEnabled(false);
+          }}
+        />
+      )}
     </AuthGuard>
   );
 }

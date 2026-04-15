@@ -1,0 +1,157 @@
+// -----------------------------------------------------------------------------
+// Copyright (c) 2024 Franck OLLIVIER
+// Tous droits réservés.
+//
+// Ce logiciel est mis à disposition sous les termes de la licence
+// PolyForm Strict License 1.0.0.
+//
+// RÉSUMÉ DES CONDITIONS :
+// - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
+// - INTERDIT : Toute utilisation commerciale sans accord préalable.
+// - INTERDIT : Redistribution de versions modifiées de ce code.
+//
+// Pour consulter le texte intégral de la licence, veuillez vous référer au
+// fichier LICENSE à la racine du projet ou visiter :
+// https://polyformproject.org/licenses/strict/1.0.0/
+// -----------------------------------------------------------------------------
+
+import SwiftUI
+
+struct SettingsView: View {
+    @EnvironmentObject private var authVM: AuthViewModel
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var settingsVM = SettingsViewModel()
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                ELYTheme.bgPrimary
+                    .ignoresSafeArea()
+
+                List {
+                    // Account section
+                    Section {
+                        // Server URL
+                        HStack {
+                            Label("Serveur", systemImage: "server.rack")
+                                .foregroundColor(ELYTheme.textSecondary)
+                            Spacer()
+                            Text(settingsVM.serverURL)
+                                .font(.caption)
+                                .foregroundColor(ELYTheme.textMuted)
+                                .lineLimit(1)
+                        }
+                        .listRowBackground(ELYTheme.bgSecondary)
+
+                        // Username
+                        HStack {
+                            Label("Utilisateur", systemImage: "person")
+                                .foregroundColor(ELYTheme.textSecondary)
+                            Spacer()
+                            Text(settingsVM.username)
+                                .font(.caption)
+                                .foregroundColor(ELYTheme.textMuted)
+                        }
+                        .listRowBackground(ELYTheme.bgSecondary)
+                    } header: {
+                        Text("Compte")
+                            .foregroundColor(ELYTheme.cyberCyan)
+                    }
+
+                    // Voice section
+                    Section {
+                        // Voice selection
+                        Picker(selection: $settingsVM.selectedVoice) {
+                            ForEach(settingsVM.availableVoices, id: \.self) { voice in
+                                Text(voice.capitalized)
+                                    .tag(voice)
+                            }
+                        } label: {
+                            Label("Voix", systemImage: "speaker.wave.3")
+                                .foregroundColor(ELYTheme.textSecondary)
+                        }
+                        .listRowBackground(ELYTheme.bgSecondary)
+                        .tint(ELYTheme.cyberCyan)
+
+                        // Auto-play TTS
+                        Toggle(isOn: $settingsVM.autoPlayTTS) {
+                            Label("Lecture auto", systemImage: "play.circle")
+                                .foregroundColor(ELYTheme.textSecondary)
+                        }
+                        .listRowBackground(ELYTheme.bgSecondary)
+                        .tint(ELYTheme.cyberCyan)
+
+                        // Haptic feedback
+                        Toggle(isOn: $settingsVM.hapticFeedback) {
+                            Label("Retour haptique", systemImage: "hand.tap")
+                                .foregroundColor(ELYTheme.textSecondary)
+                        }
+                        .listRowBackground(ELYTheme.bgSecondary)
+                        .tint(ELYTheme.cyberCyan)
+                    } header: {
+                        Text("Voix et Audio")
+                            .foregroundColor(ELYTheme.cyberCyan)
+                    }
+
+                    // App info section
+                    Section {
+                        HStack {
+                            Label("Version", systemImage: "info.circle")
+                                .foregroundColor(ELYTheme.textSecondary)
+                            Spacer()
+                            Text(settingsVM.appVersion)
+                                .font(.caption)
+                                .foregroundColor(ELYTheme.textMuted)
+                        }
+                        .listRowBackground(ELYTheme.bgSecondary)
+                    } header: {
+                        Text("Application")
+                            .foregroundColor(ELYTheme.cyberCyan)
+                    }
+
+                    // Logout section
+                    Section {
+                        Button {
+                            authVM.logout()
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Label("Deconnexion", systemImage: "rectangle.portrait.and.arrow.right")
+                                    .foregroundColor(ELYTheme.dangerRed)
+                                    .fontWeight(.medium)
+                                Spacer()
+                            }
+                        }
+                        .listRowBackground(ELYTheme.dangerRed.opacity(0.1))
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Parametres")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(ELYTheme.bgSecondary, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fermer") {
+                        dismiss()
+                    }
+                    .foregroundColor(ELYTheme.cyberCyan)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            settingsVM.configure(authService: authVM.authService)
+        }
+    }
+}
+
+#Preview {
+    SettingsView()
+        .environmentObject(AuthViewModel())
+}

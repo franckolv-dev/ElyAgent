@@ -144,8 +144,13 @@ ELY has full read/write access across the entire Google Workspace suite. Every d
 ELY works across multiple channels simultaneously with **the same agent, same security, same memory**:
 
 - **Web UI** — React chat interface with voice output (TTS), file/image attachments, conversation history, Markdown rendering with clickable links, real-time tool activity indicator, **Stop button** to interrupt ELY mid-task
+- **Voice Mode** — Full-screen voice conversation: wake word "Éli", continuous speech recognition, auto-TTS response, visual feedback (listening/processing/speaking)
 - **Telegram Bot** — full agent access from your mobile, inline HITL approval buttons
+- **Slack Bot** — Socket Mode (no public URL needed), link/unlink users, Block Kit HITL buttons
+- **Discord Bot** — DM + @mention support, emoji-based HITL (5-min timeout)
 - **ntfy (Android)** — push notifications for HITL approvals with action buttons
+- **iOS App** — Native SwiftUI app with chat, voice mode, Keychain auth (iOS 17+)
+- **Android App** — Kotlin + Jetpack Compose, voice input, push notifications
 
 ---
 
@@ -427,7 +432,7 @@ The admin panel (accessible to the first registered account) lets you:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                           Channels                               │
-│   Web UI (Next.js)    Telegram Bot    ntfy (Android push)        │
+│   Web UI    Telegram    Slack    Discord    iOS    Android    ntfy │
 └──────────┬────────────────┬──────────────────┬───────────────────┘
            │                │                  │
 ┌──────────▼────────────────▼──────────────────▼───────────────────┐
@@ -460,10 +465,12 @@ The admin panel (accessible to the first registered account) lets you:
 
 **Key design points:**
 
-- **Skill plugin system** — each capability is a `Skill` dataclass: one file, one import, fully decoupled. Enable/disable per user.
+- **Skill plugin system** — each capability is a `Skill` dataclass: one file, one import, fully decoupled. Enable/disable per user. Community skills installable via a secure marketplace with declared permissions, admin approval, and code scanning.
+- **RAG knowledge base** — upload documents (PDF, TXT, MD, CSV, JSON, DOCX), automatic chunking + embedding, semantic retrieval with source citations.
+- **Audit logging** — every action logged with user, channel, tool, timestamp. CSV export, filterable stats dashboard.
 - **Complexity-based routing** — requests are classified before reaching the LLM so that simple questions use cheap local models and complex tasks get the most capable model.
 - **Hybrid memory** — Qdrant semantic search + SQLite FTS5 keyword search + temporal decay. ELY remembers facts about you automatically across sessions.
-- **Multi-channel** — same agent graph, same security, same memory — web, Telegram, or push notification.
+- **Multi-channel** — same agent graph, same security, same memory — web, voice, Telegram, Slack, Discord, iOS, Android, ntfy.
 - **Isolated browser contexts** — each user gets their own sandboxed Playwright Chromium instance.
 - **MCP support** — connect any Model Context Protocol server and expose its tools to the agent automatically.
 
@@ -482,7 +489,10 @@ The admin panel (accessible to the first registered account) lets you:
 | Desktop daemon | Go (WebSocket, multi-platform input control) |
 | Trainer | Vision LLM loop (Gemini 2.0 Flash) · screenshot · mouse/keyboard |
 | SSH | Paramiko + command whitelist |
-| TTS | edge-tts |
+| STT | faster-whisper (local CPU) |
+| TTS | edge-tts (Microsoft Edge voices) |
+| RAG | fastembed (all-MiniLM-L6-v2) · Qdrant |
+| Mobile | iOS (SwiftUI, iOS 17+) · Android (Kotlin/Compose) |
 | Notifications | ntfy · Telegram Bot API |
 | Vault | AES-256-GCM (Python cryptography) |
 
