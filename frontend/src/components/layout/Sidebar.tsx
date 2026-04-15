@@ -101,7 +101,7 @@ export function Sidebar() {
   }, [pathname, fetchConversations, searchQuery]);
 
   // -- Debounced search -------------------------------------------------------
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);

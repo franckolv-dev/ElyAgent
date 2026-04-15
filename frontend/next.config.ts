@@ -14,12 +14,15 @@ const nextConfig: NextConfig = {
       process.env.BACKEND_INTERNAL_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       "http://localhost:8000";
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${backendUrl}/api/:path*`,
-      },
+    // Routes proxied to the backend (all prefixes not owned by Next.js)
+    const backendPrefixes = [
+      "api", "auth", "admin", "skills", "scheduler", "hosts", "tts", "health",
+      "analytics",
     ];
+    return backendPrefixes.map((prefix) => ({
+      source: `/${prefix}/:path*`,
+      destination: `${backendUrl}/${prefix}/:path*`,
+    }));
   },
   async headers() {
     return [

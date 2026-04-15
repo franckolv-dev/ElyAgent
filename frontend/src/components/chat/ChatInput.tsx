@@ -68,12 +68,8 @@ interface SpeechRecognitionInstance extends EventTarget {
   start(): void;
   stop(): void;
 }
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => SpeechRecognitionInstance;
-    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
-  }
-}
+// SpeechRecognition is now in TypeScript's DOM lib — access via (window as any)
+// to avoid duplicate declaration conflicts with newer TS versions.
 
 // ── File icon helper ──────────────────────────────────────────────────────────
 function FileIcon({ filename }: { filename: string }) {
@@ -117,7 +113,9 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
 
   // ── Web Speech API ────────────────────────────────────────────────────────
   const startSpeechRecognition = (): boolean => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: (new () => SpeechRecognitionInstance) | undefined =
+      (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     if (!SR) return false;
 
     finalTranscriptRef.current = "";
