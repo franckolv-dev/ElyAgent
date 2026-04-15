@@ -91,4 +91,23 @@ export const api = {
 
   exportConversation: (id: string) =>
     fetchAPI(`/api/conversations/${id}/export`, { method: "POST" }),
+
+  // Arena — blind LLM comparison + ELO leaderboard
+  arenaListModels: () => fetchAPI("/api/arena/models"),
+
+  arenaCreateMatch: (prompt: string, modelA?: string, modelB?: string) =>
+    fetchAPI("/api/arena/match", {
+      method: "POST",
+      body: JSON.stringify({ prompt, model_a: modelA, model_b: modelB }),
+    }),
+
+  arenaVote: (matchId: string, vote: "a" | "b" | "tie" | "both_bad") =>
+    fetchAPI("/api/arena/vote", {
+      method: "POST",
+      body: JSON.stringify({ match_id: matchId, vote }),
+    }),
+
+  arenaLeaderboard: () => fetchAPI("/api/arena/leaderboard"),
+
+  arenaHistory: (limit = 20) => fetchAPI(`/api/arena/history?limit=${limit}`),
 };

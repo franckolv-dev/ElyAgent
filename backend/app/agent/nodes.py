@@ -183,6 +183,7 @@ USER_ID_TOOLS = {
     # Knowledge base tools
     "knowledge_search",
     "knowledge_list",
+    "smart_knowledge_query",
 }
 
 GOOGLE_TOOLS = {

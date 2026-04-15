@@ -151,6 +151,7 @@ ELY works across multiple channels simultaneously with **the same agent, same se
 - **ntfy (Android)** — push notifications for HITL approvals with action buttons
 - **iOS App** — Native SwiftUI app with chat, voice mode, Keychain auth (iOS 17+)
 - **Android App** — Kotlin + Jetpack Compose, voice input, push notifications
+- **PWA** — Installable from any modern browser (manifest + service worker), offline shell, install prompt after 30 s
 
 ---
 
@@ -467,6 +468,8 @@ The admin panel (accessible to the first registered account) lets you:
 
 - **Skill plugin system** — each capability is a `Skill` dataclass: one file, one import, fully decoupled. Enable/disable per user. Community skills installable via a secure marketplace with declared permissions, admin approval, and code scanning.
 - **RAG knowledge base** — upload documents (PDF, TXT, MD, CSV, JSON, DOCX), automatic chunking + embedding, semantic retrieval with source citations.
+- **Agentic RAG** — the agent proactively decides whether the knowledge base is worth searching (keyword + similarity probe) and reranks results at the document level before answering.
+- **Arena mode** — blind side-by-side comparison of two LLMs on the same prompt, user votes, global ELO leaderboard (K=32). Use every provider you have configured.
 - **Audit logging** — every action logged with user, channel, tool, timestamp. CSV export, filterable stats dashboard.
 - **Complexity-based routing** — requests are classified before reaching the LLM so that simple questions use cheap local models and complex tasks get the most capable model.
 - **Hybrid memory** — Qdrant semantic search + SQLite FTS5 keyword search + temporal decay. ELY remembers facts about you automatically across sessions.

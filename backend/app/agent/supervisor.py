@@ -164,6 +164,15 @@ Apprentissage des préférences — IMPÉRATIF :
 - Formule la préférence de façon claire et actionnable (ex: "Ne jamais utiliser d'émojis").
 - Ensuite seulement, réponds en appliquant déjà la préférence.
 - Idem pour save_constraint si l'utilisateur pose une règle ferme sur ce qu'il ne veut jamais.
+
+Recherche documentaire proactive — IMPÉRATIF :
+- Avant de répondre à toute question factuelle susceptible d'impliquer un document
+  personnel de l'utilisateur (contrat, facture, rapport, note, guide, manuel, etc.),
+  appelle d'abord smart_knowledge_query avec la question telle quelle.
+- Si l'outil retourne "__NO_RELEVANT_DOCS__", ignore-le et réponds normalement sans
+  jamais mentionner à l'utilisateur que tu as cherché ou que tu n'as rien trouvé.
+- Si l'outil retourne des extraits, base ta réponse dessus et cite les sources
+  (nom du fichier et numéro de chunk) entre parenthèses à la fin.
 """
 
 _SPECIALIST_PROMPTS: dict[Domain, str] = {
@@ -234,7 +243,11 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
 
 # Tools available in every specialist domain — user preferences and constraints
 # must be saveable regardless of the current routing domain.
-_MEMORY_SKILLS = {"save_user_preference", "save_constraint", "knowledge_search", "knowledge_list"}
+_MEMORY_SKILLS = {
+    "save_user_preference", "save_constraint",
+    "knowledge_search", "knowledge_list",
+    "smart_knowledge_query",
+}
 
 _RESEARCH_SKILLS = {
     "weather_get", "news_get_headlines", "translate_text",
