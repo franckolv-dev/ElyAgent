@@ -24,9 +24,10 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 interface HeaderProps {
   wsStatus?: "connected" | "disconnected" | "connecting";
+  children?: React.ReactNode;
 }
 
-export function Header({ wsStatus }: HeaderProps) {
+export function Header({ wsStatus, children }: HeaderProps) {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -55,6 +56,7 @@ export function Header({ wsStatus }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        {children}
         <ThemeToggle />
 
         {user && (

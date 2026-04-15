@@ -25,12 +25,20 @@ from app.agent.tools.drive_tool import (
     drive_move_file,
     drive_rename_file,
     drive_delete_file,
+    drive_share_file,
+    drive_copy_file,
+    drive_export_file,
+    drive_raw_api_call,
 )
 
 get_skill_registry().register(Skill(
     name="google_drive",
     display_name="Google Drive",
-    description="Lister, lire, créer, modifier et organiser des fichiers et dossiers sur Google Drive",
+    description=(
+        "Lister, lire, créer, modifier et organiser des fichiers Drive. "
+        "Partage (permissions), copie, export PDF/Docx, plus accès complet via "
+        "drive_raw_api_call."
+    ),
     icon="📁",
     scopes=["google_oauth"],
     tools=[
@@ -42,5 +50,9 @@ get_skill_registry().register(Skill(
         drive_move_file,
         drive_rename_file,
         drive_delete_file,
+        drive_share_file,
+        drive_copy_file,
+        drive_export_file,
+        drive_raw_api_call,
     ],
 ))

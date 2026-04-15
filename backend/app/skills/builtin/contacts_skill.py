@@ -24,6 +24,8 @@ from app.agent.tools.contacts_tool import (
     contacts_get,
     contacts_update,
     contacts_delete,
+    contacts_batch_operations,
+    contacts_raw_api_call,
 )
 
 get_skill_registry().register(Skill(
@@ -31,7 +33,8 @@ get_skill_registry().register(Skill(
     display_name="Contacts Google",
     description=(
         "Rechercher, lister, créer, modifier et supprimer des contacts Google. "
-        "Accéder aux détails complets (email, téléphone, entreprise, adresse)."
+        "Opérations en lot (200/appel), groupes, annuaire d'entreprise — "
+        "accès complet via contacts_raw_api_call."
     ),
     icon="👤",
     scopes=["google_oauth"],
@@ -42,5 +45,7 @@ get_skill_registry().register(Skill(
         contacts_get,
         contacts_update,
         contacts_delete,
+        contacts_batch_operations,
+        contacts_raw_api_call,
     ],
 ))

@@ -22,6 +22,8 @@ from app.agent.tools.docs_tool import (
     docs_append_text,
     docs_replace_text,
     docs_insert_table,
+    docs_batch_update,
+    docs_raw_api_call,
 )
 
 get_skill_registry().register(Skill(
@@ -29,7 +31,8 @@ get_skill_registry().register(Skill(
     display_name="Google Docs",
     description=(
         "Créer, lire et modifier des documents Google Docs. "
-        "Rechercher/remplacer du texte et insérer des tableaux."
+        "Styles, titres, listes, images, sauts de page — accès complet via "
+        "docs_batch_update et docs_raw_api_call."
     ),
     icon="📝",
     scopes=["google_oauth"],
@@ -39,5 +42,7 @@ get_skill_registry().register(Skill(
         docs_append_text,
         docs_replace_text,
         docs_insert_table,
+        docs_batch_update,
+        docs_raw_api_call,
     ],
 ))

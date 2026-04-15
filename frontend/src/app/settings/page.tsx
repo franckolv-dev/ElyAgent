@@ -382,6 +382,9 @@ export default function SettingsPage() {
   // Modal: load Ollama models when provider changes to "ollama"
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    // Ne fetcher que si le modal est réellement ouvert
+    if (!showAddModal) return;
+
     if (modalProvider !== "ollama") {
       // Auto-set default model for cloud providers
       const p = PROVIDERS.find((pp) => pp.id === modalProvider);
@@ -403,7 +406,7 @@ export default function SettingsPage() {
         }
       })
       .catch(() => setModalOllamaModels([]));
-  }, [modalProvider]);
+  }, [modalProvider, showAddModal]);
 
   // Update label when model changes in modal
   useEffect(() => {

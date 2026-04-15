@@ -18,9 +18,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
+
+from app.services.google_raw_api import execute_raw_call
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_sheets_service(user_google_credentials_json: str | None):
@@ -311,3 +316,198 @@ async def sheets_list_sheets(
         return "\n".join(lines)
     except Exception as e:
         return f"Erreur liste onglets : {e}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Generic batch / raw API tools — unlocks ANY Sheets operation
+# ──────────────────────────────────────────────────────────────────────────────
+
+_SHEETS_BATCH_UPDATE_GUIDE = """
+Types de requêtes Sheets les plus utiles (à mettre dans la liste `requests`) :
+
+• Trier une plage
+  {"sortRange": {
+      "range": {"sheetId": 0, "startRowIndex": 1, "endRowIndex": 100,
+                "startColumnIndex": 0, "endColumnIndex": 5},
+      "sortSpecs": [{"dimensionIndex": 2, "sortOrder": "DESCENDING"}]}}
+
+• Insérer des lignes ou colonnes
+  {"insertDimension": {
+      "range": {"sheetId": 0, "dimension": "COLUMNS",
+                "startIndex": 2, "endIndex": 3},
+      "inheritFromBefore": true}}
+
+• Supprimer des lignes ou colonnes
+  {"deleteDimension": {
+      "range": {"sheetId": 0, "dimension": "COLUMNS",
+                "startIndex": 2, "endIndex": 4}}}
+
+• Fusionner des cellules
+  {"mergeCells": {
+      "range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 1,
+                "startColumnIndex": 0, "endColumnIndex": 3},
+      "mergeType": "MERGE_ALL"}}
+
+• Figer lignes/colonnes
+  {"updateSheetProperties": {
+      "properties": {"sheetId": 0,
+                     "gridProperties": {"frozenRowCount": 1}},
+      "fields": "gridProperties.frozenRowCount"}}
+
+• Mise en forme — gras, couleur fond, alignement
+  {"repeatCell": {
+      "range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 1},
+      "cell": {"userEnteredFormat": {
+          "backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.8},
+          "textFormat": {"bold": true, "foregroundColor":
+              {"red": 1, "green": 1, "blue": 1}},
+          "horizontalAlignment": "CENTER"}},
+      "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"}}
+
+• Mise en forme conditionnelle
+  {"addConditionalFormatRule": {
+      "rule": {"ranges": [{"sheetId": 0}],
+               "booleanRule": {"condition": {"type": "NUMBER_GREATER",
+                                              "values": [{"userEnteredValue": "100"}]},
+                               "format": {"backgroundColor":
+                                   {"red": 1, "green": 0.8, "blue": 0.8}}}},
+      "index": 0}}
+
+• Ajuster largeur colonne
+  {"updateDimensionProperties": {
+      "range": {"sheetId": 0, "dimension": "COLUMNS",
+                "startIndex": 0, "endIndex": 3},
+      "properties": {"pixelSize": 150},
+      "fields": "pixelSize"}}
+
+• Validation de données (liste déroulante)
+  {"setDataValidation": {
+      "range": {"sheetId": 0, "startRowIndex": 1, "endRowIndex": 100,
+                "startColumnIndex": 3, "endColumnIndex": 4},
+      "rule": {"condition": {"type": "ONE_OF_LIST",
+                              "values": [{"userEnteredValue": "Oui"},
+                                         {"userEnteredValue": "Non"}]},
+               "showCustomUi": true, "strict": true}}}
+
+• Renommer / dupliquer / supprimer un onglet
+  {"updateSheetProperties": {"properties": {"sheetId": 0, "title": "Nouveau"},
+                              "fields": "title"}}
+  {"duplicateSheet": {"sourceSheetId": 0, "newSheetName": "Copie"}}
+  {"deleteSheet": {"sheetId": 123}}
+
+• Créer un filtre
+  {"setBasicFilter": {
+      "filter": {"range": {"sheetId": 0,
+                            "startRowIndex": 0, "endRowIndex": 100,
+                            "startColumnIndex": 0, "endColumnIndex": 5}}}}
+
+Pour trouver `sheetId` d'un onglet, appeler d'abord `sheets_list_sheets`.
+"""
+
+
+@tool
+async def sheets_batch_update(
+    spreadsheet_id: str,
+    requests_json: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Execute one or more advanced operations on a Google Sheets spreadsheet.
+
+    Gives access to the FULL `spreadsheets.batchUpdate` API: sort ranges,
+    insert/delete rows or columns, merge cells, freeze rows, format cells
+    (bold, background, alignment, conditional formatting), column width,
+    data validation (dropdowns), rename/duplicate/delete tabs, filters, etc.
+
+    Args:
+        spreadsheet_id: The spreadsheet ID.
+        requests_json: JSON array of Sheets batchUpdate requests.
+            Example for sorting by column C descending:
+              '[{"sortRange": {"range": {"sheetId": 0, "startRowIndex": 1,
+              "endRowIndex": 100, "startColumnIndex": 0, "endColumnIndex": 5},
+              "sortSpecs": [{"dimensionIndex": 2, "sortOrder": "DESCENDING"}]}}]'
+
+            Many request types are available — see the prompt guide for
+            sort, insert/delete dim, mergeCells, updateSheetProperties,
+            repeatCell (formatting), addConditionalFormatRule,
+            updateDimensionProperties, setDataValidation, duplicateSheet,
+            setBasicFilter, etc.
+    """
+    service = await _get_sheets_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        requests = json.loads(requests_json)
+    except json.JSONDecodeError as e:
+        return f"Erreur : requests_json doit être un JSON valide (tableau de requêtes). Détail : {e}"
+
+    if not isinstance(requests, list):
+        return "Erreur : requests_json doit être un tableau JSON."
+    if not requests:
+        return "Erreur : aucune requête fournie."
+
+    try:
+        logger.info(
+            "sheets_batch_update: spreadsheet=%s, %d request(s), types=%s",
+            spreadsheet_id, len(requests),
+            [list(r.keys())[0] if isinstance(r, dict) and r else "?" for r in requests],
+        )
+        result = service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests},
+        ).execute()
+
+        replies = result.get("replies", [])
+        lines = [f"✓ {len(replies)} opération(s) exécutée(s) sur la feuille {spreadsheet_id}"]
+
+        # Surface useful reply details (new sheet IDs, etc.)
+        for i, reply in enumerate(replies):
+            if not reply:
+                continue
+            op = list(reply.keys())[0] if reply else None
+            if op == "addSheet":
+                props = reply["addSheet"].get("properties", {})
+                lines.append(f"  [{i}] addSheet → '{props.get('title')}' sheetId={props.get('sheetId')}")
+            elif op == "duplicateSheet":
+                props = reply["duplicateSheet"].get("properties", {})
+                lines.append(f"  [{i}] duplicateSheet → '{props.get('title')}' sheetId={props.get('sheetId')}")
+            elif op:
+                lines.append(f"  [{i}] {op}")
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error("sheets_batch_update failed: %s", e)
+        return f"Erreur sheets_batch_update : {e}"
+
+
+sheets_batch_update.description = (sheets_batch_update.description or "") + _SHEETS_BATCH_UPDATE_GUIDE
+
+
+@tool
+async def sheets_raw_api_call(
+    method_path: str,
+    params_json: str = "{}",
+    body_json: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Call ANY method of the Google Sheets API (v4) directly.
+
+    Escape hatch for advanced operations not covered by the dedicated tools.
+    Prefer `sheets_batch_update` for spreadsheet mutations — use this only
+    when you need a method not reachable through batchUpdate.
+
+    Args:
+        method_path: Dot-separated Sheets API method, e.g.
+            'spreadsheets.get', 'spreadsheets.values.batchGet',
+            'spreadsheets.values.batchUpdate',
+            'spreadsheets.developerMetadata.search'.
+        params_json: JSON object of query parameters passed as kwargs.
+            Example: '{"spreadsheetId": "abc123", "range": "Sheet1!A1:B10"}'
+        body_json: Optional JSON body (for POST/PATCH methods).
+
+    Returns a truncated JSON-serialized response.
+    """
+    service = await _get_sheets_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+    return execute_raw_call(service, method_path, params_json, body_json, "sheets")

@@ -18,6 +18,8 @@
 from __future__ import annotations
 
 import base64
+import json
+import logging
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -25,6 +27,10 @@ from email.mime.text import MIMEText
 from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
+
+from app.services.google_raw_api import execute_raw_call
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_gmail_service(user_google_credentials_json: str | None):
@@ -671,3 +677,167 @@ async def gmail_list_drafts(
         return f"{len(items)} brouillon(s) trouvé(s):\n\n" + "\n---\n".join(items)
     except Exception as e:
         return f"Erreur liste brouillons: {e}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Advanced Gmail tools
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@tool
+async def gmail_batch_modify(
+    message_ids_json: str,
+    add_label_ids: str = "",
+    remove_label_ids: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Apply label changes to many Gmail messages in a single request (up to 1000).
+
+    Use to archive, star, mark (un)read, move to a label, unarchive, etc.
+    System labels: INBOX, UNREAD, STARRED, IMPORTANT, TRASH, SPAM, SENT, DRAFT.
+    Archiving = remove 'INBOX'. Marking read = remove 'UNREAD'.
+
+    Args:
+        message_ids_json: JSON array of message IDs, e.g. '["abc","def"]'.
+        add_label_ids: Comma-separated labels to add (e.g. 'STARRED,Label_1234').
+        remove_label_ids: Comma-separated labels to remove (e.g. 'INBOX,UNREAD').
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        message_ids = json.loads(message_ids_json)
+    except json.JSONDecodeError as e:
+        return f"Erreur : message_ids_json doit être un tableau JSON. Détail : {e}"
+    if not isinstance(message_ids, list) or not message_ids:
+        return "Erreur : fournissez au moins un ID de message."
+
+    add_ids = [s.strip() for s in add_label_ids.split(",") if s.strip()]
+    rem_ids = [s.strip() for s in remove_label_ids.split(",") if s.strip()]
+    if not add_ids and not rem_ids:
+        return "Erreur : fournissez au moins un label à ajouter ou à retirer."
+
+    body: dict = {"ids": message_ids}
+    if add_ids:
+        body["addLabelIds"] = add_ids
+    if rem_ids:
+        body["removeLabelIds"] = rem_ids
+
+    try:
+        logger.info(
+            "gmail_batch_modify: %d message(s) add=%s remove=%s",
+            len(message_ids), add_ids, rem_ids,
+        )
+        # batchModify returns 204 No Content on success
+        service.users().messages().batchModify(userId="me", body=body).execute()
+        return (
+            f"✓ {len(message_ids)} message(s) modifié(s)\n"
+            f"  Labels ajoutés : {', '.join(add_ids) or '—'}\n"
+            f"  Labels retirés : {', '.join(rem_ids) or '—'}"
+        )
+    except Exception as e:
+        logger.error("gmail_batch_modify failed: %s", e)
+        return f"Erreur gmail_batch_modify : {e}"
+
+
+@tool
+async def gmail_update_settings(
+    setting: str,
+    value_json: str,
+    send_as_email: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Update Gmail account settings: signature, vacation responder, filters, forwarding.
+
+    Requires the 'gmail.settings.basic' scope for most settings.
+
+    Args:
+        setting: One of:
+            - 'vacation' : enable/disable auto-reply. value_json example:
+                '{"enableAutoReply": true, "responseSubject": "Absent",
+                  "responseBodyPlainText": "Je suis absent du...",
+                  "restrictToContacts": false, "restrictToDomain": false,
+                  "startTime": "1719792000000", "endTime": "1720396800000"}'
+                (startTime/endTime in epoch ms, optional.)
+            - 'signature' : change the signature of a send-as alias.
+                Requires send_as_email. value_json example:
+                '{"signature": "<p>Cordialement,<br>Franck</p>"}'
+            - 'forwarding' : create a forwarding address. value_json example:
+                '{"forwardingEmail": "bak@example.com"}' (then needs confirmation
+                via the address receiver).
+            - 'filter_create' : create a filter. value_json example:
+                '{"criteria": {"from": "newsletter@x.com"},
+                  "action": {"addLabelIds": ["TRASH"]}}'
+        value_json: JSON body matching the setting (see above).
+        send_as_email: Required for 'signature' — the sendAs email whose
+            signature is modified (your main address is your Gmail).
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        body = json.loads(value_json)
+    except json.JSONDecodeError as e:
+        return f"Erreur : value_json doit être un JSON valide. Détail : {e}"
+
+    try:
+        settings = service.users().settings()
+        if setting == "vacation":
+            result = settings.updateVacation(userId="me", body=body).execute()
+            enabled = result.get("enableAutoReply", False)
+            return f"✓ Répondeur absence {'ACTIVÉ' if enabled else 'désactivé'}\n{result}"
+        elif setting == "signature":
+            if not send_as_email:
+                return "Erreur : send_as_email requis pour modifier la signature."
+            result = settings.sendAs().patch(
+                userId="me", sendAsEmail=send_as_email, body=body
+            ).execute()
+            return f"✓ Signature mise à jour pour {send_as_email}"
+        elif setting == "forwarding":
+            result = settings.forwardingAddresses().create(userId="me", body=body).execute()
+            return (
+                f"✓ Adresse de transfert ajoutée : {result.get('forwardingEmail')}\n"
+                f"  Statut : {result.get('verificationStatus')}"
+            )
+        elif setting == "filter_create":
+            result = settings.filters().create(userId="me", body=body).execute()
+            return f"✓ Filtre créé (ID : {result.get('id')})"
+        else:
+            return (
+                "Erreur : setting inconnu. Valeurs : 'vacation', 'signature',"
+                " 'forwarding', 'filter_create'."
+            )
+    except Exception as e:
+        logger.error("gmail_update_settings failed (%s): %s", setting, e)
+        return f"Erreur gmail_update_settings ({setting}) : {e}"
+
+
+@tool
+async def gmail_raw_api_call(
+    method_path: str,
+    params_json: str = "{}",
+    body_json: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Call ANY method of the Gmail API (v1) directly.
+
+    Escape hatch for advanced Gmail operations: filters.list/delete,
+    forwardingAddresses.list/delete, delegates.list/create, sendAs.list,
+    threads.get/modify/trash, labels.update, watch/stop, etc.
+
+    Args:
+        method_path: Dot-separated Gmail API method, e.g.
+            'users.messages.batchDelete', 'users.threads.modify',
+            'users.settings.filters.list', 'users.settings.sendAs.list',
+            'users.settings.delegates.create', 'users.labels.update',
+            'users.getProfile', 'users.watch'.
+        params_json: JSON object of kwargs.
+            Example: '{"userId": "me", "id": "abc"}'
+        body_json: Optional JSON body for POST/PATCH methods.
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+    return execute_raw_call(service, method_path, params_json, body_json, "gmail")

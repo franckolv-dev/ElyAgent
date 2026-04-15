@@ -17,9 +17,14 @@
 """Google Tasks tools for ELY agent."""
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
+
+from app.services.google_raw_api import execute_raw_call
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_tasks_service(user_google_credentials_json: str | None):
@@ -251,3 +256,38 @@ async def tasks_create_tasklist(
         return f"Liste de tâches créée : '{result.get('title')}' (ID: {result.get('id')})"
     except Exception as e:
         return f"Erreur création liste de tâches : {e}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Raw API tool — unlocks tasks.move, tasks.clear, sub-tasks, etc.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@tool
+async def tasks_raw_api_call(
+    method_path: str,
+    params_json: str = "{}",
+    body_json: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Call ANY method of the Google Tasks API (v1) directly.
+
+    Useful for operations not covered by dedicated tools:
+    - `tasks.move` : reorder a task or make it a sub-task.
+      params: '{"tasklist": "@default", "task": "taskId",
+                "parent": "parentTaskId", "previous": "prevTaskId"}'
+    - `tasks.clear` : remove all completed tasks from a list.
+      params: '{"tasklist": "@default"}'
+    - `tasklists.patch` : rename a task list.
+      params: '{"tasklist": "listId"}' + body: '{"title": "Nouveau nom"}'
+
+    Args:
+        method_path: Dot-separated Tasks API method, e.g. 'tasks.move',
+            'tasks.clear', 'tasks.get', 'tasklists.patch'.
+        params_json: JSON object of kwargs.
+        body_json: Optional JSON body for POST/PATCH methods.
+    """
+    service = await _get_tasks_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+    return execute_raw_call(service, method_path, params_json, body_json, "tasks")

@@ -73,6 +73,23 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "drive_delete_file",
     "contacts_delete",
     "tasks_delete",
+    # Google Workspace — nouveaux tools avancés
+    # batch_update et raw_api_call peuvent muter arbitrairement → HITL
+    "sheets_batch_update",
+    "sheets_raw_api_call",
+    "docs_batch_update",
+    "docs_raw_api_call",
+    "drive_share_file",
+    "drive_raw_api_call",
+    "calendar_quick_add",
+    "calendar_create_meet_event",
+    "calendar_raw_api_call",
+    "gmail_batch_modify",
+    "gmail_update_settings",
+    "gmail_raw_api_call",
+    "tasks_raw_api_call",
+    "contacts_batch_operations",
+    "contacts_raw_api_call",
 })
 
 # Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation

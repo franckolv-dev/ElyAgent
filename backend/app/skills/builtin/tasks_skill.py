@@ -24,6 +24,7 @@ from app.agent.tools.tasks_tool import (
     tasks_delete,
     tasks_list_tasklists,
     tasks_create_tasklist,
+    tasks_raw_api_call,
 )
 
 get_skill_registry().register(Skill(
@@ -31,7 +32,8 @@ get_skill_registry().register(Skill(
     display_name="Google Tasks",
     description=(
         "Consulter, créer, modifier, compléter et supprimer des tâches Google Tasks. "
-        "Gérer plusieurs listes de tâches."
+        "Gérer plusieurs listes, réordonner, sous-tâches, nettoyer les terminées — "
+        "accès complet via tasks_raw_api_call."
     ),
     icon="✅",
     scopes=["google_oauth"],
@@ -43,5 +45,6 @@ get_skill_registry().register(Skill(
         tasks_delete,
         tasks_list_tasklists,
         tasks_create_tasklist,
+        tasks_raw_api_call,
     ],
 ))

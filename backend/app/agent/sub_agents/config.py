@@ -226,14 +226,14 @@ INFRA_AGENT = SubAgentConfig(
         "Tu maîtrises les commandes SSH sur les serveurs autorisés, la gestion des "
         "tâches planifiées (cron), le briefing matinal et la surveillance de sites "
         "web. Toutes les commandes SSH nécessitent une validation humaine (HITL).\n\n"
-        "Outils disponibles : ssh_execute (HITL obligatoire), get_system_info, "
+        "Outils disponibles : ssh_execute (HITL obligatoire), system_info, "
         "scheduler_create_task, scheduler_list_tasks, scheduler_delete_task, "
         "briefing_generate, watchdog_add, watchdog_list, watchdog_remove."
         + _COMMON_FORMAT
     ),
     tool_names={
         "ssh_execute",
-        "get_system_info",
+        "system_info",
         "scheduler_create_task",
         "scheduler_list_tasks",
         "scheduler_delete_task",
@@ -334,8 +334,12 @@ MEMORY_AGENT = SubAgentConfig(
         "(préférences, projets en cours, outils utilisés, contexte personnel) et de les "
         "stocker via les outils de notes. Tu n'inventes pas de faits — tu n'enregistres "
         "que ce qui a été dit explicitement dans la conversation.\n\n"
+        "BASE DE CONNAISSANCES : Tu peux aussi rechercher dans les documents indexés de "
+        "l'utilisateur via knowledge_search et lister ses documents avec knowledge_list. "
+        "Utilise ces outils quand l'utilisateur pose une question sur un document "
+        "qu'il a téléchargé ou ajouté à sa base de connaissances.\n\n"
         "Outils disponibles : notes_create, notes_list, notes_read, notes_update, "
-        "notes_delete, notes_search, whatsapp_send."
+        "notes_delete, notes_search, whatsapp_send, knowledge_search, knowledge_list."
         + _COMMON_FORMAT
     ),
     tool_names={
@@ -346,6 +350,8 @@ MEMORY_AGENT = SubAgentConfig(
         "notes_delete",
         "notes_search",
         "whatsapp_send",
+        "knowledge_search",
+        "knowledge_list",
     },
     llm_provider=None,
     llm_model=None,

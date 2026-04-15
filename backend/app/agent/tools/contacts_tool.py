@@ -18,9 +18,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
+
+from app.services.google_raw_api import execute_raw_call
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_people_service(user_google_credentials_json: str | None):
@@ -298,3 +304,118 @@ async def contacts_delete(
 
     except Exception as exc:
         return f"Erreur lors de la suppression du contact : {exc}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Advanced Contacts tools — bulk operations + raw API
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@tool
+async def contacts_batch_operations(
+    operation: str,
+    payload_json: str,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Batch create, update, or delete up to 200 Google Contacts in one request.
+
+    Args:
+        operation: One of:
+            - 'create' : payload_json is a list of contact bodies.
+                Example: '[{"names":[{"givenName":"Alice"}],
+                "emailAddresses":[{"value":"a@x.com"}]}]'
+            - 'update' : payload_json is {resourceName: contact} map with
+                an 'update_mask' key (comma-separated field names).
+                Example: '{"update_mask": "names,emailAddresses",
+                "contacts": {"people/c1234": {"etag": "...",
+                "names":[{"givenName":"Bob"}]}}}'
+            - 'delete' : payload_json is a list of resource names.
+                Example: '["people/c1234","people/c5678"]'
+        payload_json: JSON payload (format depends on the operation).
+    """
+    service = await _get_people_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError as e:
+        return f"Erreur : payload_json doit être un JSON valide. Détail : {e}"
+
+    try:
+        if operation == "create":
+            if not isinstance(payload, list):
+                return "Erreur : pour 'create', payload_json doit être une liste de contacts."
+            body = {
+                "contacts": [
+                    {"contactPerson": c, "clientData": []} if "contactPerson" not in c else c
+                    for c in payload
+                ],
+                "readMask": "names,emailAddresses,phoneNumbers",
+            }
+            logger.info("contacts_batch_operations: create %d contact(s)", len(payload))
+            result = await asyncio.to_thread(
+                lambda: service.people().batchCreateContacts(body=body).execute()
+            )
+            created = result.get("createdPeople", [])
+            return f"✓ {len(created)} contact(s) créé(s)"
+
+        elif operation == "update":
+            if not isinstance(payload, dict) or "contacts" not in payload:
+                return "Erreur : pour 'update', payload_json doit contenir 'contacts' et 'update_mask'."
+            body = {
+                "contacts": payload["contacts"],
+                "updateMask": payload.get("update_mask", "names,emailAddresses,phoneNumbers"),
+                "readMask": "names,emailAddresses,phoneNumbers",
+            }
+            logger.info("contacts_batch_operations: update %d contact(s)", len(payload["contacts"]))
+            result = await asyncio.to_thread(
+                lambda: service.people().batchUpdateContacts(body=body).execute()
+            )
+            updated = result.get("updateResult", {})
+            return f"✓ {len(updated)} contact(s) mis à jour"
+
+        elif operation == "delete":
+            if not isinstance(payload, list):
+                return "Erreur : pour 'delete', payload_json doit être une liste de resourceNames."
+            body = {"resourceNames": payload}
+            logger.info("contacts_batch_operations: delete %d contact(s)", len(payload))
+            await asyncio.to_thread(
+                lambda: service.people().batchDeleteContacts(body=body).execute()
+            )
+            return f"✓ {len(payload)} contact(s) supprimé(s)"
+
+        else:
+            return "Erreur : operation doit être 'create', 'update' ou 'delete'."
+
+    except Exception as e:
+        logger.error("contacts_batch_operations (%s) failed: %s", operation, e)
+        return f"Erreur contacts_batch_operations ({operation}) : {e}"
+
+
+@tool
+async def contacts_raw_api_call(
+    method_path: str,
+    params_json: str = "{}",
+    body_json: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Call ANY method of the Google People API (v1) directly.
+
+    Escape hatch for advanced operations: contact groups (labels),
+    directory people (for Workspace accounts), etc.
+
+    Args:
+        method_path: Dot-separated People API method, e.g.
+            'people.get', 'people.connections.list',
+            'contactGroups.list', 'contactGroups.create',
+            'contactGroups.members.modify', 'otherContacts.list'.
+        params_json: JSON object of kwargs.
+            Example: '{"resourceName": "people/c1234",
+                        "personFields": "names,emailAddresses"}'
+        body_json: Optional JSON body for POST/PATCH methods.
+    """
+    service = await _get_people_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+    return execute_raw_call(service, method_path, params_json, body_json, "contacts")

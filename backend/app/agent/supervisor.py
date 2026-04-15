@@ -84,7 +84,10 @@ _DOMAIN_DESCRIPTIONS = {
     "workspace": (
         "Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, "
         "Google Tasks, Google Contacts — lecture, création, modification, "
-        "envoi d'emails, gestion des contacts."
+        "envoi d'emails, gestion des contacts. Accès complet aux APIs "
+        "(batchUpdate, raw_api_call) : tri/insertion/formatage Sheets, "
+        "styles Docs, partage/export Drive, Meet/récurrence Calendar, "
+        "modif en lot Gmail, opérations bulk Contacts."
     ),
     "infra": (
         "Commandes SSH sur serveurs, tâches planifiées (cron), briefing matinal, "
@@ -201,20 +204,35 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "gmail_reply_email (HITL), gmail_send_with_attachment (HITL), "
         "gmail_mark_read, gmail_mark_unread, gmail_create_draft, gmail_list_drafts, "
         "gmail_search_for_cleanup, gmail_list_labels, gmail_create_label, "
-        "gmail_move_emails (HITL), gmail_trash_emails (HITL).\n"
+        "gmail_move_emails (HITL), gmail_trash_emails (HITL), "
+        "gmail_batch_modify (modif lot jusqu'à 1000 msgs), "
+        "gmail_update_settings (signature/vacation/filtre/transfert, HITL), "
+        "gmail_raw_api_call (API brute, HITL).\n"
         "Calendar : calendar_list_events, calendar_create_event (HITL), "
         "calendar_get_event, calendar_update_event, calendar_delete_event (HITL), "
-        "calendar_check_availability, calendar_list_calendars.\n"
+        "calendar_check_availability, calendar_list_calendars, "
+        "calendar_quick_add (langage naturel, HITL), "
+        "calendar_create_meet_event (visio Meet + participants + RRULE, HITL), "
+        "calendar_raw_api_call (API brute, HITL).\n"
         "Drive : drive_list_files, drive_read_file, drive_create_folder, drive_create_file, "
-        "drive_update_file, drive_move_file (HITL), drive_rename_file, drive_delete_file (HITL).\n"
+        "drive_update_file, drive_move_file (HITL), drive_rename_file, drive_delete_file (HITL), "
+        "drive_share_file (permissions, HITL), drive_copy_file, drive_export_file "
+        "(PDF/Docx/Xlsx...), drive_raw_api_call (API brute, HITL).\n"
         "Docs : docs_create_document, docs_read_document, docs_append_text, "
-        "docs_replace_text, docs_insert_table.\n"
+        "docs_replace_text, docs_insert_table, "
+        "docs_batch_update (style, titres, listes, images, liens), "
+        "docs_raw_api_call (API brute, HITL).\n"
         "Sheets : sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
-        "sheets_update_cells, sheets_delete_rows, sheets_add_sheet, sheets_list_sheets.\n"
+        "sheets_update_cells, sheets_delete_rows, sheets_add_sheet, sheets_list_sheets, "
+        "sheets_batch_update (trier, insérer colonnes, fusionner, figer, "
+        "mise en forme, validation), sheets_raw_api_call (API brute, HITL).\n"
         "Tasks : tasks_list, tasks_create, tasks_complete, tasks_update, "
-        "tasks_delete (HITL), tasks_list_tasklists, tasks_create_tasklist.\n"
+        "tasks_delete (HITL), tasks_list_tasklists, tasks_create_tasklist, "
+        "tasks_raw_api_call (réordonner, nettoyer, sous-tâches, HITL).\n"
         "Contacts : contacts_search, contacts_list, contacts_create, "
-        "contacts_get, contacts_update, contacts_delete (HITL)." + _COMMON_FORMAT
+        "contacts_get, contacts_update, contacts_delete (HITL), "
+        "contacts_batch_operations (créer/modifier/supprimer jusqu'à 200, HITL), "
+        "contacts_raw_api_call (groupes, annuaire, HITL)." + _COMMON_FORMAT
     ),
     "infra": (
         _IDENTITY +
@@ -263,26 +281,33 @@ _WORKSPACE_SKILLS = {
     "gmail_create_draft", "gmail_list_drafts",
     "gmail_list_labels", "gmail_create_label",
     "gmail_move_emails", "gmail_trash_emails", "gmail_search_for_cleanup",
+    "gmail_batch_modify", "gmail_update_settings", "gmail_raw_api_call",
     # Calendar
     "calendar_list_events", "calendar_create_event",
     "calendar_get_event", "calendar_update_event", "calendar_delete_event",
     "calendar_check_availability", "calendar_list_calendars",
+    "calendar_quick_add", "calendar_create_meet_event", "calendar_raw_api_call",
     # Drive
     "drive_list_files", "drive_read_file",
     "drive_create_folder", "drive_create_file", "drive_update_file",
     "drive_move_file", "drive_rename_file", "drive_delete_file",
+    "drive_share_file", "drive_copy_file", "drive_export_file", "drive_raw_api_call",
     # Docs
     "docs_create_document", "docs_read_document", "docs_append_text",
     "docs_replace_text", "docs_insert_table",
+    "docs_batch_update", "docs_raw_api_call",
     # Sheets
     "sheets_create_spreadsheet", "sheets_read_spreadsheet", "sheets_append_rows",
     "sheets_update_cells", "sheets_delete_rows", "sheets_add_sheet", "sheets_list_sheets",
+    "sheets_batch_update", "sheets_raw_api_call",
     # Tasks
     "tasks_list", "tasks_create", "tasks_complete",
     "tasks_update", "tasks_delete", "tasks_list_tasklists", "tasks_create_tasklist",
+    "tasks_raw_api_call",
     # Contacts
     "contacts_search", "contacts_list", "contacts_create",
     "contacts_get", "contacts_update", "contacts_delete",
+    "contacts_batch_operations", "contacts_raw_api_call",
 } | _MEMORY_SKILLS
 
 _INFRA_SKILLS = {

@@ -24,6 +24,9 @@ from app.agent.tools.calendar_tool import (
     calendar_delete_event,
     calendar_check_availability,
     calendar_list_calendars,
+    calendar_quick_add,
+    calendar_create_meet_event,
+    calendar_raw_api_call,
 )
 
 get_skill_registry().register(Skill(
@@ -31,7 +34,8 @@ get_skill_registry().register(Skill(
     display_name="Google Calendar",
     description=(
         "Consulter, créer, modifier et supprimer des événements Google Calendar. "
-        "Vérifier les disponibilités et lister les agendas."
+        "Créer en langage naturel, visio Meet, récurrences, rappels — plus "
+        "accès complet via calendar_raw_api_call."
     ),
     icon="📅",
     scopes=["google_oauth"],
@@ -43,5 +47,8 @@ get_skill_registry().register(Skill(
         calendar_delete_event,
         calendar_check_availability,
         calendar_list_calendars,
+        calendar_quick_add,
+        calendar_create_meet_event,
+        calendar_raw_api_call,
     ],
 ))

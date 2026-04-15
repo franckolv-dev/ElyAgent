@@ -28,8 +28,11 @@ async def _run_subprocess(cmd: list, **kwargs):
 
 @tool
 def system_info() -> str:
-    """Get information about the local system (OS, CPU, memory, disk).
-    Use this when the user asks about the current machine's status.
+    """Retourne les informations sur la machine locale : OS, CPU, mémoire RAM, disque.
+    Utilise cet outil quand l'utilisateur demande des infos sur le système, la machine,
+    le serveur, le matériel, l'OS, la RAM, le CPU, l'espace disque, ou la version Python.
+    Exemples : "infos système", "donne-moi les specs", "quelle est la RAM disponible",
+    "informations sur ce système", "état du serveur".
     """
     info = {
         "os": platform.platform(),

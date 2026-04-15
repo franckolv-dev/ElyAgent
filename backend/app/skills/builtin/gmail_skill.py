@@ -31,6 +31,9 @@ from app.agent.tools.gmail_tool import (
     gmail_mark_unread,
     gmail_create_draft,
     gmail_list_drafts,
+    gmail_batch_modify,
+    gmail_update_settings,
+    gmail_raw_api_call,
 )
 
 get_skill_registry().register(Skill(
@@ -38,9 +41,8 @@ get_skill_registry().register(Skill(
     display_name="Gmail",
     description=(
         "Lire, chercher, envoyer, répondre et organiser des emails via Gmail. "
-        "Peut créer des brouillons, envoyer des pièces jointes depuis Drive, "
-        "marquer lu/non lu, créer des labels, déplacer en masse, "
-        "mettre à la corbeille et nettoyer la boîte mail."
+        "Modif en lot jusqu'à 1000 mails, paramètres (signature, absence, "
+        "filtres, transfert), plus accès complet via gmail_raw_api_call."
     ),
     icon="✉️",
     scopes=["google_oauth"],
@@ -59,5 +61,8 @@ get_skill_registry().register(Skill(
         gmail_move_emails,
         gmail_trash_emails,
         gmail_search_for_cleanup,
+        gmail_batch_modify,
+        gmail_update_settings,
+        gmail_raw_api_call,
     ],
 ))

@@ -24,6 +24,8 @@ from app.agent.tools.sheets_tool import (
     sheets_delete_rows,
     sheets_add_sheet,
     sheets_list_sheets,
+    sheets_batch_update,
+    sheets_raw_api_call,
 )
 
 get_skill_registry().register(Skill(
@@ -31,7 +33,8 @@ get_skill_registry().register(Skill(
     display_name="Google Sheets",
     description=(
         "Créer, lire et modifier des feuilles de calcul Google Sheets. "
-        "Mettre à jour des cellules, supprimer des lignes, ajouter des onglets."
+        "Trier, insérer colonnes, fusionner, figer, mise en forme, validation — "
+        "accès complet à l'API via sheets_batch_update et sheets_raw_api_call."
     ),
     icon="📊",
     scopes=["google_oauth"],
@@ -43,5 +46,7 @@ get_skill_registry().register(Skill(
         sheets_delete_rows,
         sheets_add_sheet,
         sheets_list_sheets,
+        sheets_batch_update,
+        sheets_raw_api_call,
     ],
 ))

@@ -17,10 +17,14 @@
 """Google Calendar tools for ELY agent."""
 from __future__ import annotations
 
+import json
 import logging
+import uuid
 from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
+
+from app.services.google_raw_api import execute_raw_call
 
 logger = logging.getLogger(__name__)
 
@@ -330,3 +334,172 @@ async def calendar_list_calendars(
     except Exception as e:
         logger.error("Failed to list calendars: %s", e)
         return f"Erreur liste calendriers: {e}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Advanced Calendar tools
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@tool
+async def calendar_quick_add(
+    text: str,
+    calendar_id: str = "primary",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Create a calendar event from a free-form natural-language string.
+
+    Uses Google Calendar's `events.quickAdd` — the same parser as the
+    "Quick add" box in the Google Calendar UI. Handles phrases like
+    'Dentist appointment tomorrow at 3pm' or 'Lunch with Alice Friday 12h'.
+
+    Args:
+        text: Natural language description of the event.
+        calendar_id: Calendar ID (default 'primary').
+    """
+    service = await _get_calendar_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+    try:
+        logger.info("calendar_quick_add: '%s' on calendar=%s", text, calendar_id)
+        created = service.events().quickAdd(
+            calendarId=calendar_id, text=text
+        ).execute()
+        start = created.get("start", {})
+        start_str = start.get("dateTime", start.get("date", "?"))
+        return (
+            f"✓ Événement créé : '{created.get('summary', 'Sans titre')}'\n"
+            f"  Date : {start_str}\n"
+            f"  Lien : {created.get('htmlLink', 'N/A')}\n"
+            f"  ID : {created.get('id')}"
+        )
+    except Exception as e:
+        logger.error("calendar_quick_add failed: %s", e)
+        return f"Erreur calendar_quick_add : {e}"
+
+
+@tool
+async def calendar_create_meet_event(
+    title: str,
+    start_datetime: str,
+    end_datetime: str,
+    attendees: str = "",
+    description: str = "",
+    location: str = "",
+    recurrence: str = "",
+    reminders_minutes: str = "",
+    calendar_id: str = "primary",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Create a Google Calendar event WITH a Google Meet video conference link.
+
+    Also supports attendees, recurrence, and custom reminders in a single
+    call — much richer than `calendar_create_event`.
+
+    Args:
+        title: Event title.
+        start_datetime: ISO 8601 (e.g. '2025-06-15T14:00:00+02:00').
+        end_datetime: ISO 8601.
+        attendees: Comma-separated list of email addresses (empty = none).
+        description: Optional description.
+        location: Optional physical location.
+        recurrence: Optional RFC-5545 RRULE (e.g. 'RRULE:FREQ=WEEKLY;BYDAY=MO'
+            for every Monday; 'RRULE:FREQ=DAILY;COUNT=10' for 10 daily events).
+        reminders_minutes: Comma-separated minutes for popup reminders
+            (e.g. '10,60' = 10 min and 1 h before). Empty = default reminders.
+        calendar_id: Calendar ID (default 'primary').
+    """
+    service = await _get_calendar_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    event: dict = {
+        "summary": title,
+        "start": {"dateTime": start_datetime},
+        "end": {"dateTime": end_datetime},
+        "conferenceData": {
+            "createRequest": {
+                "requestId": str(uuid.uuid4()),
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        },
+    }
+    if description:
+        event["description"] = description
+    if location:
+        event["location"] = location
+    if attendees:
+        event["attendees"] = [
+            {"email": e.strip()} for e in attendees.split(",") if e.strip()
+        ]
+    if recurrence:
+        rule = recurrence if recurrence.upper().startswith("RRULE:") else f"RRULE:{recurrence}"
+        event["recurrence"] = [rule]
+    if reminders_minutes:
+        try:
+            overrides = [
+                {"method": "popup", "minutes": int(m.strip())}
+                for m in reminders_minutes.split(",")
+                if m.strip()
+            ]
+            if overrides:
+                event["reminders"] = {"useDefault": False, "overrides": overrides}
+        except ValueError:
+            return "Erreur : reminders_minutes doit être une liste d'entiers séparés par des virgules (ex. '10,60')."
+
+    try:
+        logger.info(
+            "calendar_create_meet_event: '%s' %s → %s attendees=%d",
+            title, start_datetime, end_datetime,
+            len(event.get("attendees", [])),
+        )
+        created = service.events().insert(
+            calendarId=calendar_id,
+            body=event,
+            conferenceDataVersion=1,
+            sendUpdates="all" if attendees else "none",
+        ).execute()
+        meet_link = "—"
+        entry_points = created.get("conferenceData", {}).get("entryPoints", [])
+        if entry_points:
+            meet_link = entry_points[0].get("uri", "—")
+        return (
+            f"✓ Événement Meet créé : '{created.get('summary')}'\n"
+            f"  Date : {start_datetime} → {end_datetime}\n"
+            f"  Participants : {len(event.get('attendees', []))}\n"
+            f"  Meet : {meet_link}\n"
+            f"  Lien Calendar : {created.get('htmlLink', 'N/A')}\n"
+            f"  ID : {created.get('id')}"
+        )
+    except Exception as e:
+        logger.error("calendar_create_meet_event failed: %s", e)
+        return f"Erreur création événement Meet : {e}"
+
+
+@tool
+async def calendar_raw_api_call(
+    method_path: str,
+    params_json: str = "{}",
+    body_json: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Call ANY method of the Google Calendar API (v3) directly.
+
+    Escape hatch for advanced Calendar operations: events.move (between
+    calendars), events.import, ACL management, calendar colors, settings,
+    calendars.insert/delete, etc.
+
+    Args:
+        method_path: Dot-separated Calendar API method, e.g.
+            'events.move', 'events.list', 'events.instances', 'acl.list',
+            'acl.insert', 'calendars.insert', 'calendars.delete',
+            'colors.get', 'settings.list'.
+        params_json: JSON object of kwargs.
+            Example: '{"calendarId": "primary", "eventId": "abc",
+                        "destination": "other-cal@group.calendar.google.com"}'
+        body_json: Optional JSON body for POST/PATCH methods.
+    """
+    service = await _get_calendar_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+    return execute_raw_call(service, method_path, params_json, body_json, "calendar")

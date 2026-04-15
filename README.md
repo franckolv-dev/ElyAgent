@@ -27,52 +27,84 @@ ELY is a fully self-hosted AI agent that integrates with your entire digital lif
 
 ## What ELY Can Do
 
-### 🌐 Google Workspace — Full Integration
+### 🌐 Google Workspace — Full Integration (76 tools)
 
 ELY has read/write access to your entire Google suite. Every destructive action pauses for your approval.
 
+> **New in v1.1 — Advanced tier.** In addition to the high-level tools below, every service exposes a `batch_update` / `batch_operations` tool (bulk mutations in one call) and a `raw_api_call` escape hatch. The raw tool lets Éli call **any** method of the official Google Python client by name (e.g. `spreadsheets.values.append`, `messages.batchModify`, `events.quickAdd`) with free-form JSON params — so she is no longer limited to the wrappers we pre-wrote. Critical raw calls still go through HITL approval.
+
 <details>
-<summary><strong>Gmail (14 tools)</strong> — read, send, reply, draft, label, search, clean up</summary>
+<summary><strong>Gmail (17 tools)</strong> — read, send, reply, draft, label, search, clean up, bulk modify, settings, raw API</summary>
 
 | Ask ELY | What happens |
 |---------|-------------|
 | "Read my last 5 unread emails" | Fetches and summarises latest Gmail messages |
 | "Send an email to alice@company.com: Meeting Friday" | Drafts, pauses for approval, then sends |
 | "Reply to Bob's email and say I'll be there" | Replies in-thread (approval required) |
+| "Archive all newsletters from 2024" | `gmail_batch_modify` — up to 1000 messages / call (HITL) |
+| "Turn on my vacation responder until next Monday" | `gmail_update_settings` — signature, vacation, filters, forwarding |
 | "Clean up my promotions folder" | Smart cleanup by category |
 | "Search for invoices from last month" | Full-text search with filters |
 
 </details>
 
 <details>
-<summary><strong>Calendar (6 tools)</strong> — list, create, update, delete, check availability</summary>
+<summary><strong>Calendar (9 tools)</strong> — list, create, update, delete, check availability, quick add, Meet events, raw API</summary>
 
 | Ask ELY | What happens |
 |---------|-------------|
 | "What are my appointments this week?" | Lists Google Calendar events |
-| "Create a dentist appointment Friday at 10:30am" | Creates with approval |
+| "Dentist Friday 10h30 for 45min" | `calendar_quick_add` — natural language parsing (HITL) |
+| "Create a Meet with team@company.com every Monday at 9am" | `calendar_create_meet_event` — auto Meet link + RRULE recurrence |
 | "Am I free Thursday between 2pm and 4pm?" | Checks freebusy |
 
 </details>
 
 <details>
-<summary><strong>Drive (8 tools)</strong> — list, read, create, update, move, rename, delete</summary>
+<summary><strong>Drive (11 tools)</strong> — list, read, create, update, move, rename, delete, share, copy, export, raw API</summary>
+
+| Ask ELY | What happens |
+|---------|-------------|
+| "Share that spec doc with alice@company.com as commenter" | `drive_share_file` with role whitelist (HITL) |
+| "Duplicate the Q2 budget into a Q3 budget" | `drive_copy_file` — no approval needed |
+| "Export the invoice doc as PDF" | `drive_export_file` — PDF, DOCX, XLSX, CSV, ODT, EPUB, RTF… |
+
 </details>
 
 <details>
-<summary><strong>Google Docs (5 tools)</strong> — create, read, append, find/replace, insert tables</summary>
+<summary><strong>Google Docs (7 tools)</strong> — create, read, append, find/replace, insert tables, batch update, raw API</summary>
+
+| Ask ELY | What happens |
+|---------|-------------|
+| "Add a bullet list with our 3 priorities at the top of doc X" | `docs_batch_update` — insertText + createParagraphBullets (HITL) |
+| "Find every 'client' in this doc and replace by 'partner'" | `docs_batch_update` — replaceAllText |
+
 </details>
 
 <details>
-<summary><strong>Google Sheets (7 tools)</strong> — create, read ranges, append rows, update cells, manage tabs</summary>
+<summary><strong>Google Sheets (9 tools)</strong> — create, read, append, update, manage tabs, batch update, raw API</summary>
+
+| Ask ELY | What happens |
+|---------|-------------|
+| "Sort column B descending and freeze the first row" | `sheets_batch_update` — sortRange + updateSheetProperties (HITL) |
+| "Add a conditional formatting rule: red when late" | `sheets_batch_update` — addConditionalFormatRule |
+
 </details>
 
 <details>
-<summary><strong>Tasks (7 tools)</strong> — list, create, complete, update, delete, manage lists</summary>
+<summary><strong>Tasks (8 tools)</strong> — list, create, complete, update, delete, manage lists, raw API</summary>
+
+Plus full sub-tasks, reorder (`tasks.move`) and batch-clear of completed items via the raw tool.
+
 </details>
 
 <details>
-<summary><strong>Contacts / People API (6 tools)</strong> — find, list, create, update, delete</summary>
+<summary><strong>Contacts / People API (8 tools)</strong> — find, list, create, update, delete, batch operations, raw API</summary>
+
+| Ask ELY | What happens |
+|---------|-------------|
+| "Import these 30 contacts from the CSV" | `contacts_batch_operations` — create/update/delete up to 200 / call (HITL) |
+
 </details>
 
 ---

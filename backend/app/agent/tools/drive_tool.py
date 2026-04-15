@@ -17,9 +17,14 @@
 """Google Drive tools for ELY agent — read + write."""
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
+
+from app.services.google_raw_api import execute_raw_call
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_drive_service(user_google_credentials_json: str | None):
@@ -280,3 +285,213 @@ async def drive_delete_file(
         return f"Fichier (ID: {file_id}) déplacé dans la corbeille Drive."
     except Exception as e:
         return f"Erreur suppression: {e}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Advanced Drive tools — sharing, copy, export, raw API
+# ──────────────────────────────────────────────────────────────────────────────
+
+_VALID_ROLES = {"reader", "commenter", "writer", "fileOrganizer", "organizer", "owner"}
+_VALID_TYPES = {"user", "group", "domain", "anyone"}
+
+
+@tool
+async def drive_share_file(
+    file_id: str,
+    email_or_domain: str = "",
+    role: str = "reader",
+    permission_type: str = "user",
+    send_notification: bool = False,
+    message: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Share a Google Drive file or folder with a user, group, domain, or anyone.
+
+    Args:
+        file_id: File or folder ID.
+        email_or_domain: Email (for user/group) or domain (for domain).
+            Leave empty when permission_type='anyone' (link-sharing).
+        role: One of 'reader', 'commenter', 'writer', 'fileOrganizer',
+            'organizer', 'owner'. Default 'reader'.
+        permission_type: 'user', 'group', 'domain' or 'anyone'. Default 'user'.
+        send_notification: If True (user/group only), Google sends an email.
+        message: Optional email notification message.
+    """
+    service = await _get_drive_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    if role not in _VALID_ROLES:
+        return f"Erreur : role invalide. Valeurs autorisées : {', '.join(sorted(_VALID_ROLES))}"
+    if permission_type not in _VALID_TYPES:
+        return f"Erreur : permission_type invalide. Valeurs autorisées : {', '.join(sorted(_VALID_TYPES))}"
+
+    permission: dict = {"role": role, "type": permission_type}
+    if permission_type in ("user", "group"):
+        if not email_or_domain:
+            return f"Erreur : email_or_domain requis pour permission_type='{permission_type}'."
+        permission["emailAddress"] = email_or_domain
+    elif permission_type == "domain":
+        if not email_or_domain:
+            return "Erreur : email_or_domain (nom de domaine) requis pour permission_type='domain'."
+        permission["domain"] = email_or_domain
+
+    kwargs: dict = {
+        "fileId": file_id,
+        "body": permission,
+        "fields": "id,role,type,emailAddress,domain",
+        "sendNotificationEmail": send_notification,
+    }
+    if send_notification and message:
+        kwargs["emailMessage"] = message
+
+    try:
+        logger.info(
+            "drive_share_file: file=%s type=%s role=%s target=%s",
+            file_id, permission_type, role, email_or_domain or "anyone",
+        )
+        result = service.permissions().create(**kwargs).execute()
+        target = result.get("emailAddress") or result.get("domain") or "anyone (lien)"
+        return (
+            f"✓ Permission créée sur le fichier {file_id}\n"
+            f"  Type : {result.get('type')} — Rôle : {result.get('role')}\n"
+            f"  Cible : {target}\n"
+            f"  Permission ID : {result.get('id')}"
+        )
+    except Exception as e:
+        logger.error("drive_share_file failed: %s", e)
+        return f"Erreur partage : {e}"
+
+
+@tool
+async def drive_copy_file(
+    file_id: str,
+    new_name: str = "",
+    parent_id: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Duplicate a Google Drive file (or Docs/Sheets/Slides document).
+
+    Args:
+        file_id: ID of the file to copy.
+        new_name: Name for the copy (default: "Copy of <original>")
+        parent_id: Optional destination folder ID.
+    """
+    service = await _get_drive_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    body: dict = {}
+    if new_name:
+        body["name"] = new_name
+    if parent_id:
+        body["parents"] = [parent_id]
+    try:
+        copied = service.files().copy(
+            fileId=file_id, body=body, fields="id,name,webViewLink"
+        ).execute()
+        return (
+            f"✓ Copie créée : '{copied['name']}'\n"
+            f"  ID : {copied['id']}\n"
+            f"  Lien : {copied.get('webViewLink', '—')}"
+        )
+    except Exception as e:
+        logger.error("drive_copy_file failed: %s", e)
+        return f"Erreur copie : {e}"
+
+
+@tool
+async def drive_export_file(
+    file_id: str,
+    export_format: str = "pdf",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Export a Google Doc, Sheet or Slide to another format and save it to Drive.
+
+    Args:
+        file_id: Source Google-native file ID (Docs, Sheets or Slides).
+        export_format: 'pdf', 'docx', 'xlsx', 'pptx', 'odt', 'ods', 'csv',
+            'txt', 'html', 'epub', 'rtf'. Default 'pdf'.
+
+    The exported file is saved to your Drive next to the original with the
+    same title + extension.
+    """
+    import io
+    from googleapiclient.http import MediaIoBaseUpload
+
+    mime_map = {
+        "pdf": ("application/pdf", "pdf"),
+        "docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
+        "xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+        "pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
+        "odt": ("application/vnd.oasis.opendocument.text", "odt"),
+        "ods": ("application/vnd.oasis.opendocument.spreadsheet", "ods"),
+        "csv": ("text/csv", "csv"),
+        "txt": ("text/plain", "txt"),
+        "html": ("text/html", "html"),
+        "epub": ("application/epub+zip", "epub"),
+        "rtf": ("application/rtf", "rtf"),
+    }
+
+    fmt = export_format.lower().lstrip(".")
+    if fmt not in mime_map:
+        return f"Erreur : format non reconnu. Valeurs possibles : {', '.join(sorted(mime_map))}"
+
+    service = await _get_drive_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+
+    try:
+        meta = service.files().get(fileId=file_id, fields="name,parents,mimeType").execute()
+        mime = meta.get("mimeType", "")
+        if "google-apps" not in mime:
+            return "Erreur : l'export ne fonctionne que pour les formats natifs Google (Docs, Sheets, Slides)."
+
+        mime_out, ext = mime_map[fmt]
+        logger.info("drive_export_file: file=%s to %s", file_id, fmt)
+        content = service.files().export(fileId=file_id, mimeType=mime_out).execute()
+
+        new_name = f"{meta.get('name', 'export')}.{ext}"
+        body: dict = {"name": new_name}
+        if meta.get("parents"):
+            body["parents"] = meta["parents"]
+
+        media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_out, resumable=False)
+        created = service.files().create(
+            body=body, media_body=media, fields="id,name,webViewLink"
+        ).execute()
+        return (
+            f"✓ Export {fmt} créé : '{created['name']}'\n"
+            f"  ID : {created['id']}\n"
+            f"  Lien : {created.get('webViewLink', '—')}"
+        )
+    except Exception as e:
+        logger.error("drive_export_file failed: %s", e)
+        return f"Erreur export : {e}"
+
+
+@tool
+async def drive_raw_api_call(
+    method_path: str,
+    params_json: str = "{}",
+    body_json: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Call ANY method of the Google Drive API (v3) directly.
+
+    Escape hatch for advanced Drive operations: permissions management,
+    revisions, comments, shared drives, about.get, file watch, etc.
+
+    Args:
+        method_path: Dot-separated Drive API method, e.g.
+            'files.list', 'files.get', 'permissions.list',
+            'permissions.delete', 'revisions.list', 'revisions.delete',
+            'comments.create', 'about.get', 'drives.list'.
+        params_json: JSON object of kwargs.
+            Example: '{"fileId": "abc", "permissionId": "xyz"}'
+        body_json: Optional JSON body for POST/PATCH methods.
+    """
+    service = await _get_drive_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté."
+    return execute_raw_call(service, method_path, params_json, body_json, "drive")
