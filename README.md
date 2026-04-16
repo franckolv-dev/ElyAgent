@@ -234,20 +234,88 @@ Requires ELY Desktop to be running and connected.
 
 ### 📡 Communication Channels
 
-Same agent. Same security. Same memory. Everywhere.
+Same agent. Same memory. Same security. **10 ways to reach Éli.**
 
-| Channel | Notes |
-|---------|-------|
-| **Web UI** | Real-time chat, 3D cyberpunk avatar, voice output (TTS), Markdown, file attachments, Stop button |
-| **Voice Mode** | Full-screen voice conversation, wake word "Éli", continuous STT→TTS loop, visual feedback |
-| **iOS App** | Native SwiftUI, chat + voice mode, Keychain auth, iOS 17+ |
-| **Android App** | Kotlin + Jetpack Compose, voice input, FCM push notifications |
-| **PWA** | Installable from any browser (manifest + service worker), offline shell, install prompt |
-| **Telegram Bot** | Full agent access, inline HITL approval buttons |
-| **Slack Bot** | Socket Mode (no public URL needed), Block Kit HITL buttons |
-| **Discord Bot** | DM + @mention, emoji-based HITL |
-| **WhatsApp** | Meta Cloud API webhook, HITL supported |
-| **ntfy (Android)** | Push notifications for HITL approvals with action buttons |
+> Every channel goes through the same LangGraph agent, the same HITL approval layer, and the same persistent memory — a conversation started on your phone continues seamlessly on your desktop or Telegram.
+
+#### 🖥️ Web Interface
+
+| Channel | Setup | Notes |
+|---------|-------|-------|
+| **Web UI** | Zero — open `https://your-server` | Real-time streaming chat, 3D cyberpunk avatar, Markdown rendering, file attachments, Stop button mid-generation |
+| **Voice Mode** | Zero — microphone permission | Full-screen voice conversation, wake word **"Éli"**, continuous STT→TTS loop (edge-tts), live transcript, visual breathing animation |
+| **PWA** | Zero — browser install prompt after 30s | Installable on iOS / Android / macOS / Windows as a native-looking app — works offline (shell + cached assets), push-ready |
+
+#### 📱 Native Mobile Apps
+
+| Channel | Setup | Notes |
+|---------|-------|-------|
+| **iOS App** (SwiftUI) | Build from `ios/` — Xcode 15, iOS 17+ | Native chat + voice mode, Keychain authentication, biometric unlock, landscape support |
+| **Android App** (Kotlin) | Build APK from `android/` or follow [docs/ANDROID_INSTALL.md](./docs/ANDROID_INSTALL.md) | Jetpack Compose UI, voice input, FCM push notifications for HITL approvals, minSdk 28 |
+
+#### 💬 Messaging Platforms
+
+| Channel | Setup | Notes |
+|---------|-------|-------|
+| **Telegram** | `TELEGRAM_BOT_TOKEN` in `.env` → `@BotFather` | Full agent access from any device; inline keyboard buttons for HITL approvals (Allow / Deny / Ban); works in groups and DMs |
+| **WhatsApp** | Meta Cloud API webhook — see below | Full agent access; HITL approvals via reply messages; requires a Meta Business account and a dedicated phone number |
+| **Slack** | `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` in `.env` | Socket Mode — **no public URL needed**; Block Kit interactive buttons for HITL; works in channels and DMs with `@Éli` |
+| **Discord** | `DISCORD_BOT_TOKEN` in `.env` | DM or `@Éli` mention in any channel; emoji-based HITL reactions (✅ allow · ❌ deny · 🛡️ ban) |
+
+#### 🔔 Push Notifications
+
+| Channel | Setup | Notes |
+|---------|-------|-------|
+| **ntfy** | `NTFY_URL` + `NTFY_TOPIC` in `.env` — self-hosted or ntfy.sh | Delivers HITL approval requests as Android/iOS push notifications with **Allow / Deny / Ban** action buttons, even when the app is closed |
+
+---
+
+#### WhatsApp — Setup Guide
+
+WhatsApp requires a **Meta Business account** and a number dedicated to the bot (cannot be your personal number).
+
+1. Create a **Meta for Developers** app at [developers.facebook.com](https://developers.facebook.com)
+2. Add the **WhatsApp** product → get a test number (free) or connect your own number
+3. Copy the **phone number ID** and **access token** into `.env`:
+   ```
+   WHATSAPP_PHONE_NUMBER_ID=12345678901234
+   WHATSAPP_ACCESS_TOKEN=EAAxxxxxxxx
+   WHATSAPP_VERIFY_TOKEN=your-random-secret
+   ```
+4. Set your webhook URL to `https://your-server/api/channels/whatsapp/webhook`
+5. Subscribe to the `messages` field
+6. Restart ELY (`make restart s=backend`) — Éli is now reachable on WhatsApp
+
+> Messages sent to the bot number are processed by the full agent (tools, HITL, memory). HITL approvals arrive as WhatsApp replies in the same thread.
+
+---
+
+#### Telegram — Quick Start
+
+```bash
+# 1. Create bot with @BotFather → /newbot
+# 2. Add to .env:
+TELEGRAM_BOT_TOKEN=123456789:AAxxxxxx
+
+# 3. Restart backend
+make restart s=backend
+```
+
+Send `/start` to your bot — done.
+
+---
+
+#### Channel Comparison
+
+| | Web | Voice | iOS | Android | PWA | Telegram | WhatsApp | Slack | Discord | ntfy |
+|--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| Full agent (all tools) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| HITL approvals | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Persistent memory | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| Voice / STT | ✅ | ✅ | ✅ | ✅ | ✅ | — | — | — | — | — |
+| Push notifications | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Needs public URL | — | — | ✅ | ✅ | ✅ | — | ✅ | — | ✅ | — |
+| Works fully offline | — | — | — | — | Partial | — | — | — | — | — |
 
 ---
 
