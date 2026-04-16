@@ -106,9 +106,10 @@ async def list_audit_logs(
     limit: int = Query(default=50, le=200),
     action: str | None = Query(default=None),
 ):
-    query = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(limit)
+    query = select(AuditLog)
     if action:
         query = query.where(AuditLog.action == action)
+    query = query.order_by(desc(AuditLog.created_at)).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 

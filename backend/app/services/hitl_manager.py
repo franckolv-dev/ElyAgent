@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = 300  # 5 minutes
 
+_firebase_init_lock = asyncio.Lock()
+
 
 @dataclass
 class _PendingAction:
@@ -193,13 +195,14 @@ class HITLManager:
             import firebase_admin
             from firebase_admin import credentials, messaging
 
-            # Initialize Firebase app once (lazy)
-            if not firebase_admin._apps:
-                cred_path = get_settings().firebase_credentials_path
-                if not cred_path or not os.path.exists(cred_path):
-                    return  # FCM not configured
-                cred = credentials.Certificate(cred_path)
-                firebase_admin.initialize_app(cred)
+            # Initialize Firebase app once (lazy, race-safe)
+            async with _firebase_init_lock:
+                if not firebase_admin._apps:
+                    cred_path = get_settings().firebase_credentials_path
+                    if not cred_path or not os.path.exists(cred_path):
+                        return  # FCM not configured
+                    cred = credentials.Certificate(cred_path)
+                    firebase_admin.initialize_app(cred)
 
             # Get user's FCM token from DB
             from app.database import async_session
@@ -222,7 +225,7 @@ class HITLManager:
                 android=messaging.AndroidConfig(priority="high"),
                 token=user.fcm_token,
             )
-            messaging.send(message)
+            await asyncio.to_thread(messaging.send, message)
             logger.info(f"FCM HITL notification sent to user {user_id}")
         except Exception as e:
             logger.warning(f"FCM send failed: {e}")

@@ -63,7 +63,6 @@ def generate_image(prompt: str) -> str:
         if not result.images:
             return "Je n'ai pas pu générer cette image. Essaie avec une description différente."
 
-        image_bytes = result.images[0]._pil_image.tobytes()
         # Convertir via PIL en PNG
         from io import BytesIO
         from PIL import Image as PILImage

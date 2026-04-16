@@ -81,7 +81,7 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
   ];
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: streamingContent ? "auto" : "smooth" });
   }, [messages, streamingContent]);
 
   if (messages.length === 0) {

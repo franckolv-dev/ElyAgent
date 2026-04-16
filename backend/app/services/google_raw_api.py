@@ -30,6 +30,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_BLOCKED_METHODS = frozenset({
+    "users.messages.batchDelete",
+    "files.emptyTrash",
+    "calendars.delete",
+    "users.settings.forwardingAddresses.create",
+    "users.settings.delegates.create",
+})
+
 
 def resolve_google_method(service: Any, method_path: str) -> Any:
     """Walk a dot-separated method path on a googleapiclient Resource.
@@ -75,6 +83,9 @@ def execute_raw_call(
     Returns a user-facing string (successful truncated JSON, or a clear
     error message starting with "Erreur"). Logs enough context for audit.
     """
+    if method_path in _BLOCKED_METHODS:
+        return f"❌ Méthode '{method_path}' bloquée par sécurité. Utilise les outils dédiés."
+
     try:
         params = json.loads(params_json) if params_json.strip() else {}
     except json.JSONDecodeError as e:

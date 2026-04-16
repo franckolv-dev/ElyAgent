@@ -21,7 +21,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import WebSocket
 
@@ -47,7 +47,7 @@ class DesktopConnection:
     platform: str
     version: str
     sandbox_dirs: list[str]
-    connected_at: datetime = field(default_factory=datetime.utcnow)
+    connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     _pending: dict[str, asyncio.Event] = field(default_factory=dict)
     _results: dict[str, dict] = field(default_factory=dict)
 

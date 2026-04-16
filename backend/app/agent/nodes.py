@@ -136,89 +136,9 @@ def _tool_result(content: str, tool_call_id: str) -> dict:
 # ------------------------------------------------------------------ #
 # Tools that need automatic argument injection                        #
 # ------------------------------------------------------------------ #
+# Canonical sets live in tool_sets.py — import from there.
 
-USER_ID_TOOLS = {
-    "scheduler_list_tasks",
-    "scheduler_create_task",
-    "scheduler_delete_task",
-    # Browser tools — each user has an isolated browser context
-    "browser_navigate",
-    "browser_search_web",
-    "browser_get_text",
-    "browser_screenshot",
-    "browser_click",
-    "browser_fill",
-    "browser_close",
-    # Watchdog tools
-    "watchdog_add",
-    "watchdog_list",
-    "watchdog_remove",
-    # Notes tools
-    "notes_create",
-    "notes_list",
-    "notes_read",
-    "notes_update",
-    "notes_delete",
-    "notes_search",
-    # Desktop tools — need user_id to look up the daemon connection
-    "desktop_list_dir",
-    "desktop_read_file",
-    "desktop_write_file",
-    "desktop_move_file",
-    "desktop_delete_file",
-    "desktop_create_dir",
-    "desktop_stat_file",
-    "desktop_hash_file",
-    "desktop_search_files",
-    # Trainer tools — need user_id for desktop daemon connection
-    "trainer_start",
-    "trainer_screenshot",
-    "trainer_click",
-    "trainer_move",
-    "trainer_type",
-    "trainer_hotkey",
-    "trainer_get_screen_size",
-    # Memory / preferences tools
-    "save_user_preference",
-    "save_constraint",
-    # Knowledge base tools
-    "knowledge_search",
-    "knowledge_list",
-    "smart_knowledge_query",
-}
-
-GOOGLE_TOOLS = {
-    # Gmail
-    "gmail_list_emails", "gmail_read_email", "gmail_send_email",
-    "gmail_reply_email", "gmail_send_with_attachment",
-    "gmail_mark_read", "gmail_mark_unread",
-    "gmail_create_draft", "gmail_list_drafts",
-    "gmail_list_labels", "gmail_create_label",
-    "gmail_move_emails", "gmail_trash_emails", "gmail_search_for_cleanup",
-    # Calendar
-    "calendar_list_events", "calendar_create_event",
-    "calendar_update_event", "calendar_delete_event",
-    "calendar_check_availability", "calendar_list_calendars",
-    # Drive
-    "drive_list_files", "drive_read_file",
-    "drive_create_folder", "drive_create_file",
-    "drive_update_file", "drive_move_file",
-    "drive_rename_file", "drive_delete_file",
-    # Docs
-    "docs_create_document", "docs_read_document", "docs_append_text",
-    "docs_replace_text", "docs_insert_table",
-    # Sheets
-    "sheets_create_spreadsheet", "sheets_read_spreadsheet", "sheets_append_rows",
-    "sheets_update_cells", "sheets_delete_rows",
-    "sheets_add_sheet", "sheets_list_sheets",
-    # Tasks
-    "tasks_list", "tasks_create", "tasks_complete",
-    "tasks_update", "tasks_delete",
-    "tasks_list_tasklists", "tasks_create_tasklist",
-    # Contacts (People API)
-    "contacts_search", "contacts_list", "contacts_create",
-    "contacts_get", "contacts_update", "contacts_delete",
-}
+from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS  # noqa: E402
 
 
 # ------------------------------------------------------------------ #
@@ -507,13 +427,15 @@ def create_agent_node():
 
         # Fire-and-forget: extract facts from this exchange for user memory
         if user_id:
-            try:
-                from app.services.memory_service import extract_and_store_facts
-                asyncio.ensure_future(
-                    extract_and_store_facts(user_id, "", messages + [response])
-                )
-            except Exception as _mem_exc:
-                logger.debug("Memory extraction skipped: %s", _mem_exc)
+            from app.services.memory_service import extract_and_store_facts
+
+            async def _safe_memory_extract(uid, msgs):
+                try:
+                    await extract_and_store_facts(uid, "", msgs)
+                except Exception as exc:
+                    logger.debug("Memory extraction failed: %s", exc)
+
+            asyncio.create_task(_safe_memory_extract(user_id, messages + [response]))
 
         return {"messages": [response], "model_used": model_used, "routing_score": routing_score}
 
@@ -607,6 +529,12 @@ async def tool_node(state: AgentState) -> dict:
                 results.append(_tool_result(str(result), tc_id))
             except Exception as exc:
                 results.append(_tool_result(f"Erreur d'exécution: {exc}", tc_id))
+        else:
+            from langchain_core.messages import ToolMessage
+            results.append(ToolMessage(
+                content=f"Outil '{tool_name}' non disponible.",
+                tool_call_id=tc_id,
+            ))
 
     return {"messages": results}
 

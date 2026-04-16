@@ -22,6 +22,7 @@ import asyncio
 import hashlib
 import ipaddress
 import logging
+import re
 from functools import lru_cache
 from urllib.parse import urlparse
 
@@ -106,14 +107,12 @@ async def _fetch_content(target: str, watch_type: str) -> str:
             # Extract snippet text (first 2000 chars of results)
             text = r.text[:5000]
             # Remove HTML tags roughly
-            import re
             text = re.sub(r"<[^>]+>", " ", text)
             text = re.sub(r"\s+", " ", text).strip()
             return text[:2000]
         else:
             r = await client.get(target, headers={"User-Agent": "Mozilla/5.0"})
             text = r.text[:5000]
-            import re
             text = re.sub(r"<[^>]+>", " ", text)
             text = re.sub(r"\s+", " ", text).strip()
             return text[:2000]

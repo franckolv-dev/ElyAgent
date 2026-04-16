@@ -466,7 +466,6 @@ def _make_dispatch_node(domain: str):
         sub_input = {
             "messages": state["messages"],
             "user_id": state.get("user_id", ""),
-            "google_credentials": state.get("google_credentials", ""),
         }
         try:
             result = await sub_graph.ainvoke(

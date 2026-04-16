@@ -196,7 +196,7 @@ class MemoryManager:
         Double-checked locking ensures only one coroutine runs the model while
         the others wait and then reuse the cached result.
 
-        Cache is bounded to 64 entries (insertion-order eviction) to cap memory.
+        Cache is bounded to 2048 entries (LRU eviction).
         """
         if text in self._embed_cache:
             return self._embed_cache[text]

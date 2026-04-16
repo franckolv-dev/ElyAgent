@@ -34,6 +34,20 @@ from app.services.google_raw_api import execute_raw_call
 logger = logging.getLogger(__name__)
 
 
+def _extract_body(payload: dict) -> str:
+    """Recursively extract text/plain body from a Gmail message payload.
+
+    Handles multipart/mixed > multipart/alternative > text/plain nesting.
+    """
+    if payload.get("mimeType") == "text/plain" and payload.get("body", {}).get("data"):
+        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+    for part in payload.get("parts", []):
+        result = _extract_body(part)
+        if result:
+            return result
+    return ""
+
+
 async def _get_gmail_service(user_google_credentials_json: str | None):
     from googleapiclient.discovery import build
     from app.services.google_auth import get_user_credentials
@@ -108,15 +122,8 @@ async def gmail_read_email(
         msg = service.users().messages().get(userId="me", id=email_id, format="full").execute()
         headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
 
-        body = ""
         payload = msg.get("payload", {})
-        if "body" in payload and payload["body"].get("data"):
-            body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
-        elif "parts" in payload:
-            for part in payload["parts"]:
-                if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
-                    break
+        body = _extract_body(payload)
 
         return (
             f"De: {headers.get('From', 'Inconnu')}\n"
@@ -525,10 +532,15 @@ async def gmail_send_with_attachment(
 
             drive_service = build("drive", "v3", credentials=creds)
             file_meta = drive_service.files().get(
-                fileId=drive_file_id, fields="name,mimeType"
+                fileId=drive_file_id, fields="name,mimeType,size"
             ).execute()
             file_name = file_meta.get("name", "attachment")
             mime_type = file_meta.get("mimeType", "application/octet-stream")
+
+            # Check file size against Gmail's 25 MB attachment limit
+            size = int(file_meta.get("size", 0))
+            if size > 25 * 1024 * 1024:
+                return f"Fichier trop volumineux ({size // (1024*1024)} Mo). Gmail limite les pieces jointes a 25 Mo."
 
             file_content = drive_service.files().get_media(fileId=drive_file_id).execute()
 

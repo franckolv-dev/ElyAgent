@@ -740,19 +740,19 @@ export default function SettingsPage() {
 
           {/* Toast stack */}
           <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
-            {toasts.map((t) => (
+            {toasts.map((toast) => (
               <div
-                key={t.id}
+                key={toast.id}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-xs shadow-lg pointer-events-auto transition-all ${
-                  t.kind === "success"
+                  toast.kind === "success"
                     ? "bg-emerald-900/80 border-emerald-500/30 text-emerald-300"
                     : "bg-red-900/80 border-red-500/30 text-red-300"
                 }`}
               >
-                {t.kind === "success"
+                {toast.kind === "success"
                   ? <Check className="w-3.5 h-3.5 shrink-0" />
                   : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
-                {t.message}
+                {toast.message}
               </div>
             ))}
           </div>

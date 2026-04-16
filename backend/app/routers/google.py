@@ -43,6 +43,7 @@ router = APIRouter(prefix="/google", tags=["google"])
 # state → {"user_id": str, "code_verifier": str | None, "ts": float}
 _pending_states: dict[str, dict] = {}
 _STATE_TTL = 600  # 10 minutes
+_MAX_PENDING_STATES = 200
 
 
 def _cleanup_expired_states() -> None:
@@ -58,6 +59,8 @@ async def get_auth_url(current_user: User = Depends(get_current_user)):
     """Generate Google OAuth URL for the current user."""
     try:
         _cleanup_expired_states()
+        if len(_pending_states) >= _MAX_PENDING_STATES:
+            raise HTTPException(status_code=429, detail="Trop de demandes OAuth en attente")
         state = secrets.token_urlsafe(32)
         url, code_verifier = await build_auth_url(state)
         _pending_states[state] = {

@@ -28,7 +28,7 @@ async def _run_subprocess(cmd: list, **kwargs):
 
 
 @tool
-def system_info() -> str:
+async def system_info() -> str:
     """Retourne les informations sur la machine locale : OS, CPU, mémoire RAM, disque.
     Utilise cet outil quand l'utilisateur demande des infos sur le système, la machine,
     le serveur, le matériel, l'OS, la RAM, le CPU, l'espace disque, ou la version Python.
@@ -43,14 +43,25 @@ def system_info() -> str:
     }
 
     try:
-        if platform.system() == "Windows":
-            result = subprocess.run(
+        system = platform.system()
+        if system == "Windows":
+            result = await _run_subprocess(
                 ["wmic", "OS", "get", "FreePhysicalMemory,TotalVisibleMemorySize", "/Value"],
                 capture_output=True, text=True, timeout=10,
             )
             info["memory"] = result.stdout.strip()
+        elif system == "Darwin":
+            result = await _run_subprocess(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True, text=True, timeout=10,
+            )
+            total_bytes = int(result.stdout.strip())
+            total_mb = total_bytes // (1024 * 1024)
+            info["memory"] = f"Total: {total_mb} Mo ({total_mb // 1024} Go)"
         else:
-            result = subprocess.run(["free", "-m"], capture_output=True, text=True, timeout=10)
+            result = await _run_subprocess(
+                ["free", "-m"], capture_output=True, text=True, timeout=10,
+            )
             info["memory"] = result.stdout.strip()
     except Exception:
         info["memory"] = "unavailable"

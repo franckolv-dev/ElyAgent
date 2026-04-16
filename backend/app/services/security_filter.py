@@ -15,8 +15,11 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
+import logging
 import re
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 # Longueur maximale de texte soumis aux regex.
 # Protège contre les attaques ReDoS : une chaîne très longue et mal formée
@@ -140,6 +143,7 @@ class SecurityFilter:
         """
         # ── Guard anti-ReDoS ─────────────────────────────────────────────
         if len(text) > _MAX_REGEX_INPUT:
+            logger.warning("Text exceeds ReDoS guard (%d > %d). Data beyond limit NOT anonymized.", len(text), _MAX_REGEX_INPUT)
             text = text[:_MAX_REGEX_INPUT]
 
         # Build a reverse lookup: real-value → existing placeholder, so the

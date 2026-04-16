@@ -158,9 +158,9 @@ async def refresh(
 
     # Rotate the refresh token — revoke old one, issue a fresh one (ARCH-3)
     if jti:
-        from datetime import datetime
+        from datetime import datetime, timezone
         exp_ts = payload.get("exp", 0)
-        expires_at = datetime.utcfromtimestamp(exp_ts)
+        expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
         db.add(RevokedToken(jti=jti, expires_at=expires_at))
         await db.commit()
     _set_refresh_cookie(response, create_refresh_token({"sub": user.id}))
@@ -180,9 +180,9 @@ async def logout(
         payload = decode_token(refresh_token)
         jti = payload.get("jti") if payload else None
         if jti:
-            from datetime import datetime
+            from datetime import datetime, timezone
             exp_ts = payload.get("exp", 0)
-            expires_at = datetime.utcfromtimestamp(exp_ts)
+            expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
             db.add(RevokedToken(jti=jti, expires_at=expires_at))
             await db.commit()
 

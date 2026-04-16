@@ -326,11 +326,14 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
   }, []);
 
   // ── Prefill ───────────────────────────────────────────────────────────────
-  if (prefill && prefill !== value) {
-    setValue(prefill);
-    onPrefillConsumed?.();
-    setTimeout(() => textareaRef.current?.focus(), 0);
-  }
+  useEffect(() => {
+    if (prefill && prefill !== value) {
+      setValue(prefill);
+      onPrefillConsumed?.();
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
 
   // ── Send ──────────────────────────────────────────────────────────────────
   const handleSend = useCallback(() => {

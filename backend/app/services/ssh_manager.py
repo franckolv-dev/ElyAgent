@@ -23,9 +23,9 @@ from pathlib import Path
 
 import paramiko
 import yaml
-import structlog
+import logging
 
-logger = structlog.get_logger()
+logger = logging.getLogger(__name__)
 
 _host_config: dict | None = None
 

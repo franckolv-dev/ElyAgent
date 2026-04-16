@@ -215,7 +215,12 @@ async def contacts_get(
         if addresses: lines.append(f"Adresse : {', '.join(a for a in addresses if a)}")
         if birthdays:
             bd = birthdays[0].get("date", {})
-            lines.append(f"Anniversaire : {bd.get('year', '??')}-{bd.get('month', '??'):02}-{bd.get('day', '??'):02}")
+            year = bd.get('year', '??')
+            month = bd.get('month')
+            day = bd.get('day')
+            month_s = f"{month:02d}" if isinstance(month, int) else "??"
+            day_s = f"{day:02d}" if isinstance(day, int) else "??"
+            lines.append(f"Anniversaire : {year}-{month_s}-{day_s}")
         if bios:      lines.append(f"Notes : {'; '.join(b for b in bios if b)}")
 
         return "\n".join(lines)

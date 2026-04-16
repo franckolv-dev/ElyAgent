@@ -87,7 +87,7 @@ async def whatsapp_send(
             resp = await client.post(url, headers=headers, json=payload)
             data = resp.json()
 
-        if resp.status_code == 200 and data.get("messages"):
+        if resp.is_success and data.get("messages"):
             msg_id = data["messages"][0].get("id", "?")
             return f"Message WhatsApp envoyé à {phone} ✅ (ID: {msg_id})"
         else:
@@ -142,7 +142,7 @@ async def whatsapp_send_template(
             resp = await client.post(url, headers=headers, json=payload)
             data = resp.json()
 
-        if resp.status_code == 200 and data.get("messages"):
+        if resp.is_success and data.get("messages"):
             return f"Template « {template_name} » envoyé à {phone} ✅"
         else:
             err = data.get("error", {})

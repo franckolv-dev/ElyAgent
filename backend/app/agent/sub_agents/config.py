@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.agent.tool_sets import MEMORY_SKILLS
+
 
 @dataclass
 class SubAgentConfig:
@@ -102,7 +104,7 @@ RESEARCH_AGENT = SubAgentConfig(
         "browser_click",
         "browser_fill",
         "browser_close",
-    },
+    } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,
 )
@@ -129,20 +131,35 @@ WORKSPACE_AGENT = SubAgentConfig(
         "gmail_reply_email (HITL), gmail_send_with_attachment (HITL), "
         "gmail_mark_read, gmail_mark_unread, gmail_create_draft, gmail_list_drafts, "
         "gmail_search_for_cleanup, gmail_list_labels, gmail_create_label, "
-        "gmail_move_emails (HITL), gmail_trash_emails (HITL).\n"
+        "gmail_move_emails (HITL), gmail_trash_emails (HITL), "
+        "gmail_batch_modify (modif lot jusqu'a 1000 msgs), "
+        "gmail_update_settings (signature/vacation/filtre/transfert, HITL), "
+        "gmail_raw_api_call (API brute, HITL).\n"
         "Calendar : calendar_list_events, calendar_create_event (HITL), "
         "calendar_get_event, calendar_update_event, calendar_delete_event (HITL), "
-        "calendar_check_availability, calendar_list_calendars.\n"
+        "calendar_check_availability, calendar_list_calendars, "
+        "calendar_quick_add (langage naturel, HITL), "
+        "calendar_create_meet_event (visio Meet + participants + RRULE, HITL), "
+        "calendar_raw_api_call (API brute, HITL).\n"
         "Drive : drive_list_files, drive_read_file, drive_create_folder, drive_create_file, "
-        "drive_update_file, drive_move_file (HITL), drive_rename_file, drive_delete_file (HITL).\n"
+        "drive_update_file, drive_move_file (HITL), drive_rename_file, drive_delete_file (HITL), "
+        "drive_share_file (permissions, HITL), drive_copy_file, drive_export_file "
+        "(PDF/Docx/Xlsx...), drive_raw_api_call (API brute, HITL).\n"
         "Docs : docs_create_document, docs_read_document, docs_append_text, "
-        "docs_replace_text, docs_insert_table.\n"
+        "docs_replace_text, docs_insert_table, "
+        "docs_batch_update (style, titres, listes, images, liens), "
+        "docs_raw_api_call (API brute, HITL).\n"
         "Sheets : sheets_create_spreadsheet, sheets_read_spreadsheet, sheets_append_rows, "
-        "sheets_update_cells, sheets_delete_rows, sheets_add_sheet, sheets_list_sheets.\n"
+        "sheets_update_cells, sheets_delete_rows, sheets_add_sheet, sheets_list_sheets, "
+        "sheets_batch_update (trier, inserer colonnes, fusionner, figer, "
+        "mise en forme, validation), sheets_raw_api_call (API brute, HITL).\n"
         "Tasks : tasks_list, tasks_create, tasks_complete, tasks_update, "
-        "tasks_delete (HITL), tasks_list_tasklists, tasks_create_tasklist.\n"
+        "tasks_delete (HITL), tasks_list_tasklists, tasks_create_tasklist, "
+        "tasks_raw_api_call (reordonner, nettoyer, sous-taches, HITL).\n"
         "Contacts : contacts_search, contacts_list, contacts_create, "
-        "contacts_get, contacts_update, contacts_delete (HITL)."
+        "contacts_get, contacts_update, contacts_delete (HITL), "
+        "contacts_batch_operations (creer/modifier/supprimer jusqu'a 200, HITL), "
+        "contacts_raw_api_call (groupes, annuaire, HITL)."
         + _COMMON_FORMAT
     ),
     tool_names={
@@ -161,6 +178,9 @@ WORKSPACE_AGENT = SubAgentConfig(
         "gmail_move_emails",
         "gmail_trash_emails",
         "gmail_search_for_cleanup",
+        "gmail_batch_modify",
+        "gmail_update_settings",
+        "gmail_raw_api_call",
         # Calendar
         "calendar_list_events",
         "calendar_create_event",
@@ -169,6 +189,9 @@ WORKSPACE_AGENT = SubAgentConfig(
         "calendar_delete_event",
         "calendar_check_availability",
         "calendar_list_calendars",
+        "calendar_quick_add",
+        "calendar_create_meet_event",
+        "calendar_raw_api_call",
         # Drive
         "drive_list_files",
         "drive_read_file",
@@ -178,12 +201,18 @@ WORKSPACE_AGENT = SubAgentConfig(
         "drive_move_file",
         "drive_rename_file",
         "drive_delete_file",
+        "drive_share_file",
+        "drive_copy_file",
+        "drive_export_file",
+        "drive_raw_api_call",
         # Docs
         "docs_create_document",
         "docs_read_document",
         "docs_append_text",
         "docs_replace_text",
         "docs_insert_table",
+        "docs_batch_update",
+        "docs_raw_api_call",
         # Sheets
         "sheets_create_spreadsheet",
         "sheets_read_spreadsheet",
@@ -192,6 +221,8 @@ WORKSPACE_AGENT = SubAgentConfig(
         "sheets_delete_rows",
         "sheets_add_sheet",
         "sheets_list_sheets",
+        "sheets_batch_update",
+        "sheets_raw_api_call",
         # Tasks
         "tasks_list",
         "tasks_create",
@@ -200,6 +231,7 @@ WORKSPACE_AGENT = SubAgentConfig(
         "tasks_delete",
         "tasks_list_tasklists",
         "tasks_create_tasklist",
+        "tasks_raw_api_call",
         # Contacts
         "contacts_search",
         "contacts_list",
@@ -207,7 +239,9 @@ WORKSPACE_AGENT = SubAgentConfig(
         "contacts_get",
         "contacts_update",
         "contacts_delete",
-    },
+        "contacts_batch_operations",
+        "contacts_raw_api_call",
+    } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,
 )
@@ -242,7 +276,7 @@ INFRA_AGENT = SubAgentConfig(
         "watchdog_add",
         "watchdog_list",
         "watchdog_remove",
-    },
+    } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,
 )
@@ -282,7 +316,7 @@ CREATIVE_AGENT = SubAgentConfig(
         "qrcode_generate",
         "qrcode_generate_wifi",
         "qrcode_generate_vcard",
-    },
+    } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,
 )
@@ -296,7 +330,7 @@ DATA_AGENT = SubAgentConfig(
         + _IDENTITY
         + "Tu es spécialiste de l'analyse de données, du calcul et de l'automatisation.\n\n"
         "RÈGLE CRITIQUE : Tu ne présentes que des chiffres réels issus de l'exécution du "
-        "code ou des outils. Tu n'extrapolation jamais sans le signaler explicitement "
+        "code ou des outils. Tu n'extrapoles jamais sans le signaler explicitement "
         "('cette valeur est estimée', 'cette projection suppose que...'). "
         "Tu n'inventes pas de résultats, même pour illustrer.\n\n"
         "Tu exécutes du code Python pour analyser des données, faire des calculs, "
@@ -316,7 +350,7 @@ DATA_AGENT = SubAgentConfig(
         "maps_geocode",
         "maps_nearby",
         "maps_reverse_geocode",
-    },
+    } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,
 )
@@ -353,7 +387,7 @@ MEMORY_AGENT = SubAgentConfig(
         "whatsapp_send",
         "knowledge_search",
         "knowledge_list",
-    },
+    } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,
 )
@@ -400,6 +434,7 @@ DESKTOP_AGENT = SubAgentConfig(
         "trainer_move",
         "trainer_type",
         "trainer_hotkey",
+        "trainer_get_screen_size",
         # Filesystem tools
         "desktop_list_dir",
         "desktop_read_file",
@@ -410,7 +445,7 @@ DESKTOP_AGENT = SubAgentConfig(
         "desktop_stat_file",
         "desktop_hash_file",
         "desktop_search_files",
-    },
+    } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,
 )

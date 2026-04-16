@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from pathlib import Path
 
 from langchain_core.tools import tool
 
@@ -125,6 +126,40 @@ async def pdf_info(source: str) -> str:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+_ALLOWED_DIRS: list[str] = [
+    str((Path(__file__).parents[3] / "uploads").resolve()),
+    "/tmp",
+    os.path.realpath(tempfile.gettempdir()),
+]
+
+_BLOCKED_PATHS: list[str] = [
+    "/etc", "/proc", "/sys", "/var/run",
+    "/app/.env", "/root", "/home",
+]
+
+
+def _validate_local_path(file_path: str) -> str:
+    """Validate that a local file path is safe (no path traversal)."""
+    resolved = os.path.realpath(os.path.expanduser(file_path))
+
+    # Block explicitly dangerous paths
+    for blocked in _BLOCKED_PATHS:
+        if resolved.startswith(blocked):
+            raise PermissionError(
+                f"Acces refuse : '{file_path}' est dans un repertoire bloque ({blocked})."
+            )
+
+    # Allow only whitelisted directories
+    if not any(resolved.startswith(allowed) for allowed in _ALLOWED_DIRS):
+        allowed_display = ", ".join(_ALLOWED_DIRS)
+        raise PermissionError(
+            f"Acces refuse : '{file_path}' est en dehors des repertoires autorises. "
+            f"Repertoires accessibles : {allowed_display}"
+        )
+
+    return resolved
+
+
 async def _get_pdf_bytes(source: str) -> bytes:
     """Fetch PDF bytes from a URL or read from local path."""
     if source.startswith(("http://", "https://")):
@@ -134,7 +169,7 @@ async def _get_pdf_bytes(source: str) -> bytes:
             resp.raise_for_status()
             return resp.content
     else:
-        path = os.path.expanduser(source)
+        path = _validate_local_path(source)
         if not os.path.exists(path):
             raise FileNotFoundError(f"Fichier introuvable : {path}")
         with open(path, "rb") as f:

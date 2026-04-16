@@ -127,6 +127,7 @@ async def websocket_desktop(websocket: WebSocket):
     # Rate-limit connection attempts per IP (SEC-15)
     client_ip = (websocket.client.host if websocket.client else "unknown")
     if not _ws_rate_check(client_ip):
+        await websocket.accept()
         await websocket.close(code=4029, reason="Too many connection attempts")
         logger.warning("[desktop-ws] rate limit exceeded for %s", client_ip)
         return

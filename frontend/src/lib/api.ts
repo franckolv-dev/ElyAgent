@@ -75,11 +75,11 @@ export const api = {
     if (params?.limit) sp.set("limit", String(params.limit));
     if (params?.offset) sp.set("offset", String(params.offset));
     if (params?.q) sp.set("q", params.q);
-    return authFetch(`${API_URL}/api/conversations?${sp}`).then((r) => r.json());
+    return fetchAPI(`/api/conversations?${sp}`);
   },
 
   getConversationMessages: (id: string) =>
-    authFetch(`${API_URL}/api/conversations/${id}/messages`).then((r) => r.json()),
+    fetchAPI(`/api/conversations/${id}/messages`),
 
   renameConversation: (id: string, title: string) =>
     fetchAPI(`/api/conversations/${id}`, {

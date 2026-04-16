@@ -60,12 +60,12 @@ _ARENA_SYSTEM = (
 def _available_candidates() -> list[tuple[str, BaseChatModel]]:
     """Return ``(label, llm)`` tuples for every provider with a usable key."""
     from app.services.llm_provider import (
-        _make_anthropic, _make_openrouter, _make_glm, _runtime,
+        _make_anthropic, _make_openrouter, _make_glm, get_runtime_key,
     )
     settings = get_settings()
 
     def _key(prov: str, env_val: str) -> Optional[str]:
-        return _runtime.get(f"key_{prov}") or env_val or None
+        return get_runtime_key(prov) or env_val or None
 
     candidates: list[tuple[str, BaseChatModel]] = []
 

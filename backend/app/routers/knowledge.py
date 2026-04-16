@@ -156,7 +156,7 @@ async def ingest_document(
         logger.error("Ingestion failed for %s: %s", original_name, exc)
         raise HTTPException(
             status_code=500,
-            detail=f"Erreur lors de l'indexation du document : {exc}",
+            detail="Erreur lors de l'indexation du document. Veuillez réessayer.",
         )
 
 

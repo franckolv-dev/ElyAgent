@@ -81,6 +81,10 @@ async def scheduler_create_task(
             '0 20 * * 0' (Sunday 8pm), '0 */2 * * *' (every 2 hours)
         channel: Delivery channel — 'web' for browser notification, 'telegram' for Telegram message
     """
+    from croniter import croniter
+    if not croniter.is_valid(cron_expression):
+        return f"Expression cron invalide : '{cron_expression}'. Format : minute heure jour mois jour_semaine"
+
     task = ScheduledTask(
         user_id=user_id,
         name=name,

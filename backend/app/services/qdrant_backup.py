@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -45,6 +45,7 @@ _COLLECTIONS = [
     "security_constraints",
     "interactions",
     "user_profile",
+    "knowledge",
 ]
 
 KEEP_LAST = int(os.environ.get("QDRANT_BACKUP_KEEP", "7"))
@@ -57,7 +58,7 @@ async def run_backup() -> None:
     Errors per collection are logged but do not abort the others.
     """
     qdrant_url = _qdrant_base_url()
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     logger.info("[qdrant-backup] starting backup — %d collections", len(_COLLECTIONS))

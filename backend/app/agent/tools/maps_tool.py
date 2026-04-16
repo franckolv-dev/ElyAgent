@@ -24,6 +24,8 @@ All APIs used are free and require no API key:
 """
 from __future__ import annotations
 
+import unicodedata
+
 import httpx
 
 from langchain_core.tools import tool
@@ -194,7 +196,9 @@ async def maps_nearby(
         "medecin": "amenity=doctors",
     }
 
-    osm_filter = category_map.get(category.lower().replace("é", "e").replace("ô", "o"))
+    normalized = unicodedata.normalize("NFD", category.lower())
+    normalized = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
+    osm_filter = category_map.get(normalized)
     if not osm_filter:
         # Try generic amenity
         osm_filter = f"amenity={category.lower()}"

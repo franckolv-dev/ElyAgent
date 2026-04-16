@@ -27,4 +27,6 @@ from typing_extensions import TypedDict
 class SubAgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     user_id: str
-    google_credentials: str
+    # google_credentials removed — credentials are kept server-side in
+    # app.services.credential_store (SEC-1) and looked up by user_id at
+    # tool execution time. They never travel through the graph state.

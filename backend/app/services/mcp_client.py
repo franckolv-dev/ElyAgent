@@ -209,7 +209,6 @@ class MCPClientManager:
     def _wrap_tool(self, mcp_tool, conn: _StdioConnection):
         """Enveloppe un MCPTool dans un LangChain StructuredTool (reconnexion auto)."""
         from langchain_core.tools import StructuredTool
-        import inspect
 
         tool_name = mcp_tool.name
         tool_desc = mcp_tool.description or tool_name

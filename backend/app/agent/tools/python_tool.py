@@ -53,6 +53,12 @@ _BLOCKED_MODULES: frozenset[str] = frozenset({
     "sysconfig", "distutils",
     "code", "codeop",   # REPL interactif
     "antigravity",      # fun mais inutile
+    "os", "sys", "shutil", "pathlib", "glob",  # filesystem / system access
+})
+
+# Builtins dangereux qui ne doivent pas être appelés dans le sandbox
+_BLOCKED_BUILTINS: frozenset[str] = frozenset({
+    "eval", "exec", "compile", "open", "__import__",
 })
 
 # ── Analyse statique du code par AST ─────────────────────────────────────────
@@ -88,6 +94,10 @@ def _ast_check(code: str) -> str | None:
                     mod = str(node.args[0].value).split(".")[0]
                     if mod in _BLOCKED_MODULES:
                         return f"Import dynamique interdit : '{node.args[0].value}'"
+
+            # Bloc les appels directs à eval(), exec(), compile(), open()
+            if isinstance(func, ast.Name) and func.id in _BLOCKED_BUILTINS:
+                return f"Builtin interdit dans le sandbox : '{func.id}()'"
 
     return None
 
@@ -170,11 +180,13 @@ async def python_execute(code: str) -> str:
         script_path = os.path.join(workdir, "script.py")
 
         # Préambule : redirige matplotlib et fixe le cwd
+        # os et sys sont importés sous alias privé puis supprimés du namespace
         preamble = textwrap.dedent(f"""\
-            import os, sys
-            os.environ.setdefault("MPLBACKEND", "Agg")
+            import os as _os, sys as _sys
+            _os.environ.setdefault("MPLBACKEND", "Agg")
             _WORKDIR = {workdir!r}
-            os.chdir(_WORKDIR)
+            _os.chdir(_WORKDIR)
+            del _os, _sys
         """)
 
         Path(script_path).write_text(preamble + "\n" + code, encoding="utf-8")

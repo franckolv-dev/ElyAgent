@@ -390,7 +390,7 @@ class VaultService:
 
             for entry in db_entries:
                 pt = plaintexts.get(entry.label, "")
-                nonce, ciphertext = _encrypt(new_key, pt)
+                nonce, ciphertext = await asyncio.to_thread(_encrypt, new_key, pt)
                 entry.nonce = nonce
                 entry.encrypted_value = ciphertext
                 entry.updated_at = datetime.now(timezone.utc)

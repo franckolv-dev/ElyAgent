@@ -17,6 +17,7 @@
  *   - INTERDIT : Redistribution de versions modifiées de ce code.
  */
 
+import React from "react";
 import { motion } from "framer-motion";
 import { Bot, User, FileText, Image, FileCode, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useState, useCallback } from "react";
@@ -118,7 +119,7 @@ function formatTimestamp(iso: string | undefined): string | null {
   }
 }
 
-export function MessageBubble({ message, isStreaming, lastUserMessage, conversationId }: MessageBubbleProps) {
+export const MessageBubble = React.memo(function MessageBubble({ message, isStreaming, lastUserMessage, conversationId }: MessageBubbleProps) {
   const t = useTranslations("messageBubble");
   const isUser = message.role === "user";
   const { text: parsedText, imageBlock } = !isUser
@@ -351,4 +352,4 @@ export function MessageBubble({ message, isStreaming, lastUserMessage, conversat
     )}
     </motion.div>
   );
-}
+});

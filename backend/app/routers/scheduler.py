@@ -89,16 +89,18 @@ async def create_task(
         channel=body.channel,
     )
     db.add(task)
-    await db.commit()
-    await db.refresh(task)
+    await db.flush()
 
     if not schedule_task(task):
+        await db.rollback()
         raise HTTPException(
             status_code=400,
             detail=f"Expression cron invalide : '{body.cron_expression}'. "
                    "Format attendu : minute heure jour mois jour_semaine (ex: '0 8 * * 1-5')"
         )
 
+    await db.commit()
+    await db.refresh(task)
     return _to_response(task)
 
 

@@ -69,8 +69,11 @@ async def drive_list_files(
 
         lines = []
         for f in files:
-            size = f.get("size", "?")
-            size_str = f"{int(size) // 1024} Ko" if size != "?" else "?"
+            size = f.get("size")
+            try:
+                size_str = f"{int(size) // 1024} Ko"
+            except (TypeError, ValueError):
+                size_str = "N/A"
             lines.append(
                 f"• {f['name']} ({f.get('mimeType', '?')})\n"
                 f"  Modifié: {f.get('modifiedTime', '?')} | Taille: {size_str}\n"
