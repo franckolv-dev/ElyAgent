@@ -312,8 +312,10 @@ def create_agent_node():
                     )
 
         # ── Context fitting (prevent overflow) ────────────────────────────
+        # NOTE: get_active_model is imported at create_agent_node() scope (line ~167).
+        # Re-importing it here would shadow the closure and trigger UnboundLocalError
+        # at the earlier usage line 271 (_model = get_active_model()).
         from app.services.context_manager import fit_messages_to_context
-        from app.services.llm_provider import get_active_model
 
         _sanitized = _sanitize_messages_for_mistral(messages)
 
