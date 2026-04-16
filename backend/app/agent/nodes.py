@@ -67,6 +67,13 @@ Règles absolues :
 - Répondre en français par défaut
 - Honnêteté sur tes capacités — IMPÉRATIF : si tu ne disposes pas d'un outil pour accomplir une tâche, dis-le clairement et simplement ("Je n'ai pas encore cette capacité") sans inventer d'erreur système, sans prétendre avoir essayé, sans mentionner de redémarrage. Ne jamais simuler une tentative qui a échoué si l'outil n'existe pas. Ne jamais dire que tu "rencontres un problème technique" quand la réalité est que la fonctionnalité n'est pas disponible.
 
+Mémoire persistante — IMPÉRATIF :
+- Tu disposes d'une mémoire persistante entre les sessions (Qdrant + SQLite + extraction automatique de faits par un agent local).
+- NE JAMAIS dire "je suis sans état", "chaque interaction est indépendante", "je n'ai aucun moyen de me souvenir", ni quoi que ce soit qui suggère que tu oublies entre les conversations. C'est faux.
+- Le bloc "🧠 Ce que tu sais sur cet utilisateur" injecté plus bas contient des faits déjà appris : utilise-les naturellement, comme un humain qui se souvient.
+- Si l'utilisateur te demande son prénom ou un fait te concernant et que le bloc "🧠" ne le contient pas encore, réponds honnêtement "je ne l'ai pas encore noté, peux-tu me le redire ?" — et appelle save_user_preference ou laisse l'extraction automatique faire son travail à la fin de la conversation.
+- Ne JAMAIS invoquer le "principe d'anonymat" pour refuser de te souvenir du prénom ou des infos partagées volontairement par l'utilisateur. L'anonymisation concerne la transmission au LLM externe, pas le stockage local.
+
 Comportement attendu :
 - "crée-moi un document Word / Google Doc" → utiliser docs_create_document
 - "crée-moi un fichier Excel / une feuille de calcul" → utiliser sheets_create_spreadsheet
@@ -257,11 +264,13 @@ def create_agent_node():
             system = _SYSTEM_PROMPT_SLM.format(date_str=date_str)
         else:
             # ── Full path: complete prompt + memory context ────────────────
-            constraints, memories, past_interactions, preferences = await asyncio.gather(
+            from app.services.memory_service import get_user_context
+            constraints, memories, past_interactions, preferences, user_profile = await asyncio.gather(
                 memory.get_relevant_constraints(user_query, user_id),
                 memory.get_relevant_memories(user_query, user_id),
                 memory.get_relevant_interactions(user_query, user_id, limit=3),
                 memory.get_user_preferences(user_id),
+                get_user_context(user_id),
             )
 
             system = _SYSTEM_PROMPT_BASE
@@ -288,6 +297,14 @@ def create_agent_node():
                 f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
                 "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
             )
+
+            # ── Inject the consolidated user profile FIRST (most important) ──
+            # These are facts Éli has learned about the user from past conversations,
+            # consolidated nightly into user_profiles table. Without this block, the
+            # agent would answer "je n'ai aucun moyen de me souvenir…" even though
+            # 5+ profile facts exist in SQL.
+            if user_profile:
+                system += f"\n\n🧠 {user_profile}\n"
 
             if preferences:
                 system += (
@@ -355,11 +372,13 @@ def create_agent_node():
             # LLM path (or SLM fallback) — needs full system prompt if not built yet
             if use_slm:
                 # SLM failed: rebuild full system prompt for LLM fallback
-                constraints, memories, past_interactions, preferences = await asyncio.gather(
+                from app.services.memory_service import get_user_context as _guc
+                constraints, memories, past_interactions, preferences, user_profile = await asyncio.gather(
                     memory.get_relevant_constraints(user_query, user_id),
                     memory.get_relevant_memories(user_query, user_id),
                     memory.get_relevant_interactions(user_query, user_id, limit=3),
                     memory.get_user_preferences(user_id),
+                    _guc(user_id),
                 )
                 system = _SYSTEM_PROMPT_BASE
                 skills_list = registry.skills_summary()
@@ -369,6 +388,8 @@ def create_agent_node():
                     f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
                     "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
                 )
+                if user_profile:
+                    system += f"\n\n🧠 {user_profile}\n"
                 if preferences:
                     system += (
                         "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
