@@ -18,8 +18,10 @@
 
 package com.ely.agent.ui.login
 
+import androidx.datastore.core.DataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ely.agent.UserPreferences
 import com.ely.agent.core.network.NetworkResult
 import com.ely.agent.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,15 +32,29 @@ import javax.inject.Inject
 data class LoginUiState(
     val email: String = "",
     val password: String = "",
-    val serverUrl: String = "http://10.0.2.2:8000",
+    val serverUrl: String = "",
     val isLoading: Boolean = false,
     val error: String? = null
 )
 
 @HiltViewModel
-class LoginViewModel @Inject constructor(private val authRepository: AuthRepository) : ViewModel() {
+class LoginViewModel @Inject constructor(
+    private val authRepository: AuthRepository,
+    private val dataStore: DataStore<UserPreferences>
+) : ViewModel() {
+
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+    init {
+        // Pre-fill the URL field from DataStore so the user sees the saved value
+        viewModelScope.launch {
+            val savedUrl = dataStore.data.first().serverUrl
+            if (savedUrl.isNotBlank()) {
+                _uiState.update { it.copy(serverUrl = savedUrl) }
+            }
+        }
+    }
 
     fun onEmailChange(v: String) = _uiState.update { it.copy(email = v) }
     fun onPasswordChange(v: String) = _uiState.update { it.copy(password = v) }
@@ -52,10 +68,22 @@ class LoginViewModel @Inject constructor(private val authRepository: AuthReposit
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
+
+            // Persist the server URL to DataStore BEFORE the network call so
+            // DynamicUrlInterceptor uses the correct host for this and all future requests.
+            val urlToSave = s.serverUrl.trimEnd('/').ifBlank { "http://10.0.2.2:8000" }
+            dataStore.updateData { prefs ->
+                prefs.toBuilder().setServerUrl(urlToSave).build()
+            }
+
             when (val r = authRepository.login(s.email, s.password)) {
                 is NetworkResult.Success -> onSuccess()
-                is NetworkResult.Error -> _uiState.update { it.copy(isLoading = false, error = "Erreur ${r.code}: ${r.message}") }
-                is NetworkResult.Exception -> _uiState.update { it.copy(isLoading = false, error = r.throwable.message ?: "Erreur réseau") }
+                is NetworkResult.Error -> _uiState.update {
+                    it.copy(isLoading = false, error = "Erreur ${r.code}: ${r.message}")
+                }
+                is NetworkResult.Exception -> _uiState.update {
+                    it.copy(isLoading = false, error = r.throwable.message ?: "Erreur réseau")
+                }
             }
         }
     }
