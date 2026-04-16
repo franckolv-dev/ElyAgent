@@ -1,20 +1,21 @@
 "use client";
-// -----------------------------------------------------------------------------
-// Copyright (c) 2024 Franck OLLIVIER
-// Tous droits réservés.
-//
-// Ce logiciel est mis à disposition sous les termes de la licence
-// PolyForm Strict License 1.0.0.
-//
-// RÉSUMÉ DES CONDITIONS :
-// - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
-// - INTERDIT : Toute utilisation commerciale sans accord préalable.
-// - INTERDIT : Redistribution de versions modifiées de ce code.
-//
-// Pour consulter le texte intégral de la licence, veuillez vous référer au
-// fichier LICENSE à la racine du projet ou visiter :
-// https://polyformproject.org/licenses/strict/1.0.0/
-// -----------------------------------------------------------------------------
+/**
+ * @project    ELY — Exactly Like You
+ * @file       frontend/src/components/avatar/CyberpunkAvatar.tsx
+ * @brief      Cyberpunk avatar — animated 3D character mesh
+ *
+ * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+ * @license    PolyForm Strict License 1.0.0
+ *             https://polyformproject.org/licenses/strict/1.0.0/
+ * @version    1.1.0
+ * @link       https://github.com/franckolv-dev/PhysicalAgent
+ *
+ * RÉSUMÉ DES CONDITIONS :
+ *   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
+ *   - INTERDIT : Toute utilisation commerciale sans accord préalable.
+ *   - INTERDIT : Redistribution de versions modifiées de ce code.
+ */
 
 import { Component, Suspense, useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";

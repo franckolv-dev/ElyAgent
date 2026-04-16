@@ -1,19 +1,20 @@
-// -----------------------------------------------------------------------------
-// Copyright (c) 2024 Franck OLLIVIER
-// Tous droits réservés.
-//
-// Ce logiciel est mis a disposition sous les termes de la licence
-// PolyForm Strict License 1.0.0.
-//
-// RESUME DES CONDITIONS :
-// - AUTORISE : Utilisation personnelle, educative et tests prives.
-// - INTERDIT : Toute utilisation commerciale sans accord prealable.
-// - INTERDIT : Redistribution de versions modifiees de ce code.
-//
-// Pour consulter le texte integral de la licence, veuillez vous referer au
-// fichier LICENSE a la racine du projet ou visiter :
-// https://polyformproject.org/licenses/strict/1.0.0/
-// -----------------------------------------------------------------------------
+/**
+ * @project    ELY — Exactly Like You
+ * @file       frontend/src/hooks/useVoiceConversation.ts
+ * @brief      Voice conversation hook — STT/TTS conversation loop
+ *
+ * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+ * @license    PolyForm Strict License 1.0.0
+ *             https://polyformproject.org/licenses/strict/1.0.0/
+ * @version    1.1.0
+ * @link       https://github.com/franckolv-dev/PhysicalAgent
+ *
+ * RÉSUMÉ DES CONDITIONS :
+ *   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
+ *   - INTERDIT : Toute utilisation commerciale sans accord préalable.
+ *   - INTERDIT : Redistribution de versions modifiées de ce code.
+ */
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAccessToken } from "@/lib/auth";
@@ -246,16 +247,21 @@ export function useVoiceConversation(options: UseVoiceConversationOptions) {
     rec.interimResults = true;
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
+      // Rebuild from ALL results (index 0) and overwrite the ref.
+      // On mobile Chrome the engine re-emits finalised segments;
+      // using e.resultIndex + append causes massive duplication.
+      let final = "";
       let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
-          finalTranscriptRef.current += t + " ";
+          final += t + " ";
         } else {
           interim += t;
         }
       }
-      const full = (finalTranscriptRef.current + interim).trim();
+      finalTranscriptRef.current = final;          // overwrite, never append
+      const full = (final + interim).trim();
       setState((s) => ({ ...s, transcript: full }));
 
       // Reset silence timer on each result
@@ -343,9 +349,10 @@ export function useVoiceConversation(options: UseVoiceConversationOptions) {
     rec.interimResults = true;
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
+      // Iterate from 0 (not e.resultIndex) to avoid mobile duplication
       let interim = "";
       let finalText = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
           finalText += t + " ";

@@ -1,19 +1,20 @@
-# -----------------------------------------------------------------------------
-# Copyright (c) 2024 Franck OLLIVIER
-# Tous droits réservés.
+# =============================================================================
+# @project    ELY — Exactly Like You
+# @file       backend/app/models/skill_preference.py
+# @brief      SkillPreference — per-user skill enable/disable settings
 #
-# Ce logiciel est mis à disposition sous les termes de la licence
-# PolyForm Strict License 1.0.0.
+# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+# @license    PolyForm Strict License 1.0.0
+#             https://polyformproject.org/licenses/strict/1.0.0/
+# @version    1.1.0
+# @link       https://github.com/franckolv-dev/PhysicalAgent
 #
 # RÉSUMÉ DES CONDITIONS :
-# - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
-# - INTERDIT : Toute utilisation commerciale sans accord préalable.
-# - INTERDIT : Redistribution de versions modifiées de ce code.
-#
-# Pour consulter le texte intégral de la licence, veuillez vous référer au
-# fichier LICENSE à la racine du projet ou visiter :
-# https://polyformproject.org/licenses/strict/1.0.0/
-# -----------------------------------------------------------------------------
+#   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
+#   - INTERDIT : Toute utilisation commerciale sans accord préalable.
+#   - INTERDIT : Redistribution de versions modifiées de ce code.
+# =============================================================================
 """SkillPreference — per-user skill enable/disable settings.
 
 One row per (user_id, skill_name) pair.  When no row exists for a skill,

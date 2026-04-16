@@ -1,19 +1,20 @@
-# -----------------------------------------------------------------------------
-# Copyright (c) 2024 Franck OLLIVIER
-# Tous droits reserves.
+# =============================================================================
+# @project    ELY — Exactly Like You
+# @file       backend/app/services/rag_service.py
+# @brief      RAG (Retrieval-Augmented Generation) document pipeline
 #
-# Ce logiciel est mis a disposition sous les termes de la licence
-# PolyForm Strict License 1.0.0.
+# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+# @license    PolyForm Strict License 1.0.0
+#             https://polyformproject.org/licenses/strict/1.0.0/
+# @version    1.1.0
+# @link       https://github.com/franckolv-dev/PhysicalAgent
 #
-# RESUME DES CONDITIONS :
-# - AUTORISE : Utilisation personnelle, educative et tests prives.
-# - INTERDIT : Toute utilisation commerciale sans accord prealable.
-# - INTERDIT : Redistribution de versions modifiees de ce code.
-#
-# Pour consulter le texte integral de la licence, veuillez vous referer au
-# fichier LICENSE a la racine du projet ou visiter :
-# https://polyformproject.org/licenses/strict/1.0.0/
-# -----------------------------------------------------------------------------
+# RÉSUMÉ DES CONDITIONS :
+#   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
+#   - INTERDIT : Toute utilisation commerciale sans accord préalable.
+#   - INTERDIT : Redistribution de versions modifiées de ce code.
+# =============================================================================
 """RAG (Retrieval-Augmented Generation) document pipeline.
 
 Ingests documents (PDF, TXT, MD, CSV, JSON, DOCX) into a dedicated Qdrant

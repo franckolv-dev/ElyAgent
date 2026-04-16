@@ -1,20 +1,21 @@
 "use client";
-// -----------------------------------------------------------------------------
-// Copyright (c) 2024 Franck OLLIVIER
-// Tous droits réservés.
-//
-// Ce logiciel est mis à disposition sous les termes de la licence
-// PolyForm Strict License 1.0.0.
-//
-// RÉSUMÉ DES CONDITIONS :
-// - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
-// - INTERDIT : Toute utilisation commerciale sans accord préalable.
-// - INTERDIT : Redistribution de versions modifiées de ce code.
-//
-// Pour consulter le texte intégral de la licence, veuillez vous référer au
-// fichier LICENSE à la racine du projet ou visiter :
-// https://polyformproject.org/licenses/strict/1.0.0/
-// -----------------------------------------------------------------------------
+/**
+ * @project    ELY — Exactly Like You
+ * @file       frontend/src/components/chat/ChatInput.tsx
+ * @brief      Chat input bar — text, voice dictation, attachments
+ *
+ * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+ * @license    PolyForm Strict License 1.0.0
+ *             https://polyformproject.org/licenses/strict/1.0.0/
+ * @version    1.1.0
+ * @link       https://github.com/franckolv-dev/PhysicalAgent
+ *
+ * RÉSUMÉ DES CONDITIONS :
+ *   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
+ *   - INTERDIT : Toute utilisation commerciale sans accord préalable.
+ *   - INTERDIT : Redistribution de versions modifiées de ce code.
+ */
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
 import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode, Monitor, Square, Headphones } from "lucide-react";
@@ -125,16 +126,24 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
     rec.interimResults = true; // ← affiche les mots au fil de la dictée
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
+      // Rebuild the full transcript from ALL results on every event.
+      // On mobile (Android Chrome), the recognition engine can re-emit
+      // previously finalised results — if we only iterate from
+      // e.resultIndex and append, the same text gets duplicated dozens
+      // of times.  Iterating from 0 and overwriting the ref is the
+      // pattern recommended by Google's Web Speech API docs.
+      let final = "";
       let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
-          finalTranscriptRef.current += t + " ";
+          final += t + " ";
         } else {
           interim += t;
         }
       }
-      const full = (finalTranscriptRef.current + interim).trim();
+      finalTranscriptRef.current = final;          // overwrite, never append
+      const full = (final + interim).trim();
       if (full) setValue(full);
     };
 
