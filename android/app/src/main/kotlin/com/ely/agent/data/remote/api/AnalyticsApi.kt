@@ -23,6 +23,6 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 interface AnalyticsApi {
-    @GET("api/analytics/summary")
+    @GET("analytics/summary")
     suspend fun getSummary(@Query("days") days: Int = 30): AnalyticsSummaryDto
 }

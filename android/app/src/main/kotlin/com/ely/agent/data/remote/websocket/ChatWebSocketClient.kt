@@ -59,15 +59,21 @@ class ChatWebSocketClient @Inject constructor(
         val prefs = runBlocking { dataStore.data.first() }
         val serverUrl = prefs.serverUrl.ifBlank { "http://10.0.2.2:8000" }
         val token = prefs.accessToken
+        // Backend expects the JWT as the FIRST JSON message after accept() — not as
+        // a URL query param (avoids token leaking in server logs / proxy logs).
         val wsUrl = serverUrl
             .replace("http://", "ws://")
             .replace("https://", "wss://")
-            .trimEnd('/') + "/ws/chat?token=$token"
+            .trimEnd('/') + "/ws/chat"
 
         _connectionState.value = ConnectionState.Connecting
         val request = Request.Builder().url(wsUrl).build()
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
+                // Send token handshake immediately so the backend can authenticate
+                // (it times out after 10 s if no handshake arrives). The backend
+                // only reads the "token" field — no "type" field is needed.
+                ws.send(org.json.JSONObject().put("token", token).toString())
                 _connectionState.value = ConnectionState.Connected
             }
             override fun onMessage(ws: WebSocket, text: String) {
