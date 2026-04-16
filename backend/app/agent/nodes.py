@@ -183,13 +183,14 @@ def create_agent_node():
         except Exception as exc:
             logger.warning("SLM init failed: %s — all requests will use LLM", exc)
 
-    # LLM binding — cached per provider+model, rebuilt when either changes or tools change
-    _llm_with_tools = None
-    _llm_version = -1
-    _llm_provider_key = ""   # "<provider>/<model>" — detect runtime switches
+    # Tier-based LLM cache: { tier_value → llm_with_tools }
+    # Invalidated when the tool registry version changes (new skill installed).
+    _tier_llm_cache: dict = {}
+    _tier_cache_version = [-1]  # list so inner fn can mutate without nonlocal
 
     async def agent_node(state: AgentState) -> dict:
-        nonlocal _llm_with_tools, _llm_version, _llm_provider_key, _slm_with_tools, _slm_version
+        nonlocal _slm_with_tools, _slm_version
+        # _tier_llm_cache / _tier_cache_version are dicts/lists mutated in-place — no nonlocal needed
         messages = state["messages"]
         user_id = state.get("user_id", "")
         # Defensive: LangGraph may pass messages as dicts (serialized form)
@@ -209,14 +210,12 @@ def create_agent_node():
                 for b in _c
             ) if isinstance(_c, list) else (_c or "")
 
-        # Hot-reload: rebuild LLM if provider/model changed OR tools changed
+        # Hot-reload: clear tier cache when tool registry changes (new skill installed)
         current_version = registry.tools_version
-        current_provider_key = f"{get_active_provider()}/{get_active_model()}"
-        if _llm_with_tools is None or current_provider_key != _llm_provider_key or current_version != _llm_version:
-            _llm_with_tools = get_llm().bind_tools(registry.all_tools)
-            _llm_provider_key = current_provider_key
-            _llm_version = current_version
-            logger.info("LLM refreshed: %s (tools_v=%d)", current_provider_key, current_version)
+        if current_version != _tier_cache_version[0]:
+            _tier_llm_cache.clear()
+            _tier_cache_version[0] = current_version
+            logger.info("Tier LLM cache invalidated (tools_v=%d)", current_version)
 
         if _slm_with_tools is not None and current_version != _slm_version:
             try:
@@ -228,7 +227,7 @@ def create_agent_node():
 
         # ── Route first — avoids loading memory for SLM requests ──────────
         routing_score = 100
-        model_used = f"llm:{get_active_provider()}/{get_active_model()}"
+        model_used = "llm:tier-routed"  # updated once tier is selected below
         response = None
 
         from app.services.intent_router import ModelTier
@@ -381,10 +380,20 @@ def create_agent_node():
                     system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
                     system += "\n".join(f"- {m}" for m in memories)
 
+            # Tier routing: pick the right local/cloud model based on complexity
+            from app.services.llm_provider import classify_complexity, get_llm_for_tier
+            _tier = classify_complexity(user_query)
+            _tier_key = _tier.value
+            if _tier_key not in _tier_llm_cache:
+                _tier_llm_cache[_tier_key] = get_llm_for_tier(_tier).bind_tools(registry.all_tools)
+                logger.info("Tier LLM bound: tier=%s (tools_v=%d)", _tier_key, current_version)
+            _llm_with_tools_req = _tier_llm_cache[_tier_key]
+            model_used = f"llm:tier-{_tier_key}"
+
             _fitted = fit_messages_to_context(
                 messages=_sanitized,
                 system_prompt=system,
-                model=get_active_model(),
+                model=_tier_key,
                 reserve_for_response=1024,
             )
             _invoke_msgs = (
@@ -392,7 +401,7 @@ def create_agent_node():
                 + _fitted
             )
             try:
-                response = await _llm_with_tools.ainvoke(_invoke_msgs)
+                response = await _llm_with_tools_req.ainvoke(_invoke_msgs)
             except Exception as primary_exc:
                 # Detect recoverable API errors: quota exhausted, rate limit,
                 # authentication failure, service unavailable.

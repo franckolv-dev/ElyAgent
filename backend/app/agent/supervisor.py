@@ -65,7 +65,7 @@ from pydantic import BaseModel
 
 from app.agent.state import AgentState
 from app.agent.nodes import tool_node, should_continue, create_agent_node
-from app.services.llm_provider import get_llm
+from app.services.llm_provider import get_llm, get_llm_for_tier, ComplexityTier
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +332,9 @@ async def router_node(state: AgentState) -> dict:
             last_user_msg = m.content[:500]  # truncate for speed
             break
 
-    llm = get_llm()
+    # Use the SIMPLE tier (local Ollama) for routing — it only needs to output
+    # one word among 8 labels and there is no reason to make a cloud round-trip here.
+    llm = get_llm_for_tier(ComplexityTier.SIMPLE)
     try:
         response = await llm.ainvoke([
             SystemMessage(content=_ROUTER_SYSTEM),
