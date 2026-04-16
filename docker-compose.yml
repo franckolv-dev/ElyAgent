@@ -16,7 +16,7 @@ services:
       - ./desktop/dist:/app/static/desktop:ro
       - ./data/backups/qdrant:/backups/qdrant
       - ./data/playwright:/app/.cache/playwright
-      - ./data/fastembed:/app/.cache/fastembed
+      - fastembed-cache:/app/.cache/fastembed
     env_file:
       - .env
     environment:
@@ -182,3 +182,4 @@ volumes:
   qdrant-data:
   ntfy-data:
   ollama-data:
+  fastembed-cache:

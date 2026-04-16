@@ -32,15 +32,25 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV UV_CACHE_DIR=/app/.cache/uv
 # Keep Playwright browsers inside /app so the non-root user has write access
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/playwright
+# Persistent cache for fastembed (embeddings model ~90 MB)
+ENV FASTEMBED_CACHE_DIR=/app/.cache/fastembed
+# Disable HF Xet transfer (it has permission issues with non-root users in containers)
+ENV HF_HUB_DISABLE_XET=1
 
 # Run as non-root for container security (SEC-7)
 RUN adduser --system --no-create-home --uid 1001 appuser \
-    && mkdir -p /app/.cache/uv /app/.cache/playwright \
+    && mkdir -p /app/.cache/uv /app/.cache/playwright /app/.cache/fastembed \
     && chown -R appuser /app /config
 
 # Install Playwright Chromium as appuser (browsers land in PLAYWRIGHT_BROWSERS_PATH)
 USER appuser
 RUN uv run playwright install chromium
+
+# Pre-download fastembed ONNX model (~90 MB) so first embed doesn't need network
+# and doesn't hit HF Hub permission edge cases at runtime.
+RUN uv pip uninstall hf_xet 2>/dev/null || true
+RUN uv run python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/all-MiniLM-L6-v2', cache_dir='/app/.cache/fastembed')" \
+    || echo "WARNING: fastembed pre-download failed, will retry at runtime"
 
 EXPOSE 8000
 
