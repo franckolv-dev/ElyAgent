@@ -58,7 +58,13 @@ class LoginViewModel @Inject constructor(
 
     fun onEmailChange(v: String) = _uiState.update { it.copy(email = v) }
     fun onPasswordChange(v: String) = _uiState.update { it.copy(password = v) }
-    fun onServerUrlChange(v: String) = _uiState.update { it.copy(serverUrl = v) }
+
+    fun onServerUrlChange(v: String) {
+        // Strip all whitespace — Android autocomplete often inserts a space after
+        // "https" when picked from the suggestion bar, which breaks URL parsing.
+        val cleaned = v.filter { !it.isWhitespace() }
+        _uiState.update { it.copy(serverUrl = cleaned) }
+    }
 
     fun login(onSuccess: () -> Unit) {
         val s = _uiState.value
