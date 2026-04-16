@@ -99,16 +99,24 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
 
             # Complexity routing: classify last user message and select LLM accordingly.
             # If the sub-agent has a fixed provider, use it; otherwise route by complexity.
-            # workspace and infra always run multi-step tool sequences → force COMPLEX tier
-            # to avoid Mistral's tool-calling history limitation (rejects content="" with
-            # tool_calls present, which langchain_mistralai produces from null content).
-            _ALWAYS_COMPLEX_AGENTS = {"workspace", "infra"}
+            # workspace and infra do multi-step tool sequences. They used to be
+            # forced to COMPLEX tier to work around Mistral's tool-calling quirks
+            # (langchain_mistralai produces AIMessage content=None with tool_calls,
+            # which Mistral rejects). That constraint doesn't apply to Ollama/Qwen3/
+            # Gemma/Claude — so we fall back to MEDIUM tier minimum for these agents,
+            # which is the best trade-off between speed and reliability for tool calls.
+            _TOOL_HEAVY_AGENTS = {"workspace", "infra"}
             if cfg.llm_provider is not None:
                 llm = get_llm_for_agent(cfg)
-            elif cfg.name in _ALWAYS_COMPLEX_AGENTS:
+            elif cfg.name in _TOOL_HEAVY_AGENTS:
+                # Never route these to SIMPLE (small models struggle with multi-turn tools).
+                # MEDIUM is fast enough (qwen3:30b-a3b is a MoE → 3B active params).
                 from app.services.llm_provider import ComplexityTier
-                llm = get_llm_for_tier(ComplexityTier.COMPLEX)
-                logger.debug("Sub-agent '%s': forced COMPLEX tier (multi-step tool agent)", cfg.name)
+                tier = classify_complexity(user_query)
+                if tier == ComplexityTier.SIMPLE:
+                    tier = ComplexityTier.MEDIUM
+                llm = get_llm_for_tier(tier)
+                logger.debug("Sub-agent '%s': tool-heavy, tier=%s", cfg.name, tier.value)
             else:
                 tier = classify_complexity(user_query)
                 llm = get_llm_for_tier(tier)
