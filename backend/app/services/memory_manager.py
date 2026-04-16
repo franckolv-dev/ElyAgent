@@ -116,9 +116,16 @@ class MemoryManager:
     @property
     def encoder(self):
         if self._encoder is None:
+            import os
             from fastembed import TextEmbedding
+            # Use a persistent cache so the ONNX model survives container restarts.
+            # Default was /tmp/fastembed_cache, which is wiped every restart —
+            # causing "model.onnx File doesn't exist" errors for every memory op.
+            cache_dir = os.environ.get("FASTEMBED_CACHE_DIR", "/app/.cache/fastembed")
+            os.makedirs(cache_dir, exist_ok=True)
             self._encoder = TextEmbedding(
-                model_name="sentence-transformers/all-MiniLM-L6-v2"
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                cache_dir=cache_dir,
             )
         return self._encoder
 
