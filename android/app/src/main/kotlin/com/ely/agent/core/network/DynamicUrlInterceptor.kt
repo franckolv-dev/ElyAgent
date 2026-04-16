@@ -18,6 +18,7 @@
 
 package com.ely.agent.core.network
 
+import android.util.Log
 import androidx.datastore.core.DataStore
 import com.ely.agent.UserPreferences
 import kotlinx.coroutines.flow.first
@@ -29,12 +30,15 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Rewrites the host/scheme/port of every outgoing request to match the
- * server URL currently stored in DataStore.
+ * Rewrites every outgoing request to use the server URL stored in DataStore.
  *
- * This makes it possible to change the server URL in the login screen and
- * have the change take effect immediately — without restarting the app or
- * rebuilding the (singleton) Retrofit instance.
+ * The Retrofit client is built once as a Hilt singleton with a placeholder
+ * base URL ("http://localhost/"); this interceptor substitutes the real host
+ * (scheme, hostname, port) from DataStore on every request, so the user can
+ * change the server URL from the login screen without restarting the app.
+ *
+ * Preserves the original path, query string and fragment from the Retrofit
+ * request — only the authority (scheme://host:port) part is replaced.
  */
 @Singleton
 class DynamicUrlInterceptor @Inject constructor(
@@ -43,16 +47,30 @@ class DynamicUrlInterceptor @Inject constructor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val rawUrl = runBlocking { dataStore.data.first().serverUrl }
-        val baseUrl = rawUrl.trimEnd('/').ifBlank { "http://10.0.2.2:8000" }
-        val parsedBase = baseUrl.toHttpUrlOrNull()
-            ?: return chain.proceed(chain.request()) // malformed URL — proceed as-is
+        val baseUrl = rawUrl.trim().trimEnd('/').ifBlank { "http://10.0.2.2:8000" }
 
-        val newUrl = chain.request().url.newBuilder()
-            .scheme(parsedBase.scheme)
-            .host(parsedBase.host)
-            .port(parsedBase.port)
+        val parsedBase = baseUrl.toHttpUrlOrNull()
+        if (parsedBase == null) {
+            Log.w(TAG, "Invalid server URL in DataStore: '$baseUrl' — proceeding with placeholder")
+            return chain.proceed(chain.request())
+        }
+
+        val originalUrl = chain.request().url
+
+        // Build the new URL from the base URL (correct scheme/host/port)
+        // and graft the original path + query + fragment on top.
+        val newUrl = parsedBase.newBuilder()
+            .encodedPath(originalUrl.encodedPath)
+            .encodedQuery(originalUrl.encodedQuery)
+            .encodedFragment(originalUrl.encodedFragment)
             .build()
 
+        Log.d(TAG, "Rewriting ${originalUrl} → ${newUrl}")
+
         return chain.proceed(chain.request().newBuilder().url(newUrl).build())
+    }
+
+    companion object {
+        private const val TAG = "DynamicUrlInterceptor"
     }
 }
