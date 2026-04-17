@@ -115,7 +115,10 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 _kw_filters: list[tuple[_re_filter.Pattern, tuple[str, ...]]] = [
                     (_re_filter.compile(r"\b(mails?|emails?|courriels?|inbox|gmail|courrier|messagerie|boîte (mail|courrier))\b"),
                      ("gmail_",)),
-                    (_re_filter.compile(r"\b(calendar|calendrier|agenda|événements?|réunions?|meetings?|rendez.?vous)\b"),
+                    # "rappel dans l'agenda/planning/calendrier" → calendar (événement ponctuel)
+                    # "rappel + tous les jours/chaque matin/hebdo" → scheduler (cron récurrent)
+                    # "rappel" seul → les deux (laisse le LLM décider)
+                    (_re_filter.compile(r"\b(calendar|calendrier|agenda|planning|événements?|réunions?|meetings?|rendez.?vous)\b"),
                      ("calendar_",)),
                     (_re_filter.compile(r"\b(drive|fichiers?(?!.*local)|dossiers?(?!.*local))\b"),
                      ("drive_",)),
@@ -127,8 +130,13 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                      ("tasks_",)),
                     (_re_filter.compile(r"\b(contacts?|annuaires?|carnet d'adresse)\b"),
                      ("contacts_",)),
-                    (_re_filter.compile(r"\b(rappels?|cron|tâche planifiée|planifie|programme|hebdo|quotidien|chaque|tous les)\b"),
+                    # Recurring reminder → scheduler (cron)
+                    (_re_filter.compile(r"\b(cron|tâche planifiée|planifie|programme|hebdo|quotidien|récurrent|toutes les|tous les|chaque (jour|matin|soir|semaine|mois))\b"),
                      ("scheduler_",)),
+                    # "rappel" sans contexte récurrent = plutôt calendar (événement ponctuel)
+                    # On inclut les deux pour laisser le LLM choisir
+                    (_re_filter.compile(r"\brappels?\b"),
+                     ("calendar_", "scheduler_")),
                     (_re_filter.compile(r"\b(ssh|serveurs?|servers?)\b"),
                      ("ssh_",)),
                     (_re_filter.compile(r"\b(watchdog|surveille|veilles?|monitoring)\b"),
