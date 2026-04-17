@@ -50,3 +50,9 @@ android/app/google-services.json
 *-firebase-adminsdk-*.json
 .aider*
 .mcp.json
+
+# Runtime data (should never be committed)
+data/backups/
+data/fastembed/
+data/db/
+logs/
