@@ -20,11 +20,6 @@ import json
 import logging
 import re
 
-
-async def _no_interactions() -> list[dict]:
-    """Cheap placeholder for get_relevant_interactions on the first turn."""
-    return []
-
 from langchain_core.messages import AIMessage, BaseMessage
 
 from app.agent.state import AgentState
@@ -35,6 +30,11 @@ from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
 logger = logging.getLogger(__name__)
+
+
+async def _no_interactions() -> list[dict]:
+    """Cheap placeholder for get_relevant_interactions on the first turn."""
+    return []
 
 
 def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMessage]:

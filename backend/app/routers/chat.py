@@ -588,7 +588,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         if "```" in raw:
             raw = raw.split("```")[1].lstrip("json").strip()
         try:
-            facts = __loads(raw)
+            facts = _json.loads(raw)
         except (_json.JSONDecodeError, ValueError):
             facts = []
 
@@ -614,7 +614,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         if "```" in raw_prefs:
             raw_prefs = raw_prefs.split("```")[1].lstrip("json").strip()
         try:
-            prefs = __loads(raw_prefs)
+            prefs = _json.loads(raw_prefs)
         except (_json.JSONDecodeError, ValueError):
             prefs = []
 
