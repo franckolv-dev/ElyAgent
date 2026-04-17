@@ -113,8 +113,10 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             # Keyword → tool prefix mapping (only used when sub-agent has many tools)
             if len(agent_tools) > 20:
                 _kw_filters: list[tuple[_re_filter.Pattern, tuple[str, ...]]] = [
+                    # Gmail implies possible need for contacts_search to resolve
+                    # "prepare a mail for <name>" → need to look up <name>'s email
                     (_re_filter.compile(r"\b(mails?|emails?|courriels?|inbox|gmail|courrier|messagerie|boîte (mail|courrier))\b"),
-                     ("gmail_",)),
+                     ("gmail_", "contacts_")),
                     # "rappel dans l'agenda/planning/calendrier" → calendar (événement ponctuel)
                     # "rappel + tous les jours/chaque matin/hebdo" → scheduler (cron récurrent)
                     # "rappel" seul → les deux (laisse le LLM décider)
