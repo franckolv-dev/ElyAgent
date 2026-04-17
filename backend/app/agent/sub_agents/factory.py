@@ -115,7 +115,9 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 _kw_filters: list[tuple[_re_filter.Pattern, tuple[str, ...]]] = [
                     # Gmail implies possible need for contacts_search to resolve
                     # "prepare a mail for <name>" → need to look up <name>'s email
-                    (_re_filter.compile(r"\b(mails?|emails?|courriels?|inbox|gmail|courrier|messagerie|boîte (mail|courrier))\b"),
+                    # "mai" = common STT transcription glitch of "mail"; we also
+                    # catch "courriel[s]" and "message" (when combined with "prépare"/"envoyer").
+                    (_re_filter.compile(r"\b(mails?|mai|emails?|e.?mail|courriels?|inbox|gmail|courrier|messagerie|boîte (mail|courrier)|brouillons?|drafts?)\b"),
                      ("gmail_", "contacts_")),
                     # "rappel dans l'agenda/planning/calendrier" → calendar (événement ponctuel)
                     # "rappel + tous les jours/chaque matin/hebdo" → scheduler (cron récurrent)

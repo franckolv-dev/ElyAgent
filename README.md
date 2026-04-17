@@ -479,6 +479,41 @@ For mobile access, external webhooks (WhatsApp, Telegram), or sharing with famil
 
 ---
 
+## 💡 Tips for talking to ELY
+
+ELY has 148 tools across Google Workspace, web, system automation and
+local memory. She picks the right one automatically from your sentence
+— but a **few words can save a roundtrip** when a request is ambiguous:
+
+- Say **"brouillon de mail"** instead of just "brouillon"
+  → ensures Gmail, not some other system
+- Say **"rappel chaque soir"** or **"événement ponctuel dans mon agenda"**
+  → picks a recurring cron task vs a one-off Google Calendar event
+- Say **"dans mes notes"** vs **"dans un Google Doc"** for a text snippet
+  → chooses local notes vs Google Docs
+- Provide a **real email address** (`alice@example.com`) when asking her
+  to mail someone you haven't saved in contacts, so she doesn't have to
+  search-or-ask
+
+When the choice is truly ambiguous (e.g. *"envoie ça à Alice"* — mail,
+WhatsApp, Telegram?) ELY asks a short clarification question before
+acting. She never guesses on irreversible actions.
+
+### Experimental features
+
+These are in the codebase but not recommended for daily use yet —
+expect rough edges:
+
+- **ELY Trainer** — screen-control tutoring via vision LLM (needs the
+  desktop daemon). Works, but costly in API credits.
+- **MCP generator** — on-the-fly creation of MCP connector servers.
+  Useful for power-users who know what MCP is.
+- **Wake-word voice mode** — the browser voice overlay listens for
+  "Éli" but wake-word detection is browser-side; on Android the mic
+  button must be pressed explicitly.
+
+---
+
 ## Useful Commands
 
 ```bash

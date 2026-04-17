@@ -27,6 +27,11 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
     fun observeMessages(conversationId: String): Flow<List<MessageEntity>>
 
+    // Alias with the name that ChatRepositoryImpl uses — keeps both callers
+    // happy while we migrate away from the single-bucket observeAllMessages.
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
+    fun observeMessagesForConversation(conversationId: String): Flow<List<MessageEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 

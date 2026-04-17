@@ -88,8 +88,15 @@ class ChatWebSocketClient @Inject constructor(
         })
     }
 
-    fun send(text: String) {
-        webSocket?.send(WsMessageAdapter.toJson("message", "content" to text))
+    fun send(text: String, conversationId: String? = null) {
+        val pairs = buildList {
+            add("type" to "message")
+            add("content" to text)
+            if (!conversationId.isNullOrBlank()) add("conversation_id" to conversationId)
+        }
+        val json = org.json.JSONObject()
+        for ((k, v) in pairs) json.put(k, v)
+        webSocket?.send(json.toString())
     }
 
     fun sendHitlResponse(actionId: String, decision: String) {

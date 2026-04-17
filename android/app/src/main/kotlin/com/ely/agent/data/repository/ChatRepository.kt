@@ -30,4 +30,21 @@ interface ChatRepository {
     suspend fun sendMessage(text: String)
     fun sendHitlResponse(actionId: String, decision: String)
     fun disconnect()
+
+    /** Start a new empty conversation (next message will create a fresh id). */
+    fun resetCurrentConversation()
+
+    /** Switch the active conversation and load its messages from the backend. */
+    fun switchConversation(conversationId: String)
+
+    /** List conversations from the backend (for the drawer). */
+    suspend fun listConversations(limit: Int = 50): List<ConversationSummary>
 }
+
+/** Minimal conversation metadata returned by GET /api/conversations. */
+data class ConversationSummary(
+    val id: String,
+    val title: String,
+    val createdAt: String?,
+    val updatedAt: String?,
+)

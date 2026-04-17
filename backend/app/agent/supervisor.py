@@ -483,6 +483,25 @@ async def router_node(state: AgentState) -> dict:
             last_user_msg = m.content[:500]  # truncate for speed
             break
 
+    # ── Pass 0: sticky domain for short confirmations ─────────────────────
+    # If the user replied with a brief confirmation ("oui", "parfait",
+    # "vas-y", "d'accord") AND the previous turn was handled by a
+    # non-general sub-agent that likely asked a question, stick with the
+    # same sub-agent so it can pick up where it left off (and call the
+    # action tool directly). Without this, "oui" gets routed to "general"
+    # which has no domain-specific tools and just answers with text.
+    _msg_for_stick = last_user_msg.lower().strip()
+    _stick_trim = _re.sub(r"[\s\.,!?]+", "", _msg_for_stick)
+    _is_confirmation = _stick_trim in {
+        "oui", "ouii", "yes", "parfait", "exact", "exactement", "vasy",
+        "vas-y", "allez-y", "allezy", "dacc", "daccord", "ok", "okay",
+        "fais-le", "faisle", "carrement", "carrément", "exacto",
+    } or _re.fullmatch(r"(oui|yes|ok|d'?accord|parfait|vas.?y|fais.?le)\s*[!.]?", _msg_for_stick)
+    _prev_domain = state.get("domain", "")
+    if _is_confirmation and _prev_domain and _prev_domain not in ("general", "system", ""):
+        logger.warning("⏱ TIMING[router-sticky] confirmation → garde domain=%s", _prev_domain)
+        return {"domain": _prev_domain}
+
     # ── Pass 1: fast keyword router (zero LLM call) ──────────────────────
     domain = _quick_route(last_user_msg)
     if domain is not None:

@@ -91,4 +91,7 @@ object NetworkModule {
 
     @Provides @Singleton
     fun provideHitlApi(retrofit: Retrofit): HitlApi = retrofit.create(HitlApi::class.java)
+
+    @Provides @Singleton
+    fun provideConversationsApi(retrofit: Retrofit): ConversationsApi = retrofit.create(ConversationsApi::class.java)
 }
