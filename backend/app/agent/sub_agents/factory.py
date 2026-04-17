@@ -415,6 +415,23 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 if tool_name in _USER_ID_TOOLS:
                     args["user_id"] = state.get("user_id") or ""
 
+                # ── De-anonymize PII placeholders in args ──────────────────
+                # The LLM sees [EMAIL_0]/[IBAN_0]/etc. (anonymized by SecurityFilter
+                # before prompt). If the LLM uses those placeholders as tool args,
+                # we must restore the real values BEFORE calling external APIs,
+                # otherwise Gmail/Calendar/etc. receive literal "[EMAIL_0]" and fail.
+                _conv_id = state.get("conversation_id")
+                if _conv_id:
+                    try:
+                        from app.routers.chat import _filters as _chat_filters
+                        _sf = _chat_filters.get(_conv_id)
+                        if _sf is not None:
+                            for _k, _v in list(args.items()):
+                                if isinstance(_v, str) and "[" in _v and "]" in _v:
+                                    args[_k] = _sf.deanonymize(_v)
+                    except Exception:
+                        pass
+
                 # Display args (never expose tokens/injected IDs)
                 _hidden = {"user_google_credentials_json", "user_id"}
                 display_args = {k: v for k, v in args.items() if k not in _hidden}
@@ -483,11 +500,22 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     _ts = _tt.monotonic()
                     try:
                         result = await tool.ainvoke(args)
-                        logger.warning(
-                            "⏱ TIMING[%s.tool:%s] %.2fs — result=%.120s",
-                            cfg.name, tool_name, _tt.monotonic() - _ts, str(result),
-                        )
-                        results.append(_tool_result(str(result), tc_id))
+                        # Log args too when result indicates an error — critical for debugging
+                        _result_str = str(result)
+                        _is_error = "Erreur" in _result_str or "Error" in _result_str or "HttpError" in _result_str
+                        if _is_error:
+                            # Log args (redacting credentials) to understand what the LLM passed
+                            _safe_args = {k: ("<redacted>" if k == "user_google_credentials_json" else v) for k, v in args.items()}
+                            logger.warning(
+                                "⏱ TIMING[%s.tool:%s] %.2fs — ARGS=%s — ERROR=%.400s",
+                                cfg.name, tool_name, _tt.monotonic() - _ts, _safe_args, _result_str,
+                            )
+                        else:
+                            logger.warning(
+                                "⏱ TIMING[%s.tool:%s] %.2fs — result=%.120s",
+                                cfg.name, tool_name, _tt.monotonic() - _ts, _result_str,
+                            )
+                        results.append(_tool_result(_result_str, tc_id))
                     except Exception as exc:
                         logger.warning(
                             "⏱ TIMING[%s.tool:%s] %.2fs — ERROR: %s",

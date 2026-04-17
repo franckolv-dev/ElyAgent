@@ -27,6 +27,10 @@ from typing_extensions import TypedDict
 class SubAgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     user_id: str
+    # conversation_id needed to look up the per-conversation SecurityFilter
+    # at tool execution time, so we can deanonymize [EMAIL_N]/[IBAN_N]/etc.
+    # placeholders in tool args before they reach external APIs (Gmail, etc.)
+    conversation_id: str
     # google_credentials removed — credentials are kept server-side in
     # app.services.credential_store (SEC-1) and looked up by user_id at
     # tool execution time. They never travel through the graph state.
