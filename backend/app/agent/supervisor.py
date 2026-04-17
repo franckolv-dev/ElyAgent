@@ -389,15 +389,35 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
 
 def _quick_route(msg: str) -> str | None:
     """Fast keyword-based routing. Returns None if no high-confidence match."""
+    msg_lower = msg.lower().strip()
+    # Pure greetings / acknowledgments — checked FIRST so they can't be misrouted
+    # by other patterns (e.g. "bonjour" was being routed to memory because the
+    # word "note" exists somewhere)
+    if _re.match(
+        r"^[\s\.,!?]*(bonjour|salut|hello|hey|coucou|merci|ok|oui|non|d'accord|"
+        r"au revoir|bonne (journée|soirée|nuit)|bonne soirée|bonsoir)[\s\.,!?]*$",
+        msg_lower,
+    ):
+        return "general"
+    # Indirect greetings: "dis bonjour", "peux-tu dire bonjour", "dis-moi bonjour", "salue-moi"
+    if _re.search(
+        r"\b(dis|dire|peux.?tu (me )?dire|dis.?moi)\b.*\b(bonjour|salut|hello|coucou)\b",
+        msg_lower,
+    ) or _re.search(r"\bsalue.?moi\b", msg_lower):
+        return "general"
+    # Common quick questions → general (no specific tool needed)
+    if _re.search(
+        r"\b(quelle heure|quel jour|quelle date|quelle année|"
+        r"qu'est.ce que tu peux (faire|m'aider)|que peux.tu (faire|m'aider)|"
+        r"qui es.tu|comment ça va|comment vas.tu|qui suis.je|"
+        r"comment t'appelles.tu|c'est quoi ton nom|ton prénom)\b",
+        msg_lower,
+    ):
+        return "general"
+
     for domain, pattern in _ROUTER_PATTERNS:
         if pattern.search(msg):
             return domain
-    # Trivial greetings / chitchat / acknowledgments → general (no LLM needed)
-    if _re.match(r"^\s*(bonjour|salut|hello|hey|coucou|merci|ok|oui|non|d'accord|au revoir|bonne (journée|soirée|nuit))[\s\.,!?]*$", msg, _re.IGNORECASE):
-        return "general"
-    # Common quick questions → general (no specific tool needed)
-    if _re.search(r"\b(quelle heure|quel jour|quelle date|quelle année|qu'est.ce que tu peux|que peux.tu|qui es.tu|comment ça va|comment vas.tu|qui suis.je)\b", msg, _re.IGNORECASE):
-        return "general"
     return None
 
 

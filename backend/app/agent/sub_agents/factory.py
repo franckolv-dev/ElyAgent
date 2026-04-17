@@ -127,15 +127,32 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     cfg.name, tier.value, tier.value,
                 )
 
-            # Force tool calling on first turn (last message is HumanMessage).
-            # Without this, Claude tends to respond with a planning text like "je vais
-            # lancer la recherche…" without actually emitting tool_calls, which causes
-            # should_continue() to return "end" and the action is never executed.
-            # On subsequent turns (last msg = ToolMessage) we use auto so the LLM can
-            # either call more tools or produce the final text response.
+            # Tool calling strategy.
+            # Historical bug: forcing tool_choice="any" on the first user turn made
+            # Claude actually emit tool_calls (instead of just announcing "I'll do X").
+            # But this also forced llama3.2 / smaller models to invent a tool call for
+            # trivial queries like "Bonjour" — triggering HITL on chitchat.
+            # New rule: only force tool_choice="any" when the user message contains an
+            # action keyword that clearly needs a tool (envoie/crée/liste/cherche/…).
+            # Otherwise, "auto" — let the LLM choose to answer with text or a tool call.
+            import re as _re_local
             from langchain_core.messages import HumanMessage as _HM
             _last = messages[-1] if messages else None
-            _force_tools = isinstance(_last, _HM) and bool(agent_tools)
+            _last_content = _last.content if (_last is not None and isinstance(_last, _HM)) else ""
+            _action_kw = _re_local.compile(
+                r"\b(envoie|envoyer|crée|créer|créé|liste|cherche|trouve|génère|exécute|"
+                r"lance|planifie|programme|note|enregistre|sauvegarde|supprime|delete|"
+                r"mail|email|calendrier|drive|sheet|doc|tâche|rappel|"
+                r"ajoute|update|modifie|mets à jour|déplace|partage|"
+                r"capture|screenshot|météo|news|traduis|"
+                r"ssh|exécute|monitore|surveille)\b",
+                _re_local.IGNORECASE,
+            )
+            _force_tools = (
+                isinstance(_last, _HM)
+                and bool(agent_tools)
+                and bool(_action_kw.search(_last_content or ""))
+            )
             if _force_tools:
                 try:
                     llm_with_tools = llm.bind_tools(agent_tools, tool_choice="any")
