@@ -398,7 +398,17 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
 
     candidates: list[tuple[str, BaseChatModel]] = []
 
-    gemini_key = _key("gemini", settings.gemini_api_key)
+    # PERF/UX: the user may have configured keys only via the Settings UI
+    # (stored in llm_instances.api_key). Those keys don't live in
+    # settings.* or _runtime. Pick them up so fallbacks work when only
+    # instance-based config is present (typical after UI-driven setup).
+    def _instance_key_for(provider_name: str) -> str:
+        for inst in _instance_cache.values():
+            if inst.get("provider") == provider_name and inst.get("api_key"):
+                return inst["api_key"]
+        return ""
+
+    gemini_key = _key("gemini", settings.gemini_api_key) or _instance_key_for("gemini")
     if gemini_key:
         current_model = _runtime.get("model") or settings.active_llm_model or ""
         # If current model IS gemini-2.5-flash, skip (no point retrying same model).
@@ -415,11 +425,18 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
             except Exception:
                 pass
 
-    anthropic_key = _key("anthropic", settings.anthropic_api_key)
+    anthropic_key = _key("anthropic", settings.anthropic_api_key) or _instance_key_for("anthropic")
     if anthropic_key and current_provider != "anthropic":
+        # Prefer the exact model the user has configured in their instance
+        # (e.g. claude-haiku-4-5) to avoid jumping to a more expensive Sonnet.
+        _anthropic_model = "claude-haiku-4-5-20251001"
+        for inst in _instance_cache.values():
+            if inst.get("provider") == "anthropic" and inst.get("model"):
+                _anthropic_model = inst["model"]
+                break
         try:
-            candidates.append(("anthropic/claude-sonnet-4-6", _make_anthropic(
-                model="claude-sonnet-4-6",
+            candidates.append((f"anthropic/{_anthropic_model}", _make_anthropic(
+                model=_anthropic_model,
                 api_key=anthropic_key,
             )))
         except Exception:
@@ -431,7 +448,7 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
     # - Poor tool choice compliance with large tool lists
     # Mistral remains selectable manually via settings, but never used as auto-fallback.
 
-    openrouter_key = _key("openrouter", settings.openrouter_api_key)
+    openrouter_key = _key("openrouter", settings.openrouter_api_key) or _instance_key_for("openrouter")
     if openrouter_key and current_provider != "openrouter":
         try:
             candidates.append(("openrouter/llama-3.3-70b:free", _make_openrouter(
