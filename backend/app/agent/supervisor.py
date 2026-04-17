@@ -346,35 +346,35 @@ import re as _re
 # Each domain has high-confidence patterns. Ordered by specificity.
 _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
     ("workspace", _re.compile(
-        r"\b(gmail|email|mail|courriel|messagerie|inbox|boîte|courrier|"
-        r"calendar|calendrier|agenda|rendez.?vous|événement|réunion|meeting|"
-        r"drive|dossier|fichier(?!.*local)|document(?!.*pdf)|google doc|gdoc|"
-        r"sheets?|tableur|spreadsheet|excel|"
+        r"\b(gmail|emails?|mails?|courriels?|messagerie|inbox|boîte|courrier|"
+        r"calendar|calendrier|agenda|rendez.?vous|événements?|réunions?|meetings?|"
+        r"drive|dossiers?|fichiers?(?!.*local)|documents?(?!.*pdf)|google doc|gdoc|"
+        r"sheets?|tableurs?|spreadsheets?|excel|"
         r"tasks?|tâches?|to.?do|todo|"
-        r"contact[sx]?|annuaire|"
+        r"contacts?|annuaires?|"
         r"rappel(le)?(.*) (à|le|pour|aujourd|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|"
         r"planifie.*aujourd|planifie.*demain)\b",
         _re.IGNORECASE)),
     ("infra", _re.compile(
-        r"\b(ssh|serveur|server|docker|nginx|cron|tâche planifiée|"
-        r"watchdog|veille|surveille|monitoring|infos? système|specs?|"
+        r"\b(ssh|serveurs?|servers?|docker|nginx|cron|tâche planifiée|"
+        r"watchdog|veilles?|surveille|monitoring|infos? système|specs?|"
         r"tous les jours|chaque (jour|matin|soir|semaine|lundi|mardi)|"
-        r"toutes les semaines|hebdomadaire|quotidien|récurrent|briefing)\b",
+        r"toutes les semaines|hebdomadaire|quotidien|récurrent|briefings?)\b",
         _re.IGNORECASE)),
     ("research", _re.compile(
         r"\b(météo|weather|news|actualités?|titres? du jour|"
         r"cherche sur (le )?(web|internet|google)|recherche web|"
-        r"traduis|translate|traduction|"
+        r"traduis|translate|traductions?|"
         r"va sur (https?:\/\/|www\.)|navigue|ouvre (le )?site|lis (la )?page)\b",
         _re.IGNORECASE)),
     ("creative", _re.compile(
-        r"\b(génère? une image|crée une image|dessine|illustre|illustration|"
-        r"qr ?code|youtube|vidéo youtube|"
+        r"\b(génère? une image|crée une image|dessine|illustre|illustrations?|"
+        r"qr ?codes?|youtube|vidéo youtube|"
         r"analyse (ce |le )?pdf|lis (ce |le )?pdf|"
         r"exécute (ce |du )?python|code python)\b",
         _re.IGNORECASE)),
     ("memory", _re.compile(
-        r"\b(note(.|s)?|prends une note|mémorise|"
+        r"\b(prends? une note|prends? note|mémorise|notes? personnelles?|"
         r"whatsapp|"
         r"cherche dans mes (notes?|documents?|fichiers?))\b",
         _re.IGNORECASE)),

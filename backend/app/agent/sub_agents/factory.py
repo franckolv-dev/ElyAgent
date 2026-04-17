@@ -99,6 +99,62 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             # Filter tools to this sub-agent's declared subset
             agent_tools = [t for t in registry.all_tools if t.name in cfg.tool_names]
 
+            # ── Dynamic tool sub-filtering ────────────────────────────────────
+            # Even within a sub-agent, binding 70+ tools (workspace) makes the
+            # prompt explode (~15-20k tokens of schemas) and slows inference to
+            # 60+ seconds. We further filter based on keywords in the user query
+            # so the LLM only sees the tools it actually needs.
+            import re as _re_filter
+            _last_user = ""
+            for _m in reversed(messages):
+                if hasattr(_m, "content") and getattr(_m, "type", None) == "human":
+                    _last_user = (_m.content or "").lower()
+                    break
+            # Keyword → tool prefix mapping (only used when sub-agent has many tools)
+            if len(agent_tools) > 20:
+                _kw_filters: list[tuple[_re_filter.Pattern, tuple[str, ...]]] = [
+                    (_re_filter.compile(r"\b(mails?|emails?|courriels?|inbox|gmail|courrier|messagerie|boîte (mail|courrier))\b"),
+                     ("gmail_",)),
+                    (_re_filter.compile(r"\b(calendar|calendrier|agenda|événements?|réunions?|meetings?|rendez.?vous)\b"),
+                     ("calendar_",)),
+                    (_re_filter.compile(r"\b(drive|fichiers?(?!.*local)|dossiers?(?!.*local))\b"),
+                     ("drive_",)),
+                    (_re_filter.compile(r"\b(docs?|documents?|google doc|gdoc)\b"),
+                     ("docs_",)),
+                    (_re_filter.compile(r"\b(sheets?|tableurs?|spreadsheets?|excel)\b"),
+                     ("sheets_",)),
+                    (_re_filter.compile(r"\b(tâches?|taches?|to.?do|todo)\b"),
+                     ("tasks_",)),
+                    (_re_filter.compile(r"\b(contacts?|annuaires?|carnet d'adresse)\b"),
+                     ("contacts_",)),
+                    (_re_filter.compile(r"\b(rappels?|cron|tâche planifiée|planifie|programme|hebdo|quotidien|chaque|tous les)\b"),
+                     ("scheduler_",)),
+                    (_re_filter.compile(r"\b(ssh|serveurs?|servers?)\b"),
+                     ("ssh_",)),
+                    (_re_filter.compile(r"\b(watchdog|surveille|veilles?|monitoring)\b"),
+                     ("watchdog_",)),
+                    (_re_filter.compile(r"\b(briefings?|matin|résumé|debrief)\b"),
+                     ("briefing_",)),
+                ]
+                _matched_prefixes: set[str] = set()
+                for _pattern, _prefixes in _kw_filters:
+                    if _pattern.search(_last_user):
+                        _matched_prefixes.update(_prefixes)
+                # Always keep memory/preference tools so the agent can save context
+                _ALWAYS_KEEP = ("save_user_preference", "save_constraint", "knowledge_search",
+                                "knowledge_list", "smart_knowledge_query")
+                if _matched_prefixes:
+                    _filtered = [
+                        t for t in agent_tools
+                        if any(t.name.startswith(p) for p in _matched_prefixes)
+                        or t.name in _ALWAYS_KEEP
+                    ]
+                    if _filtered:  # safety: don't end up with zero tools
+                        logger.warning("⏱ TIMING[%s.subfilter] %d → %d tools (kw=%s)",
+                                       cfg.name, len(agent_tools), len(_filtered),
+                                       sorted(_matched_prefixes))
+                        agent_tools = _filtered
+
             # Complexity routing: classify last user message and select LLM accordingly.
             # If the sub-agent has a fixed provider, use it; otherwise route by complexity.
             # workspace and infra do multi-step tool sequences. They used to be
