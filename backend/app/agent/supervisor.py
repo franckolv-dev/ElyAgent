@@ -404,22 +404,20 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
 def _quick_route(msg: str) -> str | None:
     """Fast keyword-based routing. Returns None if no high-confidence match."""
     msg_lower = msg.lower().strip()
-    # Pure greetings / acknowledgments — checked FIRST so they can't be misrouted
-    # by other patterns (e.g. "bonjour" was being routed to memory because the
-    # word "note" exists somewhere)
+    # Pure greetings / acknowledgments
     if _re.match(
         r"^[\s\.,!?]*(bonjour|salut|hello|hey|coucou|merci|ok|oui|non|d'accord|"
         r"au revoir|bonne (journée|soirée|nuit)|bonne soirée|bonsoir)[\s\.,!?]*$",
         msg_lower,
     ):
         return "general"
-    # Indirect greetings: "dis bonjour", "peux-tu dire bonjour", "dis-moi bonjour", "salue-moi"
+    # Indirect greetings
     if _re.search(
         r"\b(dis|dire|peux.?tu (me )?dire|dis.?moi)\b.*\b(bonjour|salut|hello|coucou)\b",
         msg_lower,
     ) or _re.search(r"\bsalue.?moi\b", msg_lower):
         return "general"
-    # Common quick questions → general (no specific tool needed)
+    # Common quick questions → general
     if _re.search(
         r"\b(quelle heure|quel jour|quelle date|quelle année|"
         r"qu'est.ce que tu peux (faire|m'aider)|que peux.tu (faire|m'aider)|"
@@ -428,6 +426,19 @@ def _quick_route(msg: str) -> str | None:
         msg_lower,
     ):
         return "general"
+
+    # PRIORITY: recurring schedules ALWAYS go to infra, even if the message
+    # mentions "rappel/calendar" — workspace would only create a one-shot
+    # event, not the recurring cron the user wants.
+    _recurrence_kw = _re.search(
+        r"\b(chaque (jour|matin|soir|semaine|mois|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|"
+        r"tous les (jours|matins|soirs|lundis|mardis|mercredis|jeudis|vendredis|samedis|dimanches)|"
+        r"toutes les (semaines|heures|minutes)|"
+        r"quotidien|hebdomadaire|mensuel|récurrent|récurrente|automatiquement)\b",
+        msg_lower,
+    )
+    if _recurrence_kw:
+        return "infra"
 
     for domain, pattern in _ROUTER_PATTERNS:
         if pattern.search(msg):
