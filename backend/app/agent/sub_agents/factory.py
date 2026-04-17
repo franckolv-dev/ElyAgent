@@ -194,7 +194,8 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                         f"-> R: {p.get('assistant_message', '')[:120]}\n"
                     )
 
-            _invoke_msgs = (
+            from app.services.qwen_no_think import inject_no_think, strip_think_block
+            _invoke_msgs = inject_no_think(
                 [{"role": "system", "content": system}]
                 + _sanitize_messages_for_mistral(messages)
             )
@@ -204,6 +205,8 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             _infer_start = _t.monotonic()
             try:
                 response = await llm_with_tools.ainvoke(_invoke_msgs)
+                if hasattr(response, 'content') and isinstance(response.content, str):
+                    response.content = strip_think_block(response.content)
                 logger.warning("⏱ TIMING[%s.infer] %.2fs — tool_calls=%d", cfg.name, _t.monotonic() - _infer_start, len(getattr(response, 'tool_calls', []) or []))
             except Exception as _primary_exc:
                 # Recover from quota/rate-limit/auth errors by trying fallbacks

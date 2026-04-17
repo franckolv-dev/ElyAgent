@@ -138,19 +138,27 @@ class HITLManager:
 
         topic = settings.ntfy_topic or "cyberentity"
         base = settings.backend_url.rstrip("/")
-        headers = {
-            "Title": "⚠️ Action requise — Cyber-Entity",
-            "Priority": "high",
-            "Tags": "warning,robot",
-            "Actions": (
-                f"http, ✅ Autoriser, {base}/validation/{action_id}/allow, method=POST; "
-                f"http, ❌ Refuser, {base}/validation/{action_id}/deny, method=POST; "
-                f"http, 🛡️ Interdire toujours, {base}/validation/{action_id}/ban, method=POST"
-            ),
+        # ntfy accepts Unicode (emojis, accents) ONLY via the JSON body format,
+        # NOT via HTTP headers (which are ASCII-only per RFC 7230). Sending Title
+        # with emojis or accents in headers raises "ascii codec can't encode".
+        payload = {
+            "topic": topic,
+            "title": "Action requise — ELY",
+            "message": description,
+            "priority": 5,
+            "tags": ["warning", "robot"],
+            "actions": [
+                {"action": "http", "label": "Autoriser",
+                 "url": f"{base}/validation/{action_id}/allow", "method": "POST", "clear": True},
+                {"action": "http", "label": "Refuser",
+                 "url": f"{base}/validation/{action_id}/deny", "method": "POST", "clear": True},
+                {"action": "http", "label": "Interdire toujours",
+                 "url": f"{base}/validation/{action_id}/ban", "method": "POST", "clear": True},
+            ],
         }
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                await client.post(f"{settings.ntfy_url}/{topic}", content=description, headers=headers)
+                await client.post(settings.ntfy_url, json=payload)
         except Exception as exc:
             logger.warning("Failed to send ntfy notification: %s", exc)
 

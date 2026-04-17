@@ -340,6 +340,67 @@ _INFRA_SKILLS = {
 # Router node
 # ──────────────────────────────────────────────────────────────────────────────
 
+import re as _re
+
+# Hybrid router: keyword shortcuts first (instant), LLM fallback only if no match.
+# Each domain has high-confidence patterns. Ordered by specificity.
+_ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
+    ("workspace", _re.compile(
+        r"\b(gmail|email|mail|courriel|messagerie|inbox|boîte|courrier|"
+        r"calendar|calendrier|agenda|rendez.?vous|événement|réunion|meeting|"
+        r"drive|dossier|fichier(?!.*local)|document(?!.*pdf)|google doc|gdoc|"
+        r"sheets?|tableur|spreadsheet|excel|"
+        r"tasks?|tâches?|to.?do|todo|"
+        r"contact[sx]?|annuaire|"
+        r"rappel(le)?(.*) (à|le|pour|aujourd|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|"
+        r"planifie.*aujourd|planifie.*demain)\b",
+        _re.IGNORECASE)),
+    ("infra", _re.compile(
+        r"\b(ssh|serveur|server|docker|nginx|cron|tâche planifiée|"
+        r"watchdog|veille|surveille|monitoring|infos? système|specs?|"
+        r"tous les jours|chaque (jour|matin|soir|semaine|lundi|mardi)|"
+        r"toutes les semaines|hebdomadaire|quotidien|récurrent|briefing)\b",
+        _re.IGNORECASE)),
+    ("research", _re.compile(
+        r"\b(météo|weather|news|actualités?|titres? du jour|"
+        r"cherche sur (le )?(web|internet|google)|recherche web|"
+        r"traduis|translate|traduction|"
+        r"va sur (https?:\/\/|www\.)|navigue|ouvre (le )?site|lis (la )?page)\b",
+        _re.IGNORECASE)),
+    ("creative", _re.compile(
+        r"\b(génère? une image|crée une image|dessine|illustre|illustration|"
+        r"qr ?code|youtube|vidéo youtube|"
+        r"analyse (ce |le )?pdf|lis (ce |le )?pdf|"
+        r"exécute (ce |du )?python|code python)\b",
+        _re.IGNORECASE)),
+    ("memory", _re.compile(
+        r"\b(note(.|s)?|prends une note|mémorise|"
+        r"whatsapp|"
+        r"cherche dans mes (notes?|documents?|fichiers?))\b",
+        _re.IGNORECASE)),
+    ("desktop", _re.compile(
+        r"\b(montre.moi|démontre|tuteur|apprends.moi|fais une démo|"
+        r"capture (d'|de l')écran|screenshot de l'écran|"
+        r"prends le contrôle|clique|tape sur|"
+        r"mes fichiers locaux|mon bureau|mon desktop)\b",
+        _re.IGNORECASE)),
+]
+
+
+def _quick_route(msg: str) -> str | None:
+    """Fast keyword-based routing. Returns None if no high-confidence match."""
+    for domain, pattern in _ROUTER_PATTERNS:
+        if pattern.search(msg):
+            return domain
+    # Trivial greetings / chitchat / acknowledgments → general (no LLM needed)
+    if _re.match(r"^\s*(bonjour|salut|hello|hey|coucou|merci|ok|oui|non|d'accord|au revoir|bonne (journée|soirée|nuit))[\s\.,!?]*$", msg, _re.IGNORECASE):
+        return "general"
+    # Common quick questions → general (no specific tool needed)
+    if _re.search(r"\b(quelle heure|quel jour|quelle date|quelle année|qu'est.ce que tu peux|que peux.tu|qui es.tu|comment ça va|comment vas.tu|qui suis.je)\b", msg, _re.IGNORECASE):
+        return "general"
+    return None
+
+
 async def router_node(state: AgentState) -> dict:
     """Classify the user's request and set the routing domain in state."""
     import time as _t
@@ -351,23 +412,32 @@ async def router_node(state: AgentState) -> dict:
             last_user_msg = m.content[:500]  # truncate for speed
             break
 
-    # Use the SIMPLE tier (local Ollama) for routing — it only needs to output
-    # one word among 8 labels and there is no reason to make a cloud round-trip here.
+    # ── Pass 1: fast keyword router (zero LLM call) ──────────────────────
+    domain = _quick_route(last_user_msg)
+    if domain is not None:
+        logger.warning("⏱ TIMING[router-fast] %.3fs → domain=%s (msg=%.60s)",
+                       _t.monotonic() - _start, domain, last_user_msg)
+        return {"domain": domain}
+
+    # ── Pass 2: LLM fallback for ambiguous queries ───────────────────────
+    from app.services.qwen_no_think import inject_no_think, strip_think_block
     llm = get_llm_for_tier(ComplexityTier.SIMPLE)
     try:
-        response = await llm.ainvoke([
+        _msgs = inject_no_think([
             SystemMessage(content=_ROUTER_SYSTEM),
             HumanMessage(content=last_user_msg),
         ])
+        response = await llm.ainvoke(_msgs)
+        response.content = strip_think_block(getattr(response, 'content', '') or '')
         domain = response.content.strip().lower()
         if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "desktop", "general"):
             domain = "general"
     except Exception as exc:
-        logger.warning("Router failed, falling back to general: %s", exc)
+        logger.warning("Router LLM failed, falling back to general: %s", exc)
         domain = "general"
 
-    _elapsed = _t.monotonic() - _start
-    logger.warning("⏱ TIMING[router] %.2fs → domain=%s (msg=%.60s)", _elapsed, domain, last_user_msg)
+    logger.warning("⏱ TIMING[router-llm] %.2fs → domain=%s (msg=%.60s)",
+                   _t.monotonic() - _start, domain, last_user_msg)
     return {"domain": domain}
 
 

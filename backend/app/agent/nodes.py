@@ -18,6 +18,7 @@
 import asyncio
 import json
 import logging
+import re
 
 from langchain_core.messages import AIMessage, BaseMessage
 
@@ -426,14 +427,27 @@ def create_agent_node():
 
             # Tier routing: pick the right local/cloud model based on complexity.
             # CRITICAL PERF: the "general" node has access to ALL ~148 tools, which
-            # makes bind_tools + the first inference extremely slow on any model
-            # (the prompt grows massively with 148 tool schemas, ~30k tokens). For
-            # SIMPLE queries that don't need tools (greetings, simple facts, chitchat),
-            # we skip tool binding entirely — the LLM answers from knowledge + system
-            # prompt. Response goes from 30-90s to under 5s.
+            # makes bind_tools + the first inference extremely slow (the prompt grows
+            # by ~30k tokens with 148 tool schemas). The supervisor already routes
+            # tool-needing queries to sub-agents (workspace, infra…), so general is
+            # mostly used for chitchat and quick facts that don't need tools. We only
+            # bind tools when the query likely needs one (COMPLEX tier, or detected
+            # tool keywords).
             from app.services.llm_provider import classify_complexity, get_llm_for_tier, ComplexityTier
             _tier = classify_complexity(user_query)
-            _bind_tools_flag = (_tier != ComplexityTier.SIMPLE)
+            # Bind tools only for COMPLEX queries OR when the query explicitly mentions
+            # tool-related actions. SIMPLE/MEDIUM small-talk and quick facts skip binding.
+            _tool_kw = re.compile(
+                r"\b(envoie|crée|liste|cherche|trouve|génère|exécute|lance|"
+                r"planifie|programme|note|enregistre|sauvegarde|"
+                r"mail|email|calendrier|drive|sheet|doc|tâche|rappel|note|"
+                r"fichier|capture|screenshot|météo|news|traduis)\b",
+                re.IGNORECASE,
+            )
+            _bind_tools_flag = (
+                _tier == ComplexityTier.COMPLEX or
+                bool(_tool_kw.search(user_query))
+            )
             _tier_key = _tier.value
             # Cache key differentiates with/without tools bound
             _cache_key = f"{_tier_key}:{'tools' if _bind_tools_flag else 'notools'}"
@@ -460,7 +474,12 @@ def create_agent_node():
             )
             try:
                 _infer_t = _t.monotonic()
+                from app.services.qwen_no_think import inject_no_think, strip_think_block
+                _invoke_msgs = inject_no_think(_invoke_msgs)
                 response = await _llm_with_tools_req.ainvoke(_invoke_msgs)
+                # Strip any <think> block that slipped through
+                if hasattr(response, 'content') and isinstance(response.content, str):
+                    response.content = strip_think_block(response.content)
                 logger.warning("⏱ TIMING[general.infer] %.2fs — tier=%s, tool_calls=%d",
                     _t.monotonic() - _infer_t, _tier_key, len(getattr(response, 'tool_calls', []) or []))
             except Exception as primary_exc:
