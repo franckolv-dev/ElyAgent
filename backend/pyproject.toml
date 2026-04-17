@@ -49,6 +49,7 @@ dependencies = [
     "pyautogui>=0.9.54",
     "slack-bolt[async]>=1.20.0",
     "discord.py>=2.4.0",
+    "croniter>=2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
