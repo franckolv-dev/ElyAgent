@@ -204,12 +204,14 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             _last = messages[-1] if messages else None
             _last_content = _last.content if (_last is not None and isinstance(_last, _HM)) else ""
             _action_kw = _re_local.compile(
-                r"\b(envoie|envoyer|crée|créer|créé|liste|cherche|trouve|génère|exécute|"
-                r"lance|planifie|programme|note|enregistre|sauvegarde|supprime|delete|"
-                r"mail|email|calendrier|drive|sheet|doc|tâche|rappel|"
+                r"\b(envoie|envoyer|crée|créer|créé|liste[rz]?|listes?|"
+                r"cherche|trouve|génère|exécute|"
+                r"lance|planifie|programme|notes?|enregistre|sauvegarde|supprime|delete|"
+                r"affiche[rz]?|montre[rz]?|quels?(?: sont)?|quelles?(?: sont)?|"
+                r"mails?|emails?|calendrier|drive|sheets?|docs?|tâches?|rappels?|"
                 r"ajoute|update|modifie|mets à jour|déplace|partage|"
                 r"capture|screenshot|météo|news|traduis|"
-                r"ssh|exécute|monitore|surveille)\b",
+                r"ssh|monitore|surveille)\b",
                 _re_local.IGNORECASE,
             )
             _force_tools = (
@@ -473,12 +475,23 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 # ── Execute ────────────────────────────────────────────────
                 tool = tool_map.get(tool_name)
                 if tool:
+                    import time as _tt
+                    _ts = _tt.monotonic()
                     try:
                         result = await tool.ainvoke(args)
+                        logger.warning(
+                            "⏱ TIMING[%s.tool:%s] %.2fs — result=%.120s",
+                            cfg.name, tool_name, _tt.monotonic() - _ts, str(result),
+                        )
                         results.append(_tool_result(str(result), tc_id))
                     except Exception as exc:
+                        logger.warning(
+                            "⏱ TIMING[%s.tool:%s] %.2fs — ERROR: %s",
+                            cfg.name, tool_name, _tt.monotonic() - _ts, exc,
+                        )
                         results.append(_tool_result(f"Erreur d'execution: {exc}", tc_id))
                 else:
+                    logger.warning("⏱ TIMING[%s.tool:%s] UNAVAILABLE for this agent", cfg.name, tool_name)
                     results.append(_tool_result(
                         f"Outil '{tool_name}' non disponible pour cet agent.", tc_id
                     ))
