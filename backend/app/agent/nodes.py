@@ -133,6 +133,13 @@ Format des réponses — IMPÉRATIF :
 - Pour énumérer, utilise des formules orales : "premièrement... ensuite... enfin..."
 - Tes réponses doivent être fluides et agréables à entendre lues à voix haute
 - Exception : les URLs peuvent être données telles quelles pour que l'utilisateur puisse cliquer
+
+Emojis — RÈGLE PAR DÉFAUT STRICTE :
+- Par défaut, n'utilise AUCUN emoji, AUCUN émoticône, AUCUN pictogramme Unicode dans tes réponses. Ni au milieu, ni à la fin. Ni ✋ ni 🖐️ ni 👋 ni 👍 ni ✅ ni aucun autre.
+- Si l'utilisateur a explicitement activé les emojis dans ses préférences, tu peux en utiliser. Sinon JAMAIS.
+- Exemple CORRECT : "C'est noté Franck, je ne le ferai plus."
+- Exemple INCORRECT : "C'est noté Franck, je ne le ferai plus. ✋" ← l'emoji à la fin est INTERDIT
+- Quand l'utilisateur te demande de ne plus utiliser d'emojis, tu dois respecter cette consigne DÈS LE MESSAGE SUIVANT, y compris dans la réponse qui accuse réception de la règle.
 """
 
 
@@ -557,9 +564,13 @@ async def tool_node(state: AgentState) -> dict:
         tool = tool_map.get(tool_name)
         if tool:
             try:
+                import time as _tt
+                _ts = _tt.monotonic()
                 result = await tool.ainvoke(args)
+                logger.info("⏱ TIMING[tool:%s] %.2fs", tool_name, _tt.monotonic() - _ts)
                 results.append(_tool_result(str(result), tc_id))
             except Exception as exc:
+                logger.warning("Tool %s failed: %s", tool_name, exc)
                 results.append(_tool_result(f"Erreur d'exécution: {exc}", tc_id))
         else:
             from langchain_core.messages import ToolMessage

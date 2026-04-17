@@ -167,7 +167,9 @@ function ChatPageInner() {
           content: msg.content ?? "",
           model_used: msg.model_used,
           routing_score: msg.routing_score,
-          created_at: new Date().toISOString(),
+          // Use backend-provided timestamp (reflects real response time) if available,
+          // fallback to now() for backward compat if server hasn't been updated yet.
+          created_at: msg.created_at ?? new Date().toISOString(),
           ...(imgs.length > 0 ? { toolImages: imgs } : {}),
         }]);
         setStreamingContent("");

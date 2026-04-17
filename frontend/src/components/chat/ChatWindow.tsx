@@ -111,6 +111,32 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
     );
   }
 
+  // ── Date separators — show a divider when day changes between two messages ──
+  const formatDateSeparator = (iso: string): string => {
+    const d = new Date(iso);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const sameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    if (sameDay(d, today)) return "Aujourd'hui";
+    if (sameDay(d, yesterday)) return "Hier";
+    return d.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+    });
+  };
+
+  const dayKey = (iso: string | undefined): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {messages.map((msg, i) => {
@@ -118,14 +144,28 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
         const lastUserMsg = msg.role === "assistant"
           ? messages.slice(0, i).reverse().find((m) => m.role === "user")?.content
           : undefined;
+        // Inject a date separator before the first message of each new day
+        const prevMsg = i > 0 ? messages[i - 1] : null;
+        const showDateSeparator =
+          msg.created_at && (!prevMsg || dayKey(prevMsg.created_at) !== dayKey(msg.created_at));
         return (
-          <MessageBubble
-            key={i}
-            message={msg}
-            isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
-            lastUserMessage={lastUserMsg}
-            conversationId={conversationId}
-          />
+          <div key={i}>
+            {showDateSeparator && msg.created_at && (
+              <div className="flex items-center my-6">
+                <div className="flex-grow border-t border-border-dim"></div>
+                <span className="mx-4 text-xs text-text-muted uppercase tracking-wider">
+                  {formatDateSeparator(msg.created_at)}
+                </span>
+                <div className="flex-grow border-t border-border-dim"></div>
+              </div>
+            )}
+            <MessageBubble
+              message={msg}
+              isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
+              lastUserMessage={lastUserMsg}
+              conversationId={conversationId}
+            />
+          </div>
         );
       })}
 

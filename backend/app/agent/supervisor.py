@@ -161,6 +161,14 @@ Format des réponses — IMPÉRATIF :
 - Réponds en français par défaut
 - Ne jamais divulguer les credentials ou la configuration interne
 
+Emojis — RÈGLE STRICTE :
+- Par défaut, aucun emoji, aucun émoticône, aucun pictogramme Unicode.
+- Ni ✋ ni 🖐️ ni 👋 ni ✅ ni 🎉 ni aucun autre, au milieu ou à la fin.
+- Si l'utilisateur a désactivé les emojis dans ses préférences, la règle est ABSOLUE,
+  y compris dans la réponse qui accuse réception de la règle elle-même.
+- Exemple CORRECT : "C'est noté, je ne le ferai plus."
+- Exemple INCORRECT : "C'est noté, je ne le ferai plus. ✋"
+
 Apprentissage des préférences — IMPÉRATIF :
 - Dès que l'utilisateur exprime une préférence sur le ton, le format, le style, les émojis,
   la longueur des réponses, la langue, ou tout autre aspect de communication,
@@ -325,6 +333,8 @@ _INFRA_SKILLS = {
 
 async def router_node(state: AgentState) -> dict:
     """Classify the user's request and set the routing domain in state."""
+    import time as _t
+    _start = _t.monotonic()
     messages = state["messages"]
     last_user_msg = ""
     for m in reversed(messages):
@@ -347,7 +357,8 @@ async def router_node(state: AgentState) -> dict:
         logger.warning("Router failed, falling back to general: %s", exc)
         domain = "general"
 
-    logger.debug("Router → %s (for: %.80s)", domain, last_user_msg)
+    _elapsed = _t.monotonic() - _start
+    logger.info("⏱ TIMING[router] %.2fs → domain=%s (msg=%.60s)", _elapsed, domain, last_user_msg)
     return {"domain": domain}
 
 
@@ -452,10 +463,14 @@ def _make_dispatch_node(domain: str):
     """
 
     async def dispatch_node(state: AgentState) -> dict:
+        import time as _t
+        _start = _t.monotonic()
         from app.agent.sub_agents.registry import get_sub_agent_registry
 
         registry = get_sub_agent_registry()
         sub_graph = registry.get(domain)
+
+        logger.info("⏱ TIMING[dispatch→%s] starting", domain)
 
         if sub_graph is None:
             logger.warning(
@@ -502,11 +517,12 @@ def _make_dispatch_node(domain: str):
                         _last.model_copy(update={"content": _combined})
                     ]
             # ─────────────────────────────────────────────────────────────
+            logger.info("⏱ TIMING[dispatch→%s] DONE in %.2fs (%d new msgs)", domain, _t.monotonic() - _start, len(new_messages))
             return {"messages": new_messages, "domain": domain}
         except Exception as exc:
             logger.error(
-                "Sub-agent '%s' failed (%s) — running general agent with tools loop",
-                domain, exc,
+                "Sub-agent '%s' failed (%.2fs, %s) — running general agent with tools loop",
+                domain, _t.monotonic() - _start, exc,
             )
             # Run a full agent+tools loop (not just one turn) so tool_calls
             # like pdf_read, search_web, etc. are actually executed and the

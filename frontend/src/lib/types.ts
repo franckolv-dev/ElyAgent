@@ -81,6 +81,8 @@ export interface WSMessage {
   // SLM/LLM routing info
   model_used?: string;
   routing_score?: number;
+  // Server timestamp for messages
+  created_at?: string;
   // Browser copilot fields
   data?: string;   // base64 PNG screenshot
   url?: string;

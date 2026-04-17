@@ -21,6 +21,7 @@ package com.ely.agent.ui.chat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
@@ -79,7 +80,12 @@ fun ChatScreen(
     ) { padding ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(vertical = 8.dp)) {
-            items(uiState.messages, key = { it.id }) { message ->
+            itemsIndexed(uiState.messages, key = { _, m -> m.id }) { index, message ->
+                // Insert a date separator before the first message of each new day
+                val prevTimestamp = if (index > 0) uiState.messages[index - 1].timestamp else 0L
+                if (index == 0 || !isSameDay(prevTimestamp, message.timestamp)) {
+                    DateSeparator(timestamp = message.timestamp)
+                }
                 if (message.role == MessageRole.HITL_PENDING && message.hitlRequest != null) {
                     HitlCard(
                         hitlRequest = message.hitlRequest,

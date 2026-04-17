@@ -434,6 +434,15 @@ async def websocket_voice(websocket: WebSocket):
             # Restore real values
             ai_content = sf.deanonymize(ai_content)
 
+            # Enforce user preferences (strip emojis/markdown if asked)
+            try:
+                from app.services.response_filter import apply_user_preferences
+                from app.services.memory_manager import get_memory_manager as _gmm
+                _prefs = await _gmm().get_user_preferences(user_id)
+                ai_content = apply_user_preferences(ai_content, _prefs)
+            except Exception:
+                pass
+
             if stop_event.is_set() and ai_content:
                 ai_content = ai_content.rstrip()
 

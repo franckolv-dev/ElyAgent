@@ -377,9 +377,22 @@ async def websocket_chat(websocket: WebSocket):
             # Restore real values in the response
             ai_content = sf.deanonymize(ai_content)
 
+            # Enforce user preferences as a safety net (strip emojis / markdown
+            # if the user has asked for it). Small LLMs often fail on negative
+            # constraints like "do not use emojis" even when the rule is in the
+            # system prompt — this deterministic post-filter is the reliable
+            # fallback.
+            try:
+                from app.services.response_filter import apply_user_preferences
+                _mm = get_memory_manager()
+                _prefs = await _mm.get_user_preferences(user_id)
+                ai_content = apply_user_preferences(ai_content, _prefs)
+            except Exception as _filter_exc:
+                logger.debug("Response filter skipped: %s", _filter_exc)
+
             # If interrupted but partial content exists, send it as a normal message
             if stop_event.is_set() and ai_content:
-                ai_content = ai_content.rstrip() + " ✋"
+                ai_content = ai_content.rstrip() + " …"
 
             async with async_session() as db:
                 ai_msg = Message(
@@ -401,11 +414,13 @@ async def websocket_chat(websocket: WebSocket):
                 conversation_id=str(conversation_id),
             )
 
+            from datetime import datetime as _dt, timezone as _tz
             payload: dict = {
                 "type": "message",
                 "role": "assistant",
                 "content": ai_content,
                 "conversation_id": conversation_id,
+                "created_at": _dt.now(_tz.utc).isoformat(),
             }
             if model_used_out:
                 payload["model_used"] = model_used_out

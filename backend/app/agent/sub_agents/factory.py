@@ -79,6 +79,8 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
         from datetime import datetime
 
         async def agent_node(state: SubAgentState) -> dict:
+            import time as _t
+            _t_start = _t.monotonic()
             from app.skills import get_skill_registry
             from app.services.memory_manager import get_memory_manager
             from app.services.llm_provider import (
@@ -196,8 +198,13 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 [{"role": "system", "content": system}]
                 + _sanitize_messages_for_mistral(messages)
             )
+            _model_name = getattr(llm, 'model', None) or getattr(llm, 'model_name', '?')
+            _prep_time = _t.monotonic() - _t_start
+            logger.info("⏱ TIMING[%s.prep] %.2fs — model=%s, tools=%d, msgs=%d", cfg.name, _prep_time, _model_name, len(agent_tools), len(messages))
+            _infer_start = _t.monotonic()
             try:
                 response = await llm_with_tools.ainvoke(_invoke_msgs)
+                logger.info("⏱ TIMING[%s.infer] %.2fs — tool_calls=%d", cfg.name, _t.monotonic() - _infer_start, len(getattr(response, 'tool_calls', []) or []))
             except Exception as _primary_exc:
                 # Recover from quota/rate-limit/auth errors by trying fallbacks
                 from app.services.llm_provider import get_fallback_llms
