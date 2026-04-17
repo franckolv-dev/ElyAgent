@@ -427,9 +427,7 @@ def _quick_route(msg: str) -> str | None:
     ):
         return "general"
 
-    # PRIORITY: recurring schedules ALWAYS go to infra, even if the message
-    # mentions "rappel/calendar" — workspace would only create a one-shot
-    # event, not the recurring cron the user wants.
+    # PRIORITY 1: recurring schedules ALWAYS go to infra
     _recurrence_kw = _re.search(
         r"\b(chaque (jour|matin|soir|semaine|mois|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|"
         r"tous les (jours|matins|soirs|lundis|mardis|mercredis|jeudis|vendredis|samedis|dimanches)|"
@@ -438,6 +436,17 @@ def _quick_route(msg: str) -> str | None:
         msg_lower,
     )
     if _recurrence_kw:
+        return "infra"
+
+    # PRIORITY 2: references to scheduled/planned tasks → infra
+    # "tâches planifiées", "mes rappels", "mes programmations", "mon briefing"
+    # point to APScheduler (infra), not Google Tasks (workspace).
+    if _re.search(
+        r"\b(tâches? planifiées?|taches? planifiees?|mes rappels?|mes programmations?|"
+        r"mon briefing|mes briefings?|mes tâches? automatiques?|mes crons?|"
+        r"liste.*rappels?|afficher? (les |mes )?rappels?|mes (tâches? )?récurrentes?)\b",
+        msg_lower,
+    ):
         return "infra"
 
     for domain, pattern in _ROUTER_PATTERNS:
