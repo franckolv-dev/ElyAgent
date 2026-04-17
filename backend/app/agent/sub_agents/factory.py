@@ -205,6 +205,8 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             _last_content = _last.content if (_last is not None and isinstance(_last, _HM)) else ""
             _action_kw = _re_local.compile(
                 r"\b(envoie|envoyer|crée|créer|créé|liste[rz]?|listes?|"
+                r"prépare[rz]?|prépares?|compose[rz]?|composes?|rédige[rz]?|rédiges?|"
+                r"brouillons?|drafts?|répondre?|réponds?|réponse|"
                 r"cherche|trouve|génère|exécute|"
                 r"lance|planifie|programme|notes?|enregistre|sauvegarde|supprime|delete|"
                 r"affiche[rz]?|montre[rz]?|quels?(?: sont)?|quelles?(?: sont)?|"

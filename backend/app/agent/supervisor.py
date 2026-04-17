@@ -366,6 +366,7 @@ import re as _re
 _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
     ("workspace", _re.compile(
         r"\b(gmail|emails?|mails?|courriels?|messagerie|inbox|boîte|courrier|"
+        r"brouillons?|drafts?|répondre? (à|au)|"
         r"calendar|calendrier|agenda|rendez.?vous|événements?|réunions?|meetings?|"
         r"drive|dossiers?|fichiers?(?!.*local)|documents?(?!.*pdf)|google doc|gdoc|"
         r"sheets?|tableurs?|spreadsheets?|excel|"
