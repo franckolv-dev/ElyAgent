@@ -74,6 +74,16 @@ Mémoire persistante — IMPÉRATIF :
 - Si l'utilisateur te demande son prénom ou un fait te concernant et que le bloc "🧠" ne le contient pas encore, réponds honnêtement "je ne l'ai pas encore noté, peux-tu me le redire ?" — et appelle save_user_preference ou laisse l'extraction automatique faire son travail à la fin de la conversation.
 - Ne JAMAIS invoquer le "principe d'anonymat" pour refuser de te souvenir du prénom ou des infos partagées volontairement par l'utilisateur. L'anonymisation concerne la transmission au LLM externe, pas le stockage local.
 
+Intégrité des actions — IMPÉRATIF ABSOLU :
+- Ne JAMAIS, sous AUCUN prétexte, prétendre qu'une action est faite si tu n'as pas appelé l'outil correspondant dans ce tour de conversation.
+- Phrases INTERDITES tant que tu n'as pas appelé l'outil : "c'est fait", "rappel enregistré", "événement créé", "email envoyé", "tâche planifiée", "note ajoutée".
+- Phrases AUTORISÉES sans appel d'outil : "je vais le faire", "laisse-moi le créer", "je m'en occupe".
+- Pour un rappel quotidien/hebdomadaire/récurrent : utilise scheduler_create_task avec la bonne expression cron, pas calendar_create_event (Calendar est pour un événement unique).
+- Pour un événement unique dans un calendrier Google : calendar_create_event.
+- Pour un rappel déclenché par l'application ELY (notification push) : scheduler_create_task avec channel="ntfy" ou channel="app".
+- Si un outil échoue, dis-le clairement avec le code d'erreur plutôt que d'inventer un succès.
+- Quand l'utilisateur te dit "oui" pour confirmer, regarde le tour précédent : si tu as proposé une action, APPELLE L'OUTIL IMMÉDIATEMENT sans repasser par une phrase d'annonce. N'attends pas.
+
 Comportement attendu :
 - "crée-moi un document Word / Google Doc" → utiliser docs_create_document
 - "crée-moi un fichier Excel / une feuille de calcul" → utiliser sheets_create_spreadsheet
@@ -203,6 +213,9 @@ def create_agent_node():
     _tier_cache_version = [-1]  # list so inner fn can mutate without nonlocal
 
     async def agent_node(state: AgentState) -> dict:
+        import time as _t
+        _gt_start = _t.monotonic()
+        logger.warning("⏱ TIMING[general] starting")
         nonlocal _slm_with_tools, _slm_version
         # _tier_llm_cache / _tier_cache_version are dicts/lists mutated in-place — no nonlocal needed
         messages = state["messages"]
@@ -296,9 +309,10 @@ def create_agent_node():
                 "Si l'utilisateur te demande quel LLM tu utilises, donne cette information précise.\n"
             )
 
-            skills_list = registry.skills_summary()
-            if skills_list:
-                system += f"\n\nCapacités disponibles :\n{skills_list}\n"
+            # NOTE: skills_summary() was injected here historically but produced a
+            # ~20k-char block (148 tool names + descriptions) that was redundant with
+            # bind_tools() and drastically slowed qwen3:4b / small models. Removed —
+            # the LLM sees tool schemas via bind_tools when needed.
 
             system += (
                 f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
@@ -410,15 +424,29 @@ def create_agent_node():
                     system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
                     system += "\n".join(f"- {m}" for m in memories)
 
-            # Tier routing: pick the right local/cloud model based on complexity
-            from app.services.llm_provider import classify_complexity, get_llm_for_tier
+            # Tier routing: pick the right local/cloud model based on complexity.
+            # CRITICAL PERF: the "general" node has access to ALL ~148 tools, which
+            # makes bind_tools + the first inference extremely slow on any model
+            # (the prompt grows massively with 148 tool schemas, ~30k tokens). For
+            # SIMPLE queries that don't need tools (greetings, simple facts, chitchat),
+            # we skip tool binding entirely — the LLM answers from knowledge + system
+            # prompt. Response goes from 30-90s to under 5s.
+            from app.services.llm_provider import classify_complexity, get_llm_for_tier, ComplexityTier
             _tier = classify_complexity(user_query)
+            _bind_tools_flag = (_tier != ComplexityTier.SIMPLE)
             _tier_key = _tier.value
-            if _tier_key not in _tier_llm_cache:
-                _tier_llm_cache[_tier_key] = get_llm_for_tier(_tier).bind_tools(registry.all_tools)
-                logger.info("Tier LLM bound: tier=%s (tools_v=%d)", _tier_key, current_version)
-            _llm_with_tools_req = _tier_llm_cache[_tier_key]
-            model_used = f"llm:tier-{_tier_key}"
+            # Cache key differentiates with/without tools bound
+            _cache_key = f"{_tier_key}:{'tools' if _bind_tools_flag else 'notools'}"
+            if _cache_key not in _tier_llm_cache:
+                _bind_start = _t.monotonic()
+                _base_llm = get_llm_for_tier(_tier)
+                _tier_llm_cache[_cache_key] = (
+                    _base_llm.bind_tools(registry.all_tools) if _bind_tools_flag else _base_llm
+                )
+                logger.warning("⏱ TIMING[general.bind] %.2fs — tier=%s, bind_tools=%s (tools_v=%d)",
+                    _t.monotonic() - _bind_start, _tier_key, _bind_tools_flag, current_version)
+            _llm_with_tools_req = _tier_llm_cache[_cache_key]
+            model_used = f"llm:tier-{_tier_key}{'+tools' if _bind_tools_flag else ''}"
 
             _fitted = fit_messages_to_context(
                 messages=_sanitized,
@@ -431,7 +459,10 @@ def create_agent_node():
                 + _fitted
             )
             try:
+                _infer_t = _t.monotonic()
                 response = await _llm_with_tools_req.ainvoke(_invoke_msgs)
+                logger.warning("⏱ TIMING[general.infer] %.2fs — tier=%s, tool_calls=%d",
+                    _t.monotonic() - _infer_t, _tier_key, len(getattr(response, 'tool_calls', []) or []))
             except Exception as primary_exc:
                 # Detect recoverable API errors: quota exhausted, rate limit,
                 # authentication failure, service unavailable.
@@ -567,7 +598,7 @@ async def tool_node(state: AgentState) -> dict:
                 import time as _tt
                 _ts = _tt.monotonic()
                 result = await tool.ainvoke(args)
-                logger.info("⏱ TIMING[tool:%s] %.2fs", tool_name, _tt.monotonic() - _ts)
+                logger.warning("⏱ TIMING[tool:%s] %.2fs", tool_name, _tt.monotonic() - _ts)
                 results.append(_tool_result(str(result), tc_id))
             except Exception as exc:
                 logger.warning("Tool %s failed: %s", tool_name, exc)

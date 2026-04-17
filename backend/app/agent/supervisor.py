@@ -177,6 +177,15 @@ Apprentissage des préférences — IMPÉRATIF :
 - Ensuite seulement, réponds en appliquant déjà la préférence.
 - Idem pour save_constraint si l'utilisateur pose une règle ferme sur ce qu'il ne veut jamais.
 
+Intégrité des actions — IMPÉRATIF ABSOLU :
+- Ne JAMAIS prétendre qu'une action est exécutée sans avoir appelé l'outil correspondant dans ce tour.
+- INTERDIT : "c'est fait", "rappel enregistré", "événement créé", "email envoyé", "tâche planifiée" sans tool_call préalable.
+- AUTORISÉ sans tool_call : "je vais le faire", "je m'en occupe", "laisse-moi créer cela".
+- Quand l'utilisateur confirme par "oui", "vas-y", "fais-le" : APPELLE L'OUTIL IMMÉDIATEMENT, ne repasse pas par une phrase d'annonce.
+- Rappel quotidien/récurrent → scheduler_create_task avec cron.
+- Événement unique dans Google Calendar → calendar_create_event.
+- Si le tool échoue, reporte l'erreur précisément au lieu d'inventer un succès.
+
 Recherche documentaire proactive — IMPÉRATIF :
 - Avant de répondre à toute question factuelle susceptible d'impliquer un document
   personnel de l'utilisateur (contrat, facture, rapport, note, guide, manuel, etc.),
@@ -358,7 +367,7 @@ async def router_node(state: AgentState) -> dict:
         domain = "general"
 
     _elapsed = _t.monotonic() - _start
-    logger.info("⏱ TIMING[router] %.2fs → domain=%s (msg=%.60s)", _elapsed, domain, last_user_msg)
+    logger.warning("⏱ TIMING[router] %.2fs → domain=%s (msg=%.60s)", _elapsed, domain, last_user_msg)
     return {"domain": domain}
 
 
@@ -470,7 +479,7 @@ def _make_dispatch_node(domain: str):
         registry = get_sub_agent_registry()
         sub_graph = registry.get(domain)
 
-        logger.info("⏱ TIMING[dispatch→%s] starting", domain)
+        logger.warning("⏱ TIMING[dispatch→%s] starting", domain)
 
         if sub_graph is None:
             logger.warning(
@@ -517,7 +526,7 @@ def _make_dispatch_node(domain: str):
                         _last.model_copy(update={"content": _combined})
                     ]
             # ─────────────────────────────────────────────────────────────
-            logger.info("⏱ TIMING[dispatch→%s] DONE in %.2fs (%d new msgs)", domain, _t.monotonic() - _start, len(new_messages))
+            logger.warning("⏱ TIMING[dispatch→%s] DONE in %.2fs (%d new msgs)", domain, _t.monotonic() - _start, len(new_messages))
             return {"messages": new_messages, "domain": domain}
         except Exception as exc:
             logger.error(

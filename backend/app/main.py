@@ -67,6 +67,10 @@ from app.services.fts_store import get_fts_store
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import logging as _logging
+    # Make sure INFO-level logs from app.* modules are visible (default
+    # uvicorn config leaves non-uvicorn loggers at WARNING). We need INFO
+    # for the ⏱ TIMING[...] diagnostic lines from the agent pipeline.
+    _logging.getLogger("app").setLevel(_logging.INFO)
     _startup_logger = _logging.getLogger("app.startup")
 
     # Register all built-in skills BEFORE the agent graph is built

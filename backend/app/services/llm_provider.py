@@ -229,18 +229,27 @@ async def load_llm_settings_from_db() -> None:
 
 
 def get_slm() -> BaseChatModel:
-    """Return the local Small Language Model (Ollama) for simple requests.
+    """Return the local Small Language Model for simple requests.
 
-    Raises ImportError if langchain-ollama is not installed.
-    The caller is responsible for the asyncio.wait_for timeout and LLM fallback.
+    Uses the SIMPLE tier configured in Settings → Routage (honored via
+    instance cache) rather than the static slm_model setting — so users
+    can swap their local model without restarting the backend.
+    Falls back to settings.slm_model via Ollama if no SIMPLE tier instance
+    is configured (preserves the legacy behavior).
     """
+    # Prefer the user's configured SIMPLE tier so we respect the same
+    # model they selected in the UI (avoids pointing at a deleted Ollama model).
+    try:
+        llm = get_llm_for_tier(ComplexityTier.SIMPLE)
+        return llm
+    except Exception:
+        pass
+
     settings = get_settings()
     from langchain_ollama import ChatOllama
-    return ChatOllama(
-        model=settings.slm_model,
+    return ChatOllama(model=settings.slm_model,
         base_url=settings.ollama_base_url,
-        temperature=0.7,
-    )
+        temperature=0.7, keep_alive="24h")
 
 
 def _make_openrouter(model: str, api_key: str, max_tokens: int = 4096, temperature: float = 0.7) -> BaseChatModel:
@@ -340,11 +349,9 @@ def get_llm() -> BaseChatModel:
 
     elif provider == "ollama":
         from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=model,
+        return ChatOllama(model=model,
             base_url=settings.ollama_base_url,
-            temperature=0.7,
-        )
+            temperature=0.7, keep_alive="24h")
 
     elif provider == "deepseek":
         from langchain_openai import ChatOpenAI
@@ -437,11 +444,9 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
     if current_provider != "ollama":
         try:
             from langchain_ollama import ChatOllama
-            candidates.append(("ollama/qwen2.5:7b-instruct", ChatOllama(
-                model="qwen2.5:7b-instruct",
+            candidates.append(("ollama/qwen2.5:7b-instruct", ChatOllama(model="qwen2.5:7b-instruct",
                 base_url=settings.ollama_base_url,
-                temperature=0.7,
-            )))
+                temperature=0.7, keep_alive="24h")))
         except Exception:
             pass
 
@@ -495,11 +500,9 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
 
     elif provider == "ollama":
         from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=model,
+        return ChatOllama(model=model,
             base_url=settings.ollama_base_url,
-            temperature=temperature,
-        )
+            temperature=temperature, keep_alive="24h")
 
     elif provider == "deepseek":
         from langchain_openai import ChatOpenAI
@@ -545,11 +548,9 @@ def _make_llm_for_provider(
 
     if provider_id == "ollama":
         from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=settings.slm_model or "qwen2.5:7b-instruct",
+        return ChatOllama(model=settings.slm_model or "qwen2.5:7b-instruct",
             base_url=settings.ollama_base_url,
-            temperature=temperature,
-        )
+            temperature=temperature, keep_alive="24h")
 
     if provider_id == "zhipu":
         key = _key("zhipu", settings.zhipu_api_key)
@@ -681,7 +682,7 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
-        return ChatOllama(model=model, base_url=settings.ollama_base_url, temperature=temperature)
+        return ChatOllama(model=model, base_url=settings.ollama_base_url, temperature=temperature, keep_alive="24h")
 
     if provider == "anthropic":
         key = api_key or settings.anthropic_api_key
