@@ -288,7 +288,36 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 response = await llm_with_tools.ainvoke(_invoke_msgs)
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
-                logger.warning("⏱ TIMING[%s.infer] %.2fs — tool_calls=%d", cfg.name, _t.monotonic() - _infer_start, len(getattr(response, 'tool_calls', []) or []))
+                _n_tc = len(getattr(response, 'tool_calls', []) or [])
+                logger.warning("⏱ TIMING[%s.infer] %.2fs — tool_calls=%d", cfg.name, _t.monotonic() - _infer_start, _n_tc)
+
+                # If we forced tool_choice="any" but the LLM emitted zero tool
+                # calls, it means qwen2.5/small models ignored the constraint
+                # and returned text. Retry with a fallback LLM (Claude Haiku)
+                # which reliably respects tool_choice.
+                if _force_tools and _n_tc == 0:
+                    from app.services.llm_provider import get_fallback_llms
+                    logger.warning(
+                        "⏱ TIMING[%s.infer] tool_choice=any ignored by %s — retrying with fallback",
+                        cfg.name, _model_name,
+                    )
+                    for _fb_label, _fb_llm in get_fallback_llms():
+                        try:
+                            _fb_bound = _fb_llm.bind_tools(agent_tools, tool_choice="any")
+                        except Exception:
+                            _fb_bound = _fb_llm.bind_tools(agent_tools)
+                        try:
+                            _fb_t = _t.monotonic()
+                            response = await _fb_bound.ainvoke(_invoke_msgs)
+                            _n_tc2 = len(getattr(response, 'tool_calls', []) or [])
+                            logger.warning(
+                                "⏱ TIMING[%s.fallback] %.2fs — %s, tool_calls=%d",
+                                cfg.name, _t.monotonic() - _fb_t, _fb_label, _n_tc2,
+                            )
+                            if _n_tc2 > 0:
+                                break
+                        except Exception as _fb_exc:
+                            logger.warning("Fallback %s also failed: %s", _fb_label, _fb_exc)
             except Exception as _primary_exc:
                 # Recover from quota/rate-limit/auth errors by trying fallbacks
                 from app.services.llm_provider import get_fallback_llms
