@@ -115,8 +115,6 @@ dependencies {
     implementation(libs.firebase.analytics)
 
     implementation(libs.biometric)
-    // TODO Phase 5: Gemini Nano on-device AI
-    // implementation(libs.mediapipe.genai)
     implementation(libs.coroutines.android)
     implementation(libs.accompanist.permissions)
 

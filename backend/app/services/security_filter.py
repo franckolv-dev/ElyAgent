@@ -45,68 +45,76 @@ _PATTERNS: dict[str, re.Pattern] = {
     "PHONE": re.compile(r"\b(?:\+33|0)[1-9](?:\d{2}){4}\b"),
 }
 
-# Tool names that always require human validation
-# Only truly destructive or irreversible actions belong here
+# Tool names that always require human validation.
+#
+# HITL philosophy (2026-04-17): minimiser la friction. L'agent doit être
+# fluide pour les actions courantes non-dangereuses (créer un RDV, bouger
+# un mail dans un dossier, modifier un doc). HITL uniquement pour :
+#   1. Suppressions (destructives, irréversibles)
+#   2. Envois de mail (relecture avant envoi externe)
+#   3. SSH (commandes serveur)
+#   4. Config système / API brute (modifications silencieuses)
+#   5. Contrôle OS (sécurité du système local)
+#   6. Communications externes (WhatsApp) + partage externe (Drive share)
+#
+# Les actions NON-HITL :
+#   - calendar_* create/update : c'est SON calendrier
+#   - docs/sheets_batch_update : SES documents
+#   - gmail_move/batch_modify : déplacement, pas envoi
+#   - drive_move_file : dans SON drive
 ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
-    "ssh_execute",
+    # ── 1. Suppressions ──
+    "desktop_delete_file",
+    "drive_delete_file",
+    "tasks_delete",
+    "gmail_trash_emails",
+    "contacts_delete",
+    "calendar_delete_event",
+    # ── 2. Envois de mail (relecture obligatoire) ──
     "gmail_send_email",
-    "whatsapp_send",
-    "whatsapp_send_template",
-    # Browser actions that modify state on external websites
-    "browser_click",
-    "browser_fill",
-    # OS control — desktop automation (Interactive Trainer)
-    "os_mouse_move",
+    "gmail_reply_email",
+    "gmail_send_with_attachment",
+    # ── 3. SSH ──
+    "ssh_execute",
+    # ── 4. Config / API brute (mutations silencieuses potentielles) ──
+    "gmail_update_settings",
+    "gmail_raw_api_call",
+    "calendar_raw_api_call",
+    "drive_raw_api_call",
+    "docs_raw_api_call",
+    "sheets_raw_api_call",
+    "tasks_raw_api_call",
+    "contacts_raw_api_call",
+    "mcp_validate_and_deploy",
+    # ── 5. Contrôle OS (dangereux pour la machine locale) ──
     "os_click",
     "os_type_text",
     "os_hotkey",
-    # MCP dynamic generation — executes generated code
-    "mcp_validate_and_deploy",
-    # ELY Desktop — destructive filesystem operations on user's local machine
+    "os_mouse_move",
     "desktop_write_file",
     "desktop_move_file",
-    "desktop_delete_file",
-    # Google Workspace — actions critiques
-    "gmail_reply_email",
-    "gmail_send_with_attachment",
-    "gmail_move_emails",
-    "gmail_trash_emails",
-    "calendar_create_event",
-    "calendar_delete_event",
-    "drive_move_file",
-    "drive_delete_file",
-    "contacts_delete",
-    "tasks_delete",
-    # Google Workspace — nouveaux tools avancés
-    # batch_update et raw_api_call peuvent muter arbitrairement → HITL
-    "sheets_batch_update",
-    "sheets_raw_api_call",
-    "docs_batch_update",
-    "docs_raw_api_call",
+    # ── 6. Communications externes + partage ──
+    "whatsapp_send",
+    "whatsapp_send_template",
     "drive_share_file",
-    "drive_raw_api_call",
-    "calendar_quick_add",
-    "calendar_create_meet_event",
-    "calendar_raw_api_call",
-    "gmail_batch_modify",
-    "gmail_update_settings",
-    "gmail_raw_api_call",
-    "tasks_raw_api_call",
-    "contacts_batch_operations",
-    "contacts_raw_api_call",
 })
 
 # Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation
-# These are checked against the display_args JSON, not the tool name
+# These are checked against the display_args JSON, not the tool name.
+# Kept minimal — "remove" removed (too broad), added financial transfer terms.
 _CRITICAL_KEYWORDS: frozenset[str] = frozenset({
     # Destructive operations
-    "delete", "remove", "drop", "purge", "wipe", "truncate",
+    "delete", "drop", "purge", "wipe", "truncate",
     "supprimer", "effacer",
     "rm -rf", "format", "mkfs",
     "chmod 777", "chown root",
-    # Financial
+    # Financial — payments, transfers, purchases
     "pay", "payment", "virement", "buy", "purchase",
-    "payer", "achat",
+    "payer", "achat", "transfer", "transférer",
+    "send money", "envoyer de l'argent",
+    # Browser purchase flows (when browser_click/fill is the tool)
+    "paypal.com", "checkout", "panier", "cart",
+    "amazon.", "cdiscount.", "fnac.", "leboncoin.",
 })
 
 

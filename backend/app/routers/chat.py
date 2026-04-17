@@ -22,6 +22,18 @@ import logging
 import uuid
 from pathlib import Path
 
+# orjson is 2-5× faster than stdlib json for serialization on the WS hot path.
+# Fallback to stdlib if not available for any reason.
+try:
+    import orjson as _orjson
+    def _dumps(obj: dict) -> str:
+        return _orjson.dumps(obj).decode("utf-8")
+    def _loads(data: str) -> dict:
+        return _orjson.loads(data)
+except ImportError:
+    _dumps = json.dumps
+    _loads = json.loads
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy import select
@@ -81,7 +93,7 @@ async def websocket_chat(websocket: WebSocket):
 
     try:
         handshake = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
-        data = json.loads(handshake)
+        data = _loads(handshake)
         token = data.get("token", "")
     except (asyncio.TimeoutError, json.JSONDecodeError, KeyError):
         await websocket.close(code=1008)
@@ -127,10 +139,10 @@ async def websocket_chat(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             try:
-                msg = json.loads(data)
+                msg = _loads(data)
             except json.JSONDecodeError:
                 logger.warning("Malformed JSON from user %s (ignored): %.200s", user_id, data)
-                await websocket.send_text(json.dumps({
+                await websocket.send_text(_dumps({
                     "type": "error",
                     "content": "Message invalide — JSON mal formé.",
                 }))
@@ -228,7 +240,7 @@ async def websocket_chat(websocket: WebSocket):
             history_msgs.append(HumanMessage(content=clean_content))
 
             agent = get_agent()
-            await websocket.send_text(json.dumps({
+            await websocket.send_text(_dumps({
                 "type": "start",
                 "conversation_id": conversation_id,
             }))
@@ -249,7 +261,7 @@ async def websocket_chat(websocket: WebSocket):
                 while not stop_event.is_set():
                     try:
                         raw = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
-                        inner = json.loads(raw)
+                        inner = _loads(raw)
                         if inner.get("type") == "stop":
                             stop_event.set()
                             return
@@ -292,7 +304,7 @@ async def websocket_chat(websocket: WebSocket):
                             token = str(raw)
                         if token:
                             ai_content += token
-                            await websocket.send_text(json.dumps({
+                            await websocket.send_text(_dumps({
                                 "type": "token",
                                 "content": token,
                             }))
@@ -308,7 +320,7 @@ async def websocket_chat(websocket: WebSocket):
                     tool_name = event.get("name", "")
                     if tool_name:
                         tools_called.append(tool_name)
-                        await websocket.send_text(json.dumps({
+                        await websocket.send_text(_dumps({
                             "type": "tool_start",
                             "tool": tool_name,
                         }))
@@ -319,7 +331,7 @@ async def websocket_chat(websocket: WebSocket):
                     _image_payload: dict | None = None
                     if isinstance(tool_output, str) and tool_output.startswith("{"):
                         try:
-                            _parsed = json.loads(tool_output)
+                            _parsed = _loads(tool_output)
                             if isinstance(_parsed, dict) and _parsed.get("type") == "image":
                                 _image_payload = _parsed
                         except (json.JSONDecodeError, ValueError):
@@ -327,7 +339,7 @@ async def websocket_chat(websocket: WebSocket):
                     _msg: dict = {"type": "tool_end", "tool": tool_name}
                     if _image_payload:
                         _msg["image"] = _image_payload
-                    await websocket.send_text(json.dumps(_msg))
+                    await websocket.send_text(_dumps(_msg))
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
                     model_used_out = output.get("model_used", "") or model_used_out
@@ -371,7 +383,7 @@ async def websocket_chat(websocket: WebSocket):
 
             # If interrupted with no content, notify client and skip saving
             if was_stopped:
-                await websocket.send_text(json.dumps({"type": "stopped"}))
+                await websocket.send_text(_dumps({"type": "stopped"}))
                 continue
 
             # Restore real values in the response
@@ -426,7 +438,7 @@ async def websocket_chat(websocket: WebSocket):
                 payload["model_used"] = model_used_out
             if routing_score_out is not None:
                 payload["routing_score"] = routing_score_out
-            await websocket.send_text(json.dumps(payload))
+            await websocket.send_text(_dumps(payload))
 
             # ── Log usage for analytics ─────────────────────────────────────────
             if model_used_out:
@@ -465,7 +477,7 @@ async def websocket_chat(websocket: WebSocket):
             "WebSocket error for user %s: %s", user_id, str(e), exc_info=True
         )
         try:
-            await websocket.send_text(json.dumps({
+            await websocket.send_text(_dumps({
                 "type": "error",
                 "content": "Une erreur interne s'est produite. Veuillez réessayer.",
             }))
@@ -576,7 +588,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         if "```" in raw:
             raw = raw.split("```")[1].lstrip("json").strip()
         try:
-            facts = _json.loads(raw)
+            facts = __loads(raw)
         except (_json.JSONDecodeError, ValueError):
             facts = []
 
@@ -602,7 +614,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         if "```" in raw_prefs:
             raw_prefs = raw_prefs.split("```")[1].lstrip("json").strip()
         try:
-            prefs = _json.loads(raw_prefs)
+            prefs = __loads(raw_prefs)
         except (_json.JSONDecodeError, ValueError):
             prefs = []
 

@@ -20,6 +20,11 @@ import json
 import logging
 import re
 
+
+async def _no_interactions() -> list[dict]:
+    """Cheap placeholder for get_relevant_interactions on the first turn."""
+    return []
+
 from langchain_core.messages import AIMessage, BaseMessage
 
 from app.agent.state import AgentState
@@ -286,10 +291,24 @@ def create_agent_node():
         else:
             # ── Full path: complete prompt + memory context ────────────────
             from app.services.memory_service import get_user_context
+            # PERF: skip get_relevant_interactions for the very first turn of a
+            # conversation — nothing to find yet, and the Qdrant search +
+            # FTS + embedding costs ~100-200ms. Only fetch when we have history.
+            # We fetch history starting from the 2nd user turn (conversation has
+            # at least one prior user+assistant pair).
+            _history_msgs_count = sum(
+                1 for m in messages if getattr(m, 'type', None) in ('human', 'ai')
+            )
+            _needs_interactions = _history_msgs_count > 1
+            _past_interactions_task = (
+                memory.get_relevant_interactions(user_query, user_id, limit=3)
+                if _needs_interactions
+                else _no_interactions()
+            )
             constraints, memories, past_interactions, preferences, user_profile = await asyncio.gather(
                 memory.get_relevant_constraints(user_query, user_id),
                 memory.get_relevant_memories(user_query, user_id),
-                memory.get_relevant_interactions(user_query, user_id, limit=3),
+                _past_interactions_task,
                 memory.get_user_preferences(user_id),
                 get_user_context(user_id),
             )
