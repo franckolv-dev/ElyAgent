@@ -31,6 +31,9 @@ interface ChatRepository {
     fun sendHitlResponse(actionId: String, decision: String)
     fun disconnect()
 
+    /** Tell the backend to stop the current agent turn. */
+    fun sendStop()
+
     /** Start a new empty conversation (next message will create a fresh id). */
     fun resetCurrentConversation()
 

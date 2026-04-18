@@ -142,9 +142,20 @@ class ChatViewModel @Inject constructor(
         _uiState.update { s -> s.copy(messages = s.messages.filter { it.id != "hitl_$actionId" }) }
     }
 
-    /** Manually cancel an ongoing streaming response. */
+    /** Manually cancel an ongoing streaming response.
+     *
+     * Sends a "stop" message to the backend so the agent aborts its
+     * current tool loop and flushes the state — otherwise the backend
+     * keeps running in the background and the next user message would
+     * race with the abandoned turn.
+     */
     fun cancelStreaming() {
         _streamingWatchdog?.cancel()
+        try {
+            chatRepository.sendStop()
+        } catch (_: Exception) {
+            // WS may be already closed — local reset below is enough
+        }
         _uiState.update {
             it.copy(isStreaming = false, streamingContent = "", isLoading = false)
         }

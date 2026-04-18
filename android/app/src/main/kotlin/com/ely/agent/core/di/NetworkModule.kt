@@ -58,8 +58,14 @@ object NetworkModule {
                 level = HttpLoggingInterceptor.Level.BODY
             })
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
+            // Long read timeout for WebSocket streams (agent can run 60-90s).
+            .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            // Ping every 25 s to keep the WS alive through proxies/NAT/Cloudflare,
+            // which often drop idle connections after 30-60 s.
+            .pingInterval(25, TimeUnit.SECONDS)
+            // Auto-retry on transient connection errors (works for REST, not WS).
+            .retryOnConnectionFailure(true)
             .build()
 
     @Provides

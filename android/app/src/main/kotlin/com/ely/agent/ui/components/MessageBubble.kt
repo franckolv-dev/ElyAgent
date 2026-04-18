@@ -48,8 +48,8 @@ fun MessageBubble(message: Message, modifier: Modifier = Modifier) {
                 if (message.isStreaming) {
                     StreamingText(text = message.streamingContent)
                 } else {
-                    Text(
-                        text = message.content,
+                    LinkifiedText(
+                        content = message.content,
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (isUser) MaterialTheme.colorScheme.onPrimary
                                 else MaterialTheme.colorScheme.onSurfaceVariant

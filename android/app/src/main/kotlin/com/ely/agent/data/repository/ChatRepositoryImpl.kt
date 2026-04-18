@@ -88,6 +88,8 @@ class ChatRepositoryImpl @Inject constructor(
     override fun sendHitlResponse(actionId: String, decision: String) =
         wsClient.sendHitlResponse(actionId, decision)
 
+    override fun sendStop() = wsClient.sendStop()
+
     override fun disconnect() = wsClient.disconnect()
 
     override fun resetCurrentConversation() {

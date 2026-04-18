@@ -20,6 +20,11 @@ package com.ely.agent.data.remote.websocket
 
 import androidx.datastore.core.DataStore
 import com.ely.agent.UserPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -27,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -35,6 +41,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.min
 
 @Singleton
 class ChatWebSocketClient @Inject constructor(
@@ -49,6 +56,14 @@ class ChatWebSocketClient @Inject constructor(
 
     private var webSocket: WebSocket? = null
 
+    // Background scope for reconnection attempts
+    private val _scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var _reconnectJob: Job? = null
+    private var _reconnectAttempts = 0
+
+    // Set to true when the user explicitly disconnects — prevents auto-reconnect
+    @Volatile private var _userDisconnected = false
+
     sealed class ConnectionState {
         object Connecting : ConnectionState()
         object Connected : ConnectionState()
@@ -56,6 +71,12 @@ class ChatWebSocketClient @Inject constructor(
     }
 
     fun connect() {
+        _userDisconnected = false
+        _reconnectJob?.cancel()
+        _doConnect()
+    }
+
+    private fun _doConnect() {
         val prefs = runBlocking { dataStore.data.first() }
         val serverUrl = prefs.serverUrl.ifBlank { "http://10.0.2.2:8000" }
         val token = prefs.accessToken
@@ -70,22 +91,39 @@ class ChatWebSocketClient @Inject constructor(
         val request = Request.Builder().url(wsUrl).build()
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
-                // Send token handshake immediately so the backend can authenticate
-                // (it times out after 10 s if no handshake arrives). The backend
-                // only reads the "token" field — no "type" field is needed.
                 ws.send(org.json.JSONObject().put("token", token).toString())
                 _connectionState.value = ConnectionState.Connected
+                _reconnectAttempts = 0  // reset backoff on successful connect
             }
             override fun onMessage(ws: WebSocket, text: String) {
                 _messages.tryEmit(WsMessageAdapter.parse(text))
             }
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 _connectionState.value = ConnectionState.Disconnected(t.message ?: "Connection failed")
+                _scheduleReconnect()
             }
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                 _connectionState.value = ConnectionState.Disconnected(reason)
+                _scheduleReconnect()
             }
         })
+    }
+
+    /**
+     * Auto-reconnect with exponential backoff (1s, 2s, 4s, 8s… capped at 30 s).
+     * Skipped when the user explicitly disconnected.
+     */
+    private fun _scheduleReconnect() {
+        if (_userDisconnected) return
+        _reconnectJob?.cancel()
+        _reconnectJob = _scope.launch {
+            val delayMs = min(30_000L, 1_000L * (1L shl _reconnectAttempts.coerceAtMost(5)))
+            _reconnectAttempts++
+            delay(delayMs)
+            if (!_userDisconnected && _connectionState.value !is ConnectionState.Connected) {
+                _doConnect()
+            }
+        }
     }
 
     fun send(text: String, conversationId: String? = null) {
@@ -105,7 +143,27 @@ class ChatWebSocketClient @Inject constructor(
         )
     }
 
+    /**
+     * Tell the backend to stop the current agent turn.
+     * The backend watches for "stop" messages inside its tool loop and
+     * aborts generation + flushes a "stopped" response back.
+     */
+    fun sendStop() {
+        webSocket?.send(org.json.JSONObject().put("type", "stop").toString())
+    }
+
+    /** Send a WebSocket ping to keep the connection alive (heartbeat). */
+    fun sendPing() {
+        try {
+            webSocket?.send(org.json.JSONObject().put("type", "ping").toString())
+        } catch (_: Exception) {
+            // Ignore — if WS is broken, onFailure will trigger reconnect
+        }
+    }
+
     fun disconnect() {
+        _userDisconnected = true
+        _reconnectJob?.cancel()
         webSocket?.close(1000, "User disconnected")
         webSocket = null
         _connectionState.value = ConnectionState.Disconnected()
