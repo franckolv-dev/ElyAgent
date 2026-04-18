@@ -1,7 +1,7 @@
 // =============================================================================
 // @project    ELY — Exactly Like You
 // @file       android/app/src/main/kotlin/com/ely/agent/ui/components/MessageBubble.kt
-// @brief      Message bubble component
+// @brief      Message bubble component — long-press menu: copy / share
 //
 // @author     Franck OLLIVIER <franck.olv@gmail.com>
 // @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
@@ -13,13 +13,23 @@
 
 package com.ely.agent.ui.components
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ely.agent.core.model.Message
@@ -28,9 +38,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MessageBubble(message: Message, modifier: Modifier = Modifier) {
     val isUser = message.role == MessageRole.USER
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    var showMenu by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
@@ -42,7 +57,13 @@ fun MessageBubble(message: Message, modifier: Modifier = Modifier) {
                 bottomStart = 16.dp, bottomEnd = 16.dp
             ),
             color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.widthIn(max = 300.dp).animateContentSize()
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .animateContentSize()
+                .combinedClickable(
+                    onClick = { /* tap does nothing — keeps the bubble non-interactive on short tap */ },
+                    onLongClick = { showMenu = true },
+                ),
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 if (message.isStreaming) {
@@ -52,7 +73,7 @@ fun MessageBubble(message: Message, modifier: Modifier = Modifier) {
                         content = message.content,
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (isUser) MaterialTheme.colorScheme.onPrimary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -62,8 +83,47 @@ fun MessageBubble(message: Message, modifier: Modifier = Modifier) {
             text = formatHHmmss(message.timestamp),
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
         )
+    }
+
+    // Modal bottom sheet with Copy / Share actions
+    if (showMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showMenu = false },
+        ) {
+            Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                ListItem(
+                    headlineContent = { Text("Copier") },
+                    leadingContent = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                    modifier = Modifier.combinedClickable(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(message.content))
+                            Toast.makeText(context, "Message copié", Toast.LENGTH_SHORT).show()
+                            showMenu = false
+                        },
+                        onLongClick = {},
+                    ),
+                )
+                ListItem(
+                    headlineContent = { Text("Partager") },
+                    leadingContent = { Icon(Icons.Default.Share, contentDescription = null) },
+                    modifier = Modifier.combinedClickable(
+                        onClick = {
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, message.content)
+                            }
+                            context.startActivity(
+                                Intent.createChooser(sendIntent, "Partager via…")
+                            )
+                            showMenu = false
+                        },
+                        onLongClick = {},
+                    ),
+                )
+            }
+        }
     }
 }
 
