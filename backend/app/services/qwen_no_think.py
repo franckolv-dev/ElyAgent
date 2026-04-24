@@ -31,6 +31,25 @@ from typing import Any
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", flags=re.DOTALL)
 _NO_THINK_RE = re.compile(r"\s*/no_think\s*$")
 
+# ── Gemma 4 "channel/thought" markers ─────────────────────────────────
+# Gemma 4 emits `<|channel>thought<channel|>` blocks around internal
+# reasoning before the actual answer. They leak into the UI if not
+# stripped. The tokenizer's chat template should strip them in theory
+# but LM Studio / llama.cpp sometimes forwards them raw. Handle three
+# variations observed in the wild:
+#   1. Paired:   <|channel>thought<channel|>…<|channel>answer<channel|>
+#   2. Stray opening marker followed by content (no closing tag)
+#   3. Literal markers scattered mid-text
+_GEMMA_CHANNEL_RE = re.compile(
+    r"<\|channel>\s*\w+\s*<channel\|>",
+    flags=re.IGNORECASE,
+)
+
+# Harmony / openai-style channel markers that other models occasionally
+# emit (e.g. some llama.cpp builds): `<|start|>`, `<|end|>`, `<|header|>`.
+# We strip them conservatively — they have no semantic value for the end user.
+_HARMONY_TAG_RE = re.compile(r"<\|(?:start|end|header|channel|message|return)\|?>", flags=re.IGNORECASE)
+
 
 def is_local_openai_llm(llm: Any) -> bool:
     """Return True if the LLM is a local OpenAI-compatible server (LM Studio,
@@ -108,11 +127,33 @@ def is_qwen_llm(llm: Any) -> bool:
 
 
 def strip_think_block(text: str) -> str:
-    """Remove <think>...</think> blocks that some Qwen3 variants emit
-    even when thinking is supposed to be off."""
-    if not text or "<think>" not in text:
+    """Clean up reasoning-marker leakage from several model families.
+
+    Handles :
+    - Qwen 3.x `<think>...</think>` (always stripped)
+    - Gemma 4 `<|channel>thought<channel|>` / `<|channel>answer<channel|>`
+      markers that leak when the tokenizer template is mis-applied
+    - Harmony-style `<|start|>`, `<|end|>`, `<|header|>`, `<|message|>`,
+      `<|return|>` tags occasionally emitted by llama.cpp / MLX runtimes
+
+    We keep everything OUTSIDE these markers — the content is the actual
+    answer we want to surface to the user.
+    """
+    if not text:
         return text
-    return _THINK_RE.sub("", text).strip()
+    out = text
+    if "<think>" in out:
+        out = _THINK_RE.sub("", out)
+    if "<|channel>" in out or "<channel|>" in out:
+        # Drop the channel separator tokens themselves; any content that
+        # sat "inside" a thought channel has been interleaved with the
+        # answer channel, so we can't reliably cut it out without a proper
+        # parser. Keeping the content and removing only the tags is safer
+        # than risking information loss.
+        out = _GEMMA_CHANNEL_RE.sub("", out)
+    if "<|" in out:
+        out = _HARMONY_TAG_RE.sub("", out)
+    return out.strip()
 
 
 def strip_no_think(messages: list[dict[str, Any]] | list[Any]) -> list[Any]:
