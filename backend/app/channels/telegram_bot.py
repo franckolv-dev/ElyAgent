@@ -136,7 +136,7 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         result = await db.execute(select(User).where(User.username == username))
         user = result.scalar_one_or_none()
 
-        if not user or not verify_password(password, user.hashed_password):
+        if not user or not await verify_password(password, user.hashed_password):
             await update.effective_chat.send_message("Identifiants incorrects.")
             return
 
@@ -350,14 +350,32 @@ async def start_telegram_bot() -> None:
         logger.info("Telegram bot token not configured — skipping Telegram channel")
         return
 
+    # Force polling mode when the backend is not the one Telegram's webhook
+    # points to (typical local dev setup: BACKEND_URL still points to the
+    # production VPS domain but we're running on a laptop / Mac Studio).
+    # Set TELEGRAM_USE_POLLING=1 in .env to bypass the HTTPS webhook path.
+    import os
+    force_polling = os.getenv("TELEGRAM_USE_POLLING", "").strip().lower() in {"1", "true", "yes"}
+
     # Determine webhook URL from config/env
     backend_url = getattr(s, "backend_url", "") or ""
     webhook_url = f"{backend_url.rstrip('/')}/webhook/telegram"
-    if not backend_url or not backend_url.startswith("https://"):
-        # Fallback to polling if no HTTPS backend URL configured
-        logger.warning(
-            "BACKEND_URL not set or not HTTPS (%r) — falling back to polling mode", backend_url
-        )
+    if force_polling or not backend_url or not backend_url.startswith("https://"):
+        # Polling mode — the bot long-polls the Telegram API and receives
+        # updates directly in-process, no webhook needed.
+        if force_polling:
+            logger.info("TELEGRAM_USE_POLLING=1 → polling mode (webhook bypassed)")
+            try:
+                # Clear any previously registered webhook so Telegram stops
+                # forwarding updates to the old URL and lets us poll instead.
+                from telegram import Bot as _Bot
+                await _Bot(token).delete_webhook(drop_pending_updates=True)
+            except Exception as exc:
+                logger.debug("delete_webhook failed (non-fatal): %s", exc)
+        else:
+            logger.warning(
+                "BACKEND_URL not set or not HTTPS (%r) — falling back to polling mode", backend_url
+            )
         await _start_polling(token)
         return
 

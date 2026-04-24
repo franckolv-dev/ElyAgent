@@ -268,7 +268,7 @@ async def _do_link(
         result = await db.execute(select(User).where(User.username == username))
         user = result.scalar_one_or_none()
 
-        if not user or not verify_password(password, user.hashed_password):
+        if not user or not await verify_password(password, user.hashed_password):
             await say("Identifiants incorrects.")
             return
 
