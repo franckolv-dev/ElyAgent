@@ -112,12 +112,18 @@ _DOMAIN_DESCRIPTIONS = {
         "recherche dans la base de connaissances (documents indexés par l'utilisateur)."
     ),
     "desktop": (
-        "Tout ce qui implique le bureau ou la machine locale de l'utilisateur : "
-        "démonstrations interactives (montrer comment faire quelque chose, tutoriels pas-à-pas, "
-        "prendre le contrôle de la souris et du clavier), captures d'écran, "
-        "lancer des applications, automatisation du bureau (ELY Trainer). "
-        "Aussi : accès au système de fichiers local via ELY Desktop — "
-        "lister, lire, écrire, déplacer, supprimer des fichiers, créer des répertoires."
+        "Opérations sur la machine LOCALE de l'utilisateur UNIQUEMENT. "
+        "Exemples : démonstrations interactives (tutoriels pas-à-pas, "
+        "contrôle de la souris/clavier), captures d'écran du bureau, lancer "
+        "des applications locales, automatisation du bureau (ELY Trainer), "
+        "lister/lire/écrire/déplacer/supprimer des fichiers du disque local "
+        "(~/Desktop, ~/Documents, /home, /Users…). "
+        "NE PAS confondre avec Google Drive : si le fichier est dans Drive "
+        "ou si l'utilisateur n'indique pas explicitement un chemin local "
+        "(« sur ma machine », « localement », « dans mon Bureau », chemin "
+        "avec ~ ou /), c'est workspace, PAS desktop. "
+        "Exemples workspace mal routés : « duplique ce doc », « partage ce "
+        "fichier », « renomme ce pdf » → workspace (Drive)."
     ),
     "general": (
         "Requête complexe impliquant plusieurs domaines à la fois, ou ne "
@@ -153,29 +159,29 @@ _IDENTITY = (
 )
 
 _COMMON_FORMAT = """
-Format des réponses — IMPÉRATIF :
-- Rédige TOUJOURS en texte naturel, comme si tu parlais à voix haute
-- N'utilise JAMAIS de markdown : aucun #, ##, **, *, `, ---, ni tiret de liste
-- Pour énumérer, utilise des formules orales : "premièrement... ensuite... enfin..."
-- Les URLs peuvent être données telles quelles
-- Réponds en français par défaut
-- Ne jamais divulguer les credentials ou la configuration interne
+Utilisation des tools — PRIORITÉ ABSOLUE :
+- Dès que la demande correspond à un tool, APPELLE-le immédiatement via function calling.
+- Ne JAMAIS annoncer l'appel ("je vais chercher...", "je lance...") — appelle direct.
+- N'écris JAMAIS du code Python pour simuler un tool call.
 
-Emojis — RÈGLE STRICTE :
-- Par défaut, aucun emoji, aucun émoticône, aucun pictogramme Unicode.
-- Ni ✋ ni 🖐️ ni 👋 ni ✅ ni 🎉 ni aucun autre, au milieu ou à la fin.
-- Si l'utilisateur a désactivé les emojis dans ses préférences, la règle est ABSOLUE,
-  y compris dans la réponse qui accuse réception de la règle elle-même.
-- Exemple CORRECT : "C'est noté, je ne le ferai plus."
-- Exemple INCORRECT : "C'est noté, je ne le ferai plus. ✋"
+Format des réponses TEXTE (seulement quand aucun tool n'est pertinent) :
+- Français, texte naturel sans markdown (#, **, `, ---, tirets de liste interdits).
+- Pour énumérer : "premièrement... ensuite... enfin...".
+- URLs données telles quelles, cliquables.
+- Pas de divulgation de credentials / config interne.
+- Aucun emoji par défaut — ni ✋ ✅ 🎉 ni aucun autre.
 
-Apprentissage des préférences — IMPÉRATIF :
-- Dès que l'utilisateur exprime une préférence sur le ton, le format, le style, les émojis,
-  la longueur des réponses, la langue, ou tout autre aspect de communication,
-  appelle IMMÉDIATEMENT l'outil save_user_preference AVANT de répondre.
-- Formule la préférence de façon claire et actionnable (ex: "Ne jamais utiliser d'émojis").
-- Ensuite seulement, réponds en appliquant déjà la préférence.
-- Idem pour save_constraint si l'utilisateur pose une règle ferme sur ce qu'il ne veut jamais.
+Apprentissage des préférences — RÈGLE STRICTE :
+- Appelle save_user_preference UNIQUEMENT quand l'utilisateur énonce
+  EXPLICITEMENT une préférence DURABLE ("je préfère X", "désormais
+  toujours Y", "à l'avenir utilise Z", "souviens-toi que W").
+- N'appelle JAMAIS save_user_preference :
+  * Sur une demande ponctuelle ("fais-moi un résumé court" = une fois, pas une préférence).
+  * En parallèle d'une autre action (envoyer un mail, créer un doc…) — c'est du bruit.
+  * Si la préférence est déjà dans le contexte mémorisé (🧠 ci-dessus).
+- save_constraint : uniquement sur règle ferme de type « ne fais jamais X »
+  (règle de sécurité/éthique), pas sur format/ton.
+- Ne sauvegarde JAMAIS la même préférence deux fois dans une même session.
 
 Intégrité des actions — IMPÉRATIF ABSOLU :
 - Ne JAMAIS prétendre qu'une action est exécutée sans avoir appelé l'outil correspondant dans ce tour.
@@ -222,6 +228,79 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "sans annoncer en texte ce que tu vas faire. Ne dis JAMAIS 'je vais chercher', "
         "'je vais lancer', 'je vais effectuer' — appelle l'outil sans commentaire. "
         "Les actions critiques déclenchent automatiquement une confirmation HITL.\n\n"
+        "RÈGLE HITL — CONFIRMATION AUTOMATIQUE, JAMAIS EN TEXTE :\n"
+        "Le système HITL affiche AUTOMATIQUEMENT une boîte de dialogue avec 3 "
+        "boutons (Autoriser / Refuser / Interdire) dès que tu appelles un outil "
+        "critique (supprimer, envoyer un email, SSH, etc.). Tu n'as JAMAIS à "
+        "demander la confirmation toi-même en texte.\n"
+        "PHRASES INTERDITES (elles créent une impasse — aucun HITL n'est déclenché "
+        "tant que tu n'as pas appelé l'outil) :\n"
+        "  - « Le système demande une confirmation... »\n"
+        "  - « Confirmes-tu que tu veux bien supprimer... »\n"
+        "  - « Voulez-vous que je valide... »\n"
+        "  - « Dois-je procéder ? »\n"
+        "Processus correct pour une action critique :\n"
+        "  1. Tu appelles directement l'outil critique (ex : drive_delete_file "
+        "     avec le file_id).\n"
+        "  2. Le système affiche la boîte HITL à l'utilisateur (tu n'as rien à "
+        "     faire).\n"
+        "  3. Si l'utilisateur Autorise → l'outil s'exécute → tu reçois le "
+        "     résultat → tu confirmes brièvement au passé (« Fichier supprimé. »).\n"
+        "  4. Si l'utilisateur Refuse → l'outil te renvoie un message clair → "
+        "     tu en informes brièvement.\n\n"
+        "RÈGLE FORMAT TOOL CALL — IMPÉRATIF :\n"
+        "Pour appeler un outil, utilise l'API de tool-calling native de ton "
+        "modèle. N'écris JAMAIS de code JSON, de bloc <function_calls>, de "
+        "balises <tool_use>, ni de syntaxe Python dans tes messages texte — "
+        "ces formats ne sont PAS exécutés, ils sont juste affichés à "
+        "l'utilisateur comme du charabia. Si tu ne peux pas appeler l'outil "
+        "via l'API native, dis-le clairement plutôt que de faire semblant.\n\n"
+        "RÈGLE INTENTION GMAIL — IMPÉRATIF (CRITIQUE) :\n"
+        "Fais correspondre l'INTENTION de l'utilisateur au bon outil, sans substitution.\n"
+        "  - « envoie », « envoyer », « send » → gmail_send_email (HITL automatique, "
+        "    l'utilisateur validera via boutons). NE JAMAIS utiliser gmail_create_draft "
+        "    comme substitut « plus sûr ».\n"
+        "  - « réponds », « répondre », « reply » → gmail_reply_email (HITL).\n"
+        "  - « prépare », « brouillon », « draft », « rédige un brouillon » → "
+        "    gmail_create_draft (pas de HITL — juste un draft dans la boîte).\n"
+        "Conséquence CRITIQUE : si l'utilisateur écrit « envoie un email à X... », tu dois "
+        "appeler gmail_send_email IMMÉDIATEMENT. N'appelle JAMAIS gmail_create_draft puis "
+        "demander confirmation en texte — c'est une boucle infernale qui laisse "
+        "l'utilisateur bloqué. Le système HITL te donnera la confirmation via des "
+        "boutons dédiés après ton appel à gmail_send_email.\n\n"
+        "RÈGLE DRIVE EXPORT PDF D'UN FICHIER .docx/.xlsx/.pptx — IMPÉRATIF :\n"
+        "drive_export_file ne marche QUE sur les formats Google natifs "
+        "(Docs/Sheets/Slides). Pour exporter un .docx/.xlsx/.pptx en PDF, "
+        "Drive supporte la conversion pendant la copie : tu DOIS enchaîner "
+        "3 appels SILENCIEUSEMENT dans le même tour, sans demander "
+        "l'autorisation de l'utilisateur entre chaque étape :\n"
+        "  1. drive_copy_file(file_id=<source>, target_mime_type="
+        "     'application/vnd.google-apps.document',  # ou spreadsheet / "
+        "     presentation selon l'extension\n"
+        "                     new_name='<nom>-tmp-gdoc')\n"
+        "     → Drive convertit automatiquement en Google Doc/Sheet/Slides "
+        "     pendant la copie et te renvoie un nouveau file_id.\n"
+        "  2. drive_export_file(file_id=<NOUVEAU file_id de l'étape 1>, "
+        "     export_format='pdf') → PDF créé dans Drive.\n"
+        "  3. drive_delete_file(file_id=<file_id de l'étape 1>) → supprime "
+        "     la copie temporaire (HITL).\n"
+        "NE DIS JAMAIS « il faut le télécharger et le convertir localement » "
+        "— c'est FAUX, Drive sait le faire via la séquence ci-dessus. Tu as "
+        "tous les outils nécessaires, utilise-les.\n\n"
+        "RÈGLE FILE_ID GOOGLE DRIVE / DOCS / SHEETS — IMPÉRATIF :\n"
+        "Les outils Google qui prennent un paramètre `file_id`, `document_id`, "
+        "`spreadsheet_id`, `folder_id` ou `event_id` attendent l'IDENTIFIANT "
+        "INTERNE Google (une chaîne alphanumérique de 20-50 caractères, ex : "
+        "« 1a2b3c4D5e6F7g8H9iJ0kL »), JAMAIS le nom lisible du fichier.\n"
+        "Si l'utilisateur te fournit un nom (« supprime test.txt », « partage "
+        "le dossier Factures », « renomme mon CV »), tu DOIS procéder en deux "
+        "étapes SILENCIEUSEMENT dans le même tour :\n"
+        "  1. drive_list_files / drive_read_file / sheets_list_sheets / etc. "
+        "     avec une query ou un nom de recherche pour obtenir le vrai ID.\n"
+        "  2. Utiliser l'ID retourné pour l'action (delete, move, share, etc.).\n"
+        "Ne passe JAMAIS un nom de fichier comme valeur de `file_id`. L'API "
+        "Google renvoie alors « File not found », ce qui est absurde pour "
+        "l'utilisateur qui voit bien le fichier dans Drive.\n\n"
         "RÈGLE DESTINATAIRE GMAIL — IMPÉRATIF :\n"
         "Avant d'appeler gmail_send_email, gmail_reply_email, gmail_send_with_attachment "
         "ou gmail_create_draft, le champ 'to' doit contenir une adresse email valide "
@@ -233,6 +312,60 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "  3. Si contacts_search retourne rien ou plusieurs candidats ambigus, "
         "demande l'adresse email à l'utilisateur AVANT de créer le brouillon.\n"
         "  4. Ne jamais inventer d'adresse email plausible (ex: papa@gmail.com).\n\n"
+        "RÈGLE RECHERCHE EMAIL PAR EXPÉDITEUR — IMPÉRATIF :\n"
+        "Quand l'utilisateur dit « lis l'email de X », « trouve le mail de X », "
+        "« ouvre le mail de Y » où X/Y est un nom d'expéditeur ou de marque :\n"
+        "  1. Enchaîne tous les appels d'outils SILENCIEUSEMENT — ne dis RIEN à "
+        "     l'utilisateur entre deux tentatives. Pas de « je vérifie », pas "
+        "     de « je ne trouve pas, je continue », pas de questions "
+        "     intermédiaires. Ne parle qu'à la FIN, une seule fois, avec le "
+        "     résultat final (email trouvé et lu, OU « aucun email trouvé » "
+        "     après avoir épuisé les 2 tentatives).\n"
+        "  2. Étape 1 — gmail_list_emails(query=\"from:X\") : l'opérateur Gmail "
+        "     `from:` matche sur le nom d'affichage ET sur l'adresse, y compris "
+        "     les marques comme « chronopost », « ionos », « amazon ».\n"
+        "  3. Si Étape 1 = 0 résultat, Étape 2 IMMÉDIATE (même tour) — "
+        "     gmail_list_emails(query=\"X\") pour matcher dans le sujet ou "
+        "     le corps. N'annonce RIEN entre Étape 1 et Étape 2.\n"
+        "  4. NE JAMAIS ajouter « is:unread » SAUF si l'utilisateur a dit "
+        "     explicitement « non lu » / « unread ». Un email peut être lu et "
+        "     toujours pertinent.\n"
+        "  5. Si plusieurs emails correspondent, prends le plus récent (premier "
+        "     de la liste) et appelle immédiatement gmail_read_email(email_id=...). "
+        "     Ne demande PAS à l'utilisateur de préciser si un seul match évident "
+        "     existe.\n\n"
+        "RÈGLE FORMAT RESTITUTION EMAIL — IMPÉRATIF :\n"
+        "Quand tu affiches un email (après gmail_read_email), reste CONCISE. "
+        "Format standard :\n"
+        "  **Sujet :** <sujet>\n"
+        "  **Date :** <date lisible>\n"
+        "  \n"
+        "  <contenu>\n"
+        "N'affiche PAS le champ « À : » (l'utilisateur sait qu'il est le "
+        "destinataire) ni « De : » sauf si l'expéditeur est ambigu ou "
+        "utile au contexte (ex: plusieurs mails correspondent, ou l'utilisateur "
+        "a demandé « qui m'a écrit ? »). Pas de séparateurs décoratifs "
+        "(« ----- », « ...... »), pas de reformulation du contenu — montre "
+        "le contenu brut tel que retourné par l'outil, tronqué si trop long.\n\n"
+        "RÈGLE ANTI-HALLUCINATION CONTENU EMAIL — IMPÉRATIF :\n"
+        "Tu ne dois JAMAIS inventer, reformuler ou résumer le contenu d'un email "
+        "tant que tu n'as pas reçu le retour de gmail_read_email. "
+        "Le seul contenu que tu peux afficher est celui LITTÉRALEMENT renvoyé "
+        "par l'outil. Pas de « Je vous informe que... », pas de « Bonjour, "
+        "voici... » générique, pas de reformulation « plausible ». "
+        "Si l'outil n'a pas encore été appelé, ne montre AUCUN contenu. "
+        "Appelle d'abord l'outil, puis restitue le contenu reçu tel quel.\n\n"
+        "RÈGLE ANTI-HALLUCINATION ENVOI/ACTION — IMPÉRATIF :\n"
+        "Tu ne dois JAMAIS écrire « email envoyé », « message envoyé avec succès », "
+        "« c'est fait », « mail envoyé à ... » tant que le retour de "
+        "gmail_send_email / gmail_reply_email / gmail_send_with_attachment n'a "
+        "PAS été reçu dans ce tour. Au moment où tu proposes/prépares le message, "
+        "utilise uniquement des formulations FUTURES : « je vais envoyer... », "
+        "« voici ce que je m'apprête à envoyer... ». La confirmation arrive "
+        "UNIQUEMENT après le retour de l'outil, jamais avant. Les phrases au "
+        "passé composé (« a été envoyé », « a été créé ») ou au présent (« est "
+        "envoyé ») sont INTERDITES tant que le ToolMessage correspondant n'est "
+        "pas dans l'historique du tour courant.\n\n"
         "Outils disponibles :\n"
         "Gmail : gmail_list_emails, gmail_read_email, gmail_send_email (HITL), "
         "gmail_reply_email (HITL), gmail_send_with_attachment (HITL), "
@@ -316,6 +449,7 @@ _MEMORY_SKILLS = {
 }
 
 _RESEARCH_SKILLS = {
+    "web_search", "web_search_news",
     "weather_get", "news_get_headlines", "translate_text",
     "browser_navigate", "browser_search_web", "browser_get_text",
     "browser_screenshot", "browser_click", "browser_fill", "browser_close",
@@ -375,6 +509,15 @@ import re as _re
 # Hybrid router: keyword shortcuts first (instant), LLM fallback only if no match.
 # Each domain has high-confidence patterns. Ordered by specificity.
 _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
+    # ── creative — QR code, MCP, images : MUST be before workspace to avoid
+    #    workspace grabbing "QR code vCard pour Franck, email X@Y" as a
+    #    contact creation, or infra grabbing "serveur MCP" as an SSH cmd.
+    ("creative", _re.compile(
+        r"\b(qr[\s-]*codes?|qrcodes?|"
+        r"mcp|"
+        r"g[ée]n[ée]r[ea][rz]?\s+(?:une|la|l['’]?)\s*imag|"
+        r"dessin[ea][rz]?|illustr[ea])\b",
+        _re.IGNORECASE)),
     ("workspace", _re.compile(
         r"\b(gmail|emails?|mails?|courriels?|messagerie|inbox|boîte|courrier|"
         r"brouillons?|drafts?|répondre? (à|au)|"
@@ -385,6 +528,23 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
         r"contacts?|annuaires?|"
         r"rappel(le)?(.*) (à|le|pour|aujourd|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|"
         r"planifie.*aujourd|planifie.*demain)\b",
+        _re.IGNORECASE)),
+    # Follow-up actions on a workspace file (when no explicit local path is
+    # given). E.g. after « Crée un Google Doc intitulé X », the user often
+    # writes « Duplique ce X en Copie-X » — without keyword "drive", which
+    # would otherwise fall to the LLM router and get misclassified as
+    # desktop because of the file extension.
+    ("workspace", _re.compile(
+        r"\b(duplique[rz]?|dupliques?|copie(?:\s+le|\s+ce|\s+cette|\s+la)?|"
+        r"fais une copie|faire une copie|clone[rz]?|copies?\s+en|"
+        r"renomme[rz]?|renommes?|déplace[rz]?|déplaces?|"
+        r"partage[rz]?|partages?|exporte[rz]?|exportes?)\b"
+        # Must reference a file/doc with an extension or mention workspace context,
+        # and must NOT point to a local path (~, /, "bureau", "desktop", "local").
+        r"(?=.*\.(?:txt|pdf|docx?|xlsx?|pptx?|md|csv|json|png|jpg|jpeg)"
+        r"|.*\b(?:document|doc|feuille|sheet|dossier|fichier)\b)"
+        r"(?!.*(?:~\/|\/home|\/users|\/bureau|\/desktop|\bbureau\b|"
+        r"\bdesktop\b|\blocalement\b|\bsur ma machine\b|\bfichier local\b))",
         _re.IGNORECASE)),
     ("infra", _re.compile(
         r"\b(ssh|serveurs?|servers?|docker|nginx|cron|tâche planifiée|"
@@ -483,24 +643,104 @@ async def router_node(state: AgentState) -> dict:
             last_user_msg = m.content[:500]  # truncate for speed
             break
 
+    # ── Early guard: skip empty/whitespace user messages ──────────────────
+    # A WebSocket glitch or a cancelled stream can produce an empty "user"
+    # message that would otherwise be routed to `general` and overwrite the
+    # previous domain in state — breaking sticky confirmation for the next
+    # real user turn.
+    if not last_user_msg.strip():
+        _prev = state.get("domain", "") or "general"
+        logger.warning("⏱ TIMING[router-skip] empty user message → keeping domain=%s", _prev)
+        return {"domain": _prev}
+
     # ── Pass 0: sticky domain for short confirmations ─────────────────────
     # If the user replied with a brief confirmation ("oui", "parfait",
-    # "vas-y", "d'accord") AND the previous turn was handled by a
-    # non-general sub-agent that likely asked a question, stick with the
-    # same sub-agent so it can pick up where it left off (and call the
-    # action tool directly). Without this, "oui" gets routed to "general"
-    # which has no domain-specific tools and just answers with text.
+    # "vas-y", "d'accord") AND a recent assistant turn proposed an action
+    # that requires confirmation, stick with the same specialist domain so
+    # it can pick up where it left off and call the action tool directly.
+    # Without this, "oui" gets routed to "general" which has no domain-
+    # specific tools and just answers with text.
     _msg_for_stick = last_user_msg.lower().strip()
     _stick_trim = _re.sub(r"[\s\.,!?]+", "", _msg_for_stick)
     _is_confirmation = _stick_trim in {
         "oui", "ouii", "yes", "parfait", "exact", "exactement", "vasy",
         "vas-y", "allez-y", "allezy", "dacc", "daccord", "ok", "okay",
         "fais-le", "faisle", "carrement", "carrément", "exacto",
-    } or _re.fullmatch(r"(oui|yes|ok|d'?accord|parfait|vas.?y|fais.?le)\s*[!.]?", _msg_for_stick)
+        "jeconfirme", "confirme", "confirmé", "confirmer", "valide",
+        "jevalide", "approuvé", "approuve", "ouipourmoi", "goahead", "go",
+    } or _re.fullmatch(
+        r"(oui|yes|ok|d'?accord|parfait|vas.?y|fais.?le|je\s+confirme|je\s+valide|"
+        r"confirm[eé]|valid[eé])\s*[!.]?",
+        _msg_for_stick,
+    )
     _prev_domain = state.get("domain", "")
     if _is_confirmation and _prev_domain and _prev_domain not in ("general", "system", ""):
         logger.warning("⏱ TIMING[router-sticky] confirmation → garde domain=%s", _prev_domain)
         return {"domain": _prev_domain}
+
+    # Sticky workspace on follow-up references: when the previous assistant
+    # turn clearly dealt with a Drive/Docs/Sheets file (contains "ID:" or
+    # a Google Drive URL) AND the user's new message refers to « ce fichier »
+    # / « ce doc » / « cette feuille » / « duplique ce X », keep workspace
+    # routing even though the keywords alone would fall to desktop or general.
+    _short_followup_words = (
+        "ce fichier", "ce doc", "ce document", "cette feuille", "ce tableur",
+        "ce spreadsheet", "ce dossier", "cette note", "duplique ce",
+        "duplique le", "copie ce", "copie le", "renomme ce", "renomme le",
+        "partage ce", "partage le", "exporte ce", "exporte le",
+        "supprime ce", "supprime le",
+    )
+    _msg_low = last_user_msg.lower()
+    if any(w in _msg_low for w in _short_followup_words):
+        # Check recent assistant messages for workspace file context
+        for m in reversed(messages[-6:]):
+            if type(m).__name__ in ("AIMessage", "Assistant"):
+                content = getattr(m, "content", "") or ""
+                if isinstance(content, str):
+                    content_low = content.lower()
+                    if ("id:" in content_low or "drive.google.com" in content_low
+                        or "docs.google.com" in content_low
+                        or "sheets.google.com" in content_low):
+                        logger.warning(
+                            "⏱ TIMING[router-sticky-file] follow-up sur fichier workspace → workspace"
+                        )
+                        return {"domain": "workspace"}
+                        break
+
+    # Fallback sticky: the previous turn's domain may have been overwritten
+    # (e.g. by a ghost empty message). Scan the last few assistant messages
+    # for a workspace-shaped pending proposal — « Voulez-vous que je … »,
+    # « Dois-je envoyer », « Je vais créer un brouillon », etc. — and stick
+    # to workspace if confirmation is detected.
+    if _is_confirmation:
+        _recent_assistant = ""
+        for m in reversed(messages[-6:]):
+            if type(m).__name__ in ("AIMessage", "Assistant"):
+                _content = getattr(m, "content", "") or ""
+                if isinstance(_content, str):
+                    _recent_assistant = _content.lower()
+                    break
+        _workspace_markers = (
+            # Email
+            "brouillon", "envoie cet email", "envoyer cet email",
+            "valider et envoyer", "confirmer l'envoi", "voulez-vous que je valide",
+            "voulez-vous que j'envoie", "envoyer à ", "je vais envoyer",
+            "dois-je envoyer", "dois-je répondre", "confirmer la création",
+            # Drive / Docs / Sheets / Tasks — suppression & mutations
+            "supprimer le fichier", "supprimer ce fichier", "supprimer le dossier",
+            "supprimer le document", "supprimer la feuille", "supprimer l'événement",
+            "confirmes-tu que tu veux", "confirmez-vous que vous voulez",
+            "le système demande une confirmation", "confirmer la suppression",
+            "je vais supprimer", "je vais déplacer", "je vais renommer",
+            "je vais partager", "dois-je supprimer", "dois-je déplacer",
+            # Calendar
+            "je vais créer l'événement", "créer ce rendez-vous",
+        )
+        if any(k in _recent_assistant for k in _workspace_markers):
+            logger.warning(
+                "⏱ TIMING[router-sticky-scan] confirmation après proposition workspace → workspace"
+            )
+            return {"domain": "workspace"}
 
     # ── Pass 1: fast keyword router (zero LLM call) ──────────────────────
     domain = _quick_route(last_user_msg)
@@ -510,13 +750,18 @@ async def router_node(state: AgentState) -> dict:
         return {"domain": domain}
 
     # ── Pass 2: LLM fallback for ambiguous queries ───────────────────────
-    from app.services.qwen_no_think import inject_no_think, strip_think_block
+    from app.services.qwen_no_think import (
+        inject_no_think, is_qwen_llm, strip_think_block,
+    )
     llm = get_llm_for_tier(ComplexityTier.SIMPLE)
     try:
-        _msgs = inject_no_think([
+        _msgs = [
             SystemMessage(content=_ROUTER_SYSTEM),
             HumanMessage(content=last_user_msg),
-        ])
+        ]
+        # Only Qwen understands /no_think; other models would echo it.
+        if is_qwen_llm(llm):
+            _msgs = inject_no_think(_msgs)
         response = await llm.ainvoke(_msgs)
         response.content = strip_think_block(getattr(response, 'content', '') or '')
         domain = response.content.strip().lower()

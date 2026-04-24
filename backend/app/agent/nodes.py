@@ -84,9 +84,12 @@ Intégrité des actions — IMPÉRATIF ABSOLU :
 - Ne JAMAIS, sous AUCUN prétexte, prétendre qu'une action est faite si tu n'as pas appelé l'outil correspondant dans ce tour de conversation.
 - Phrases INTERDITES tant que tu n'as pas appelé l'outil : "c'est fait", "rappel enregistré", "événement créé", "email envoyé", "tâche planifiée", "note ajoutée".
 - Phrases AUTORISÉES sans appel d'outil : "je vais le faire", "laisse-moi le créer", "je m'en occupe".
+- Ne JAMAIS inventer ni reformuler le contenu d'un email, d'un document, d'un fichier ou d'un message avant d'avoir appelé l'outil de lecture. Si tu n'as pas encore appelé gmail_read_email / docs_read_document / drive_read_file / notes_read, tu n'as PAS le contenu — n'en affiche AUCUN extrait. Les fausses paraphrases « plausibles » sont strictement interdites.
+- Pour appeler un outil, utilise l'API de tool-calling native. N'écris JAMAIS de blocs `<function_calls>`, `<tool_use>`, de JSON de function call, ni de pseudo-code Python dans le texte de tes messages. Ces formats sont du charabia affiché à l'utilisateur, pas exécutés. Si tu ne peux pas appeler un outil via l'API native, dis-le plutôt que de faire semblant.
+- Retour d'outil = vérité absolue. Quand le ToolMessage commence par « Erreur », « Erreur :", « Error », « HttpError », « échec », « not found », « File not found », « not supported », etc., l'action a ÉCHOUÉ. Tu ne dois JAMAIS annoncer un succès (« généré », « créé », « envoyé », « supprimé », « exporté ») dans ce cas. Reprends le message d'erreur tel quel, explique-le brièvement en français, et propose soit une correction, soit une alternative, soit demande une info manquante. Les phrases « le PDF a été généré », « le fichier est créé », « le message est envoyé » sur un retour d'erreur sont des HALLUCINATIONS strictement interdites.
 - Pour un rappel quotidien/hebdomadaire/récurrent : utilise scheduler_create_task avec la bonne expression cron, pas calendar_create_event (Calendar est pour un événement unique).
 - Pour un événement unique dans un calendrier Google : calendar_create_event.
-- Pour un rappel déclenché par l'application ELY (notification push) : scheduler_create_task avec channel="ntfy" ou channel="app".
+- Pour un rappel déclenché par l'application ELY (notification push) : scheduler_create_task avec channel="app".
 - Si un outil échoue, dis-le clairement avec le code d'erreur plutôt que d'inventer un succès.
 - Quand l'utilisateur te dit "oui" pour confirmer, regarde le tour précédent : si tu as proposé une action, APPELLE L'OUTIL IMMÉDIATEMENT sans repasser par une phrase d'annonce. N'attends pas.
 
@@ -163,20 +166,16 @@ Comportement attendu :
 - "envoie un WhatsApp à" / "envoie un message WhatsApp" → utiliser whatsapp_send (toujours confirmer avant d'envoyer)
 - Donner l'URL cliquable après chaque création de document ou feuille
 
-Format des réponses — IMPÉRATIF :
-- Rédige TOUJOURS en texte naturel, comme si tu parlais à voix haute à quelqu'un
-- N'utilise JAMAIS de markdown : aucun #, ##, **, *, `, ---, ni tiret de liste
-- Pas de titres, pas de tableaux, pas de blocs de code dans les réponses conversationnelles
-- Pour énumérer, utilise des formules orales : "premièrement... ensuite... enfin..."
-- Tes réponses doivent être fluides et agréables à entendre lues à voix haute
-- Exception : les URLs peuvent être données telles quelles pour que l'utilisateur puisse cliquer
+Utilisation des tools — PRIORITÉ ABSOLUE :
+- Dès que la demande correspond à un tool, APPELLE-le immédiatement via function calling.
+- Ne JAMAIS annoncer l'appel ("je vais chercher...", "je lance..." etc.) — appelle direct.
+- N'écris JAMAIS du code Python pour simuler un tool call.
 
-Emojis — RÈGLE PAR DÉFAUT STRICTE :
-- Par défaut, n'utilise AUCUN emoji, AUCUN émoticône, AUCUN pictogramme Unicode dans tes réponses. Ni au milieu, ni à la fin. Ni ✋ ni 🖐️ ni 👋 ni 👍 ni ✅ ni aucun autre.
-- Si l'utilisateur a explicitement activé les emojis dans ses préférences, tu peux en utiliser. Sinon JAMAIS.
-- Exemple CORRECT : "C'est noté Franck, je ne le ferai plus."
-- Exemple INCORRECT : "C'est noté Franck, je ne le ferai plus. ✋" ← l'emoji à la fin est INTERDIT
-- Quand l'utilisateur te demande de ne plus utiliser d'emojis, tu dois respecter cette consigne DÈS LE MESSAGE SUIVANT, y compris dans la réponse qui accuse réception de la règle.
+Format des réponses TEXTE (seulement quand aucun tool n'est pertinent) :
+- Texte naturel en français, sans markdown (aucun #, ##, **, *, `, ---, ni tirets de liste).
+- Pour énumérer, utilise des formules orales : "premièrement... ensuite... enfin...".
+- Les URLs peuvent être données telles quelles (pour être cliquables).
+- Aucun emoji par défaut sauf préférence explicite de l'utilisateur.
 """
 
 
@@ -334,61 +333,94 @@ def create_agent_node():
                 get_user_context(user_id),
             )
 
-            system = _SYSTEM_PROMPT_BASE
+            # ── Compact prompt mode for local LLMs ─────────────────────────
+            # For small local models (LM Studio, llama.cpp on localhost),
+            # replace the full ELY prompt with a ~300-token compact one
+            # that puts tool-calling priority first. Cloud frontier models
+            # keep the full prompt.
+            from app.services.qwen_no_think import is_local_openai_llm
+            from app.agent.compact_prompt import build_compact_system_prompt
 
-            # ── Inject active LLM info (transparency / self-awareness) ──────
-            _provider = get_active_provider()
-            _model    = get_active_model()
-            _slm_info = ""
-            if settings.slm_enabled:
-                _slm_info = (
-                    f" Pour les requêtes simples, tu utilises en priorité le modèle local "
-                    f"{settings.slm_model} via Ollama (rapide, données non envoyées dans le cloud)."
+            # Safe detection: try to instantiate the currently active LLM.
+            # Wrapped in try/except because get_llm() can raise if no
+            # provider is configured yet (first-boot scenarios).
+            try:
+                _llm_for_detect = get_llm()
+            except Exception:
+                _llm_for_detect = None
+            if _llm_for_detect is not None and is_local_openai_llm(_llm_for_detect):
+                system = build_compact_system_prompt(
+                    agent_name="general",
+                    date_str=date_str,
+                    user_ctx=user_profile or "",
+                    memories=memories,
+                    constraints=constraints,
                 )
-            system += (
-                f"\n\nModèle IA actif : {_model} (fournisseur : {_provider}).{_slm_info}\n"
-                "Si l'utilisateur te demande quel LLM tu utilises, donne cette information précise.\n"
-            )
+                logger.info("[general] compact prompt mode active (%d chars)", len(system))
+                # Skip the rest of the verbose injection — jump directly to the
+                # inference block. We still need to go through context_manager
+                # below, so we just let `system` stay as the compact string.
+                _use_compact = True
+            else:
+                _use_compact = False
+
+            if not _use_compact:
+                system = _SYSTEM_PROMPT_BASE
+
+                # ── Inject active LLM info (transparency / self-awareness) ──────
+                _provider = get_active_provider()
+                _model    = get_active_model()
+                _slm_info = ""
+                if settings.slm_enabled:
+                    _slm_info = (
+                        f" Pour les requêtes simples, tu utilises en priorité le modèle local "
+                        f"{settings.slm_model} via Ollama (rapide, données non envoyées dans le cloud)."
+                    )
+                system += (
+                    f"\n\nModèle IA actif : {_model} (fournisseur : {_provider}).{_slm_info}\n"
+                    "Si l'utilisateur te demande quel LLM tu utilises, donne cette information précise.\n"
+                )
 
             # NOTE: skills_summary() was injected here historically but produced a
             # ~20k-char block (148 tool names + descriptions) that was redundant with
             # bind_tools() and drastically slowed qwen3:4b / small models. Removed —
             # the LLM sees tool schemas via bind_tools when needed.
 
-            system += (
-                f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-                "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
-            )
-
-            # ── Inject the consolidated user profile FIRST (most important) ──
-            # These are facts Éli has learned about the user from past conversations,
-            # consolidated nightly into user_profiles table. Without this block, the
-            # agent would answer "je n'ai aucun moyen de me souvenir…" even though
-            # 5+ profile facts exist in SQL.
-            if user_profile:
-                system += f"\n\n🧠 {user_profile}\n"
-
-            if preferences:
+            if not _use_compact:
                 system += (
-                    "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
-                    "⚠️ Ces règles ont la même priorité que les règles absolues ci-dessus.\n"
-                    "Elles s'appliquent à CHAQUE réponse, sans exception, même si tu penses\n"
-                    "qu'une réponse plus longue serait plus utile. Respecte-les strictement.\n"
+                    f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
+                    "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
                 )
-                system += "\n".join(f"- {p}" for p in preferences)
-            if constraints:
-                system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n"
-                system += "\n".join(f"- {c}" for c in constraints)
-            if memories:
-                system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
-                system += "\n".join(f"- {m}" for m in memories)
-            if past_interactions:
-                system += "\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n"
-                for p in past_interactions:
+
+                # ── Inject the consolidated user profile FIRST (most important) ──
+                # These are facts Éli has learned about the user from past conversations,
+                # consolidated nightly into user_profiles table. Without this block, the
+                # agent would answer "je n'ai aucun moyen de me souvenir…" even though
+                # 5+ profile facts exist in SQL.
+                if user_profile:
+                    system += f"\n\n🧠 {user_profile}\n"
+
+                if preferences:
                     system += (
-                        f"- Q: {p.get('user_message', '')[:120]} "
-                        f"→ R: {p.get('assistant_message', '')[:120]}\n"
+                        "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
+                        "⚠️ Ces règles ont la même priorité que les règles absolues ci-dessus.\n"
+                        "Elles s'appliquent à CHAQUE réponse, sans exception, même si tu penses\n"
+                        "qu'une réponse plus longue serait plus utile. Respecte-les strictement.\n"
                     )
+                    system += "\n".join(f"- {p}" for p in preferences)
+                if constraints:
+                    system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n"
+                    system += "\n".join(f"- {c}" for c in constraints)
+                if memories:
+                    system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
+                    system += "\n".join(f"- {m}" for m in memories)
+                if past_interactions:
+                    system += "\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n"
+                    for p in past_interactions:
+                        system += (
+                            f"- Q: {p.get('user_message', '')[:120]} "
+                            f"→ R: {p.get('assistant_message', '')[:120]}\n"
+                        )
 
         # ── Context fitting (prevent overflow) ────────────────────────────
         # NOTE: get_active_model is imported at create_agent_node() scope (line ~167).
@@ -491,14 +523,23 @@ def create_agent_node():
             _tier_key = _tier.value
             # Cache key differentiates with/without tools bound
             _cache_key = f"{_tier_key}:{'tools' if _bind_tools_flag else 'notools'}"
+            # Keep a reference to the UNBOUND base LLM — needed later to
+            # detect whether it's a Qwen variant (for /no_think injection).
+            # When the cache is already warm, the cached entry may be the
+            # tool-bound wrapper, which can hide the underlying provider;
+            # we therefore cache _base_llm under a second key to always
+            # have it on hand.
+            _base_cache_key = f"{_tier_key}:base"
             if _cache_key not in _tier_llm_cache:
                 _bind_start = _t.monotonic()
                 _base_llm = get_llm_for_tier(_tier)
+                _tier_llm_cache[_base_cache_key] = _base_llm
                 _tier_llm_cache[_cache_key] = (
                     _base_llm.bind_tools(registry.all_tools) if _bind_tools_flag else _base_llm
                 )
                 logger.warning("⏱ TIMING[general.bind] %.2fs — tier=%s, bind_tools=%s (tools_v=%d)",
                     _t.monotonic() - _bind_start, _tier_key, _bind_tools_flag, current_version)
+            _base_llm = _tier_llm_cache.get(_base_cache_key) or _tier_llm_cache[_cache_key]
             _llm_with_tools_req = _tier_llm_cache[_cache_key]
             model_used = f"llm:tier-{_tier_key}{'+tools' if _bind_tools_flag else ''}"
 
@@ -514,8 +555,12 @@ def create_agent_node():
             )
             try:
                 _infer_t = _t.monotonic()
-                from app.services.qwen_no_think import inject_no_think, strip_think_block
-                _invoke_msgs = inject_no_think(_invoke_msgs)
+                from app.services.qwen_no_think import (
+                    inject_no_think, is_qwen_llm, strip_no_think, strip_think_block,
+                )
+                # Only Qwen understands /no_think; other models would echo it.
+                if is_qwen_llm(_base_llm):
+                    _invoke_msgs = inject_no_think(_invoke_msgs)
                 response = await _llm_with_tools_req.ainvoke(_invoke_msgs)
                 # Strip any <think> block that slipped through
                 if hasattr(response, 'content') and isinstance(response.content, str):
@@ -540,10 +585,13 @@ def create_agent_node():
                     type(primary_exc).__name__, primary_exc,
                 )
                 response = None
+                # Fallback models (Claude, Gemini, Mistral…) are NOT Qwen; strip
+                # any /no_think marker that was injected for the primary call.
+                _fallback_msgs = strip_no_think(_invoke_msgs)
                 for fallback_label, fallback_llm in get_fallback_llms():
                     try:
                         fallback_with_tools = fallback_llm.bind_tools(registry.all_tools)
-                        response = await fallback_with_tools.ainvoke(_invoke_msgs)
+                        response = await fallback_with_tools.ainvoke(_fallback_msgs)
                         logger.info("Fallback succeeded with %s", fallback_label)
                         break
                     except Exception as fallback_exc:

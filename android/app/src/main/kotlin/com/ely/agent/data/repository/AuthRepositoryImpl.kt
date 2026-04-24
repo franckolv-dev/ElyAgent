@@ -20,16 +20,22 @@ package com.ely.agent.data.repository
 
 import androidx.datastore.core.DataStore
 import com.ely.agent.UserPreferences
+import com.ely.agent.core.fcm.FcmTokenManager
 import com.ely.agent.core.network.NetworkResult
 import com.ely.agent.core.network.safeApiCall
 import com.ely.agent.data.remote.api.AuthApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class AuthRepositoryImpl @Inject constructor(
     private val authApi: AuthApi,
-    private val dataStore: DataStore<UserPreferences>
+    private val dataStore: DataStore<UserPreferences>,
+    private val fcmTokenManager: FcmTokenManager,
 ) : AuthRepository {
 
     override suspend fun login(email: String, password: String): NetworkResult<Unit> {
@@ -37,6 +43,16 @@ class AuthRepositoryImpl @Inject constructor(
         if (result is NetworkResult.Success) {
             dataStore.updateData { prefs ->
                 prefs.toBuilder().setAccessToken(result.data.accessToken).build()
+            }
+            // Register FCM token so HITL push notifications reach this device.
+            // Fire-and-forget on a detached application-scoped coroutine so the
+            // user-facing login() returns immediately after the access token is
+            // persisted — the FCM registration can take several seconds and
+            // should NOT block the UI response.
+            val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            appScope.launch {
+                runCatching { fcmTokenManager.registerCurrentToken() }
+                    .onFailure { /* swallow — already logged inside manager */ }
             }
         }
         return when (result) {

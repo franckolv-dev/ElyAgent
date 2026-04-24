@@ -39,7 +39,11 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # File types supported for RAG ingestion
-_RAG_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".json", ".docx"}
+_RAG_EXTENSIONS = {
+    ".pdf", ".txt", ".md", ".csv", ".json",
+    ".doc", ".docx",
+    ".xls", ".xlsx",
+}
 
 
 # ---------------------------------------------------------------------------

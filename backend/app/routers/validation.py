@@ -15,18 +15,31 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
-"""Android webhook endpoints for HITL validation.
+"""HITL validation webhooks.
 
-ntfy action buttons call these URLs directly:
+Called by the Android app (via FCM action intents), Telegram callback
+buttons, and the web UI when the user approves or denies a pending action:
   POST /validation/{action_id}/allow  → execute once
   POST /validation/{action_id}/deny   → cancel this time
   POST /validation/{action_id}/ban    → cancel + store permanent rule
+
+The Android and web UI clients pass a JWT (Authorization header) and are
+therefore authenticated via `get_current_user`.
+
+The ntfy mobile push channel cannot attach a JWT to its action buttons,
+so each action_id is also bound to a short-lived HMAC token (see
+`sign_action_token` in hitl_manager). These buttons target the same paths
+with an extra `?t=<token>` query string and bypass the JWT check — the
+token itself proves the caller received the legitimate push notification.
 """
 import asyncio
+import hmac
+import hashlib
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_optional_user
+from app.config import get_settings
 from app.models.user import User
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
@@ -34,18 +47,38 @@ from app.services.memory_manager import get_memory_manager
 router = APIRouter(prefix="/validation", tags=["validation"])
 
 
+def sign_action_token(action_id: str) -> str:
+    """HMAC-sign an action_id with the JWT secret, returning a short token
+    suitable for URL query strings. The token is unique per action — it
+    cannot be replayed on another action, and becomes useless once the
+    pending action is cleared from memory."""
+    secret = get_settings().jwt_secret_key.encode("utf-8")
+    mac = hmac.new(secret, action_id.encode("utf-8"), hashlib.sha256)
+    # 16 hex chars = 64-bit, enough to resist brute-forcing within the
+    # HITL timeout window (a few minutes).
+    return mac.hexdigest()[:16]
+
+
+def _verify_action_token(action_id: str, token: str) -> bool:
+    expected = sign_action_token(action_id)
+    return hmac.compare_digest(expected, token)
+
+
 async def _resolve(
     action_id: str,
     decision: str,
     reason: str | None,
-    current_user: User,
+    current_user: User | None,
+    channel: str = "web",
 ) -> dict:
     hitl = get_hitl_manager()
     pending = hitl._pending.get(action_id)
     if not pending:
         raise HTTPException(status_code=404, detail="Action not found or already resolved")
-    # Verify the action belongs to the requesting user
-    if pending.user_id != current_user.id:
+    # Verify the action belongs to the requesting user (when authenticated).
+    # When called via the signed-token path (current_user is None), the
+    # token itself already binds the caller to the action_id.
+    if current_user is not None and pending.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to resolve this action")
     resolved = await hitl.resolve(action_id, decision, reason)
     if not resolved:
@@ -55,14 +88,14 @@ async def _resolve(
     try:
         from app.services.analytics_service import log_usage
         asyncio.create_task(log_usage(
-            user_id=current_user.id,
+            user_id=current_user.id if current_user else pending.user_id,
             model="",
             provider="hitl",
             input_tokens=0,
             output_tokens=0,
             hitl_decision=decision,
             hitl_action=action_id,
-            channel="web",
+            channel=channel,
         ))
     except Exception:
         pass
@@ -70,44 +103,77 @@ async def _resolve(
     return {"status": "ok", "decision": decision}
 
 
+async def _resolve_with_auth_or_token(
+    action_id: str,
+    decision: str,
+    reason: str | None,
+    current_user: User | None,
+    token: str | None,
+    channel: str,
+) -> dict:
+    """Resolve the action with either JWT auth (current_user set) or a
+    valid signed action token (current_user None, token validates)."""
+    if token:
+        if not _verify_action_token(action_id, token):
+            raise HTTPException(status_code=401, detail="Invalid action token")
+        return await _resolve(action_id, decision, reason, None, channel=channel)
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return await _resolve(action_id, decision, reason, current_user, channel=channel)
+
+
 @router.post("/{action_id}/allow")
 async def allow_action(
     action_id: str,
-    current_user: User = Depends(get_current_user),
+    t: str | None = Query(default=None, description="Signed action token (ntfy channel)"),
+    current_user: User | None = Depends(get_optional_user),
 ):
-    """Authorize the action for this occurrence only."""
-    return await _resolve(action_id, "allow", None, current_user)
+    """Authorize the action for this occurrence only. Accepts either a JWT
+    (from Android/web UI) OR the signed `t` token from the ntfy push."""
+    channel = "ntfy" if t else "web"
+    return await _resolve_with_auth_or_token(action_id, "allow", None, current_user, t, channel)
 
 
 @router.post("/{action_id}/deny")
 async def deny_action(
     action_id: str,
-    current_user: User = Depends(get_current_user),
+    t: str | None = Query(default=None),
+    current_user: User | None = Depends(get_optional_user),
     reason: str = Body(default=None, embed=True),
 ):
     """Refuse the action for this occurrence only."""
-    return await _resolve(action_id, "deny", reason, current_user)
+    channel = "ntfy" if t else "web"
+    return await _resolve_with_auth_or_token(action_id, "deny", reason, current_user, t, channel)
 
 
 @router.post("/{action_id}/ban")
 async def ban_action(
     action_id: str,
-    current_user: User = Depends(get_current_user),
+    t: str | None = Query(default=None),
+    current_user: User | None = Depends(get_optional_user),
     reason: str = Body(default=None, embed=True),
     user_id: str = Body(default=None, embed=True),
     description: str = Body(default=None, embed=True),
 ):
     """Refuse and permanently memorise a security rule derived from this action.
 
-    When called from ntfy (empty body), the constraint is stored via the
-    pending action's own description so no body params are required.
+    When called from a push action button with an empty body (ntfy or FCM),
+    the constraint is stored via the pending action's own description so no
+    body params are required.
     """
+    # If using signed token, verify before touching anything else
+    if t and not _verify_action_token(action_id, t):
+        raise HTTPException(status_code=401, detail="Invalid action token")
+    if not t and current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     hitl = get_hitl_manager()
-    # Fallback: read description / user_id from the pending action itself
     pending = hitl._pending.get(action_id)
-    # Verify ownership before proceeding
-    if pending and pending.user_id != current_user.id:
+    # Verify ownership when authenticated via JWT (token path already bound
+    # caller to action_id via HMAC, no extra check needed).
+    if not t and pending and current_user and pending.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to resolve this action")
+
     actual_desc = description or (pending.description if pending else action_id)
     actual_user = user_id or (pending.user_id if pending else "")
 
@@ -115,4 +181,5 @@ async def ban_action(
     if reason:
         rule += f" — Raison: {reason}"
     await get_memory_manager().store_constraint(rule, actual_user)
-    return await _resolve(action_id, "ban", reason, current_user)
+    channel = "ntfy" if t else "web"
+    return await _resolve_with_auth_or_token(action_id, "ban", reason, current_user, t, channel)

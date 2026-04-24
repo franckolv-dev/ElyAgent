@@ -200,10 +200,25 @@ class SecurityFilter:
 
     def is_critical(self, text: str) -> bool:
         """Return True if the text contains a keyword or sensitive placeholder
-        that requires human validation before execution."""
+        that requires human validation before execution.
+
+        Matching is done on WORD BOUNDARIES, not substrings — otherwise
+        `notes_delete` (a safe local-only operation) would match "delete"
+        and trigger unnecessary HITL prompts. ALWAYS_CRITICAL_TOOLS
+        already covers the truly destructive cases in the HITL manager.
+        """
+        import re as _re
         lower = text.lower()
-        if any(kw in lower for kw in _CRITICAL_KEYWORDS):
-            return True
+        # Whole-word (or whole-phrase) match — anchor on \b for single
+        # words, let multi-token keywords like "rm -rf" match literally.
+        for kw in _CRITICAL_KEYWORDS:
+            pattern = (
+                r"\b" + _re.escape(kw) + r"\b"
+                if kw.isalpha() and " " not in kw
+                else _re.escape(kw)
+            )
+            if _re.search(pattern, lower):
+                return True
         # Any placeholder for card / token / IBAN in an action description
         if any(f"[{t}_" in text for t in ("CARD", "TOKEN", "IBAN")):
             return True

@@ -1,11 +1,15 @@
 FROM python:3.12-slim
 
 # System deps required by Playwright/Chromium headless
+# `antiword` is used by the RAG service to extract plain text from legacy
+# Microsoft Word `.doc` files (there is no pure-Python equivalent that
+# handles the binary OLE2 format reliably).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libasound2 libpango-1.0-0 libpangocairo-1.0-0 \
     fonts-liberation wget ca-certificates \
+    antiword \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -42,9 +46,13 @@ RUN adduser --system --no-create-home --uid 1001 appuser \
     && mkdir -p /app/.cache/uv /app/.cache/playwright /app/.cache/fastembed \
     && chown -R appuser /app /config
 
-# Install Playwright Chromium as appuser (browsers land in PLAYWRIGHT_BROWSERS_PATH)
+# Install Playwright Chromium as appuser (browsers land in PLAYWRIGHT_BROWSERS_PATH).
+# `--force` ensures the download is re-done when the Playwright pip version
+# changes between builds (otherwise the browser binary on an old cached
+# layer won't match the new Playwright's expected path, and every browser_*
+# tool silently fails at runtime with "Executable doesn't exist").
 USER appuser
-RUN uv run playwright install chromium
+RUN uv run playwright install --force chromium
 
 # Pre-download fastembed ONNX model (~90 MB) so first embed doesn't need network
 # and doesn't hit HF Hub permission edge cases at runtime.

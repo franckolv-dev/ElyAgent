@@ -30,8 +30,6 @@ services:
       - BACKEND_URL=${BACKEND_URL:-http://localhost:8000}
       - RATE_LIMIT=60/minute
       - QDRANT_URL=http://qdrant:6333
-      - NTFY_URL=${NTFY_URL:-http://ntfy:80}
-      - NTFY_TOPIC=${NTFY_TOPIC:-cyberentity}
       - TTS_VOICE=${TTS_VOICE:-fr-FR-DeniseNeural}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - SLM_ENABLED=${SLM_ENABLED:-false}
@@ -115,33 +113,10 @@ services:
   # Running Ollama inside a container would lose GPU access and just
   # duplicate models in RAM/disk.
 
-  # ── ntfy push notification server (Android HITL) ─────────────────────
-  ntfy:
-    image: binwiederhier/ntfy:latest
-    container_name: cyberentity-ntfy
-    restart: unless-stopped
-    command: serve
-    ports:
-      - "7070:80"
-    volumes:
-      - ntfy-data:/var/lib/ntfy
-    environment:
-      - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:7070}
-      - NTFY_BEHIND_PROXY=false
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/v1/health | grep -q healthy"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    networks:
-      - cyberentity-net
-
 networks:
   cyberentity-net:
     driver: bridge
 
 volumes:
   qdrant-data:
-  ntfy-data:
   fastembed-cache:

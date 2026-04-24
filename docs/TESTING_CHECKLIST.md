@@ -188,7 +188,7 @@
 
 ## 📚 15. Base de connaissances RAG (3 outils)
 
-> 📄 Prérequis : uploader au moins un document via **Settings → Connaissances**
+> 📄 Prérequis : uploader au moins un document via la page **Connaissances** (icône 📖 dans la sidebar)
 
 - [ ] **107.** "Que contient ma base de connaissances ?" → `knowledge_list`
 - [ ] **108.** "Cherche dans ma base de connaissances : [sujet d'un document uploadé]" → `knowledge_search`

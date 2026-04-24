@@ -115,6 +115,9 @@ dependencies {
     implementation(libs.firebase.analytics)
 
     implementation(libs.biometric)
+    implementation(libs.documentfile)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.video)
     implementation(libs.coroutines.android)
     implementation(libs.accompanist.permissions)
 

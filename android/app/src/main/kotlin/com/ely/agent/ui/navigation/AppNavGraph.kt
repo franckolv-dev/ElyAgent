@@ -24,6 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ely.agent.ui.chat.ChatScreen
 import com.ely.agent.ui.dashboard.DashboardScreen
+import com.ely.agent.ui.files.FileManagerScreen
 import com.ely.agent.ui.login.LoginScreen
 import com.ely.agent.ui.settings.SettingsScreen
 
@@ -42,7 +43,8 @@ fun AppNavGraph(isLoggedIn: Boolean) {
         composable(Screen.Chat.route) {
             ChatScreen(
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                onNavigateToDashboard = { navController.navigate(Screen.Dashboard.route) }
+                onNavigateToDashboard = { navController.navigate(Screen.Dashboard.route) },
+                onNavigateToFileManager = { navController.navigate(Screen.FileManager.route) }
             )
         }
         composable(Screen.Settings.route) {
@@ -56,5 +58,8 @@ fun AppNavGraph(isLoggedIn: Boolean) {
             )
         }
         composable(Screen.Dashboard.route) { DashboardScreen(onBack = { navController.popBackStack() }) }
+        composable(Screen.FileManager.route) {
+            FileManagerScreen(onNavigateBack = { navController.popBackStack() })
+        }
     }
 }

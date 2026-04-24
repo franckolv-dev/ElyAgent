@@ -23,7 +23,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Cpu, Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
-  Download, X, ChevronDown, Swords,
+  Download, X, ChevronDown, Swords, BookOpen,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -38,9 +38,10 @@ interface RecentConv {
 const PAGE_SIZE = 50;
 
 const BASE_NAV = [
-  { href: "/chat",     label: "Chat",     icon: MessageSquare },
-  { href: "/arena",    label: "Arena",    icon: Swords        },
-  { href: "/settings", label: "Settings", icon: Settings      },
+  { href: "/chat",      label: "Chat",          icon: MessageSquare },
+  { href: "/knowledge", label: "Connaissances", icon: BookOpen      },
+  { href: "/arena",     label: "Arena",         icon: Swords        },
+  { href: "/settings",  label: "Settings",      icon: Settings      },
 ];
 
 const ADMIN_NAV = [

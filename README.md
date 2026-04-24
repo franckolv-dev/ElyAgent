@@ -21,6 +21,7 @@ ELY is a fully self-hosted AI agent that integrates with your entire digital lif
 | Controls your desktop (mouse, keyboard, screen) | ✅ | ❌ |
 | Compares LLMs blind with ELO ranking | ✅ | ❌ |
 | Local models (Ollama) with zero cloud cost | ✅ | ❌ |
+| On-device smart file cleanup (dedupe by MD5 + dHash) | ✅ | ❌ |
 | Fully open source, PolyForm licence | ✅ | ❌ |
 
 ---
@@ -136,7 +137,7 @@ ELY wants to execute:
 ```
 
 - **Ban permanently** → ELY never proposes this action again, even in future sessions
-- HITL works on web UI, Telegram inline keyboard, and Android push notifications (ntfy)
+- HITL works on web UI, Telegram inline keyboard, and the Android app (FCM push)
 
 ---
 
@@ -157,17 +158,27 @@ ELY automatically extracts and remembers: your preferences, important facts, rec
 
 Route each request to the optimal model based on detected complexity. **Configure everything in Settings — no code, no restart.**
 
-| Tier | Default | Use case |
-|------|---------|---------|
-| **A — Simple** | Ollama (local) | Quick questions, zero cost |
-| **B — Standard** | Gemini Flash → Claude | Everyday tasks, tool use |
-| **C — Complex** | Gemini Pro → Claude | Code, deep analysis, multi-step |
-| **IMG — Vision** | Gemini Flash | Images, PDFs, screenshots |
-| **SYS — Maintenance** | Ollama | Background tasks, memory |
+| Tier | Recommended default | Use case |
+|------|---------------------|---------|
+| **A — Simple** | Qwen 3.6 Flash (API) *or* Qwen 2.5-VL local (LM Studio) | Quick questions, cheapest/fastest |
+| **B — Standard** | Qwen 3.6 Plus (API) or Claude Haiku | Everyday tasks, tool chaining |
+| **C — Complex** | Qwen 3.6 Plus (API) or Claude Sonnet | Code, deep analysis, multi-step |
+| **IMG — Vision** | Qwen 3-VL Plus (API) or Gemini Flash | Images, PDFs, screenshots |
+| **SYS — Maintenance** | Qwen 3.6 Flash or Ollama (local) | Background tasks, memory |
 
-**Supported providers:** OpenRouter (200+ models) · Anthropic Claude · Google Gemini · DeepSeek · Mistral AI · Zhipu GLM · Ollama (local)
+**Supported providers:**
+- **Cloud API** — Qwen API (Alibaba DashScope) · OpenRouter (200+ models) · Anthropic Claude · Google Gemini · DeepSeek · Mistral AI · Zhipu GLM
+- **Local** — Ollama · LM Studio (MLX on Apple Silicon, OpenAI-compatible endpoint)
 
-Automatic fallback if a provider is unavailable. Context caching enabled where supported (up to 90% cost reduction).
+**Local mode optimisations** (2026-04) :
+- **Compact prompt mode** : ELY auto-detects OpenAI-compatible servers on `localhost`/`127.0.0.1`/`host.docker.internal`/RFC-1918 hosts and switches to a ~300-token system prompt (vs 2,700 normally) — makes small models (Qwen 2.5-VL 7B, Gemma, Phi) actually respect `tool_choice="required"`. Frontier cloud models keep the full prompt.
+- **Per-turn memory cache** : constraints / memories / user profile are fetched once per user turn and reused across tool-call iterations — keeps LM Studio prefix-cache valid.
+- **Provider-aware `tool_choice` mapping** : `any` → `required` when the LLM is OpenAI-compatible, to avoid silent HTTP 400 from strict servers.
+- **Qwen thinking off** : `extra_body={"chat_template_kwargs": {"enable_thinking": False}}` injected for Qwen-on-LM-Studio and Qwen-via-API to prevent 100 %-of-tokens spent in `<think>` blocks.
+
+**Qwen API setup** : Create an instance in *Settings → Modèles IA*, provider `qwen_api`, paste your DashScope key + region-scoped base URL (e.g. `https://ws-<id>.eu-central-1.maas.aliyuncs.com/compatible-mode/v1`), pick a model (`qwen3.6-plus`, `qwen3.6-flash`, `qwen3-vl-plus`, etc.), assign to tiers.
+
+Automatic fallback if a provider is unavailable (can be disabled per-tier for pure local / pure cloud testing). Context caching enabled where supported (up to 90 % cost reduction on Anthropic prompt caching).
 
 ---
 
@@ -251,7 +262,19 @@ Same agent. Same memory. Same security. **10 ways to reach Éli.**
 | Channel | Setup | Notes |
 |---------|-------|-------|
 | **iOS App** (SwiftUI) | Build from `ios/` — Xcode 15, iOS 17+ | Native chat + voice mode, Keychain authentication, biometric unlock, landscape support |
-| **Android App** (Kotlin) | Build APK from `android/` or follow [docs/ANDROID_INSTALL.md](./docs/ANDROID_INSTALL.md) | Jetpack Compose UI, voice input, FCM push notifications for HITL approvals, minSdk 28 |
+| **Android App** (Kotlin) | Build APK from `android/` or follow [docs/ANDROID_INSTALL.md](./docs/ANDROID_INSTALL.md) | Jetpack Compose UI, voice input, FCM push notifications for HITL approvals, built-in **Smart File Manager**, minSdk 28 |
+
+#### 🗂️ Smart File Manager (Android)
+
+An on-device cleanup assistant — nothing ever leaves your phone. Accessed from the folder icon in the chat toolbar.
+
+- **Pick any folder** via Android's Storage Access Framework (Downloads, WhatsApp, DCIM, SD card…) — no runtime permissions needed, the OS only grants the tree you chose.
+- **Declarative filters**: size (`> 5 Mo`), age (older than N days), category (images, videos, APK, archives, documents), extension, filename substring — combinable with AND logic.
+- **Exact-duplicate detection** via streaming MD5 (first pruned by file size → no hashing of unique sizes). Groups are auto-sorted by recoverable space.
+- **Visual duplicate detection** via perceptual dHash (8×8 → 64 bits, Hamming distance ≤ 6) — catches resized / re-encoded / slightly edited copies of the same photo.
+- **Ask Ély**: natural-language parser for one-shot cleanup requests — *"supprime les apk"*, *"fichiers de plus de 5 Mo"*, *"photos plus anciennes que 6 mois"*. Runs locally, no LLM round-trip.
+- **Safe deletion**: one-copy-kept heuristic for dedupe (largest kept as master), explicit confirmation dialog with recoverable size preview, per-file failure list surfaced back to the UI.
+- **Privacy by design**: all hashing, filtering and grouping happens inside the app process. Files never transit the backend, only user decisions do.
 
 #### 💬 Messaging Platforms
 
@@ -266,7 +289,8 @@ Same agent. Same memory. Same security. **10 ways to reach Éli.**
 
 | Channel | Setup | Notes |
 |---------|-------|-------|
-| **ntfy** | `NTFY_URL` + `NTFY_TOPIC` in `.env` — self-hosted or ntfy.sh | Delivers HITL approval requests as Android/iOS push notifications with **Allow / Deny / Ban** action buttons, even when the app is closed |
+| **Android (FCM)** | Install the Android app — the FCM token is registered automatically on login | Delivers HITL approval requests as rich push notifications with **Allow / Deny / Ban** action buttons, even when the app is closed |
+| **iOS (APNs)** | Install the iOS app — the push token is registered automatically on login | Same UX as Android, via Apple Push Notification service |
 
 ---
 
@@ -307,15 +331,15 @@ Send `/start` to your bot — done.
 
 #### Channel Comparison
 
-| | Web | Voice | iOS | Android | PWA | Telegram | WhatsApp | Slack | Discord | ntfy |
-|--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| Full agent (all tools) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| HITL approvals | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Persistent memory | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| Voice / STT | ✅ | ✅ | ✅ | ✅ | ✅ | — | — | — | — | — |
-| Push notifications | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Needs public URL | — | — | ✅ | ✅ | ✅ | — | ✅ | — | ✅ | — |
-| Works fully offline | — | — | — | — | Partial | — | — | — | — | — |
+| | Web | Voice | iOS | Android | PWA | Telegram | WhatsApp | Slack | Discord |
+|--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| Full agent (all tools) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| HITL approvals | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Persistent memory | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Voice / STT | ✅ | ✅ | ✅ | ✅ | ✅ | — | — | — | — |
+| Push notifications | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Needs public URL | — | — | ✅ | ✅ | ✅ | — | ✅ | — | ✅ |
+| Works fully offline | — | — | — | — | Partial | — | — | — | — |
 
 ---
 
@@ -368,7 +392,7 @@ Store API keys and passwords encrypted at rest (AES-256-GCM), injected into tool
 ┌───────────────────────────────────────────────────────────────┐
 │                          Channels                             │
 │  Web · Voice · Telegram · Slack · Discord · WhatsApp          │
-│  iOS · Android · PWA · ntfy                                   │
+│  iOS · Android · PWA                                          │
 └────────────────────┬──────────────────────────────────────────┘
                      │
 ┌────────────────────▼──────────────────────────────────────────┐
@@ -389,7 +413,7 @@ Store API keys and passwords encrypted at rest (AES-256-GCM), injected into tool
 │  │  Desktop daemon · Trainer · RAG · Vault · QR · STT    │  │
 │  └────────────────────────────────────────────────────────┘  │
 │                                                               │
-│  HITL Manager → Web / Telegram / ntfy                        │
+│  HITL Manager → Web / Telegram / FCM (Android) / APNs (iOS)  │
 │  Arena Service → ELO ranking (K=32)                          │
 │  Analytics Logger → usage_logs                               │
 └───────────────────────────────┬───────────────────────────────┘
@@ -419,7 +443,7 @@ Store API keys and passwords encrypted at rest (AES-256-GCM), injected into tool
 | RAG | fastembed · Qdrant |
 | STT | faster-whisper (local) |
 | TTS | edge-tts (Microsoft Edge voices) |
-| Notifications | ntfy · Telegram · FCM |
+| Notifications | FCM (Android) · APNs (iOS) · Telegram · WebSocket |
 | Vault | AES-256-GCM |
 | Infra | Docker Compose · nginx · Cloudflare Tunnel |
 

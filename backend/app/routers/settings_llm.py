@@ -120,6 +120,30 @@ PROVIDERS_META = [
         "config_key": None,
         "models": ["llama3.2", "qwen2.5-coder", "qwen2.5:7b-instruct"],
     },
+    {
+        "id": "lm_studio",
+        "name": "LM Studio (local)",
+        "env_key": None,
+        "config_key": None,
+        # Model names must match what LM Studio reports in its "Local Server" tab.
+        # Common examples — update to match the model you have loaded.
+        "models": ["gemma-4-26B-A4B-it-MLX-4bit", "llama-3.3-70b-instruct", "phi-4-mini-reasoning", "mistral-7b-instruct"],
+    },
+    {
+        "id": "qwen_api",
+        "name": "Qwen API (Alibaba Cloud)",
+        "env_key": "QWEN_API_KEY",
+        "config_key": "api_key_qwen_api",
+        # Common models on DashScope (2026). The exact list depends on the
+        # Alibaba workspace — the user can type any model name in the
+        # instance UI (validation is bypassed for this provider).
+        "models": [
+            "qwen3.6-max-preview", "qwen3.6-plus-preview",
+            "qwen-max-latest", "qwen-plus-latest", "qwen-turbo-latest",
+            "qwen2.5-vl-72b-instruct", "qwen2.5-72b-instruct",
+            "qwen-vl-max-latest",
+        ],
+    },
 ]
 
 _PROVIDER_IDS = {p["id"] for p in PROVIDERS_META}
@@ -134,6 +158,7 @@ def _env_key_for(provider_id: str) -> str:
         "deepseek":   "deepseek_api_key",
         "zhipu":      "zhipu_api_key",
         "openrouter": "openrouter_api_key",
+        "qwen_api":   "qwen_api_key",
     }
     return mapping.get(provider_id, "")
 
@@ -267,9 +292,9 @@ async def update_llm_settings(
 
     # Validate model belongs to this provider.
     # OpenRouter is skipped (dynamic catalogue).
-    # Ollama is skipped: models are fetched live from the local daemon.
+    # Ollama, LM Studio and Qwen API are skipped: models are fetched/typed live.
     meta = next(p for p in PROVIDERS_META if p["id"] == body.provider)
-    if body.provider not in ("openrouter", "ollama") and body.model not in meta["models"]:
+    if body.provider not in ("openrouter", "ollama", "lm_studio", "qwen_api") and body.model not in meta["models"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Model '{body.model}' not available for provider '{body.provider}'.",

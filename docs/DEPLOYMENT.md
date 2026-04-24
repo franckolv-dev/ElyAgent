@@ -399,9 +399,8 @@ NEXT_PUBLIC_API_URL=https://ely.mondomaine.fr
 NEXT_PUBLIC_WS_URL=wss://ely.mondomaine.fr
 COOKIE_SECURE=true                   # true en production HTTPS
 
-# ── Notifications push Android (optionnel) ────────────────────────────
-NTFY_URL=                            # laisser vide pour désactiver
-NTFY_TOPIC=cyberentity
+# Les notifications push mobile passent par FCM (Android) / APNs (iOS)
+# et sont configurées directement dans les projets android/ et ios/.
 ```
 
 ---

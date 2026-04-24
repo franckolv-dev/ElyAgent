@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
@@ -42,6 +43,7 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToDashboard: () -> Unit,
+    onNavigateToFileManager: () -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -106,6 +108,9 @@ fun ChatScreen(
                     actions = {
                         IconButton(onClick = { viewModel.startNewConversation() }) {
                             Icon(Icons.Default.Add, contentDescription = "Nouvelle conversation")
+                        }
+                        IconButton(onClick = onNavigateToFileManager) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = "Gestionnaire de fichiers")
                         }
                         IconButton(onClick = onNavigateToDashboard) { Icon(Icons.Default.BarChart, "Dashboard") }
                         IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, "Paramètres") }

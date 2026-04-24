@@ -283,7 +283,13 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/ws", tags=["chat"])
 app.include_router(hosts.router, prefix="/hosts", tags=["hosts"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
+# Validation endpoints — exposed twice:
+#   - /validation/*       (legacy path, used by the Android app which talks
+#                          directly to the backend without going through nginx)
+#   - /api/validation/*   (used by the web UI through Cloudflare Tunnel + nginx,
+#                          which only proxies /api/* to the backend)
 app.include_router(validation.router)
+app.include_router(validation.router, prefix="/api")
 app.include_router(tts.router)
 app.include_router(google_router.router, prefix="/api")
 app.include_router(scheduler_router.router, prefix="/scheduler", tags=["scheduler"])

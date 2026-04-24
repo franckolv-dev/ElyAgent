@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     zhipu_api_key: str = ""          # Zhipu AI (GLM-4.7) — https://open.bigmodel.cn
     openrouter_api_key: str = ""    # OpenRouter — https://openrouter.ai
     ollama_base_url: str = "http://ollama:11434"
+    lm_studio_base_url: str = "http://host.docker.internal:1234/v1"
+    qwen_api_key: str = ""          # Alibaba Cloud DashScope (Qwen API)
+    qwen_api_base_url: str = ""     # Region-scoped DashScope OpenAI-compatible endpoint
     active_llm_provider: str = "anthropic"
     active_llm_model: str = "claude-haiku-4-5-20251001"
 
@@ -68,9 +71,11 @@ class Settings(BaseSettings):
     # Qdrant vector memory
     qdrant_url: str = "http://localhost:6333"
 
-    # ntfy push notifications (Android HITL)
-    ntfy_url: str = ""        # e.g. https://ntfy.sh  or http://ntfy:80
-    ntfy_topic: str = "cyberentity"
+    # ntfy push — HITL notifications to mobile (phone-based approvals).
+    # Full topic URL (e.g. https://ntfy.sh/ely-franck-xxx) OR just the host
+    # (https://ntfy.sh) with a separate ntfy_topic. Leave empty to disable.
+    ntfy_url: str = ""
+    ntfy_topic: str = "ely"
 
     # TTS
     tts_voice: str = "fr-FR-DeniseNeural"

@@ -400,9 +400,13 @@ ELY souhaite exécuter l'action suivante :
 
 The same three choices appear as Telegram inline keyboard buttons directly in the chat message.
 
-### How approval works via push notification (ntfy)
+### How approval works via push notification (Android / iOS apps)
 
-If you have configured `NTFY_URL` and `NTFY_TOPIC`, ELY sends a push notification to your Android device (via the [ntfy app](https://ntfy.sh)). The notification contains the action details and action buttons.
+If you have the ELY Android or iOS app installed, ELY sends a rich push
+notification to your device (FCM on Android, APNs on iOS). The notification
+contains the action details and three action buttons — **Autoriser**,
+**Refuser**, **Interdire toujours** — tappable directly from the notification
+shade without opening the app.
 
 ### Permanent security rules
 

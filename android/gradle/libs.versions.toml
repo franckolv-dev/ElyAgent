@@ -19,6 +19,8 @@ moshi = "1.15.2"
 google-services = "4.4.2"
 firebase-bom = "33.14.0"
 biometric = "1.4.0-alpha02"
+documentfile = "1.0.1"
+coil = "2.7.0"
 coroutines = "1.10.2"
 accompanist = "0.37.3"
 junit = "4.13.2"
@@ -59,6 +61,9 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 firebase-messaging = { module = "com.google.firebase:firebase-messaging-ktx" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics-ktx" }
 biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+coil-video = { module = "io.coil-kt:coil-video", version.ref = "coil" }
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist" }

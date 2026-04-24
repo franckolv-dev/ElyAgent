@@ -98,7 +98,84 @@ def _extract_text_docx(file_path: Path) -> str:
         )
     doc = Document(str(file_path))
     paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    # Also include text from tables — often where the payload sits in reports
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                paragraphs.append(" | ".join(cells))
     return "\n\n".join(paragraphs)
+
+
+def _extract_text_doc(file_path: Path) -> str:
+    """Extract text from legacy MS Word .doc via the `antiword` system binary.
+
+    The OLE2 binary format used by Word 97-2003 has no reliable pure-Python
+    parser; antiword is a ~200 KB package shipped in the image instead.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["antiword", "-w", "0", str(file_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except FileNotFoundError:
+        raise ValueError(
+            "Le format .doc necessite le binaire `antiword`. "
+            "Il doit etre installe dans l'image Docker (apt-get install antiword)."
+        )
+    if result.returncode != 0:
+        raise ValueError(
+            f"Echec de l'extraction .doc: {result.stderr.strip() or 'erreur inconnue'}. "
+            "Si c'est un fichier recent, ouvre-le dans Word et resauvegarde-le en .docx."
+        )
+    return result.stdout
+
+
+def _extract_text_xlsx(file_path: Path) -> str:
+    """Extract text from .xlsx — one line per row, sheets separated by title."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        raise ValueError(
+            "Le format XLSX necessite la dependance openpyxl. "
+            "Installez-la avec: pip install openpyxl"
+        )
+    wb = load_workbook(filename=str(file_path), read_only=True, data_only=True)
+    sheets_text = []
+    for sheet in wb.worksheets:
+        sheet_lines = [f"## {sheet.title}"]
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c) if c is not None else "" for c in row]
+            if any(c.strip() for c in cells):
+                sheet_lines.append(" | ".join(cells))
+        if len(sheet_lines) > 1:
+            sheets_text.append("\n".join(sheet_lines))
+    wb.close()
+    return "\n\n".join(sheets_text)
+
+
+def _extract_text_xls(file_path: Path) -> str:
+    """Extract text from legacy Excel 97-2003 .xls via xlrd."""
+    try:
+        import xlrd
+    except ImportError:
+        raise ValueError(
+            "Le format XLS necessite la dependance xlrd. "
+            "Installez-la avec: pip install 'xlrd>=2.0.1'"
+        )
+    wb = xlrd.open_workbook(str(file_path))
+    sheets_text = []
+    for sheet in wb.sheets():
+        sheet_lines = [f"## {sheet.name}"]
+        for row_idx in range(sheet.nrows):
+            row = sheet.row_values(row_idx)
+            cells = [str(c) if c != "" else "" for c in row]
+            if any(c.strip() for c in cells):
+                sheet_lines.append(" | ".join(cells))
+        if len(sheet_lines) > 1:
+            sheets_text.append("\n".join(sheet_lines))
+    return "\n\n".join(sheets_text)
 
 
 _EXTRACTORS: dict[str, callable] = {
@@ -107,7 +184,10 @@ _EXTRACTORS: dict[str, callable] = {
     ".md": _extract_text_txt,
     ".csv": _extract_text_csv,
     ".json": _extract_text_json,
+    ".doc": _extract_text_doc,
     ".docx": _extract_text_docx,
+    ".xls": _extract_text_xls,
+    ".xlsx": _extract_text_xlsx,
 }
 
 

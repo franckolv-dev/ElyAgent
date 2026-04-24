@@ -286,12 +286,14 @@ cp ~/Téléchargements/client_secret_*.json backend/credentials.json
 | `NEXT_PUBLIC_API_URL` | URL API (baked dans le frontend) | `http://localhost:3000` | `https://votre-domaine.fr` |
 | `NEXT_PUBLIC_WS_URL` | URL WebSocket | `ws://localhost:3000` | `wss://votre-domaine.fr` |
 
-### Notifications push (optionnel)
+### Notifications push
 
-| Variable | Description |
-|----------|-------------|
-| `NTFY_URL` | URL du serveur ntfy (`https://ntfy.sh` ou auto-hébergé) |
-| `NTFY_TOPIC` | Topic ntfy (défaut: `cyberentity`) |
+Les notifications push sont gérées nativement par les apps mobiles :
+
+- **Android** : FCM (Firebase Cloud Messaging) — le token est enregistré automatiquement au login, aucune variable d'environnement à positionner. Nécessite le fichier `google-services.json` dans `android/app/`.
+- **iOS** : APNs (Apple Push Notification service) — même mécanisme, via la clé `.p8` configurée dans le projet Xcode.
+
+Aucun serveur de notification self-hosted n'est requis.
 
 ### Voix
 

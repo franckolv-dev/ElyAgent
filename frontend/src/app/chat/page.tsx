@@ -113,6 +113,7 @@ function ChatPageInner() {
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const pendingToolImages = useRef<ToolImage[]>([]);
   const wsRef = useRef<AgentWebSocket | null>(null);
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
   // ── First-launch redirect: if no LLM is configured, redirect to setup ──
@@ -143,8 +144,40 @@ function ChatPageInner() {
 
     ws.onStatus(setWsStatus);
 
+    // ── Watchdog: auto-unblock the UI if no WS event arrives within 150s ──
+    // The backend can legitimately be slow (qwen inference + fallback
+    // chain can take ~60s). But a truly stuck request (disconnected WS,
+    // HITL timeout race, etc.) would leave isLoading=true forever. The
+    // watchdog is reset on every incoming message and fires only when
+    // nothing has happened for 150s.
+    const armWatchdog = () => {
+      if (watchdogRef.current) clearTimeout(watchdogRef.current);
+      watchdogRef.current = setTimeout(() => {
+        setIsLoading(false);
+        setActiveTool(null);
+        setStreamingContent((partial) => {
+          if (partial) {
+            setMessages((prev) => [...prev, {
+              role: "assistant",
+              content: partial + "\n\n_(réponse interrompue — pas de nouvelles du backend depuis 150s)_",
+              created_at: new Date().toISOString(),
+            }]);
+          }
+          return "";
+        });
+      }, 150_000);
+    };
+    const disarmWatchdog = () => {
+      if (watchdogRef.current) {
+        clearTimeout(watchdogRef.current);
+        watchdogRef.current = null;
+      }
+    };
+
     ws.onMessage((msg: WSMessage) => {
       setLastWsMessage(msg);
+      // Every incoming event is a sign of life — reset the idle watchdog.
+      armWatchdog();
 
       if (msg.type === "start") {
         setConversationId(msg.conversation_id);
@@ -175,6 +208,7 @@ function ChatPageInner() {
         setStreamingContent("");
         setActiveTool(null);
         setIsLoading(false);
+        disarmWatchdog();
       } else if (msg.type === "stopped") {
         // Agent was interrupted — finalize any partial content already streamed
         setStreamingContent((partial) => {
@@ -189,11 +223,24 @@ function ChatPageInner() {
         });
         setActiveTool(null);
         setIsLoading(false);
+        disarmWatchdog();
+      } else if (msg.type === "hitl_pending") {
+        // HITL blocks the backend up to 120s waiting for approval.
+        // Free the input immediately so the user can type follow-ups,
+        // use the stop button, or simply see that the UI is alive —
+        // approval happens via the dedicated buttons in the avatar panel.
+        setActiveTool(null);
+        setIsLoading(false);
+      } else if (msg.type === "hitl_resolved") {
+        // Mark loading true again — the tool will now run and produce a
+        // response that will flip isLoading back to false on "message".
+        setIsLoading(true);
       } else if (msg.type === "error") {
         setMessages((prev) => [...prev, { role: "assistant", content: t("error", { message: msg.content ?? "" }) }]);
         setStreamingContent("");
         setActiveTool(null);
         setIsLoading(false);
+        disarmWatchdog();
       } else if (msg.type === "browser_frame" && msg.data) {
         setBrowserFrame({ data: msg.data, url: msg.url ?? "", title: msg.title ?? "" });
       }
@@ -201,7 +248,10 @@ function ChatPageInner() {
 
     ws.connect();
 
-    return () => ws.disconnect();
+    return () => {
+      disarmWatchdog();
+      ws.disconnect();
+    };
   }, []); // WebSocket lifecycle: mount once, disconnect on unmount
 
   // React to URL param changes (new conv or load history)

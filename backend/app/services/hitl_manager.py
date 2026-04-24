@@ -18,9 +18,10 @@
 """Human-in-the-Loop (HITL) manager.
 
 When the agent wants to execute a critical action:
-1. A ntfy push notification is sent to Android with three action buttons.
+1. A push notification is fanned out to every linked channel (Android FCM,
+   Telegram, Discord, Slack, web WebSocket).
 2. Execution is paused (asyncio.Event) for up to TIMEOUT_SECONDS.
-3. The Android user taps one of: Allow / Deny (once) / Ban (always).
+3. The user taps one of: Allow / Deny (once) / Ban (always).
 4. The matching webhook endpoint resolves the event.
 5. If "Ban": the action description is stored as a permanent security rule
    in Qdrant so the agent never proposes it again.
@@ -43,7 +44,14 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_SECONDS = 300  # 5 minutes
+TIMEOUT_SECONDS = 300  # 5 minutes — laisse le temps à la notif FCM d'arriver
+#                       sur Android, que l'utilisateur la voie, déverrouille
+#                       son tél, et valide. Le runner de tests automatisé
+#                       utilise son propre HITL_TIMEOUT=180s pour ne pas
+#                       bloquer. En usage réel c'est la patience humaine qui
+#                       compte — 2 minutes était trop court (essais sur
+#                       2026-04-23 : 404 systématiques car auto-deny déclenché
+#                       avant que l'utilisateur ait cliqué).
 
 _firebase_init_lock = asyncio.Lock()
 
@@ -81,7 +89,7 @@ class HITLManager:
         Sends validation request to ALL available channels:
         - Web UI via WebSocket
         - Telegram via inline keyboard (if user has linked account)
-        - ntfy push notification (if configured)
+        - Android app via FCM push notification
 
         Returns a (decision, reason) tuple where decision is one of:
         ``"allow"``, ``"deny"``, ``"ban"``.
@@ -93,8 +101,8 @@ class HITLManager:
         # Notify ALL available channels in parallel
         await asyncio.gather(
             self._notify_frontend(user_id, action_id, description, "hitl_pending"),
-            self._send_ntfy(action_id, description),
             self._send_telegram(user_id, action_id, description),
+            self._send_ntfy(action_id, description),
             return_exceptions=True,
         )
         asyncio.create_task(self._send_fcm(user_id, action_id, "hitl", description, {}))
@@ -131,34 +139,74 @@ class HITLManager:
     # ------------------------------------------------------------------ #
 
     async def _send_ntfy(self, action_id: str, description: str) -> None:
+        """Fire a push notification to the ntfy topic configured in settings.
+
+        `ntfy_url` should be the FULL topic URL (e.g.
+        https://ntfy.sh/ely-franck-xxxxx). If unset, this is a no-op.
+
+        Notifications include 3 action buttons that call back the backend's
+        /validation/{action_id}/{decision} endpoints directly — so the user
+        can approve/deny straight from the phone notification shade without
+        opening the app.
+        """
         settings = get_settings()
         if not settings.ntfy_url:
-            logger.debug("ntfy not configured — skipping push notification")
+            logger.debug("ntfy not configured — skipping push")
             return
 
-        topic = settings.ntfy_topic or "cyberentity"
         base = settings.backend_url.rstrip("/")
-        # ntfy accepts Unicode (emojis, accents) ONLY via the JSON body format,
-        # NOT via HTTP headers (which are ASCII-only per RFC 7230). Sending Title
-        # with emojis or accents in headers raises "ascii codec can't encode".
+        # Sign the action_id so the notification buttons can resolve the
+        # HITL without passing a JWT (ntfy actions have no way to carry
+        # one). The token is validated by _verify_action_token in
+        # backend/app/routers/validation.py.
+        from app.routers.validation import sign_action_token
+        tok = sign_action_token(action_id)
+
+        # IMPORTANT: nginx in front of the backend only proxies /api/* to
+        # the FastAPI app, so the action buttons MUST call /api/validation/*
+        # (legacy /validation/* is also mounted but only reachable directly
+        # on the backend port, not via the public Cloudflare Tunnel URL).
+        # JSON body is required to keep Unicode safe (ntfy headers are ASCII-only).
+        # See https://docs.ntfy.sh/publish/#publish-as-json
         payload = {
-            "topic": topic,
-            "title": "Action requise — ELY",
-            "message": description,
+            "topic": settings.ntfy_topic or "ely",
+            "title": "Action requise — Éli",
+            "message": description[:4000],
             "priority": 5,
             "tags": ["warning", "robot"],
             "actions": [
                 {"action": "http", "label": "Autoriser",
-                 "url": f"{base}/validation/{action_id}/allow", "method": "POST", "clear": True},
+                 "url": f"{base}/api/validation/{action_id}/allow?t={tok}",
+                 "method": "POST", "clear": True},
                 {"action": "http", "label": "Refuser",
-                 "url": f"{base}/validation/{action_id}/deny", "method": "POST", "clear": True},
-                {"action": "http", "label": "Interdire toujours",
-                 "url": f"{base}/validation/{action_id}/ban", "method": "POST", "clear": True},
+                 "url": f"{base}/api/validation/{action_id}/deny?t={tok}",
+                 "method": "POST", "clear": True},
+                {"action": "http", "label": "Interdire",
+                 "url": f"{base}/api/validation/{action_id}/ban?t={tok}",
+                 "method": "POST", "clear": True},
             ],
         }
+        # If ntfy_url already points at a topic (e.g. https://ntfy.sh/xxx),
+        # we POST to the host root and let the "topic" field route. If it's
+        # just the host (https://ntfy.sh), we also POST to root — equivalent.
+        from urllib.parse import urlparse
+        u = urlparse(settings.ntfy_url)
+        host_root = f"{u.scheme}://{u.netloc}"
+        # Override topic from URL path if present (takes precedence over ntfy_topic)
+        url_topic = u.path.strip("/")
+        if url_topic:
+            payload["topic"] = url_topic
+
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                await client.post(settings.ntfy_url, json=payload)
+                resp = await client.post(host_root, json=payload)
+                if resp.status_code >= 300:
+                    logger.warning(
+                        "ntfy returned HTTP %s: %s",
+                        resp.status_code, resp.text[:200],
+                    )
+                else:
+                    logger.info("ntfy push sent for action %s", action_id)
         except Exception as exc:
             logger.warning("Failed to send ntfy notification: %s", exc)
 

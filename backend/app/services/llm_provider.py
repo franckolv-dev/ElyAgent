@@ -200,11 +200,17 @@ async def load_llm_settings_from_db() -> None:
             "deepseek":    "api_key_deepseek",
             "zhipu":       "api_key_zhipu",
             "openrouter":  "api_key_openrouter",
+            "qwen_api":    "api_key_qwen_api",
         }
         for prov, cfg_key in key_map.items():
             val = await get_config(cfg_key, "")
             if val:
                 _runtime[f"key_{prov}"] = val
+
+        # Load Qwen API base_url (region-scoped DashScope endpoint)
+        qwen_base = await get_config("qwen_api_base_url", "")
+        if qwen_base:
+            _runtime["qwen_api_base_url"] = qwen_base
 
         # Load tier routing config
         import json as _json
@@ -250,6 +256,87 @@ def get_slm() -> BaseChatModel:
     return ChatOllama(model=settings.slm_model,
         base_url=settings.ollama_base_url,
         temperature=0.7, keep_alive="24h")
+
+
+def _make_lm_studio(model: str, base_url: str, max_tokens: int = 4096, temperature: float = 0.1) -> BaseChatModel:
+    """Instantiate a model served by LM Studio (OpenAI-compatible local API).
+
+    LM Studio exposes an OpenAI-compatible endpoint at http://localhost:1234/v1
+    (accessible from Docker via host.docker.internal).  No real API key is
+    required; we pass the conventional dummy value "lm-studio" that LM Studio
+    itself suggests in its documentation.
+
+    The model name must match exactly what LM Studio shows in its
+    "Local Server" tab (e.g. "gemma-4-26b-a4b-it-mlx").
+
+    ┌─ Note perf (2026-04-23) ─────────────────────────────────────────────┐
+    │ Defaults optimized for local tool-calling:                           │
+    │ - temperature=0.1 (was 0.7): drastically reduces JSON hallucinations │
+    │   on tool_call outputs. Gemma 4 MLX follows schemas much better at   │
+    │   low T. User can still bump it via LM Studio UI for chat-only work. │
+    │ - No streaming=False override: langchain_openai picks the right mode │
+    │   based on the caller.                                               │
+    └──────────────────────────────────────────────────────────────────────┘
+    """
+    from langchain_openai import ChatOpenAI
+    # ── Thinking disabled for Qwen 3.5+ ────────────────────────────────
+    # Qwen 3.5 does NOT honor the `/no_think` marker (unlike Qwen 3).
+    # Its thinking must be disabled at API level via
+    # `chat_template_kwargs.enable_thinking=False` in the request body.
+    # Without this flag, the model burns 100 % of its `max_tokens` inside
+    # the <think> block and never emits the real answer (content="" +
+    # finish_reason="length"). Confirmed on `qwen3.5-9b-mlx` 2026-04-23.
+    #
+    # We inject `enable_thinking=False` unconditionally for LM Studio
+    # because :
+    #   - Qwen 2.5 : parameter is ignored (no thinking concept) → harmless
+    #   - Qwen 3   : parameter is ignored, `/no_think` in content still works
+    #   - Qwen 3.5+: parameter is the ONLY way to disable thinking
+    #   - Gemma / Mistral / Llama served via LM Studio : ignored → harmless
+    # If a user genuinely wants thinking on for a reasoning model, they can
+    # override via the LM Studio UI (system prompt).
+    return ChatOpenAI(
+        model=model,
+        api_key="lm-studio",       # LM Studio ignores the key — required by LangChain
+        base_url=base_url,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+
+
+def _make_qwen_api(
+    model: str,
+    api_key: str,
+    base_url: str,
+    max_tokens: int = 4096,
+    temperature: float = 0.1,
+) -> BaseChatModel:
+    """Instantiate a Qwen model served by Alibaba Cloud DashScope (cloud API).
+
+    The endpoint is OpenAI-compatible, so we use `ChatOpenAI`. The typical
+    base_url is region-scoped, e.g.:
+      - EU : https://ws-<id>.eu-central-1.maas.aliyuncs.com/compatible-mode/v1
+      - CN : https://dashscope.aliyuncs.com/compatible-mode/v1
+
+    Models available (2026) : qwen3.6-plus, qwen3.6-max, qwen-plus-latest,
+    qwen-max-latest, qwen2.5-vl-72b-instruct, qwen-turbo-latest, etc.
+
+    Like LM Studio we inject `chat_template_kwargs.enable_thinking=False`
+    to tame Qwen 3.5/3.6 thinking mode — Alibaba's API honors this flag
+    (unlike LM Studio which has a known bug).
+
+    Temperature default 0.1 for function-calling stability.
+    """
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
 
 
 def _make_openrouter(model: str, api_key: str, max_tokens: int = 4096, temperature: float = 0.7) -> BaseChatModel:
@@ -352,6 +439,16 @@ def get_llm() -> BaseChatModel:
         return ChatOllama(model=model,
             base_url=settings.ollama_base_url,
             temperature=0.7, keep_alive="24h")
+
+    elif provider == "lm_studio":
+        return _make_lm_studio(model=model, base_url=settings.lm_studio_base_url)
+
+    elif provider == "qwen_api":
+        return _make_qwen_api(
+            model=model,
+            api_key=_key("qwen_api", settings.qwen_api_key),
+            base_url=_runtime.get("qwen_api_base_url") or settings.qwen_api_base_url,
+        )
 
     elif provider == "deepseek":
         from langchain_openai import ChatOpenAI
@@ -521,6 +618,17 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
             base_url=settings.ollama_base_url,
             temperature=temperature, keep_alive="24h")
 
+    elif provider == "lm_studio":
+        return _make_lm_studio(model=model, base_url=settings.lm_studio_base_url, temperature=temperature)
+
+    elif provider == "qwen_api":
+        return _make_qwen_api(
+            model=model,
+            api_key=_key("qwen_api", settings.qwen_api_key),
+            base_url=_runtime.get("qwen_api_base_url") or settings.qwen_api_base_url,
+            temperature=temperature,
+        )
+
     elif provider == "deepseek":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
@@ -568,6 +676,26 @@ def _make_llm_for_provider(
         return ChatOllama(model=settings.slm_model or "qwen2.5:7b-instruct",
             base_url=settings.ollama_base_url,
             temperature=temperature, keep_alive="24h")
+
+    if provider_id == "lm_studio":
+        # No key needed — use the model currently loaded in LM Studio.
+        # The model name must match what LM Studio shows in its "Local Server" tab.
+        return _make_lm_studio(model=settings.slm_model or "gemma-4-26B-A4B-it-MLX-4bit",
+                               base_url=settings.lm_studio_base_url,
+                               max_tokens=max_tokens, temperature=temperature)
+
+    if provider_id == "qwen_api":
+        key = _key("qwen_api", settings.qwen_api_key)
+        base_url = _runtime.get("qwen_api_base_url") or settings.qwen_api_base_url
+        if not key or not base_url:
+            return None
+        return _make_qwen_api(
+            model="qwen-plus-latest",  # safe default, can be overridden via instance
+            api_key=key,
+            base_url=base_url,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
     if provider_id == "zhipu":
         key = _key("zhipu", settings.zhipu_api_key)
@@ -700,6 +828,25 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
     if provider == "ollama":
         from langchain_ollama import ChatOllama
         return ChatOllama(model=model, base_url=settings.ollama_base_url, temperature=temperature, keep_alive="24h")
+
+    if provider == "lm_studio":
+        # api_key stored in the instance is ignored (LM Studio requires none)
+        return _make_lm_studio(model=model, base_url=settings.lm_studio_base_url,
+                               max_tokens=max_tokens, temperature=temperature)
+
+    if provider == "qwen_api":
+        # Alibaba Cloud DashScope — per-instance api_key overrides runtime/env.
+        key = api_key or settings.qwen_api_key
+        base_url = _runtime.get("qwen_api_base_url") or settings.qwen_api_base_url
+        if not key or not base_url:
+            return None
+        return _make_qwen_api(
+            model=model,
+            api_key=key,
+            base_url=base_url,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
     if provider == "anthropic":
         key = api_key or settings.anthropic_api_key

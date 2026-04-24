@@ -96,8 +96,16 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             registry = get_skill_registry()
             memory = get_memory_manager()
 
-            # Filter tools to this sub-agent's declared subset
-            agent_tools = [t for t in registry.all_tools if t.name in cfg.tool_names]
+            # Filter tools to this sub-agent's declared subset.
+            # PERF: tri alphabétique par nom → ordre déterministe entre appels,
+            # nécessaire pour que le prompt cache LM Studio puisse matcher les
+            # tool schemas d'un turn à l'autre. Sans ce tri, l'ordre dépend de
+            # l'enregistrement des skills (peut varier sur restart) et casse
+            # le cache même quand les memories sont stables.
+            agent_tools = sorted(
+                [t for t in registry.all_tools if t.name in cfg.tool_names],
+                key=lambda t: t.name,
+            )
 
             # ── Dynamic tool sub-filtering ────────────────────────────────────
             # Even within a sub-agent, binding 70+ tools (workspace) makes the
@@ -108,7 +116,16 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             _last_user = ""
             for _m in reversed(messages):
                 if hasattr(_m, "content") and getattr(_m, "type", None) == "human":
-                    _last_user = (_m.content or "").lower()
+                    # HumanMessage.content peut être str OU list[dict] (multi-bloc
+                    # texte+image). On extrait le texte dans les 2 cas sinon
+                    # .lower() / .search() crashent avec TypeError.
+                    _raw = _m.content or ""
+                    if isinstance(_raw, list):
+                        _raw = " ".join(
+                            (b.get("text", "") if isinstance(b, dict) else str(b))
+                            for b in _raw
+                        )
+                    _last_user = str(_raw).lower()
                     break
             # Keyword → tool prefix mapping (only used when sub-agent has many tools)
             if len(agent_tools) > 20:
@@ -205,8 +222,37 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             # Otherwise, "auto" — let the LLM choose to answer with text or a tool call.
             import re as _re_local
             from langchain_core.messages import HumanMessage as _HM
-            _last = messages[-1] if messages else None
-            _last_content = _last.content if (_last is not None and isinstance(_last, _HM)) else ""
+            # IMPORTANT: Walk backwards to find the last *actual* user message.
+            # After a tool call the final message is a ToolMessage; keying
+            # _force_tools off messages[-1] would lose the original user
+            # intent and drop back to "auto" mode, in which case Claude
+            # narrates « le système demande confirmation » instead of
+            # actually calling the destructive follow-up tool.
+            # We also count tool messages since that last user turn — past
+            # ~2 tool calls we release the `tool_choice="any"` constraint so
+            # Claude can close the turn with a "done" text reply instead of
+            # looping on the same tool (e.g. redeleting an already-deleted
+            # file because the constraint forbids text output).
+            from langchain_core.messages import ToolMessage as _TM
+            _last_user_msg = None
+            _tool_calls_since_user = 0
+            for _m in reversed(messages):
+                if isinstance(_m, _HM):
+                    _last_user_msg = _m
+                    break
+                if isinstance(_m, _TM):
+                    _tool_calls_since_user += 1
+            # Extract text from HumanMessage.content (str or list[dict] for
+            # multi-bloc text+image). Without this, _action_kw.search(list)
+            # raises TypeError on multimodal inputs.
+            _last_content_raw = _last_user_msg.content if _last_user_msg is not None else ""
+            if isinstance(_last_content_raw, list):
+                _last_content = " ".join(
+                    (b.get("text", "") if isinstance(b, dict) else str(b))
+                    for b in _last_content_raw
+                )
+            else:
+                _last_content = str(_last_content_raw) if _last_content_raw else ""
             _action_kw = _re_local.compile(
                 r"\b(envoie|envoyer|crée|créer|créé|liste[rz]?|listes?|"
                 r"prépare[rz]?|prépares?|compose[rz]?|composes?|rédige[rz]?|rédiges?|"
@@ -221,24 +267,75 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 _re_local.IGNORECASE,
             )
             _force_tools = (
-                isinstance(_last, _HM)
+                _last_user_msg is not None
                 and bool(agent_tools)
                 and bool(_action_kw.search(_last_content or ""))
+                # Release the constraint once the agent has already run 2+
+                # tools in this turn — otherwise it can't close the turn
+                # with a final text response and loops on the same tool.
+                and _tool_calls_since_user < 2
             )
             if _force_tools:
+                # ── tool_choice mapping per provider ──────────────────────
+                # Anthropic / Mistral / Gemini → "any"
+                # OpenAI / LM Studio (OpenAI-compatible) → "required"
+                # Sending "any" to LM Studio returns HTTP 400
+                # ("Invalid tool_choice value: 'any'. Supported values:
+                #  none, auto, required") which LangChain then silently
+                # degrades to text output → tool_calls=0 on every turn.
+                # Detect ChatOpenAI (LM Studio, DeepSeek, OpenRouter) and
+                # switch to "required".
+                _cls = type(llm).__name__
+                _is_openai_compat = _cls == "ChatOpenAI"
+                _tool_choice_forced = "required" if _is_openai_compat else "any"
                 try:
-                    llm_with_tools = llm.bind_tools(agent_tools, tool_choice="any")
+                    llm_with_tools = llm.bind_tools(agent_tools, tool_choice=_tool_choice_forced)
                 except Exception:
                     llm_with_tools = llm.bind_tools(agent_tools)
             else:
                 llm_with_tools = llm.bind_tools(agent_tools)
 
-            # Fetch memory context in parallel
-            constraints, memories, past_interactions = await asyncio.gather(
-                memory.get_relevant_constraints(user_query, user_id),
-                memory.get_relevant_memories(user_query, user_id),
-                memory.get_relevant_interactions(user_query, user_id, limit=3),
-            )
+            # ── Memory context — cached per user turn ─────────────────────
+            # PERF (2026-04-23) : sans ce cache, on refetchait memories +
+            # constraints + interactions + user_ctx à CHAQUE itération de
+            # l'agent (y compris entre tool calls d'un même tour). Or ces
+            # valeurs changent à chaque fetch (Qdrant ordering, timestamps),
+            # ce qui invalide le prompt cache de LM Studio → Gemma MLX 26B
+            # retraite 15 000 tokens (~45s) à chaque tour de boucle. Avec
+            # le cache, on fetch une fois au premier appel du turn
+            # utilisateur, et on réutilise pour tous les tool calls en
+            # cascade → cache LM Studio peut enfin hit.
+            #
+            # Invalidation : quand `user_query` change (= nouveau message
+            # utilisateur), les memories sont re-fetched. On garde donc la
+            # fraîcheur pour chaque nouveau prompt de l'utilisateur.
+            _cached_query = state.get("_mem_fetched_for_query")
+            if _cached_query == user_query:
+                # Hit — réutilise les blocs du state
+                constraints = state.get("_mem_constraints", []) or []
+                memories = state.get("_mem_memories", []) or []
+                past_interactions = state.get("_mem_interactions", []) or []
+                user_ctx = state.get("_mem_user_ctx", "") or ""
+                logger.debug("[%s] memory cache HIT for turn (query=%.30s...)", cfg.name, user_query)
+                _cache_updates = {}
+            else:
+                # Miss — fetch en parallèle puis stocke pour les tool calls suivants
+                from app.services.memory_service import get_user_context as _get_user_ctx
+                _uc_task = _get_user_ctx(user_id) if user_id else None
+                constraints, memories, past_interactions, user_ctx = await asyncio.gather(
+                    memory.get_relevant_constraints(user_query, user_id),
+                    memory.get_relevant_memories(user_query, user_id),
+                    memory.get_relevant_interactions(user_query, user_id, limit=3),
+                    _uc_task if _uc_task is not None else asyncio.sleep(0, result=""),
+                )
+                logger.debug("[%s] memory cache MISS — fetched for new turn", cfg.name)
+                _cache_updates = {
+                    "_mem_constraints": constraints or [],
+                    "_mem_memories": memories or [],
+                    "_mem_interactions": past_interactions or [],
+                    "_mem_user_ctx": user_ctx or "",
+                    "_mem_fetched_for_query": user_query,
+                }
 
             # Current date/time (Europe/Paris)
             _tz = zoneinfo.ZoneInfo("Europe/Paris")
@@ -256,38 +353,71 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 f"{now.year}, {now.strftime('%H:%M')}"
             )
 
-            system = cfg.system_prompt
-            system += f"\n\nDate et heure : {date_str} (Europe/Paris)\n"
+            # ── Build system prompt ────────────────────────────────────────
+            # Two modes depending on the target model :
+            # 1. COMPACT (local LLMs via LM Studio / llama.cpp) : ~300
+            #    tokens total. Small models (7B-14B) follow textual
+            #    instructions literally and get confused by ELY's verbose
+            #    prompt, preferring to text-respond rather than tool-call.
+            # 2. FULL (frontier cloud models) : the historical prompt
+            #    with all behavioural rules, identity, memories, etc.
+            #    Frontier models navigate this richness well.
+            from app.services.qwen_no_think import is_local_openai_llm
+            _use_compact = is_local_openai_llm(llm)
 
-            # Inject structured user profile context if available
-            if user_id:
-                try:
-                    from app.services.memory_service import get_user_context
-                    user_ctx = await get_user_context(user_id)
-                    if user_ctx:
-                        system += f"\n\n{user_ctx}\n"
-                except Exception as _ctx_exc:
-                    logger.debug("Could not fetch user context: %s", _ctx_exc)
+            if _use_compact:
+                from app.agent.compact_prompt import build_compact_system_prompt
+                system = build_compact_system_prompt(
+                    agent_name=cfg.name,
+                    date_str=date_str,
+                    user_ctx=user_ctx or "",
+                    memories=memories,
+                    constraints=constraints,
+                )
+                logger.info("[%s] compact prompt mode active (%d chars)", cfg.name, len(system))
+            else:
+                # FULL mode — unchanged, dynamic tail ordering preserved
+                # so LM Studio prefix cache can retain cfg.system_prompt.
+                system = cfg.system_prompt
 
-            if constraints:
-                system += "\n\nCONTRAINTES DE SECURITE PERMANENTES :\n"
-                system += "\n".join(f"- {c}" for c in constraints)
-            if memories:
-                system += "\n\nCONTEXTE MEMORISE :\n"
-                system += "\n".join(f"- {m}" for m in memories)
-            if past_interactions:
-                system += "\n\nINTERACTIONS PASSEES :\n"
-                for p in past_interactions:
-                    system += (
-                        f"- Q: {p.get('user_message', '')[:120]} "
-                        f"-> R: {p.get('assistant_message', '')[:120]}\n"
-                    )
+                if user_ctx:
+                    system += f"\n\n{user_ctx}\n"
 
-            from app.services.qwen_no_think import inject_no_think, strip_think_block
-            _invoke_msgs = inject_no_think(
+                # PERF: on tronque agressivement les injections mémoire. Les
+                # valeurs longues explosent le nombre de tokens sans apport
+                # qualitatif significatif pour la décision de tool-calling.
+                # Le LLM dispose déjà de l'historique conversationnel complet.
+                if constraints:
+                    system += "\n\nCONTRAINTES DE SECURITE PERMANENTES :\n"
+                    system += "\n".join(f"- {c[:200]}" for c in constraints[:5])
+                if memories:
+                    system += "\n\nCONTEXTE MEMORISE :\n"
+                    system += "\n".join(f"- {m[:150]}" for m in memories[:5])
+                if past_interactions:
+                    system += "\n\nINTERACTIONS PASSEES :\n"
+                    for p in past_interactions[:3]:
+                        system += (
+                            f"- Q: {p.get('user_message', '')[:80]} "
+                            f"-> R: {p.get('assistant_message', '')[:80]}\n"
+                        )
+
+                # Date en DERNIER — c'est la partie la plus volatile (change
+                # de minute). En la plaçant après le contenu stable, on limite
+                # l'invalidation du cache aux ~30 derniers tokens au lieu de
+                # tout le prompt.
+                system += f"\n\nDate et heure : {date_str} (Europe/Paris)\n"
+
+            from app.services.qwen_no_think import (
+                inject_no_think, is_qwen_llm, strip_no_think, strip_think_block,
+            )
+            _invoke_msgs = (
                 [{"role": "system", "content": system}]
                 + _sanitize_messages_for_mistral(messages)
             )
+            # Only Qwen understands /no_think; non-Qwen models would echo it
+            # (e.g. « email de X /no_think » leaked back into the reply).
+            if is_qwen_llm(llm):
+                _invoke_msgs = inject_no_think(_invoke_msgs)
             _model_name = getattr(llm, 'model', None) or getattr(llm, 'model_name', '?')
             _prep_time = _t.monotonic() - _t_start
             logger.warning("⏱ TIMING[%s.prep] %.2fs — model=%s, tools=%d, msgs=%d", cfg.name, _prep_time, _model_name, len(agent_tools), len(messages))
@@ -300,32 +430,60 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 logger.warning("⏱ TIMING[%s.infer] %.2fs — tool_calls=%d", cfg.name, _t.monotonic() - _infer_start, _n_tc)
 
                 # If we forced tool_choice="any" but the LLM emitted zero tool
-                # calls, it means qwen2.5/small models ignored the constraint
-                # and returned text. Retry with a fallback LLM (Claude Haiku)
-                # which reliably respects tool_choice.
+                # calls, it means qwen2.5/small models / Gemma MLX ignored the
+                # constraint and returned text. Historically we always fell
+                # back to a cloud LLM (Claude Haiku / Gemini Flash) which
+                # reliably respects tool_choice.
+                #
+                # PERF/OBSERVABILITY (2026-04-23) : ce fallback est désormais
+                # conditionné au flag `fallback_enabled` du tier. Quand l'user
+                # a explicitement désactivé le fallback (ex. pour tester une
+                # config 100 % locale Gemma), on respecte son choix et on
+                # remonte la réponse texte telle quelle. Le log reste très
+                # visible pour qu'on repère le problème vite en prod.
                 if _force_tools and _n_tc == 0:
-                    from app.services.llm_provider import get_fallback_llms
-                    logger.warning(
-                        "⏱ TIMING[%s.infer] tool_choice=any ignored by %s — retrying with fallback",
-                        cfg.name, _model_name,
+                    from app.services.llm_provider import (
+                        classify_complexity, get_fallback_llms, get_tier_config,
                     )
-                    for _fb_label, _fb_llm in get_fallback_llms():
-                        try:
-                            _fb_bound = _fb_llm.bind_tools(agent_tools, tool_choice="any")
-                        except Exception:
-                            _fb_bound = _fb_llm.bind_tools(agent_tools)
-                        try:
-                            _fb_t = _t.monotonic()
-                            response = await _fb_bound.ainvoke(_invoke_msgs)
-                            _n_tc2 = len(getattr(response, 'tool_calls', []) or [])
-                            logger.warning(
-                                "⏱ TIMING[%s.fallback] %.2fs — %s, tool_calls=%d",
-                                cfg.name, _t.monotonic() - _fb_t, _fb_label, _n_tc2,
-                            )
-                            if _n_tc2 > 0:
-                                break
-                        except Exception as _fb_exc:
-                            logger.warning("Fallback %s also failed: %s", _fb_label, _fb_exc)
+                    # Determine tier of current user query to fetch its fallback flag
+                    _cur_tier = classify_complexity(user_query).value
+                    _tier_cfg = get_tier_config().get(_cur_tier, {})
+                    _fallback_allowed = _tier_cfg.get("fallback_enabled", True)
+
+                    logger.warning(
+                        "⚠️  [%s.infer] tool_choice=any ignored by %s (0 tool_calls) "
+                        "— tier=%s fallback_enabled=%s",
+                        cfg.name, _model_name, _cur_tier, _fallback_allowed,
+                    )
+
+                    if not _fallback_allowed:
+                        logger.warning(
+                            "🚫 [%s.infer] fallback disabled by tier config — "
+                            "keeping local model's text response (tool_calls=0)",
+                            cfg.name,
+                        )
+                        # Response garde son contenu texte tel quel
+                    else:
+                        # Fallback LLMs are non-Qwen — strip the /no_think marker
+                        # so it doesn't leak into their replies.
+                        _fb_msgs = strip_no_think(_invoke_msgs)
+                        for _fb_label, _fb_llm in get_fallback_llms():
+                            try:
+                                _fb_bound = _fb_llm.bind_tools(agent_tools, tool_choice="any")
+                            except Exception:
+                                _fb_bound = _fb_llm.bind_tools(agent_tools)
+                            try:
+                                _fb_t = _t.monotonic()
+                                response = await _fb_bound.ainvoke(_fb_msgs)
+                                _n_tc2 = len(getattr(response, 'tool_calls', []) or [])
+                                logger.warning(
+                                    "🔁 [%s.fallback] %.2fs — %s, tool_calls=%d",
+                                    cfg.name, _t.monotonic() - _fb_t, _fb_label, _n_tc2,
+                                )
+                                if _n_tc2 > 0:
+                                    break
+                            except Exception as _fb_exc:
+                                logger.warning("Fallback %s also failed: %s", _fb_label, _fb_exc)
             except Exception as _primary_exc:
                 # Recover from quota/rate-limit/auth errors by trying fallbacks
                 from app.services.llm_provider import get_fallback_llms
@@ -343,10 +501,12 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     cfg.name, _primary_exc,
                 )
                 response = None
+                # Fallback LLMs are non-Qwen — strip /no_think.
+                _fb_msgs2 = strip_no_think(_invoke_msgs)
                 for _fb_label, _fb_llm in get_fallback_llms():
                     try:
                         _fb_with_tools = _fb_llm.bind_tools(agent_tools)
-                        response = await _fb_with_tools.ainvoke(_invoke_msgs)
+                        response = await _fb_with_tools.ainvoke(_fb_msgs2)
                         logger.info(
                             "Sub-agent '%s' fallback succeeded with %s",
                             cfg.name, _fb_label,
@@ -373,7 +533,12 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
 
                 _asyncio.create_task(_safe_memory_extract(user_id, messages + [response]))
 
-            return {"messages": [response]}
+            # Persist memory cache updates (if any) so subsequent tool calls
+            # in the same turn reuse the blocks instead of re-fetching.
+            _ret = {"messages": [response]}
+            if _cache_updates:
+                _ret.update(_cache_updates)
+            return _ret
 
         agent_node.__name__ = f"{cfg.name}_agent_node"
         return agent_node

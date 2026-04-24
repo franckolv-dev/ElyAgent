@@ -372,13 +372,36 @@ class MemoryManager:
     # ------------------------------------------------------------------ #
 
     async def store_memory(
-        self, content: str, user_id: str, conversation_id: str
+        self,
+        content: str,
+        user_id: str,
+        conversation_id: str = "",
+        extra_payload: dict | None = None,
     ) -> None:
+        """Persist a memory fact.
+
+        `extra_payload` is merged into the Qdrant payload so callers can
+        add custom metadata (e.g. MemGPT `category`, `source`, `created_at`).
+        Reserved keys (`content`, `user_id`, `conversation_id`) are never
+        overridden by extra_payload.
+        """
         try:
+            from datetime import datetime, timezone as _tz
+            payload: dict = {
+                "content": content,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "created_at": datetime.now(_tz.utc).isoformat(),
+            }
+            if extra_payload:
+                # Merge but never let extra_payload override reserved keys.
+                for k, v in extra_payload.items():
+                    if k not in payload:
+                        payload[k] = v
             point_id = await self._upsert(
                 _COLLECTION_MEMORIES,
                 await self._embed(content),
-                {"content": content, "user_id": user_id, "conversation_id": conversation_id},
+                payload,
             )
             from app.services.fts_store import get_fts_store
             await get_fts_store().store(content, user_id, _COLLECTION_MEMORIES, point_id)

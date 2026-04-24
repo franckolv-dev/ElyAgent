@@ -214,10 +214,43 @@ async def extract_and_store_facts(
 # Context retrieval
 # ---------------------------------------------------------------------------
 
-async def get_user_context(user_id: str, limit: int = 20) -> str:
-    """Return a formatted string of user profile facts for injection into system prompts.
+# Keys that are ALWAYS included (identity-critical, cheap on tokens).
+# Anything else goes through a verbosity/relevance filter.
+_PROFILE_CORE_KEYS: frozenset[str] = frozenset({
+    "user_name", "preferred_language", "response_style",
+    "main_project", "email_provider", "timezone_reminder",
+})
 
-    Returns an empty string if no profile exists yet (graceful degradation).
+# Keys we deliberately SKIP in the compact injection — they're too
+# situation-specific to be useful in every prompt and they inflate the
+# token count. They remain in the DB and can still be retrieved via the
+# semantic RAG path when relevant.
+_PROFILE_NOISY_KEYS: frozenset[str] = frozenset({
+    "current_delivery", "ionos_client_id",
+    "upcoming_events", "daily_summary_config",
+    "news_format_preference", "news_recency_preference",
+    "news_date_tolerance", "news_topics",
+    "dev_context_tag", "gmail_preferences",
+    "notification_methods", "location_interest",
+    "shopping_routine", "secondary_project",
+})
+
+
+async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) -> str:
+    """Return a compact user profile string for injection into system prompts.
+
+    PERF (2026-04-24) : la version historique renvoyait 15-20 lignes
+    "- key : value" à chaque prompt — ~600-1000 tokens. Pour les petits
+    modèles locaux (Qwen 2.5-VL 7B), ce volume dilue l'attention et
+    détourne le modèle du tool-calling vers du texte conversationnel.
+
+    Le mode compact (défaut) renvoie 3-6 lignes priorisées :
+    - core keys (name, style, langue, projet principal) : toujours incluses
+    - autres keys : uniquement si pas dans la blacklist bruit
+    - limite stricte : ~200 tokens / ~800 caractères
+
+    Mettre compact=False rétablit le comportement historique (pour debug
+    ou pour les très gros modèles qui bénéficient du contexte complet).
     """
     if not user_id:
         return ""
@@ -242,11 +275,44 @@ async def get_user_context(user_id: str, limit: int = 20) -> str:
         if not rows:
             return ""
 
-        lines = ["Ce que tu sais sur cet utilisateur :"]
-        for row in rows:
-            lines.append(f"- {row.key} : {row.value}")
+        if not compact:
+            # Legacy verbose mode — all facts, one per line
+            lines = ["Ce que tu sais sur cet utilisateur :"]
+            for row in rows:
+                lines.append(f"- {row.key} : {row.value}")
+            return "\n".join(lines)
 
-        return "\n".join(lines)
+        # ── Compact mode ──────────────────────────────────────────────
+        # 1. Extract core keys first (identity-critical).
+        # 2. Then add non-noisy keys up to the 800-char ceiling.
+        # 3. Skip noisy keys entirely — semantic RAG will surface them
+        #    when contextually relevant, not in every prompt.
+        core: list[str] = []
+        extra: list[str] = []
+        for row in rows:
+            if row.key in _PROFILE_NOISY_KEYS:
+                continue
+            value_truncated = str(row.value)[:80]
+            entry = f"{row.key}: {value_truncated}"
+            if row.key in _PROFILE_CORE_KEYS:
+                core.append(entry)
+            else:
+                extra.append(entry)
+
+        if not core and not extra:
+            return ""
+
+        # Assemble with a hard cap of ~800 chars (≈200 tokens)
+        parts = ["Profil utilisateur:"]
+        current_len = len(parts[0])
+        for entry in core + extra:
+            new_len = current_len + 2 + len(entry)  # 2 for " | " separator
+            if new_len > 800:
+                break
+            parts.append(entry)
+            current_len = new_len
+
+        return " | ".join(parts)
 
     except Exception as exc:
         logger.debug("get_user_context failed: %s", exc)

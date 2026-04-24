@@ -52,7 +52,21 @@ android/app/google-services.json
 .mcp.json
 
 # Runtime data (should never be committed)
-data/backups/
-data/fastembed/
-data/db/
-logs/
+# Using /data/ anchor to avoid matching android/.../data/ (Kotlin package)
+/data/
+/logs/
+
+# Next.js / TypeScript build artifacts
+frontend/tsconfig.tsbuildinfo
+
+# Test runner logs (keep in test-runner/ only, not at repo root)
+/*.log
+/hitl-*.log
+/smoke-*.log
+/run-*.log
+
+# Test runner transient outputs
+test-runner/run*.log
+test-runner/hitl*.log
+test-runner/smoke*.log
+test-runner/cleanup*.log

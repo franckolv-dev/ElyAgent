@@ -372,6 +372,7 @@ async def drive_copy_file(
     file_id: str,
     new_name: str = "",
     parent_id: str = "",
+    target_mime_type: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Duplicate a Google Drive file (or Docs/Sheets/Slides document).
@@ -380,6 +381,13 @@ async def drive_copy_file(
         file_id: ID of the file to copy.
         new_name: Name for the copy (default: "Copy of <original>")
         parent_id: Optional destination folder ID.
+        target_mime_type: Convert the copy to a native Google format during
+            copy. Set this to turn an uploaded Office file into a Google
+            Doc/Sheet/Slide so it becomes exportable via drive_export_file.
+              - 'application/vnd.google-apps.document'     (.docx  → Doc)
+              - 'application/vnd.google-apps.spreadsheet'  (.xlsx  → Sheet)
+              - 'application/vnd.google-apps.presentation' (.pptx  → Slides)
+            Leave empty ('') to copy without conversion.
     """
     service = await _get_drive_service(user_google_credentials_json)
     if not service:
@@ -390,12 +398,18 @@ async def drive_copy_file(
         body["name"] = new_name
     if parent_id:
         body["parents"] = [parent_id]
+    if target_mime_type:
+        body["mimeType"] = target_mime_type
     try:
         copied = service.files().copy(
-            fileId=file_id, body=body, fields="id,name,webViewLink"
+            fileId=file_id, body=body, fields="id,name,mimeType,webViewLink"
         ).execute()
+        _conv = (
+            f" (converti : {copied.get('mimeType', '?')})"
+            if target_mime_type else ""
+        )
         return (
-            f"✓ Copie créée : '{copied['name']}'\n"
+            f"✓ Copie créée : '{copied['name']}'{_conv}\n"
             f"  ID : {copied['id']}\n"
             f"  Lien : {copied.get('webViewLink', '—')}"
         )

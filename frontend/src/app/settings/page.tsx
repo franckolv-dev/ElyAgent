@@ -101,6 +101,24 @@ const PROVIDERS = [
     defaultModel: "",
     docsUrl: "https://ollama.com/",
   },
+  {
+    id: "lm_studio",
+    label: "LM Studio (Local)",
+    flag: "🖥️",
+    desc: "API OpenAI-compatible · Port 1234 · Gemma, Llama, Phi… via MLX/CUDA — le nom du modèle doit correspondre à l'onglet « Local Server » de LM Studio",
+    needsKey: false,
+    defaultModel: "gemma-4-26B-A4B-it-MLX-4bit",
+    docsUrl: "https://lmstudio.ai/docs/api/openai-api",
+  },
+  {
+    id: "qwen_api",
+    label: "Qwen API (Alibaba Cloud)",
+    flag: "🇨🇳",
+    desc: "API OpenAI-compatible DashScope · Qwen 3.6 Plus/Max, Qwen 2.5-VL 72B · enable_thinking auto-désactivé",
+    needsKey: true,
+    defaultModel: "qwen-plus-latest",
+    docsUrl: "https://help.aliyun.com/zh/model-studio",
+  },
 ];
 
 const GOOGLE_SERVICES = [
