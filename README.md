@@ -278,12 +278,14 @@ An on-device cleanup assistant — nothing ever leaves your phone. Accessed from
 
 #### 💬 Messaging Platforms
 
+All four chat channels below are configured from **Settings → Channels** in the UI — no `.env` editing required. Each card validates the token with the provider, persists it encrypted, and hot-restarts the bot.
+
 | Channel | Setup | Notes |
 |---------|-------|-------|
-| **Telegram** | `TELEGRAM_BOT_TOKEN` in `.env` → `@BotFather` | Full agent access from any device; inline keyboard buttons for HITL approvals (Allow / Deny / Ban); works in groups and DMs |
-| **WhatsApp** | Meta Cloud API webhook — see below | Full agent access; HITL approvals via reply messages; requires a Meta Business account and a dedicated phone number |
-| **Slack** | `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` in `.env` | Socket Mode — **no public URL needed**; Block Kit interactive buttons for HITL; works in channels and DMs with `@Éli` |
-| **Discord** | `DISCORD_BOT_TOKEN` in `.env` | DM or `@Éli` mention in any channel; emoji-based HITL reactions (✅ allow · ❌ deny · 🛡️ ban) |
+| **WhatsApp** | Settings → Channels → Lier mon WhatsApp (QR scan) | Uses your **personal** WhatsApp account via the unofficial Web protocol (no Meta Business needed). ELY only replies in your **self-chat** — other conversations are never intercepted. |
+| **Telegram** | Settings → Channels → paste @BotFather token | Inline keyboard buttons for HITL (Allow / Deny / Ban); `/link <user> <pwd>` in DM to pair. Polling mode by default (~10s latency); webhook mode requires exposing `/webhook/*` via your reverse proxy / tunnel. |
+| **Discord** | Settings → Channels → paste Developer Portal token | Needs **Message Content Intent** enabled. DM or `@Éli` mention in any channel; emoji-based HITL reactions (✅ allow · ❌ deny · 🛡️ ban). |
+| **Slack** | Settings → Channels → paste Bot + App tokens | Socket Mode — **no public URL needed**; Block Kit interactive buttons for HITL; works in channels and DMs with `@Éli`. |
 
 #### 🔔 Push Notifications
 
@@ -294,38 +296,29 @@ An on-device cleanup assistant — nothing ever leaves your phone. Accessed from
 
 ---
 
-#### WhatsApp — Setup Guide
+#### WhatsApp — Personal Account via QR Pairing (default)
 
-WhatsApp requires a **Meta Business account** and a number dedicated to the bot (cannot be your personal number).
+No Meta Developer account needed — ELY bridges the **WhatsApp Web protocol** the same way the WhatsApp Desktop app does.
 
-1. Create a **Meta for Developers** app at [developers.facebook.com](https://developers.facebook.com)
-2. Add the **WhatsApp** product → get a test number (free) or connect your own number
-3. Copy the **phone number ID** and **access token** into `.env`:
-   ```
-   WHATSAPP_PHONE_NUMBER_ID=12345678901234
-   WHATSAPP_ACCESS_TOKEN=EAAxxxxxxxx
-   WHATSAPP_VERIFY_TOKEN=your-random-secret
-   ```
-4. Set your webhook URL to `https://your-server/api/channels/whatsapp/webhook`
-5. Subscribe to the `messages` field
-6. Restart ELY (`make restart s=backend`) — Éli is now reachable on WhatsApp
+1. Open ELY → **Settings → Channels → WhatsApp** → **Lier mon WhatsApp**
+2. A large QR code appears. On your phone: WhatsApp → Settings → **Linked devices** → **Link a device** → scan.
+3. Once paired, chat with Éli by sending messages to **yourself** (the self-chat).
 
-> Messages sent to the bot number are processed by the full agent (tools, HITL, memory). HITL approvals arrive as WhatsApp replies in the same thread.
+**Privacy design:** ELY reads and replies only in your self-chat conversation. All your other WhatsApp chats (friends, family, work groups) remain untouched. Session keys are stored locally on the server — delete via the *Disconnect* button anytime.
+
+> **Alternative:** *"Le QR échoue ?"* offers a phone-number code pairing (8 digits) for cases where iPhone camera decoding is unreliable.
+>
+> **Meta Cloud API (business accounts)** is still supported for users who need the official API — set `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_VERIFY_TOKEN` in `.env`, `send_whatsapp_message` falls back to Meta when no QR session is available.
 
 ---
 
 #### Telegram — Quick Start
 
-```bash
-# 1. Create bot with @BotFather → /newbot
-# 2. Add to .env:
-TELEGRAM_BOT_TOKEN=123456789:AAxxxxxx
+1. Telegram → search **@BotFather** (blue checkmark) → `/newbot` → copy token.
+2. ELY → **Settings → Channels → Telegram** → paste → **Activer**.
+3. In Telegram, open your bot, click **Start**, then send `/link <ELY_username> <ELY_password>` (your web-UI credentials).
 
-# 3. Restart backend
-make restart s=backend
-```
-
-Send `/start` to your bot — done.
+Polling mode is used by default — if your backend is reachable over HTTPS without path restrictions, the bot automatically switches to webhook mode (instant delivery). Set `TELEGRAM_USE_POLLING=1` in `.env` to force polling (useful when `/webhook/*` isn't exposed by your reverse proxy).
 
 ---
 

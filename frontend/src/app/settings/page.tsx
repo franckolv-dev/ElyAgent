@@ -381,12 +381,138 @@ export default function SettingsPage() {
     };
   }, [waWebStatus.status]);
 
-  // Auto-refresh status when user switches to integrations tab
+  // Auto-refresh status when user switches to integrations or channels tab
   useEffect(() => {
-    if (activeTab === "integrations") {
+    if (activeTab === "integrations" || activeTab === "channels") {
       refreshWaWebStatus();
     }
   }, [activeTab, refreshWaWebStatus]);
+
+  // ── Telegram / Discord / Slack channel config state ─────────────────────
+  // Each channel keeps its own status (configured? bot alive?) + form inputs.
+  const [tgStatus, setTgStatus] = useState<{ configured: boolean; bot_username?: string | null; running: boolean }>({ configured: false, running: false });
+  const [tgToken, setTgToken] = useState("");
+  const [tgBusy, setTgBusy] = useState(false);
+
+  const [dcStatus, setDcStatus] = useState<{ configured: boolean; running: boolean }>({ configured: false, running: false });
+  const [dcToken, setDcToken] = useState("");
+  const [dcBusy, setDcBusy] = useState(false);
+
+  const [slStatus, setSlStatus] = useState<{ configured: boolean; has_bot_token: boolean; has_app_token: boolean }>({ configured: false, has_bot_token: false, has_app_token: false });
+  const [slBotToken, setSlBotToken] = useState("");
+  const [slAppToken, setSlAppToken] = useState("");
+  const [slBusy, setSlBusy] = useState(false);
+
+  const refreshChannelsStatus = useCallback(async () => {
+    try {
+      const [tg, dc, sl] = await Promise.all([
+        authFetch(`${API_URL}/api/channels/telegram/status`).then((r) => r.ok ? r.json() : null).catch(() => null),
+        authFetch(`${API_URL}/api/channels/discord/status`).then((r) => r.ok ? r.json() : null).catch(() => null),
+        authFetch(`${API_URL}/api/channels/slack/status`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      if (tg) setTgStatus(tg);
+      if (dc) setDcStatus(dc);
+      if (sl) setSlStatus(sl);
+    } catch {/* silent */}
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "channels") refreshChannelsStatus();
+  }, [activeTab, refreshChannelsStatus]);
+
+  const handleTgSave = useCallback(async () => {
+    const token = tgToken.trim();
+    if (!token) { push("error", "Colle le token BotFather"); return; }
+    setTgBusy(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/channels/telegram/save`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (res.ok && data.saved) {
+        push("success", `Telegram configuré — @${data.bot_username}`);
+        setTgToken("");
+        await refreshChannelsStatus();
+      } else {
+        push("error", data.detail || "Token invalide");
+      }
+    } catch { push("error", "Erreur réseau Telegram"); }
+    finally { setTgBusy(false); }
+  }, [tgToken, refreshChannelsStatus]);
+
+  const handleTgDisable = useCallback(async () => {
+    if (!confirm("Désactiver Telegram ? Le bot cessera de recevoir les messages.")) return;
+    setTgBusy(true);
+    try {
+      await authFetch(`${API_URL}/api/channels/telegram/disable`, { method: "POST" });
+      push("success", "Telegram désactivé");
+      await refreshChannelsStatus();
+    } finally { setTgBusy(false); }
+  }, [refreshChannelsStatus]);
+
+  const handleDcSave = useCallback(async () => {
+    const token = dcToken.trim();
+    if (!token) { push("error", "Colle le token du Discord Developer Portal"); return; }
+    setDcBusy(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/channels/discord/save`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (res.ok && data.saved) {
+        push("success", `Discord configuré — ${data.bot_username ?? "OK"}`);
+        setDcToken("");
+        await refreshChannelsStatus();
+      } else {
+        push("error", data.detail || "Token invalide");
+      }
+    } catch { push("error", "Erreur réseau Discord"); }
+    finally { setDcBusy(false); }
+  }, [dcToken, refreshChannelsStatus]);
+
+  const handleDcDisable = useCallback(async () => {
+    if (!confirm("Désactiver Discord ?")) return;
+    setDcBusy(true);
+    try {
+      await authFetch(`${API_URL}/api/channels/discord/disable`, { method: "POST" });
+      push("success", "Discord désactivé");
+      await refreshChannelsStatus();
+    } finally { setDcBusy(false); }
+  }, [refreshChannelsStatus]);
+
+  const handleSlSave = useCallback(async () => {
+    const bot = slBotToken.trim();
+    const app = slAppToken.trim();
+    if (!bot || !app) { push("error", "Les 2 tokens Slack (bot + app) sont requis"); return; }
+    setSlBusy(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/channels/slack/save`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bot_token: bot, app_token: app }),
+      });
+      const data = await res.json();
+      if (res.ok && data.saved) {
+        push("success", "Slack configuré");
+        setSlBotToken(""); setSlAppToken("");
+        await refreshChannelsStatus();
+      } else {
+        push("error", data.detail || "Tokens invalides");
+      }
+    } catch { push("error", "Erreur réseau Slack"); }
+    finally { setSlBusy(false); }
+  }, [slBotToken, slAppToken, refreshChannelsStatus]);
+
+  const handleSlDisable = useCallback(async () => {
+    if (!confirm("Désactiver Slack ?")) return;
+    setSlBusy(true);
+    try {
+      await authFetch(`${API_URL}/api/channels/slack/disable`, { method: "POST" });
+      push("success", "Slack désactivé");
+      await refreshChannelsStatus();
+    } finally { setSlBusy(false); }
+  }, [refreshChannelsStatus]);
 
   const { toasts, push } = useToasts();
 
@@ -852,6 +978,7 @@ export default function SettingsPage() {
       { id: "routage",      label: "Routage",        icon: GitBranch  },
     ] : []),
     { id: "integrations", label: "Intégrations",  icon: Plug       },
+    { id: "channels",     label: "Channels",       icon: Mail       },
     { id: "compte",       label: "Mon compte",     icon: User       },
   ];
 
@@ -1226,121 +1353,351 @@ export default function SettingsPage() {
                 </details>
               </div>
 
-              {/* ── WhatsApp Web (QR-paired bridge via neonize) ───────────── */}
-              <div className="flex items-center gap-2 mt-8 mb-4">
-                <div className="w-4 h-4 text-emerald-400 font-bold text-sm">W</div>
-                <h2 className="text-sm font-medium text-text-primary">WhatsApp</h2>
-                {waWebStatus.status === "linked" && (
-                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                    <CheckCircle className="w-2.5 h-2.5" /> lié{waWebStatus.phone ? ` — +${waWebStatus.phone}` : ""}
-                  </span>
-                )}
-                {waWebStatus.status === "pending_qr" && (
-                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                    En attente du scan
-                  </span>
-                )}
-                {waWebStatus.status === "error" && (
-                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400">
-                    <XCircle className="w-2.5 h-2.5" /> erreur
-                  </span>
-                )}
+            </section>
+            )}
+
+            {/* ================================================================
+                TAB: Channels — WhatsApp / Telegram / Discord / Slack
+                Each card: status badge · help toggle · form · action buttons
+            ================================================================ */}
+            {activeTab === "channels" && (
+            <section className="space-y-8">
+              <div>
+                <h2 className="text-sm font-medium text-text-primary mb-1">Canaux de conversation</h2>
+                <p className="text-[11px] text-text-muted">
+                  Configure ici les canaux par lesquels tu peux échanger avec Éli depuis ton téléphone ou d&apos;autres apps. Chaque canal est indépendant et peut être activé ou désactivé séparément. Déplie « Comment configurer ? » pour l&apos;aide pas-à-pas.
+                </p>
               </div>
 
-              <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
-                <p className="text-[11px] text-text-muted">
-                  Liez votre compte WhatsApp personnel en scannant un QR code. Aucune app Meta Developer n&apos;est requise — ELY utilise le protocole WhatsApp Web pour recevoir et envoyer les messages avec votre propre numéro. La clé de session est stockée localement sur le serveur ELY.
-                </p>
-
-                {/* Pending QR: show it BIG so iPhone cameras can decode the
-                    dense WhatsApp v9 QR. w-52 (208px) was too small → users
-                    had to CMD-zoom the browser to scan. */}
-                {waWebStatus.status === "pending_qr" && waWebStatus.qr_png_b64 && (
-                  <div className="flex flex-col items-center gap-3 py-2">
-                    <img
-                      src={`data:image/png;base64,${waWebStatus.qr_png_b64}`}
-                      alt="QR WhatsApp"
-                      className="w-80 h-80 rounded bg-white p-2 border border-border-dim"
-                    />
-                    <p className="text-[11px] text-text-muted text-center max-w-xs">
-                      Ouvrez WhatsApp sur votre téléphone → Paramètres → Appareils connectés → Associer un appareil → scannez ce QR code.
-                    </p>
-                  </div>
-                )}
-
-                {/* Error banner */}
-                {waWebStatus.status === "error" && waWebStatus.last_error && (
-                  <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5">
-                    {waWebStatus.last_error}
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div className="flex gap-2 pt-1">
-                  {waWebStatus.status === "linked" ? (
-                    <button
-                      onClick={handleWaWebLogout}
-                      disabled={waWebLoading}
-                      className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
-                    >
-                      {waWebLoading ? "..." : "Déconnecter WhatsApp"}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleWaWebStart}
-                      disabled={waWebLoading || waWebStatus.status === "pending_qr"}
-                      className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50"
-                    >
-                      {waWebLoading
-                        ? "..."
-                        : waWebStatus.status === "pending_qr"
-                          ? "Scan en cours..."
-                          : "Lier mon WhatsApp"}
-                    </button>
+              {/* ── WhatsApp Web ───────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-4 h-4 text-emerald-400 font-bold text-sm">W</div>
+                  <h3 className="text-sm font-medium text-text-primary">WhatsApp</h3>
+                  {waWebStatus.status === "linked" && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      <CheckCircle className="w-2.5 h-2.5" /> lié{waWebStatus.phone ? ` — +${waWebStatus.phone}` : ""}
+                    </span>
+                  )}
+                  {waWebStatus.status === "pending_qr" && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                      En attente du scan
+                    </span>
+                  )}
+                  {waWebStatus.status === "error" && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400">
+                      <XCircle className="w-2.5 h-2.5" /> erreur
+                    </span>
                   )}
                 </div>
 
-                {/* Alternative: pair by phone number (when QR scan keeps failing) */}
-                {waWebStatus.status !== "linked" && waWebStatus.status !== "not_started" && (
-                  <details className="pt-2 border-t border-border-dim">
-                    <summary className="text-[11px] text-text-muted cursor-pointer hover:text-text-secondary">
-                      Le QR échoue ? Essayer avec un numéro de téléphone
-                    </summary>
-                    <div className="mt-3 space-y-2">
-                      <p className="text-[11px] text-text-muted">
-                        Entre ton numéro au format international (ex. <code className="text-cyber-cyan">33612345678</code>, sans le +). ELY génère un code à 8 caractères que tu saisis dans <strong>WhatsApp → Appareils connectés → Lier avec un numéro de téléphone à la place</strong>.
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          type="tel"
-                          value={waPhoneInput}
-                          onChange={(e) => setWaPhoneInput(e.target.value)}
-                          placeholder="33612345678"
-                          className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-emerald-500/40"
-                        />
-                        <button
-                          onClick={handleWaWebPairPhone}
-                          disabled={waWebLoading || !waPhoneInput.trim()}
-                          className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
-                        >
-                          {waWebLoading ? "..." : "Obtenir un code"}
-                        </button>
-                      </div>
-                      {waPairCode && (
-                        <div className="text-center py-3 bg-emerald-500/5 border border-emerald-500/20 rounded">
-                          <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">Code à entrer dans WhatsApp</div>
-                          <div className="text-2xl font-mono font-bold text-emerald-300 tracking-widest">{waPairCode}</div>
-                          <div className="text-[10px] text-text-muted mt-1">Valide quelques minutes</div>
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                )}
+                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                  <p className="text-[11px] text-text-muted">
+                    Lie ton compte WhatsApp personnel en scannant un QR code. Aucune app Meta Developer n&apos;est requise — ELY utilise le protocole WhatsApp Web. <strong>Tu discutes avec Éli uniquement via le self-chat</strong> (conversation avec toi-même). Tes autres conversations WhatsApp restent inchangées.
+                  </p>
 
-                <p className="text-[10px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
-                  <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-amber-400" />
-                  Méthode non-officielle (WhatsApp Web). Votre compte peut théoriquement être restreint par WhatsApp. Pour un usage professionnel à grande échelle, préférez Meta Cloud API.
-                </p>
+                  {/* Pending QR — big so iPhone cameras decode reliably */}
+                  {waWebStatus.status === "pending_qr" && waWebStatus.qr_png_b64 && (
+                    <div className="flex flex-col items-center gap-3 py-2">
+                      <img
+                        src={`data:image/png;base64,${waWebStatus.qr_png_b64}`}
+                        alt="QR WhatsApp"
+                        className="w-[420px] h-[420px] max-w-full rounded bg-white p-3 border border-border-dim"
+                      />
+                      <p className="text-[11px] text-text-muted text-center max-w-xs">
+                        Ouvre WhatsApp sur ton téléphone → Paramètres → Appareils connectés → Associer un appareil → scanne ce QR.
+                      </p>
+                    </div>
+                  )}
+
+                  {waWebStatus.status === "error" && waWebStatus.last_error && (
+                    <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5">
+                      {waWebStatus.last_error}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    {waWebStatus.status === "linked" ? (
+                      <button
+                        onClick={handleWaWebLogout}
+                        disabled={waWebLoading}
+                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
+                      >
+                        {waWebLoading ? "..." : "Déconnecter WhatsApp"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleWaWebStart}
+                        disabled={waWebLoading || waWebStatus.status === "pending_qr"}
+                        className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50"
+                      >
+                        {waWebLoading ? "..." : waWebStatus.status === "pending_qr" ? "Scan en cours..." : "Lier mon WhatsApp"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Alternative: pair by phone code */}
+                  {waWebStatus.status !== "linked" && waWebStatus.status !== "not_started" && (
+                    <details className="pt-2 border-t border-border-dim">
+                      <summary className="text-[11px] text-text-muted cursor-pointer hover:text-text-secondary">
+                        Le QR échoue ? Essayer avec un numéro de téléphone
+                      </summary>
+                      <div className="mt-3 space-y-2">
+                        <p className="text-[11px] text-text-muted">
+                          Entre ton numéro au format international (ex. <code className="text-cyber-cyan">33612345678</code>, sans le +). ELY génère un code à 8 caractères que tu saisis dans <strong>WhatsApp → Appareils connectés → Lier avec un numéro de téléphone à la place</strong>.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="tel"
+                            value={waPhoneInput}
+                            onChange={(e) => setWaPhoneInput(e.target.value)}
+                            placeholder="33612345678"
+                            className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-emerald-500/40"
+                          />
+                          <button
+                            onClick={handleWaWebPairPhone}
+                            disabled={waWebLoading || !waPhoneInput.trim()}
+                            className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {waWebLoading ? "..." : "Obtenir un code"}
+                          </button>
+                        </div>
+                        {waPairCode && (
+                          <div className="text-center py-3 bg-emerald-500/5 border border-emerald-500/20 rounded">
+                            <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">Code à entrer dans WhatsApp</div>
+                            <div className="text-2xl font-mono font-bold text-emerald-300 tracking-widest">{waPairCode}</div>
+                            <div className="text-[10px] text-text-muted mt-1">Valide quelques minutes</div>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
+
+                  <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
+                    <summary className="cursor-pointer hover:text-text-secondary">Comment ça marche ?</summary>
+                    <ol className="mt-2 space-y-1 pl-3 list-decimal">
+                      <li>Clique sur <strong>Lier mon WhatsApp</strong> — un QR code s&apos;affiche.</li>
+                      <li>Dans WhatsApp sur ton téléphone : Paramètres → Appareils connectés → Associer un appareil.</li>
+                      <li>Scanne le QR affiché ici.</li>
+                      <li>Une fois lié, envoie-toi un message dans le chat <em>« Messagerie avec vous-même »</em> — ELY répondra uniquement dans ce chat-là.</li>
+                    </ol>
+                  </details>
+
+                  <p className="text-[10px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
+                    <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-amber-400" />
+                    Méthode non-officielle (WhatsApp Web). Ton compte peut théoriquement être restreint par WhatsApp. Pour un usage professionnel à grande échelle, préférez Meta Cloud API.
+                  </p>
+                </div>
+              </div>
+
+              {/* ── Telegram ──────────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-4 h-4 text-cyan-400 font-bold text-sm">T</div>
+                  <h3 className="text-sm font-medium text-text-primary">Telegram</h3>
+                  {tgStatus.configured && tgStatus.running && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      <CheckCircle className="w-2.5 h-2.5" /> actif{tgStatus.bot_username ? ` — @${tgStatus.bot_username}` : ""}
+                    </span>
+                  )}
+                  {tgStatus.configured && !tgStatus.running && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                      configuré mais arrêté
+                    </span>
+                  )}
+                  {!tgStatus.configured && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
+                      non configuré
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                  <p className="text-[11px] text-text-muted">
+                    Crée un bot via <strong>@BotFather</strong> sur Telegram, colle son token ici, puis lie ton compte en envoyant <code className="text-cyber-cyan">/link &lt;username&gt; &lt;motdepasse&gt;</code> au bot (en DM).
+                  </p>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={tgToken}
+                      onChange={(e) => setTgToken(e.target.value)}
+                      placeholder={tgStatus.configured ? "••••••• (déjà configuré, écraser si besoin)" : "Token BotFather — 8537xxxxxx:AAH..."}
+                      className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyan-500/40 font-mono"
+                    />
+                    <button
+                      onClick={handleTgSave}
+                      disabled={tgBusy || !tgToken.trim()}
+                      className="text-xs px-3 py-1.5 rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {tgBusy ? "..." : tgStatus.configured ? "Mettre à jour" : "Activer"}
+                    </button>
+                    {tgStatus.configured && (
+                      <button
+                        onClick={handleTgDisable}
+                        disabled={tgBusy}
+                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                      >
+                        Désactiver
+                      </button>
+                    )}
+                  </div>
+
+                  <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
+                    <summary className="cursor-pointer hover:text-text-secondary">Comment configurer ?</summary>
+                    <ol className="mt-2 space-y-1 pl-3 list-decimal">
+                      <li>Ouvre Telegram → cherche <strong>@BotFather</strong> (coche bleue officielle).</li>
+                      <li>Envoie <code className="text-cyber-cyan">/newbot</code>, choisis un nom et un username finissant par <code>_bot</code>.</li>
+                      <li>BotFather te renvoie un token du style <code className="text-cyber-cyan">8537074323:AAHxxxxx</code> — copie-le.</li>
+                      <li>Colle-le dans le champ ci-dessus puis clique <strong>Activer</strong>.</li>
+                      <li>Retourne sur Telegram, ouvre une conversation avec ton bot, clique <strong>Démarrer</strong>.</li>
+                      <li>Envoie <code className="text-cyber-cyan">/link ton_username ton_motdepasse</code> (les identifiants ELY de cette interface).</li>
+                      <li>Ton compte est lié — tu peux discuter librement en DM avec ton bot.</li>
+                    </ol>
+                    <p className="mt-2">
+                      💡 <strong>Latence :</strong> actuellement en mode polling (~10 s de décalage). Pour passer en temps réel, il faut exposer <code>/webhook/*</code> via le tunnel Cloudflare.
+                    </p>
+                  </details>
+                </div>
+              </div>
+
+              {/* ── Discord ──────────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-4 h-4 text-indigo-400 font-bold text-sm">D</div>
+                  <h3 className="text-sm font-medium text-text-primary">Discord</h3>
+                  {dcStatus.configured && dcStatus.running && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      <CheckCircle className="w-2.5 h-2.5" /> actif
+                    </span>
+                  )}
+                  {dcStatus.configured && !dcStatus.running && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                      configuré mais arrêté
+                    </span>
+                  )}
+                  {!dcStatus.configured && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
+                      non configuré
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                  <p className="text-[11px] text-text-muted">
+                    Crée un bot sur le <strong>Discord Developer Portal</strong>, active le <em>Message Content Intent</em>, copie son token, puis DM ton bot avec <code className="text-cyber-cyan">!link &lt;username&gt; &lt;motdepasse&gt;</code>.
+                  </p>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={dcToken}
+                      onChange={(e) => setDcToken(e.target.value)}
+                      placeholder={dcStatus.configured ? "••••••• (déjà configuré, écraser si besoin)" : "Token du Discord Developer Portal"}
+                      className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-indigo-500/40 font-mono"
+                    />
+                    <button
+                      onClick={handleDcSave}
+                      disabled={dcBusy || !dcToken.trim()}
+                      className="text-xs px-3 py-1.5 rounded border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {dcBusy ? "..." : dcStatus.configured ? "Mettre à jour" : "Activer"}
+                    </button>
+                    {dcStatus.configured && (
+                      <button
+                        onClick={handleDcDisable}
+                        disabled={dcBusy}
+                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                      >
+                        Désactiver
+                      </button>
+                    )}
+                  </div>
+
+                  <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
+                    <summary className="cursor-pointer hover:text-text-secondary">Comment configurer ?</summary>
+                    <ol className="mt-2 space-y-1 pl-3 list-decimal">
+                      <li>Va sur <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">discord.com/developers/applications</a>.</li>
+                      <li>Clique <strong>New Application</strong> → donne-lui un nom (ex. « ELY »).</li>
+                      <li>Onglet <strong>Bot</strong> → <strong>Reset Token</strong> → copie le token (ne se revoit plus).</li>
+                      <li>Dans <em>Privileged Gateway Intents</em>, coche <strong>MESSAGE CONTENT INTENT</strong> (obligatoire sinon le bot reçoit des messages vides). <strong>Save Changes</strong>.</li>
+                      <li>(Optionnel — pour utilisation en serveur) Onglet <strong>OAuth2 → URL Generator</strong>, coche <em>bot</em> + permissions <em>Send Messages / Read Message History / Add Reactions / Manage Messages</em>, ouvre l&apos;URL et invite le bot sur ton serveur.</li>
+                      <li>Colle le token dans le champ ci-dessus → <strong>Activer</strong>.</li>
+                      <li>Dans Discord, DM ton bot avec <code className="text-cyber-cyan">!link ton_username ton_motdepasse</code>.</li>
+                    </ol>
+                  </details>
+                </div>
+              </div>
+
+              {/* ── Slack ────────────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-4 h-4 text-purple-400 font-bold text-sm">S</div>
+                  <h3 className="text-sm font-medium text-text-primary">Slack</h3>
+                  {slStatus.configured && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      <CheckCircle className="w-2.5 h-2.5" /> configuré
+                    </span>
+                  )}
+                  {!slStatus.configured && (
+                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
+                      non configuré
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                  <p className="text-[11px] text-text-muted">
+                    Crée une app Slack (Socket Mode), copie les <strong>deux</strong> tokens : <code className="text-cyber-cyan">xoxb-</code> (Bot User OAuth Token) et <code className="text-cyber-cyan">xapp-</code> (App-Level Token).
+                  </p>
+
+                  <input
+                    type="password"
+                    value={slBotToken}
+                    onChange={(e) => setSlBotToken(e.target.value)}
+                    placeholder={slStatus.has_bot_token ? "Bot token ••••••• (déjà configuré)" : "Bot token — xoxb-..."}
+                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-purple-500/40 font-mono"
+                  />
+                  <input
+                    type="password"
+                    value={slAppToken}
+                    onChange={(e) => setSlAppToken(e.target.value)}
+                    placeholder={slStatus.has_app_token ? "App token ••••••• (déjà configuré)" : "App token — xapp-..."}
+                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-purple-500/40 font-mono"
+                  />
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSlSave}
+                      disabled={slBusy || !slBotToken.trim() || !slAppToken.trim()}
+                      className="text-xs px-3 py-1.5 rounded border border-purple-500/30 text-purple-400 hover:bg-purple-500/5 transition-all disabled:opacity-50"
+                    >
+                      {slBusy ? "..." : slStatus.configured ? "Mettre à jour" : "Activer"}
+                    </button>
+                    {slStatus.configured && (
+                      <button
+                        onClick={handleSlDisable}
+                        disabled={slBusy}
+                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
+                      >
+                        Désactiver
+                      </button>
+                    )}
+                  </div>
+
+                  <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
+                    <summary className="cursor-pointer hover:text-text-secondary">Comment configurer ?</summary>
+                    <ol className="mt-2 space-y-1 pl-3 list-decimal">
+                      <li>Va sur <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">api.slack.com/apps</a> → <strong>Create New App</strong> → <em>From scratch</em>.</li>
+                      <li>Dans <strong>Socket Mode</strong>, active-le et génère un <strong>App-Level Token</strong> avec scope <code>connections:write</code> — copie le token <code>xapp-...</code>.</li>
+                      <li>Dans <strong>OAuth &amp; Permissions</strong>, ajoute les scopes Bot : <code>app_mentions:read</code>, <code>chat:write</code>, <code>im:history</code>, <code>im:read</code>, <code>im:write</code>, <code>reactions:write</code>.</li>
+                      <li>Install App to Workspace → copie le <strong>Bot User OAuth Token</strong> <code>xoxb-...</code>.</li>
+                      <li>Dans <strong>Event Subscriptions</strong>, active et abonne-toi à <code>message.im</code> et <code>app_mention</code>.</li>
+                      <li>Colle les deux tokens ci-dessus → <strong>Activer</strong>.</li>
+                      <li>Dans Slack, DM ton bot avec <code className="text-cyber-cyan">!link ton_username ton_motdepasse</code>.</li>
+                    </ol>
+                  </details>
+                </div>
               </div>
             </section>
             )}

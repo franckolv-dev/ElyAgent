@@ -44,6 +44,7 @@ from app.routers import skills as skills_router
 from app.routers import transcribe as transcribe_router
 from app.routers import whatsapp_webhook as whatsapp_router
 from app.routers import whatsapp_web as whatsapp_web_router
+from app.routers import channels as channels_router
 from app.routers import upload as upload_router
 from app.routers import watchdog as watchdog_router
 from app.routers import analytics as analytics_router
@@ -309,6 +310,8 @@ app.include_router(upload_router.router, prefix="/api", tags=["upload"])
 app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
 # WhatsApp Web bridge (unofficial, QR-paired) — prefix already baked into the router
 app.include_router(whatsapp_web_router.router)
+# Unified admin API for Telegram / Discord / Slack config from Settings UI
+app.include_router(channels_router.router)
 app.include_router(watchdog_router.router, prefix="/watchdog", tags=["watchdog"])
 app.include_router(analytics_router.router, prefix="/analytics", tags=["analytics"])
 app.include_router(audit_router.router, prefix="/api", tags=["audit"])

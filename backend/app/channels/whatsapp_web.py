@@ -137,20 +137,22 @@ async def start_session(user_id: str) -> dict[str, Any]:
     async def _on_qr(_client, qr_bytes):
         """Fresh QR ready — render to base64 PNG for the UI.
 
-        We render at a generous resolution (box_size=14 → ~900×900 PNG for
-        WhatsApp's version-9 QR) because iPhone cameras struggle to decode
-        dense WhatsApp QRs when displayed under ~280-300 px on the browser
-        screen. With box_size=14 + the UI's w-80 (320 px) container, the
-        scan succeeds reliably even at arm's length.
+        We render at a very generous resolution (box_size=20 → ~1300×1300 PNG
+        for WhatsApp's version-9 QR) because iPhone cameras struggle to decode
+        dense WhatsApp QRs when displayed too small. Combined with the UI's
+        w-[420px] (420 px) container, scans succeed first-try even at arm's
+        length or with moderate screen brightness. Higher error-correction
+        (ERROR_CORRECT_H, ~30% recoverable) also helps on screens with
+        glare or sub-pixel rendering blur.
         """
         import qrcode
         from io import BytesIO
         qr_text = qr_bytes.decode("utf-8", errors="replace") if isinstance(qr_bytes, (bytes, bytearray)) else str(qr_bytes)
         qr = qrcode.QRCode(
             version=None,  # auto-detect
-            error_correction=qrcode.constants.ERROR_CORRECT_M,
-            box_size=14,   # bigger modules → bigger PNG → easier camera scan
-            border=3,      # minimal quiet zone, saves pixels for the data
+            error_correction=qrcode.constants.ERROR_CORRECT_H,
+            box_size=20,   # bigger modules → bigger PNG → easier camera scan
+            border=4,      # standard quiet zone for reliable scan
         )
         qr.add_data(qr_text)
         qr.make(fit=True)

@@ -12,7 +12,7 @@
 4. [Google Integration Setup](#4-google-integration-setup)
 5. [Skills Management](#5-skills-management)
 6. [Scheduled Tasks](#6-scheduled-tasks)
-7. [Telegram Bot Setup](#7-telegram-bot-setup)
+7. [Conversational Channels (WhatsApp / Telegram / Discord / Slack)](#7-conversational-channels-whatsapp--telegram--discord--slack)
 8. [HITL Validation](#8-hitl-validation)
 9. [Memory — What ELY Remembers](#9-memory--what-ely-remembers)
 10. [Security Overview](#10-security-overview)
@@ -330,32 +330,65 @@ When a scheduled task fires, ELY executes the prompt autonomously and delivers t
 
 ---
 
-## 7. Telegram Bot Setup
+## 7. Conversational Channels (WhatsApp / Telegram / Discord / Slack)
 
-ELY can be reached via Telegram, giving you mobile access with full feature parity.
+ELY can be reached from multiple chat apps so you keep talking to Éli even when you're away from the web UI. All channel setup happens from **Settings → Channels** — no terminal, no `.env` edits.
 
-### Prerequisites
+> **Memory is shared across channels.** Whatever you tell Éli on WhatsApp, she'll remember on the web UI and vice-versa.
 
-You need a Telegram bot token. Create one by messaging [@BotFather](https://t.me/BotFather) on Telegram and following the `/newbot` instructions.
+### 7.1. WhatsApp (QR-paired personal account)
 
-### Configuration
+Uses the unofficial WhatsApp Web protocol — same thing WhatsApp Desktop does. **No Meta Developer account required.**
 
-1. Go to **Admin** > **Configuration** in the ELY interface
-2. Enter your bot token in the **"Token Telegram"** field and save
-3. In the **Admin** > **Utilisateurs** panel, click your username and add your **Telegram User ID** to your profile
+1. **Settings → Channels → WhatsApp → Lier mon WhatsApp**
+2. A ~420 px QR code appears. On your phone: WhatsApp → Settings → **Linked devices** → **Link a device** → scan.
+3. Once paired, the card shows *"lié — +<your number>"*.
+4. Open WhatsApp on your phone, go to the **"Message yourself"** chat (search for your own name), and start typing.
 
-> To find your Telegram User ID, message [@userinfobot](https://t.me/userinfobot) on Telegram.
+**Important:** ELY only reads and replies to messages you send **to yourself** (the self-chat). All your other WhatsApp conversations stay completely untouched — friends, family, work groups never see ELY.
 
-### Using ELY on Telegram
+If scanning fails: click *"Le QR échoue ? Essayer avec un numéro de téléphone"*, enter your number (`33612345678` format, no `+`), and WhatsApp will accept the 8-character code instead.
 
-Once configured, open your bot in Telegram and start chatting. ELY will respond with the same capabilities as the web interface:
-- All skills are available
-- Memory is shared (ELY remembers the same facts regardless of channel)
-- HITL approvals appear as **inline keyboard buttons** (Allow / Deny / Ban)
+### 7.2. Telegram (BotFather bot)
 
-### Security note
+1. Open Telegram → search **@BotFather** (with blue checkmark).
+2. Send `/newbot` → pick a name and a username ending in `_bot`.
+3. BotFather replies with a token like `8537074323:AAHxxxxxx...` — copy it.
+4. In ELY: **Settings → Channels → Telegram**, paste the token → **Activer**.
+5. The UI shows *"actif — @your_bot"*.
+6. In Telegram, open a chat with your bot → **Start**.
+7. Send `/link <your_ELY_username> <your_ELY_password>` (the credentials you use on the web UI).
+8. Done — just send any message normally.
 
-Only Telegram users whose ID is linked to an ELY account can interact with the bot. All other messages are silently ignored.
+The UI deletes your `/link` message immediately so your password doesn't sit in the chat history. Replies have ~10 s latency in polling mode (default); switch to webhook via the tunnel config for instant delivery.
+
+### 7.3. Discord (Developer Portal bot)
+
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → **New Application**.
+2. **Bot** tab → **Reset Token** → copy (shown once).
+3. In *Privileged Gateway Intents*, enable **MESSAGE CONTENT INTENT** (mandatory). Save.
+4. (Optional) **OAuth2 → URL Generator** → scope `bot` + permissions *Send Messages / Read Message History / Add Reactions / Manage Messages*, open the URL, invite the bot to a server you admin.
+5. In ELY: **Settings → Channels → Discord**, paste the token → **Activer**.
+6. In Discord, DM your bot: `!link <username> <password>`. HITL approvals arrive as emoji reactions.
+
+### 7.4. Slack (Socket Mode app)
+
+Socket Mode avoids the need for a public HTTPS endpoint — Slack opens a WebSocket back to the bot.
+
+1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App → From scratch**.
+2. **Socket Mode** → enable → generate an **App-Level Token** with scope `connections:write` → copy the `xapp-...` token.
+3. **OAuth & Permissions** → Bot Token Scopes: `app_mentions:read`, `chat:write`, `im:history`, `im:read`, `im:write`, `reactions:write`.
+4. **Install App to Workspace** → copy the **Bot User OAuth Token** `xoxb-...`.
+5. **Event Subscriptions** → enable → subscribe to `message.im` and `app_mention`.
+6. In ELY: **Settings → Channels → Slack**, paste **both** tokens → **Activer**.
+7. DM your bot with `!link <username> <password>`.
+
+### 7.5. Security
+
+- Channel tokens are stored encrypted in the `system_config` table, marked `is_secret=True` — they never show up in logs or the UI again after save.
+- Only users who `/link`ed their chat account to an ELY account can invoke the agent — other messages are silently ignored.
+- HITL approvals show as inline buttons (Telegram), emoji reactions (Discord), or Block Kit buttons (Slack).
+- Disabling a channel clears its tokens from DB and stops the bot immediately.
 
 ---
 
