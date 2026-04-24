@@ -43,6 +43,7 @@ from app.routers import google as google_router
 from app.routers import skills as skills_router
 from app.routers import transcribe as transcribe_router
 from app.routers import whatsapp_webhook as whatsapp_router
+from app.routers import whatsapp_web as whatsapp_web_router
 from app.routers import upload as upload_router
 from app.routers import watchdog as watchdog_router
 from app.routers import analytics as analytics_router
@@ -117,6 +118,15 @@ async def lifespan(app: FastAPI):
         await load_linked_whatsapp_users()
     except Exception:
         _startup_logger.warning("WhatsApp linked users failed to load", exc_info=True)
+
+    # Resume WhatsApp Web (neonize) sessions that were active before restart.
+    # Non-blocking: if neonize isn't installed or fails to init, the channel
+    # is simply disabled — the Meta Cloud channel and other channels keep working.
+    try:
+        from app.channels.whatsapp_web import load_existing_sessions
+        await load_existing_sessions()
+    except Exception:
+        _startup_logger.warning("WhatsApp Web sessions failed to resume", exc_info=True)
 
     # Start scheduled tasks
     from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
@@ -297,6 +307,8 @@ app.include_router(skills_router.router, prefix="/skills", tags=["skills"])
 app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])
 app.include_router(upload_router.router, prefix="/api", tags=["upload"])
 app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
+# WhatsApp Web bridge (unofficial, QR-paired) — prefix already baked into the router
+app.include_router(whatsapp_web_router.router)
 app.include_router(watchdog_router.router, prefix="/watchdog", tags=["watchdog"])
 app.include_router(analytics_router.router, prefix="/analytics", tags=["analytics"])
 app.include_router(audit_router.router, prefix="/api", tags=["audit"])

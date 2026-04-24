@@ -81,7 +81,35 @@ def verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:
 # ── Send message ──────────────────────────────────────────────────────────────
 
 async def send_whatsapp_message(phone_number: str, text: str) -> bool:
-    """Send a text message to a WhatsApp user via Meta Cloud API."""
+    """Send a text message to a WhatsApp user.
+
+    Two transports are tried in order :
+      1. WhatsApp Web (neonize) — if the recipient's user has an active
+         paired session. Uses the user's own WhatsApp account.
+      2. Meta Cloud API — fallback when no WA Web session is available
+         and the Meta credentials are configured.
+
+    The caller (`process_whatsapp_message`) doesn't need to know which
+    transport was used.
+    """
+    # ── Transport 1 : WhatsApp Web (neonize) ──────────────────────────
+    # Look up the user_id linked to this phone. If that user has a live
+    # neonize session, send via them — it's a single network hop to WhatsApp
+    # and doesn't need a Meta Business setup.
+    target_user_id = _linked_users.get(phone_number)
+    if target_user_id:
+        try:
+            from app.channels.whatsapp_web import _sessions as _wa_web_sessions, send_text
+            sess = _wa_web_sessions.get(target_user_id)
+            if sess and sess.get("status") == "linked":
+                ok = await send_text(phone_number, text, from_user_id=target_user_id)
+                if ok:
+                    return True
+                # Fallthrough to Meta if neonize returned False
+        except Exception as exc:
+            logger.warning("WhatsApp Web send failed, falling back to Meta: %s", exc)
+
+    # ── Transport 2 : Meta Cloud API ──────────────────────────────────
     from app.config import get_settings
     s = get_settings()
 

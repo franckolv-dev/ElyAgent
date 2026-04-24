@@ -53,6 +53,21 @@ dependencies = [
     "slack-bolt[async]>=1.20.0",
     "discord.py>=2.4.0",
     "croniter>=2.0.0",
+    # WhatsApp Web bridge (unofficial multi-device, QR-code pairing).
+    # neonize is a Python wrapper around whatsmeow (Go). It uses the real
+    # WhatsApp mobile protocol via WebSocket, no Chromium required.
+    # ⚠ Alternative to Meta Cloud API (which we keep too in whatsapp.py).
+    # Licence: AGPL v3 for neonize itself — fine for self-hosted personal use.
+    #
+    # IMPORTANT: WhatsApp rejects older protocol versions with
+    # `err-client-outdated` (405). You need neonize >= 0.3.17.post0 as of
+    # 2026-04-24. BUT that version requires protobuf>=6.x which conflicts
+    # with the deprecated `google-generativeai` package (still pinned to
+    # protobuf<5). Workaround : we install neonize post-sync via
+    # `POST_SYNC_INSTALL` in the Dockerfile, bypassing the lockfile.
+    # Proper fix (TODO): migrate 3 files from google-generativeai to
+    # the new google-genai SDK which supports protobuf 6.
+    "neonize>=0.3.0",
 ]
 
 [tool.hatch.build.targets.wheel]

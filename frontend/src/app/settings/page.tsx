@@ -282,6 +282,112 @@ export default function SettingsPage() {
   // Active tab — initialised on mount once we know the role
   const [activeTab, setActiveTab] = useState<string>("integrations");
 
+  // ── WhatsApp Web session state (QR-pairing adapter) ───────────────────
+  const [waWebStatus, setWaWebStatus] = useState<{
+    status: string;
+    qr_png_b64?: string | null;
+    phone?: string | null;
+    last_error?: string | null;
+  }>({ status: "not_started" });
+  const [waWebLoading, setWaWebLoading] = useState(false);
+  const waWebPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Fetch current WhatsApp Web status (on mount + when user lands on integrations)
+  const refreshWaWebStatus = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/status`);
+      if (res.ok) setWaWebStatus(await res.json());
+    } catch {/* silent */}
+  }, []);
+
+  // Start a new session (or resume) — usually triggers QR generation
+  const handleWaWebStart = useCallback(async () => {
+    setWaWebLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/start`, { method: "POST" });
+      if (res.ok) {
+        setWaWebStatus(await res.json());
+        // Poll status every 2s while pending_qr (to detect when user scans)
+        if (waWebPollRef.current) clearInterval(waWebPollRef.current);
+        waWebPollRef.current = setInterval(refreshWaWebStatus, 2000);
+      } else {
+        push("error", "Impossible de démarrer la session WhatsApp");
+      }
+    } catch {
+      push("error", "Erreur réseau WhatsApp Web");
+    } finally {
+      setWaWebLoading(false);
+    }
+  }, [refreshWaWebStatus]);
+
+  // Alternative pairing: phone number → 8-char code (when QR scan fails)
+  const [waPhoneInput, setWaPhoneInput] = useState("");
+  const [waPairCode, setWaPairCode] = useState<string | null>(null);
+  const handleWaWebPairPhone = useCallback(async () => {
+    const phone = waPhoneInput.trim();
+    if (!phone) {
+      push("error", "Entre ton numéro de téléphone");
+      return;
+    }
+    setWaWebLoading(true);
+    setWaPairCode(null);
+    try {
+      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/pair-phone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone_number: phone }),
+      });
+      const data = await res.json();
+      if (res.ok && data.code) {
+        setWaPairCode(data.code);
+        push("success", `Code généré — entre ${data.code} dans WhatsApp`);
+        // Start polling in case we weren't already
+        if (waWebPollRef.current) clearInterval(waWebPollRef.current);
+        waWebPollRef.current = setInterval(refreshWaWebStatus, 2000);
+      } else {
+        push("error", data.error || "Impossible de générer le code");
+      }
+    } catch {
+      push("error", "Erreur réseau");
+    } finally {
+      setWaWebLoading(false);
+    }
+  }, [waPhoneInput, refreshWaWebStatus]);
+
+  // Log out / unlink — wipes the local session
+  const handleWaWebLogout = useCallback(async () => {
+    if (!confirm("Déconnecter WhatsApp Web ? Il faudra rescanner le QR pour se relier.")) return;
+    setWaWebLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/logout`, { method: "POST" });
+      if (res.ok) {
+        setWaWebStatus({ status: "not_started" });
+        if (waWebPollRef.current) clearInterval(waWebPollRef.current);
+        push("success", "WhatsApp déconnecté");
+      }
+    } finally {
+      setWaWebLoading(false);
+    }
+  }, []);
+
+  // Stop polling when paired, clean up on unmount
+  useEffect(() => {
+    if (waWebStatus.status === "linked" && waWebPollRef.current) {
+      clearInterval(waWebPollRef.current);
+      waWebPollRef.current = null;
+    }
+    return () => {
+      if (waWebPollRef.current) clearInterval(waWebPollRef.current);
+    };
+  }, [waWebStatus.status]);
+
+  // Auto-refresh status when user switches to integrations tab
+  useEffect(() => {
+    if (activeTab === "integrations") {
+      refreshWaWebStatus();
+    }
+  }, [activeTab, refreshWaWebStatus]);
+
   const { toasts, push } = useToasts();
 
   // Initialise admin role and default tab once mounted (client-side only)
@@ -1118,6 +1224,123 @@ export default function SettingsPage() {
                     <li>Revenir ici et cliquer sur &quot;Connecter mon compte Google&quot;</li>
                   </ol>
                 </details>
+              </div>
+
+              {/* ── WhatsApp Web (QR-paired bridge via neonize) ───────────── */}
+              <div className="flex items-center gap-2 mt-8 mb-4">
+                <div className="w-4 h-4 text-emerald-400 font-bold text-sm">W</div>
+                <h2 className="text-sm font-medium text-text-primary">WhatsApp</h2>
+                {waWebStatus.status === "linked" && (
+                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <CheckCircle className="w-2.5 h-2.5" /> lié{waWebStatus.phone ? ` — +${waWebStatus.phone}` : ""}
+                  </span>
+                )}
+                {waWebStatus.status === "pending_qr" && (
+                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    En attente du scan
+                  </span>
+                )}
+                {waWebStatus.status === "error" && (
+                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400">
+                    <XCircle className="w-2.5 h-2.5" /> erreur
+                  </span>
+                )}
+              </div>
+
+              <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                <p className="text-[11px] text-text-muted">
+                  Liez votre compte WhatsApp personnel en scannant un QR code. Aucune app Meta Developer n&apos;est requise — ELY utilise le protocole WhatsApp Web pour recevoir et envoyer les messages avec votre propre numéro. La clé de session est stockée localement sur le serveur ELY.
+                </p>
+
+                {/* Pending QR: show it BIG so iPhone cameras can decode the
+                    dense WhatsApp v9 QR. w-52 (208px) was too small → users
+                    had to CMD-zoom the browser to scan. */}
+                {waWebStatus.status === "pending_qr" && waWebStatus.qr_png_b64 && (
+                  <div className="flex flex-col items-center gap-3 py-2">
+                    <img
+                      src={`data:image/png;base64,${waWebStatus.qr_png_b64}`}
+                      alt="QR WhatsApp"
+                      className="w-80 h-80 rounded bg-white p-2 border border-border-dim"
+                    />
+                    <p className="text-[11px] text-text-muted text-center max-w-xs">
+                      Ouvrez WhatsApp sur votre téléphone → Paramètres → Appareils connectés → Associer un appareil → scannez ce QR code.
+                    </p>
+                  </div>
+                )}
+
+                {/* Error banner */}
+                {waWebStatus.status === "error" && waWebStatus.last_error && (
+                  <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5">
+                    {waWebStatus.last_error}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2 pt-1">
+                  {waWebStatus.status === "linked" ? (
+                    <button
+                      onClick={handleWaWebLogout}
+                      disabled={waWebLoading}
+                      className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
+                    >
+                      {waWebLoading ? "..." : "Déconnecter WhatsApp"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleWaWebStart}
+                      disabled={waWebLoading || waWebStatus.status === "pending_qr"}
+                      className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50"
+                    >
+                      {waWebLoading
+                        ? "..."
+                        : waWebStatus.status === "pending_qr"
+                          ? "Scan en cours..."
+                          : "Lier mon WhatsApp"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Alternative: pair by phone number (when QR scan keeps failing) */}
+                {waWebStatus.status !== "linked" && waWebStatus.status !== "not_started" && (
+                  <details className="pt-2 border-t border-border-dim">
+                    <summary className="text-[11px] text-text-muted cursor-pointer hover:text-text-secondary">
+                      Le QR échoue ? Essayer avec un numéro de téléphone
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                      <p className="text-[11px] text-text-muted">
+                        Entre ton numéro au format international (ex. <code className="text-cyber-cyan">33612345678</code>, sans le +). ELY génère un code à 8 caractères que tu saisis dans <strong>WhatsApp → Appareils connectés → Lier avec un numéro de téléphone à la place</strong>.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="tel"
+                          value={waPhoneInput}
+                          onChange={(e) => setWaPhoneInput(e.target.value)}
+                          placeholder="33612345678"
+                          className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-emerald-500/40"
+                        />
+                        <button
+                          onClick={handleWaWebPairPhone}
+                          disabled={waWebLoading || !waPhoneInput.trim()}
+                          className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {waWebLoading ? "..." : "Obtenir un code"}
+                        </button>
+                      </div>
+                      {waPairCode && (
+                        <div className="text-center py-3 bg-emerald-500/5 border border-emerald-500/20 rounded">
+                          <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">Code à entrer dans WhatsApp</div>
+                          <div className="text-2xl font-mono font-bold text-emerald-300 tracking-widest">{waPairCode}</div>
+                          <div className="text-[10px] text-text-muted mt-1">Valide quelques minutes</div>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                <p className="text-[10px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
+                  <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-amber-400" />
+                  Méthode non-officielle (WhatsApp Web). Votre compte peut théoriquement être restreint par WhatsApp. Pour un usage professionnel à grande échelle, préférez Meta Cloud API.
+                </p>
               </div>
             </section>
             )}
