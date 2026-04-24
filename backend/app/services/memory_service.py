@@ -340,13 +340,17 @@ async def consolidate_user_memory(user_id: str) -> int:
 
     try:
         # Step 1: Fetch unconsolidated logs
+        # Limite bumpée de 200 → 2000 après observation d'un backlog qui
+        # grossissait plus vite que le traitement (80+ faits/jour extraits
+        # contre 200/jour consolidés). Avec 2000, un seul run rattrape
+        # 10 jours d'usage normal d'un coup.
         async with async_session() as db:
             result = await db.execute(
                 select(UserMemoryLog)
                 .where(UserMemoryLog.user_id == user_id)
                 .where(UserMemoryLog.is_consolidated == False)  # noqa: E712
                 .order_by(UserMemoryLog.observed_at)
-                .limit(200)
+                .limit(2000)
             )
             logs: list[UserMemoryLog] = list(result.scalars().all())
 

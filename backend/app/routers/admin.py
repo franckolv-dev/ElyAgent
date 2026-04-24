@@ -189,3 +189,30 @@ async def remove_config(
     ))
     await db.commit()
     return {"message": f"Config '{key}' deleted."}
+
+
+# ── Memory consolidation (on-demand) ──────────────────────────────────────────
+
+@router.post("/memory/consolidate-now")
+async def memory_consolidate_now(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger a memory consolidation pass for ALL users immediately.
+
+    Normally runs at 03:00 and 15:00 via APScheduler. Useful when the
+    backlog is large (e.g. after a long session) and you don't want to
+    wait for the next cron tick. The call is blocking: it returns once
+    all users have been processed (usually 5-15 s for typical workloads).
+    """
+    from app.services.memory_service import consolidate_all_users
+    await consolidate_all_users()
+    db.add(AuditLog(
+        user_id=str(admin.id),
+        action="admin_memory_consolidate",
+        target_host=None,
+        command=None,
+        details="Manual memory consolidation triggered",
+    ))
+    await db.commit()
+    return {"message": "Consolidation triggered — see backend logs for per-user counts."}

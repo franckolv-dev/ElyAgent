@@ -213,7 +213,10 @@ async def lifespan(app: FastAPI):
     )
     _vault_scheduler.start()
 
-    # Schedule nightly user memory consolidation at 3:00 AM
+    # Schedule user memory consolidation — twice a day to keep the backlog
+    # manageable (one run at 03:00 + a booster at 15:00). At ~80 new raw
+    # facts per active day, a single 2000-cap run is more than enough but
+    # the afternoon pass prevents long gaps if the nightly run fails.
     from app.services.memory_service import consolidate_all_users
     _memory_scheduler = AsyncIOScheduler()
     _memory_scheduler.add_job(
@@ -221,7 +224,14 @@ async def lifespan(app: FastAPI):
         trigger="cron",
         hour=3,
         minute=0,
-        id="memory_consolidation",
+        id="memory_consolidation_night",
+    )
+    _memory_scheduler.add_job(
+        consolidate_all_users,
+        trigger="cron",
+        hour=15,
+        minute=0,
+        id="memory_consolidation_afternoon",
     )
     # Schedule nightly Qdrant snapshot backup at 2:00 AM (ARCH-2)
     from app.services.qdrant_backup import run_backup as _qdrant_backup
