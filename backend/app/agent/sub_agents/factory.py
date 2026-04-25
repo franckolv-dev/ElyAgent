@@ -164,6 +164,22 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                      ("watchdog_",)),
                     (_re_filter.compile(r"\b(briefings?|matin|résumé|debrief)\b"),
                      ("briefing_",)),
+                    # Weather — was missing, caused 21 tools binding for "météo"
+                    # queries → xLAM-2 8B 8-bit hit GRAPH_RECURSION_LIMIT.
+                    (_re_filter.compile(r"\b(météo|meteo|weather|temps|climat|temp[ée]rature|pluie|soleil|neige)\b"),
+                     ("weather_",)),
+                    # News — same issue
+                    (_re_filter.compile(r"\b(news|actualit[ée]s?|infos?|articles?|presse|titres?|headlines?)\b"),
+                     ("news_",)),
+                    # Web search / browse
+                    (_re_filter.compile(r"\b(web|internet|cherche|recherche|googl|sites?|urls?|pages?|navig|browse)\b"),
+                     ("web_",)),
+                    # Translation
+                    (_re_filter.compile(r"\b(traduis|traduit|traduction|translate|translator)\b"),
+                     ("translate_",)),
+                    # Image / vision
+                    (_re_filter.compile(r"\b(images?|photos?|pictures?|screenshots?|captur)\b"),
+                     ("image_", "vision_")),
                 ]
                 _matched_prefixes: set[str] = set()
                 for _pattern, _prefixes in _kw_filters:

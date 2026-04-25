@@ -900,8 +900,14 @@ def _make_dispatch_node(domain: str):
             "conversation_id": state.get("conversation_id", ""),
         }
         try:
+            # Recursion limit baissé de 100 à 25 : avec un modèle local
+            # lent (~10-15s/tour pour xLAM-2 8B sur Mac), 100 tours peut
+            # geler le chat pendant 20+ minutes avant le fallback.
+            # 25 tours suffisent pour 99% des tâches chat (le filtre
+            # tools dynamique évite les boucles infinies en limitant les
+            # options du modèle).
             result = await sub_graph.ainvoke(
-                sub_input, config={"recursion_limit": 100}
+                sub_input, config={"recursion_limit": 25}
             )
             # Return only the messages produced by the sub-agent
             new_messages = result["messages"][len(state["messages"]):]
