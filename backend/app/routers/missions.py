@@ -193,8 +193,11 @@ async def start(mission_id: str, current_user: User = Depends(get_current_user))
         m = await mission_service.start_mission(mission_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    # Phase 1 : we don't actually invoke the graph here yet.
-    # Phase 2 : trigger an async task to run one tick of the graph.
+    # Mark the mission for immediate pickup by the heartbeat loop.
+    # Without this the heartbeat would wait `tick_interval_seconds` (or
+    # forever for single-shot missions) before the first tick.
+    from app.services.mission_heartbeat import schedule_first_tick
+    await schedule_first_tick(mission_id)
     return MissionOut.model_validate(m)
 
 

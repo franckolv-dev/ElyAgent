@@ -130,9 +130,15 @@ async def pause_mission(mission_id: str) -> Mission:
 
 
 async def complete_mission(mission_id: str, summary: str) -> Mission:
-    """running → completed."""
+    """planning|running → completed.
+
+    Note : we accept `planning` because a mission can complete on its
+    very first tick (the plan + first action achieves the goal in one
+    iteration). Without this, the mission would be stuck reporting
+    done=True forever in the heartbeat loop.
+    """
     return await _transition(
-        mission_id, from_={"running"}, to="completed",
+        mission_id, from_={"planning", "running"}, to="completed",
         completed_at=_utcnow(), final_summary=summary,
     )
 

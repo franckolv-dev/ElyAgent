@@ -264,6 +264,23 @@ async def lifespan(app: FastAPI):
         minute=0,
         id="purge_revoked_tokens",
     )
+
+    # Mission heartbeat — ticks active missions periodically.
+    # See app/services/mission_heartbeat.py for the loop logic.
+    from app.services.mission_heartbeat import (
+        heartbeat_tick as _mission_heartbeat,
+        HEARTBEAT_INTERVAL_SECONDS as _hb_interval,
+    )
+    _memory_scheduler.add_job(
+        _mission_heartbeat,
+        trigger="interval",
+        seconds=_hb_interval,
+        id="mission_heartbeat",
+        coalesce=True,        # if missed beats, only run once
+        max_instances=1,      # never run two beats concurrently
+    )
+    _startup_logger.info("[missions] heartbeat scheduled every %ds", _hb_interval)
+
     _memory_scheduler.start()
 
     yield

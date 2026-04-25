@@ -175,6 +175,73 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Nouvelle conversation. Que puis-je faire pour toi ?")
 
 
+async def cmd_mission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /mission <titre> :: <goal>
+
+    Creates a new mission, starts it, and reports the ID. The heartbeat
+    will pick it up on the next beat (within 30 s) and the user receives
+    progress + final result back via DM (cf. mission_heartbeat
+    notifications — Phase 4.4).
+
+    Examples :
+      /mission Météo demain :: Donne-moi la météo de Paris pour demain
+      /mission Audit emails :: Liste mes 10 derniers mails non lus et résume-les
+    """
+    tg_id = update.effective_user.id
+    if tg_id not in _linked_users:
+        await update.message.reply_text(
+            "Tu dois d'abord lier ton compte ELY.\nUtilise : /link <nom_utilisateur> <mot_de_passe>"
+        )
+        return
+
+    raw = " ".join(context.args) if context.args else ""
+    if " :: " not in raw:
+        await update.message.reply_text(
+            "Usage : `/mission <titre> :: <goal>`\n\n"
+            "Exemple :\n"
+            "`/mission Météo demain :: Donne-moi la météo de Paris pour demain`",
+            parse_mode="Markdown",
+        )
+        return
+
+    title, goal = raw.split(" :: ", 1)
+    title = title.strip()[:80]
+    goal = goal.strip()
+    if not title or len(goal) < 5:
+        await update.message.reply_text("Titre ou goal trop court — réessaie.")
+        return
+
+    user_id = _linked_users[tg_id]
+    try:
+        from app.services import mission_service
+        from app.services.mission_heartbeat import schedule_first_tick
+
+        m = await mission_service.create_mission(
+            user_id=user_id,
+            title=title,
+            goal=goal,
+            source="channel",
+            source_ref=f"telegram:{tg_id}",
+            budget_iterations=15,
+            budget_tokens=80_000,
+        )
+        await mission_service.start_mission(m.id)
+        await schedule_first_tick(m.id)
+        await update.message.reply_text(
+            f"🎯 *Mission créée et démarrée*\n\n"
+            f"*Titre* : {title}\n"
+            f"*Goal* : {goal[:200]}\n\n"
+            f"ID : `{m.id[:8]}…`\n\n"
+            f"Je travaille dessus en arrière-plan. Je te préviens ici quand c'est fini "
+            f"(ou si je rencontre un problème). En attendant tu peux suivre la progression sur "
+            f"https://ely.catalogmaker.fr/missions/{m.id}",
+            parse_mode="Markdown",
+        )
+    except Exception as exc:
+        logger.exception("cmd_mission failed for tg_id=%s: %s", tg_id, exc)
+        await update.message.reply_text(f"Erreur création mission : {exc}")
+
+
 # ── Message handler ───────────────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -388,6 +455,7 @@ async def start_telegram_bot() -> None:
     _bot_app.add_handler(CommandHandler("link", cmd_link))
     _bot_app.add_handler(CommandHandler("unlink", cmd_unlink))
     _bot_app.add_handler(CommandHandler("new", cmd_new))
+    _bot_app.add_handler(CommandHandler("mission", cmd_mission))
     _bot_app.add_handler(CallbackQueryHandler(handle_hitl_callback, pattern=r"^hitl:"))
     _bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
@@ -414,6 +482,7 @@ async def _start_polling(token: str) -> None:
     _bot_app.add_handler(CommandHandler("link", cmd_link))
     _bot_app.add_handler(CommandHandler("unlink", cmd_unlink))
     _bot_app.add_handler(CommandHandler("new", cmd_new))
+    _bot_app.add_handler(CommandHandler("mission", cmd_mission))
     _bot_app.add_handler(CallbackQueryHandler(handle_hitl_callback, pattern=r"^hitl:"))
     _bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
