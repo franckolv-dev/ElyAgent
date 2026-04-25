@@ -267,16 +267,8 @@ async def tick(mission_id: str, current_user: User = Depends(get_current_user)) 
         await mission_service.fail_mission(mission_id, f"graph error: {exc}")
         raise HTTPException(status_code=500, detail=f"Tick a échoué: {exc}")
 
-    # Persist a step for audit (Phase 1: synthetic single step)
-    await mission_service.add_step(
-        mission_id, phase="eval",
-        thought="Phase 1 skeleton tick",
-        evaluation=result.get("last_eval_reason"),
-        success=result.get("last_eval_success"),
-        tokens_used=0,
-        duration_ms=0,
-        model_used=None,
-    )
+    # Note : the nodes themselves persist MissionStep rows (plan/act/eval/replan).
+    # We don't double-log here. We only handle the terminal transition.
 
     # If the graph signaled done, complete the mission
     if result.get("done") and result.get("final_summary"):
