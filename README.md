@@ -154,6 +154,46 @@ ELY automatically extracts and remembers: your preferences, important facts, rec
 
 ---
 
+### 🎯 Missions — Goal-Driven Persistence Loop
+
+ELY is also a **goal-driven autonomous agent**. Give her a goal — she breaks it into steps, picks tools, executes them, evaluates the result, replans if she fails, and notifies you when the mission is complete. All of this survives backend restarts (LangGraph checkpointer in SQLite).
+
+```
+                    ┌─── HEARTBEAT (every 10s) ───┐
+                    ▼                              │
+            ┌────────────┐    ┌──────┐    ┌─────┐ │
+            │   Plan     │───►│ Act  │───►│Eval │─┤
+            └────────────┘    └──────┘    └──┬──┘ │
+                  ▲                          ▼    │
+                  │       ┌────────┐    ┌─────────┴───┐
+                  └───────│ Replan │◄───│ ≥3 failures │
+                          └────────┘    └─────────────┘
+```
+
+**How to launch a mission**:
+
+| From | How |
+|------|-----|
+| Web UI | `/missions` → button "Nouvelle mission" → fill title + goal + budgets |
+| Telegram | `/mission <title> :: <goal>` (DM the bot) |
+| (Coming) | Schedule a recurring mission via `/scheduler` |
+
+**5 hard guardrails** (mandatory, no opt-out):
+- Token budget (per mission, default 50k, configurable)
+- Iteration budget (default 30 ticks, configurable)
+- Optional deadline (kill at timestamp)
+- HITL on critical tools (mail send, file delete, SSH, etc.)
+- Anti-loop : 3 consecutive failures → automatic replan with reflection
+
+**Notifications when done**: 3 channels in parallel:
+- Web UI (auto-created `[Missions] Notifications` conversation in your sidebar)
+- Telegram DM (if mission was created via Telegram)
+- ntfy push to your phone (if `NTFY_URL` configured)
+
+Routing: missions use the local **xLAM-2 8B** model for tool-calling (specialised for function calls, ~5s per action), with auto pre-filtering of the tool inventory (151 → 15 most relevant) so smaller models don't choke on payload size.
+
+---
+
 ### 🤖 Multi-Provider LLM Engine
 
 Route each request to the optimal model based on detected complexity. **Configure everything in Settings — no code, no restart.**

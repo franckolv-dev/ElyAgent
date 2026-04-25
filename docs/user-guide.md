@@ -13,9 +13,10 @@
 5. [Skills Management](#5-skills-management)
 6. [Scheduled Tasks](#6-scheduled-tasks)
 7. [Conversational Channels (WhatsApp / Telegram / Discord / Slack)](#7-conversational-channels-whatsapp--telegram--discord--slack)
-8. [HITL Validation](#8-hitl-validation)
-9. [Memory — What ELY Remembers](#9-memory--what-ely-remembers)
-10. [Security Overview](#10-security-overview)
+8. [Missions — Goal-Driven Persistence Loop](#8-missions--goal-driven-persistence-loop)
+9. [HITL Validation](#9-hitl-validation)
+10. [Memory — What ELY Remembers](#10-memory--what-ely-remembers)
+11. [Security Overview](#11-security-overview)
 
 ---
 
@@ -392,7 +393,103 @@ Socket Mode avoids the need for a public HTTPS endpoint — Slack opens a WebSoc
 
 ---
 
-## 8. HITL Validation
+## 8. Missions — Goal-Driven Persistence Loop
+
+Beyond the request/response chat, ELY can be given a **Mission** : a long-running goal that she breaks down into steps, executes one at a time, evaluates after each step, and replans if she gets stuck. The mission survives backend restarts and runs autonomously in the background.
+
+### When to use a mission vs a chat
+
+| Use case | Mode |
+|----------|------|
+| "What's the weather?" | Chat (instant answer) |
+| "Find 3 articles about Gemma 4, summarise them, put the summary in a Google Doc, and email me the link" | **Mission** (multi-step, stateful) |
+| "Translate this paragraph" | Chat |
+| "Every morning, build me a brief from my unread emails" | Mission (recurring, see scheduled missions) |
+
+Rule of thumb : if it's a one-shot fact lookup, chat. If it requires *planning + multiple tool calls + a final synthesis*, mission.
+
+### 8.1. Creating a mission from the web UI
+
+1. **Sidebar → Missions**
+2. Top-right button **"Nouvelle mission"**
+3. Fill in :
+   - **Titre** : short label, displayed in lists (max 80 chars)
+   - **Goal** : detailed description of what Éli should accomplish (full sentence — be specific !)
+   - **Budget itérations** : max number of Plan→Act→Eval cycles (default 15, range 1-200)
+   - **Budget tokens** : max LLM tokens consumed (default 50 000)
+4. Click **Créer la mission** → mission appears in the list with status `draft`
+5. Open the mission detail → click **Démarrer** → next heartbeat (within 10 s) picks it up and starts executing
+
+### 8.2. Creating a mission from Telegram
+
+In a DM with your ELY bot :
+
+```
+/mission Météo Paris :: Donne-moi la météo actuelle à Paris et compare avec hier
+```
+
+Format : `/mission <titre> :: <goal>` (separator is space-colon-colon-space).
+
+The bot replies instantly with the mission ID + a link to follow progress on the web UI. The mission then runs autonomously and you'll receive the result back as a DM when it's done (or fails).
+
+### 8.3. Watching a mission progress
+
+On `/missions/<id>` you see in real time :
+
+- **Header card** : goal, status badge (Brouillon / Planification / En cours / Terminée / Échec / Abandonnée), iteration counter, token counter, progress bar
+- **Plan vN** : checklist of subtasks the agent built, each marked ✅ done / ❌ failed / ⏳ pending. New version appears if the agent had to replan
+- **Timeline** : every Plan/Act/Eval/Replan step in chronological order. Click on a step to expand and see the agent's thought, the tool name + input JSON, the tool output, the evaluation, and which model was used
+
+Auto-refresh every 3 s while the mission is active.
+
+### 8.4. Controlling a mission
+
+| Button | Action | When to use |
+|--------|--------|-------------|
+| Démarrer | draft → planning, schedule first tick | Mission was created in draft |
+| Reprendre | paused → planning | Mission was paused, resume it |
+| Pause | running → paused | You want to halt without aborting |
+| Tick manuel | Run one iteration immediately (don't wait for heartbeat) | Debug, or you're in a hurry |
+| Abandonner | Kill switch — instant terminal abort | Mission is going wrong, stop it now |
+
+### 8.5. Heartbeat & guardrails
+
+The **heartbeat** is a background loop that fires every 10 seconds. On each beat :
+
+1. It picks all missions whose `next_tick_at` ≤ now and that are still active (running or planning).
+2. For each one, it runs **exactly one iteration** of Plan→Act→Eval (or Replan if 3+ recent failures).
+3. If `done` → mission completes + notification fires.
+4. Otherwise → schedule next tick at `now + tick_interval_seconds` (default 60 s).
+
+Five **hard guardrails** protect you from runaway missions :
+
+- **Token budget** : if the mission consumes more than `budget_tokens` tokens total → auto-fail
+- **Iteration budget** : if it ticks more than `budget_iterations` times → auto-fail
+- **Deadline** (optional) : kill at a wall-clock timestamp
+- **HITL on critical tools** : send mail / SSH / file delete / etc. always ask for your approval before executing — same UX as in chat mode (web pop-up, ntfy push, Telegram inline button)
+- **Anti-loop** : 3 consecutive failed actions → forced replan with reflection (LLM produces a new plan version that explicitly addresses what went wrong)
+
+### 8.6. End-of-mission notifications
+
+When a mission terminates (completed / failed / aborted), you get notifications on **3 channels in parallel** :
+
+- **Web UI** : a message lands in your `[Missions] Notifications` conversation (visible in the chat sidebar)
+- **Telegram** : DM with the result, but only if the mission was created via Telegram
+- **ntfy** : push notification on your phone (via the ntfy app), if `NTFY_URL` is configured at server level
+
+Each channel is independent — failure of one doesn't block the others.
+
+### 8.7. Routing & cost
+
+By default, missions use **xLAM-2 8B** (a Salesforce model fine-tuned for function calling) running locally via LM Studio. This means **zero API cost** for the typical mission.
+
+If the local model fails (rare — it falls back gracefully), the mission tries Gemini-2.5-flash and Claude Haiku in order. These cost a few cents per mission max.
+
+The tool inventory (151 ELY tools) is automatically pre-filtered down to ~15 most relevant tools per step (based on the tool hint from the plan + keywords in the goal), so smaller local models can handle the bind without choking.
+
+---
+
+## 9. HITL Validation
 
 **HITL (Human-in-the-Loop)** is ELY's mechanism for pausing before irreversible actions and asking for your explicit approval.
 
@@ -451,7 +548,7 @@ This rule is loaded into every future session's system prompt. ELY learns your s
 
 ---
 
-## 9. Memory — What ELY Remembers
+## 10. Memory — What ELY Remembers
 
 ELY maintains a persistent memory across all your conversations using a hybrid storage system.
 
@@ -497,7 +594,7 @@ Oublie ce que tu sais sur mon ancien projet
 
 ---
 
-## 10. Security Overview
+## 11. Security Overview
 
 ELY was designed with security as a first-class concern. Here is a summary of the key mechanisms.
 
