@@ -23,7 +23,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Cpu, Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
-  Download, X, ChevronDown, Swords, BookOpen,
+  Download, X, ChevronDown, Swords, BookOpen, Target,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -39,6 +39,7 @@ const PAGE_SIZE = 50;
 
 const BASE_NAV = [
   { href: "/chat",      label: "Chat",          icon: MessageSquare },
+  { href: "/missions",  label: "Missions",      icon: Target        },
   { href: "/knowledge", label: "Connaissances", icon: BookOpen      },
   { href: "/arena",     label: "Arena",         icon: Swords        },
   { href: "/settings",  label: "Settings",      icon: Settings      },
