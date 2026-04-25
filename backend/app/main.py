@@ -45,6 +45,7 @@ from app.routers import transcribe as transcribe_router
 from app.routers import whatsapp_webhook as whatsapp_router
 from app.routers import whatsapp_web as whatsapp_web_router
 from app.routers import channels as channels_router
+from app.routers import missions as missions_router
 from app.routers import upload as upload_router
 from app.routers import watchdog as watchdog_router
 from app.routers import analytics as analytics_router
@@ -275,6 +276,13 @@ async def lifespan(app: FastAPI):
     await stop_slack_bot()
     await stop_discord_bot()
     await get_browser_manager().stop()
+    # Close mission checkpointer (AsyncSqliteSaver) cleanly so the
+    # SQLite WAL is flushed before the container exits.
+    try:
+        from app.agent.missions.checkpointer import close_mission_checkpointer
+        await close_mission_checkpointer()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -322,6 +330,8 @@ app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
 app.include_router(whatsapp_web_router.router)
 # Unified admin API for Telegram / Discord / Slack config from Settings UI
 app.include_router(channels_router.router)
+# Goal-driven Persistence Loop (Plan→Act→Eval→Replan, Phase 1 skeleton)
+app.include_router(missions_router.router)
 app.include_router(watchdog_router.router, prefix="/watchdog", tags=["watchdog"])
 app.include_router(analytics_router.router, prefix="/analytics", tags=["analytics"])
 app.include_router(audit_router.router, prefix="/api", tags=["audit"])
