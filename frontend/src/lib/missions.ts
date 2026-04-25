@@ -80,8 +80,24 @@ async function call<T>(path: string, opts: RequestInit = {}): Promise<T> {
     headers: { "Content-Type": "application/json", ...(opts.headers as Record<string, string>) },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({} as { detail?: string }));
-    throw new Error(body.detail || `HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({} as { detail?: unknown }));
+    // FastAPI 422 validation errors return `detail` as an ARRAY of objects
+    // (loc, msg, type) — JSON.stringify keeps them readable instead of
+    // rendering "[object Object]" in the toast.
+    const detail = body.detail;
+    let msg: string;
+    if (typeof detail === "string") {
+      msg = detail;
+    } else if (Array.isArray(detail)) {
+      msg = detail
+        .map((d) => (typeof d === "object" && d !== null && "msg" in d ? String((d as { msg: unknown }).msg) : JSON.stringify(d)))
+        .join(" · ");
+    } else if (detail) {
+      msg = JSON.stringify(detail);
+    } else {
+      msg = `HTTP ${res.status}`;
+    }
+    throw new Error(msg);
   }
   // Some endpoints (abort, etc.) may return null body
   const text = await res.text();

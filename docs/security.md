@@ -1,8 +1,9 @@
 # ELY Agent — Sécurité
 
-> La sécurité est le pilier fondamental d'ELY. Contrairement aux agents IA populaires qui privilégient
-> les fonctionnalités au détriment de la sécurité (ex: OpenClaw avec 288 alertes de sécurité GitHub),
-> ELY est conçu avec une approche **security-first**.
+> La sécurité est le pilier fondamental d'ELY. Beaucoup d'agents IA grand
+> public privilégient l'expérience utilisateur au détriment de la
+> sécurité — ELY est conçu avec une approche **security-first** dès le
+> design : chaque tool a un coût, chaque coût est validé.
 
 ## Principes fondamentaux
 
@@ -99,21 +100,26 @@ L'ajout d'un canal de messagerie ne compromet **pas** la sécurité car :
 - DM d'un inconnu → rejeté si pas dans la whitelist
 - Interception réseau → Telegram utilise le chiffrement serveur-client (MTProto)
 
-**Ce qu'on ne fait PAS** (contrairement à OpenClaw) :
-- Pas d'exécution de code arbitraire depuis un message Telegram
-- Pas d'accès fichier non contrôlé
+**Ce qu'on ne fait PAS, par design** :
+- Pas d'exécution de code arbitraire depuis un message channel
+- Pas d'accès fichier non contrôlé (chemins SSH whitelistés, vault pour les secrets)
 - Pas de bash non-whitelisté
+- Pas d'auto-promotion d'actions « sensibles » sans HITL
+- Pas de logging des credentials (jamais — masqués via SecurityFilter)
 
 ---
 
-## Comparaison avec OpenClaw
+## Garanties de sécurité résumées
 
-| Aspect | ELY | OpenClaw |
-|---|---|---|
-| Alertes de sécurité GitHub | 0 | 288 |
-| Anonymisation PII | Oui (regex + vault) | Non |
-| HITL pour actions critiques | Oui (3 niveaux) | Basique (approve/deny) |
-| Apprentissage des refus | Oui (Qdrant persistant) | Non |
-| SSH whitelist | Oui (par hôte) | Non (bash ouvert) |
-| Credentials dans les logs | Jamais | Non documenté |
-| Refresh token | Cookie HttpOnly | Token en mémoire |
+| Aspect | Implémentation |
+|---|---|
+| Anonymisation PII avant LLM | Oui (regex + vault) |
+| HITL pour actions critiques | Oui (3 niveaux : Allow / Deny / Ban) |
+| Apprentissage des refus | Oui (Qdrant `security_constraints` persistant) |
+| SSH whitelist | Oui (par hôte) |
+| Credentials dans les logs | Jamais (filtrés au niveau du logger) |
+| Refresh token | Cookie HttpOnly (pas accessible en JS) |
+| Access token | localStorage 60 min, refresh transparent |
+| Mots de passe | Argon2id via pwdlib |
+| JWT | HS256, secret 32-byte minimum imposé |
+| Vault user secrets | AES-256-GCM zero-knowledge (clé dérivée du mdp) |

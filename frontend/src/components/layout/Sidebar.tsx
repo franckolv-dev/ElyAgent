@@ -227,7 +227,13 @@ export function Sidebar() {
       {/* Main nav + new conversation */}
       <nav className="p-2 space-y-1 shrink-0">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href || pathname.startsWith(href + "?");
+          // Active when current path equals href OR is a sub-route (e.g.
+          // /missions/<id> should highlight the "Missions" entry).
+          // Use "/" as boundary to avoid /chat-foo matching /chat.
+          const isActive =
+            pathname === href ||
+            pathname.startsWith(href + "/") ||
+            pathname.startsWith(href + "?");
           return (
             <Link
               key={href}

@@ -33,11 +33,45 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.auth.dependencies import get_current_user
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import get_current_user, get_optional_user
 from app.config import get_settings
+from app.database import get_db
 from app.models.user import User
 from app.services.llm_provider import set_runtime_key, has_runtime_key
 from app.services.system_config import get_config, set_config
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap guard
+# ---------------------------------------------------------------------------
+# The /setup wizard must work BEFORE the first admin user exists (otherwise
+# you couldn't bootstrap a fresh install). But once at least one user
+# exists, these endpoints are admin-only — otherwise an attacker on the
+# open internet could (a) brute-force pasted API keys against external
+# providers (cost weaponisation), (b) use the backend as an SSRF probe to
+# whatever `ollama_base_url` resolves to, (c) fingerprint internal config.
+#
+# This helper allows the request only if either :
+#   - the User table is empty (first launch, no admin yet)
+#   - OR an authenticated admin is calling
+#
+# Use as a FastAPI dependency on every wizard endpoint.
+
+async def require_bootstrap_or_admin(
+    db: AsyncSession = Depends(get_db),
+    caller: Optional[User] = Depends(get_optional_user),
+) -> None:
+    count = (await db.execute(select(func.count(User.id)))).scalar_one()
+    if count == 0:
+        return  # bootstrap mode, no admin yet, allow
+    if caller is None or caller.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cette opération est réservée aux administrateurs après l'installation initiale.",
+        )
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +216,17 @@ async def get_setup_status_me(current_user: User = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 
 @router.post("/validate-key", response_model=ValidateKeyResponse)
-async def validate_key(body: ValidateKeyRequest) -> ValidateKeyResponse:
-    """Validate an API key by making a real minimal test call to the provider."""
+async def validate_key(
+    body: ValidateKeyRequest,
+    _guard: None = Depends(require_bootstrap_or_admin),
+) -> ValidateKeyResponse:
+    """Validate an API key by making a real minimal test call to the provider.
+
+    Open during bootstrap (no users yet); admin-only afterwards. Without
+    this guard, a public clone exposes a free probe that an attacker can
+    weaponise to brute-force pasted keys (real provider charges) or to
+    SSRF whatever target a malicious payload aims at.
+    """
     provider = body.provider.lower()
     key = body.key.strip()
 
@@ -381,7 +424,9 @@ async def save_key(
 # ---------------------------------------------------------------------------
 
 @router.post("/test-ollama", response_model=OllamaTestResponse)
-async def test_ollama() -> OllamaTestResponse:
+async def test_ollama(
+    _guard: None = Depends(require_bootstrap_or_admin),
+) -> OllamaTestResponse:
     """Test if Ollama is reachable and return available models."""
     s = get_settings()
     try:
@@ -412,7 +457,10 @@ class TelegramValidateResponse(BaseModel):
 
 
 @router.post("/validate-telegram", response_model=TelegramValidateResponse)
-async def validate_telegram(body: TelegramValidateRequest) -> TelegramValidateResponse:
+async def validate_telegram(
+    body: TelegramValidateRequest,
+    _guard: None = Depends(require_bootstrap_or_admin),
+) -> TelegramValidateResponse:
     """Validate a Telegram bot token using the getMe API."""
     token = body.token.strip()
     if not token:

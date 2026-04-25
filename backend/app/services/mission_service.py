@@ -320,6 +320,12 @@ async def check_budget(mission_id: str) -> Optional[str]:
         return f"iteration budget exhausted ({m.iterations_used}/{m.budget_iterations})"
     if m.tokens_used >= m.budget_tokens:
         return f"token budget exhausted ({m.tokens_used}/{m.budget_tokens})"
-    if m.deadline and _utcnow() > m.deadline:
-        return f"deadline exceeded ({m.deadline.isoformat()})"
+    if m.deadline:
+        # SQLite stores naive datetimes; coerce to UTC before comparison
+        # to avoid `TypeError: can't compare offset-naive and offset-aware
+        # datetimes` which would crash the heartbeat tick and force-fail
+        # the mission with a misleading "graph crashed" reason.
+        deadline_aware = m.deadline if m.deadline.tzinfo else m.deadline.replace(tzinfo=timezone.utc)
+        if _utcnow() > deadline_aware:
+            return f"deadline exceeded ({deadline_aware.isoformat()})"
     return None

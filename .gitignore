@@ -55,6 +55,10 @@ android/app/google-services.json
 # Using /data/ anchor to avoid matching android/.../data/ (Kotlin package)
 /data/
 /logs/
+# Exception : track the empty data/ssh placeholder so the docker-compose
+# SSH-keys mount doesn't fail on fresh clones (default mount target).
+!/data/ssh/
+!/data/ssh/.gitkeep
 
 # Next.js / TypeScript build artifacts
 frontend/tsconfig.tsbuildinfo

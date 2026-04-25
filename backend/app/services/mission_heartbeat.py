@@ -117,10 +117,14 @@ async def _notify_terminal(mission, kind: str, summary: str) -> None:
             tg_chat_id = int(mission.source_ref.split(":", 1)[1])
             from app.channels import telegram_bot as _tb
             if _tb._bot_app is not None:
+                # parse_mode=None on purpose : the mission goal/title/summary
+                # are user-controlled text. Markdown parsing would crash with
+                # "Can't parse entities" on unmatched _ * [ ] characters
+                # AND open an injection vector (user goal containing
+                # `[hacked](https://evil.com)` would render as a link).
                 await _tb._bot_app.bot.send_message(
                     chat_id=tg_chat_id,
                     text=msg_content,
-                    parse_mode="Markdown",
                 )
                 logger.info("Mission %s: Telegram notification sent to %d", mission.id, tg_chat_id)
         except Exception as exc:

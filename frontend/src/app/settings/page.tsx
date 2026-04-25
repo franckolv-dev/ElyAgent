@@ -282,6 +282,12 @@ export default function SettingsPage() {
   // Active tab — initialised on mount once we know the role
   const [activeTab, setActiveTab] = useState<string>("integrations");
 
+  // Toasts — extracted early so all callbacks below can capture `push`
+  // from the lexical scope. Moving this up was a defensive cleanup
+  // (the original placement at the bottom worked thanks to JS closure
+  // laziness, but a code reviewer flagged it as TDZ-fragile).
+  const { toasts, push } = useToasts();
+
   // ── WhatsApp Web session state (QR-pairing adapter) ───────────────────
   const [waWebStatus, setWaWebStatus] = useState<{
     status: string;
@@ -513,8 +519,6 @@ export default function SettingsPage() {
       await refreshChannelsStatus();
     } finally { setSlBusy(false); }
   }, [refreshChannelsStatus]);
-
-  const { toasts, push } = useToasts();
 
   // Initialise admin role and default tab once mounted (client-side only)
   useEffect(() => {

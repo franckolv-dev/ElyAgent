@@ -39,6 +39,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Strong refs to fire-and-forget background tasks (memory extraction,
+# fallback inference, etc.). Without this set, asyncio's GC may cancel
+# the task mid-execution because its only reference is the local one
+# created via `asyncio.create_task(...)`. Tasks self-remove via
+# `add_done_callback(_bg_tasks.discard)`.
+_bg_tasks: set = set()
+
 
 def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMessage]:
     """Mistral rejects ANY AIMessage where content is None (HTTP 400, error code 3240).
@@ -547,7 +554,16 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     except Exception as _exc:
                         logger.debug("Memory extraction failed: %s", _exc)
 
-                _asyncio.create_task(_safe_memory_extract(user_id, messages + [response]))
+                # Hold a reference to the background task — Python's GC may
+                # cancel asyncio tasks that have no strong reference, per
+                # the docs (see asyncio.create_task warning). _bg_tasks is
+                # a module-level WeakSet that lets the task auto-remove
+                # itself when done while keeping a strong ref while alive.
+                _t = _asyncio.create_task(
+                    _safe_memory_extract(user_id, messages + [response])
+                )
+                _bg_tasks.add(_t)
+                _t.add_done_callback(_bg_tasks.discard)
 
             # Persist memory cache updates (if any) so subsequent tool calls
             # in the same turn reuse the blocks instead of re-fetching.

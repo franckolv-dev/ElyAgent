@@ -24,7 +24,7 @@
 
 When you open ELY for the first time at `http://localhost:3000`, you will see the login screen.
 
-![Login screen](./screenshots/login.png)
+<!-- TODO(screenshots): add docs/screenshots/login.png to illustrate the login UI -->
 
 ### Creating your account
 
@@ -45,7 +45,7 @@ Enter your credentials and click **"Se connecter"**. You will be redirected to t
 
 ## 2. Interface Overview
 
-![Light mode chat interface](./screenshots/chat-light.png)
+<!-- TODO(screenshots): add docs/screenshots/chat-light.png showing chat + 3D avatar -->
 
 The ELY interface has four main zones:
 
@@ -234,7 +234,7 @@ To allow ELY to access Gmail, Calendar, Drive, Docs, Sheets, and Tasks, you must
 
 Click **Settings** in the left sidebar.
 
-![Settings — Google section](./screenshots/settings-google.png)
+<!-- TODO(screenshots): add docs/screenshots/settings-google.png showing Google OAuth connect button -->
 
 ### Step 2 — Connect Google
 
@@ -268,7 +268,7 @@ Skills are ELY's capabilities. Each skill is a group of related tools. You can e
 
 Go to **Settings** and scroll to the **"Skills actifs"** section.
 
-![Settings — Skills section](./screenshots/settings-skills.png)
+<!-- TODO(screenshots): add docs/screenshots/settings-skills.png showing the Skills toggle list -->
 
 Each skill card shows:
 - The skill's icon and name

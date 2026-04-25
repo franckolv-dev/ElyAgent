@@ -1,4 +1,4 @@
-.PHONY: up down restart build logs ps slm-pull slm-logs slm-enable slm-disable
+.PHONY: up down restart build logs ps create-admin ollama-cleanup slm-enable slm-disable
 
 # Charge le .env et démarre tous les services
 up:
@@ -41,13 +41,12 @@ ps:
 
 # ── SLM / Ollama ──────────────────────────────────────────────────────
 
-# Pull (ou mettre à jour) le modèle SLM dans Ollama
-slm-pull:
-	docker compose exec ollama ollama pull $(or $(m),qwen2.5:3b-instruct)
-
-# Logs du service Ollama
-slm-logs:
-	docker compose logs -f ollama
+# NOTE : the in-Docker `ollama` service was removed in favour of the
+# host's native Ollama (better GPU/Metal acceleration on Mac, no model
+# duplication). To pull/manage Ollama models, use the host CLI directly:
+#   ollama pull qwen2.5:7b-instruct
+#   ollama list
+# The previous `slm-pull`, `slm-logs` Makefile targets have been removed.
 
 # Activer le SLM (modifier le .env puis rebuilder le backend)
 slm-enable:
@@ -58,3 +57,14 @@ slm-enable:
 slm-disable:
 	@sed -i 's/^SLM_ENABLED=.*/SLM_ENABLED=false/' .env || echo "SLM_ENABLED=false" >> .env
 	docker compose up -d --build backend
+
+# ── Convenience : create the first admin user ─────────────────────────
+# Usage : make create-admin USER=franck PASS='YourStr0ng!Pass' EMAIL=you@example.com
+# Note : the FIRST user to register via the web UI is also auto-promoted
+# to admin, so this target is only needed for headless / scripted setups.
+create-admin:
+	@if [ -z "$(USER)" ] || [ -z "$(PASS)" ]; then \
+		echo "Usage: make create-admin USER=<name> PASS=<pwd> [EMAIL=<email>]"; exit 1; \
+	fi
+	@docker exec cyberentity-backend bash -c "cd /app && PYTHONPATH=/app uv run --no-sync python /app/scripts/create_admin.py \
+		--username '$(USER)' --password '$(PASS)' --email '${EMAIL:-$(USER)@local}'"

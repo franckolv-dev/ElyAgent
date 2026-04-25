@@ -1,10 +1,20 @@
 # ELY — Exactly Like You
 
+[![License](https://img.shields.io/badge/license-PolyForm%20Strict%201.0.0-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.0-orange)](https://langchain-ai.github.io/langgraph/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docs.docker.com/compose/)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-100%25-brightgreen)](#deployment)
+
 > **Your personal AI agent. Trained on your habits. Runs on your hardware. Never acts without your approval.**
 
 ELY is a fully self-hosted AI agent that integrates with your entire digital life — Google Workspace, servers, smart home, files, web — while keeping your sensitive data out of the LLM and pausing before every irreversible action.
 
-**Run it on your laptop, a Mac Mini, or a VPS. Access it from anywhere via Cloudflare Tunnel or Tailscale. No subscription. No data leaving your machine unless you choose it.**
+**Run it on your laptop, a Mac Studio, or a VPS. Access it from anywhere via Cloudflare Tunnel or Tailscale. No subscription. No data leaving your machine unless you choose it.**
+
+> 💡 **Free for personal use.** Commercial use requires a separate license — see [§ License](#-license) at the bottom or contact [franck.olv@gmail.com](mailto:franck.olv@gmail.com).
 
 ---
 
