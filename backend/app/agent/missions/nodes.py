@@ -128,13 +128,94 @@ def _get_planner_llm():
     return get_llm_for_tier(ComplexityTier.MEDIUM)
 
 
-def _get_actor_llms() -> tuple[Any, list[tuple[str, Any]], list[Any]]:
+def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str) -> list:
+    """Reduce the tool inventory to a manageable subset for this iteration.
+
+    With 76 tools binded simultaneously, smaller models (xLAM-2-8B,
+    Gemini-flash) hit payload-size limits or get confused. We pre-filter
+    to ~10-15 tools using two signals :
+
+    1. `tool_hint` from the plan step (most reliable) — strict match by
+       prefix/family. Ex: hint="weather_get" → all tools starting with
+       "weather_" or containing "weather".
+    2. Keyword extraction from the goal text (fallback) — match tool
+       names against significant words in the goal.
+
+    If neither yields enough candidates, we top up with a few "generic"
+    tools (web_search, web_browse) so the model always has something
+    to fall back to.
+    """
+    if not all_tools:
+        return all_tools
+
+    # If hint is set, prioritise tools matching its family
+    candidates: list = []
+    seen: set[str] = set()
+
+    def _add(t):
+        if t.name not in seen:
+            candidates.append(t)
+            seen.add(t.name)
+
+    if tool_hint:
+        hint_low = tool_hint.lower()
+        # Try exact match first
+        for t in all_tools:
+            if t.name == tool_hint:
+                _add(t)
+        # Then prefix match (e.g. weather_ → weather_get, weather_forecast)
+        prefix = hint_low.split("_")[0] if "_" in hint_low else hint_low
+        for t in all_tools:
+            if t.name.lower().startswith(prefix):
+                _add(t)
+        # Then substring match (broader)
+        if prefix and len(prefix) >= 4:
+            for t in all_tools:
+                if prefix in t.name.lower() or prefix in (t.description or "").lower()[:200]:
+                    _add(t)
+
+    # Keyword extraction from goal — pick significant nouns
+    if len(candidates) < 10:
+        goal_low = goal.lower()
+        # Common ELY tool families to keyword-match
+        FAMILY_KEYWORDS = {
+            "weather":  ["météo", "meteo", "weather", "temperature", "pluie", "soleil"],
+            "news":     ["news", "actualité", "actualites", "info", "article"],
+            "gmail":    ["mail", "email", "courrier", "boîte"],
+            "calendar": ["agenda", "calendrier", "rendez-vous", "rdv", "réunion", "événement"],
+            "drive":    ["drive", "fichier", "document", "doc", "dossier"],
+            "tasks":    ["tâche", "tache", "todo", "task"],
+            "web":      ["web", "internet", "site", "url", "page"],
+            "ssh":      ["ssh", "serveur", "vps", "shell", "commande"],
+            "translate":["traduis", "traduction", "translate"],
+            "image":    ["image", "photo", "picture", "imagen", "dessin"],
+        }
+        for family, kws in FAMILY_KEYWORDS.items():
+            if any(kw in goal_low for kw in kws):
+                for t in all_tools:
+                    if family in t.name.lower():
+                        _add(t)
+
+    # Top up with generic must-haves so we always have a safety net
+    GENERIC = {"web_search", "web_browse", "smart_knowledge_query"}
+    for t in all_tools:
+        if t.name in GENERIC:
+            _add(t)
+
+    # Cap to avoid payload bloat (~15 tools handles 99% of cases)
+    return candidates[:15] if candidates else all_tools[:15]
+
+
+def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
     """Return (primary_llm_bound, [(label, fallback_llm_bound)], raw_tools).
 
-    `primary` is the local Gemma 4 21B REAP — fast and free but sometimes
-    fails to emit tool_calls.
-    `fallbacks` are Gemini-2.5-flash etc. — costs API credits but
-    reliably emit tool_calls.
+    `primary` is the local model (xLAM-2-8B or Gemma 4 21B REAP) — fast
+    and free but smaller models choke on too many tool schemas in the
+    bind payload. We pre-filter via `_filter_tools_for_step` so the
+    model only sees ≤15 tools relevant to the current step.
+
+    `fallbacks` are cloud LLMs (Gemini, Claude Haiku) — handle larger
+    tool sets reliably but cost API credits.
 
     We DON'T pass `tool_choice="any"` at bind-time because Gemini's
     bind_tools handles it as a sticky kwarg that interferes with
@@ -145,7 +226,9 @@ def _get_actor_llms() -> tuple[Any, list[tuple[str, Any]], list[Any]]:
     from app.services.llm_provider import get_llm_for_tier, get_fallback_llms, ComplexityTier
     from app.skills import get_skill_registry
 
-    tools = get_skill_registry().all_tools
+    all_tools = get_skill_registry().all_tools
+    tools = _filter_tools_for_step(all_tools, tool_hint, goal)
+    logger.info("act: filtered %d → %d tools (hint=%s)", len(all_tools), len(tools), tool_hint)
 
     primary = get_llm_for_tier(ComplexityTier.MEDIUM)
     primary_bound = primary.bind_tools(tools)
@@ -300,9 +383,15 @@ async def act_node(state: MissionState) -> dict:
 
     current_step_id = current_step.get("id", "?")
     current_step_desc = current_step.get("description", "?")
+    current_tool_hint = current_step.get("tool_hint")
 
-    # Build prompt and invoke primary tool-bound LLM, with fallback
-    primary_llm, fallbacks, _tools = _get_actor_llms()
+    # Build prompt and invoke primary tool-bound LLM, with fallback.
+    # Tool list is pre-filtered to ~15 tools max (smaller models choke on
+    # 76 simultaneous tool schemas — payload too big for LM Studio etc.)
+    primary_llm, fallbacks, _tools = _get_actor_llms(
+        tool_hint=current_tool_hint,
+        goal=state.get("goal", ""),
+    )
     messages: list[BaseMessage] = [
         SystemMessage(content=_ACT_SYSTEM.format(plan_text=plan_text, current_step_desc=current_step_desc)),
         HumanMessage(content=f"Goal : {state.get('goal','?')}"),
