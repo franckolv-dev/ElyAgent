@@ -143,6 +143,46 @@ async def update_task(
     return _to_response(task)
 
 
+@router.post("/{task_id}/run")
+async def run_task_now(
+    task_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger a scheduled task immediately, out-of-band.
+
+    Useful to (a) verify a task works without waiting for its cron tick,
+    (b) get a fresh result on demand. Runs IN-PROCESS so it shares the
+    backend's LLM instance cache, skill registry, and Telegram/Slack
+    bot connections — unlike a `docker exec` Python script which would
+    spawn a fresh process with empty caches.
+    """
+    result = await db.execute(
+        select(ScheduledTask).where(
+            ScheduledTask.id == task_id,
+            ScheduledTask.user_id == user.id,
+        )
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Tâche non trouvée")
+
+    # Fire-and-forget : the task can take 30+ s to complete (LLM call +
+    # tool dispatch + delivery), don't block the HTTP response. Track the
+    # task in a module-level set so Python's GC doesn't kill it mid-flight.
+    import asyncio as _asyncio
+    from app.services.scheduler import _execute_task
+    _t = _asyncio.create_task(_execute_task(task.id))
+    _RUN_NOW_TASKS.add(_t)
+    _t.add_done_callback(_RUN_NOW_TASKS.discard)
+
+    return {"message": f"Tâche '{task.name}' déclenchée — résultat livré via {task.channel} dès qu'elle se termine."}
+
+
+# Strong refs to in-flight manual-trigger tasks. See run_task_now().
+_RUN_NOW_TASKS: set = set()
+
+
 @router.delete("/{task_id}")
 async def delete_task(
     task_id: str,
