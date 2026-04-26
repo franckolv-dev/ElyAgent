@@ -187,11 +187,33 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     # Image / vision
                     (_re_filter.compile(r"\b(images?|photos?|pictures?|screenshots?|captur)\b"),
                      ("image_", "vision_")),
-                    # System self-diagnostic — when user asks why something
-                    # didn't work, what state services are in, "tu te
-                    # portes bien ?", etc. Routes to system_get_logs,
-                    # system_check_channels, etc.
-                    (_re_filter.compile(r"\b(logs?|journal|debug|diagnostic|santé|sante|health|status|état|etat|tâches?\s+planif|scheduled|missions?|canaux|channels?|fonctionne|marche|tourne|pourquoi.*pas|pourquoi.*marche)\b"),
+                    # System self-diagnostic — when user asks why
+                    # something didn't work, what state services are in,
+                    # "tu te portes bien ?", "quel modèle tu utilises",
+                    # etc. Liste large : on préfère trop binder qu'oublier
+                    # un trigger légitime (le LLM ignorera les tools non
+                    # pertinents, mais ne pourra pas appeler ce qui n'est
+                    # pas binded).
+                    (_re_filter.compile(
+                        r"\b("
+                        r"logs?|journal|debug|diagnostic|"
+                        r"santé|sante|health|status|statut|"
+                        r"état|etat|tâches?|taches?|scheduled|missions?|"
+                        r"canaux|channels?|"
+                        r"fonctionne|marche|tourne|"
+                        r"pourquoi.*pas|pourquoi.*marche|"
+                        r"llm|llms|modèles?|modeles?|model|models|"
+                        r"provider|providers|fournisseur|"
+                        r"utilises?|utilise[sz]|"
+                        r"configur|réglag|reglag|setting|"
+                        r"actif|actifs|active|inactive|connecté|connecte|"
+                        r"version|uptime|"
+                        r"mémoire(?!\s+(de|long|cou))|memoire(?!\s+(de|long|cou))|"
+                        r"ram|disk|disque|"
+                        r"porte[sz]|vas[\s-]?tu|comment.*va|"
+                        r"échou|echou|échec|echec|erreur|crashé|cassé|panne|bug"
+                        r")\b"
+                    ),
                      ("system_",)),
                 ]
                 _matched_prefixes: set[str] = set()
