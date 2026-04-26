@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/system_diag_tool.py
 # @brief      Read-only self-introspection tools (logs, status, health)
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 # =============================================================================
@@ -55,18 +55,38 @@ async def _get_user(user_id: str):
 
 # ── 1. system_get_logs ───────────────────────────────────────────────────────
 
+# Pre-compiled regex for the user-id leak filter — matches any UUID that
+# could be a User.id. We never want user A to see "user B just received
+# email from C" in the public demo, so non-admins get rows mentioning a
+# foreign UUID redacted to <other-user>.
+import re as _re_uid
+_UUID_RE = _re_uid.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    _re_uid.IGNORECASE,
+)
+
+
 @tool
 async def system_get_logs(
     lines: int = 100,
     grep: Optional[str] = None,
     level: Optional[str] = None,
     logger_prefix: Optional[str] = None,
+    user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Read recent backend log lines (in-memory ring buffer, last ~5000 entries).
 
     Sensitive values (API keys, tokens, JWTs, passwords) are automatically
     masked before being returned. Use this to diagnose why a feature is
     not working as expected.
+
+    Privacy & multi-tenancy :
+      • Admins see the full sanitised buffer.
+      • Non-admins see only their own log lines + truly global lines
+        (lines that mention no user_id at all). Lines mentioning another
+        user's UUID are hidden — never anonymised partially, fully removed.
+      • In ``demo_mode`` (set in app config), non-admins are denied entirely
+        because shared-instance log access is too leaky.
 
     Args:
         lines: How many recent lines to return (max 200, default 100).
@@ -80,11 +100,54 @@ async def system_get_logs(
     Returns formatted text, one line per entry.
     """
     lines = max(1, min(int(lines or 100), 200))
-    rows = get_recent(lines=lines, grep=grep, level=level, logger_prefix=logger_prefix)
+
+    # ── Authorization check ───────────────────────────────────────────────
+    from app.config import get_settings as _gs
+    is_admin = False
+    if user_id:
+        u = await _get_user(user_id)
+        is_admin = bool(u and getattr(u, "role", "") == "admin")
+
+    settings = _gs()
+    demo_mode = bool(getattr(settings, "demo_mode", False))
+    if demo_mode and not is_admin:
+        return (
+            "Logs unavailable in demo mode for non-admin users. "
+            "This shared instance hides cross-tenant log lines for privacy. "
+            "Self-host ELY for full diagnostic access."
+        )
+
+    rows = get_recent(lines=lines * 3 if not is_admin else lines,
+                      grep=grep, level=level, logger_prefix=logger_prefix)
     if not rows:
         return f"Aucune entrée de log ne correspond aux filtres (grep={grep!r}, level={level}, prefix={logger_prefix})."
 
+    # ── Tenant filter (non-admins) ────────────────────────────────────────
+    # Show: rows that mention THIS user_id, or rows that mention NO uuid at all.
+    # Hide: rows that mention SOMEONE ELSE's uuid.
+    if not is_admin and user_id:
+        own_short = user_id[:8].lower()  # short prefix appears in our own logs
+        filtered = []
+        for ts, lvl, name, msg in rows:
+            uuids = _UUID_RE.findall(msg)
+            if not uuids:
+                # Truly global line (e.g. "Application startup complete")
+                filtered.append((ts, lvl, name, msg))
+                continue
+            # If at least one UUID matches the caller, include — drop otherwise
+            if any(uid.lower().startswith(own_short) or uid.lower() == user_id.lower()
+                   for uid in uuids):
+                filtered.append((ts, lvl, name, msg))
+        rows = filtered[-lines:]
+        if not rows:
+            return (
+                "Aucune entrée de log à votre sujet n'a été trouvée. "
+                "Les logs concernant d'autres utilisateurs sont masqués."
+            )
+
     out = [f"{len(rows)} entrée(s) — du {rows[0][0]} au {rows[-1][0]} (UTC)"]
+    if not is_admin:
+        out.append("(filtré pour ne montrer que vos propres logs et les logs globaux)")
     out.append("")
     for ts, lvl, name, msg in rows:
         # Trim very long lines so the LLM context stays manageable
@@ -194,13 +257,33 @@ async def system_list_missions(
 # ── 4. system_check_channels ─────────────────────────────────────────────────
 
 @tool
-async def system_check_channels() -> str:
+async def system_check_channels(
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
     """Check the runtime status of all chat channels (Telegram, Discord, Slack, WhatsApp Web).
 
-    Reports : configured (yes/no), running (yes/no), linked users count,
-    bot username when known. Use this to diagnose "why didn't I receive
-    a notification on Telegram?".
+    Reports : configured (yes/no), running (yes/no), whether **you** are
+    linked on this channel, bot username when known. Use this to diagnose
+    "why didn't I receive a notification on Telegram?".
+
+    In demo_mode, the global linked-user count is hidden (cross-tenant) —
+    only your own link status is shown.
     """
+    from app.config import get_settings as _gs
+    is_admin = False
+    if user_id:
+        u = await _get_user(user_id)
+        is_admin = bool(u and getattr(u, "role", "") == "admin")
+    settings = _gs()
+    show_global_count = is_admin or not bool(getattr(settings, "demo_mode", False))
+
+    def _linked_str(linked_dict: dict, total: int) -> str:
+        # In demo mode, hide cross-tenant counts; always show "you are linked"
+        you_linked = bool(user_id and user_id in linked_dict.values()) if linked_dict else False
+        if show_global_count:
+            return f"users_linked={total} you_linked={you_linked}"
+        return f"you_linked={you_linked}"
+
     out = ["État des canaux conversationnels :\n"]
 
     # Telegram
@@ -208,8 +291,8 @@ async def system_check_channels() -> str:
         from app.channels import telegram_bot as tg
         tok = await _config_get("telegram_bot_token", "")
         bot_alive = tg._bot_app is not None
-        n_linked = len(getattr(tg, "_linked_users", {}))
-        out.append(f"📨 Telegram : configuré={bool(tok)} bot_alive={bot_alive} users_linked={n_linked}")
+        linked = getattr(tg, "_linked_users", {})
+        out.append(f"📨 Telegram : configuré={bool(tok)} bot_alive={bot_alive} {_linked_str(linked, len(linked))}")
     except Exception as exc:
         out.append(f"📨 Telegram : erreur introspection ({exc})")
 
@@ -219,8 +302,8 @@ async def system_check_channels() -> str:
         tok = await _config_get("discord_bot_token", "")
         client = getattr(dc, "_discord_client", None)
         is_ready = bool(client and client.is_ready()) if client else False
-        n_linked = len(getattr(dc, "_linked_users", {}))
-        out.append(f"💬 Discord : configuré={bool(tok)} ready={is_ready} users_linked={n_linked}")
+        linked = getattr(dc, "_linked_users", {})
+        out.append(f"💬 Discord : configuré={bool(tok)} ready={is_ready} {_linked_str(linked, len(linked))}")
     except Exception as exc:
         out.append(f"💬 Discord : erreur introspection ({exc})")
 
@@ -230,17 +313,21 @@ async def system_check_channels() -> str:
         bot_tok = await _config_get("slack_bot_token", "")
         app_tok = await _config_get("slack_app_token", "")
         slack_alive = getattr(sl, "_slack_app", None) is not None
-        n_linked = len(getattr(sl, "_linked_users", {}))
-        out.append(f"🌳 Slack : configuré={bool(bot_tok and app_tok)} app_alive={slack_alive} users_linked={n_linked}")
+        linked = getattr(sl, "_linked_users", {})
+        out.append(f"🌳 Slack : configuré={bool(bot_tok and app_tok)} app_alive={slack_alive} {_linked_str(linked, len(linked))}")
     except Exception as exc:
         out.append(f"🌳 Slack : erreur introspection ({exc})")
 
-    # WhatsApp Web
+    # WhatsApp Web — sessions keyed by user_id
     try:
         from app.channels import whatsapp_web as wa
         sessions = getattr(wa, "_sessions", {})
         n_linked = sum(1 for s in sessions.values() if s.get("status") == "linked")
-        out.append(f"📱 WhatsApp Web : sessions_total={len(sessions)} linked={n_linked}")
+        you_linked = bool(user_id and user_id in sessions and sessions[user_id].get("status") == "linked")
+        if show_global_count:
+            out.append(f"📱 WhatsApp Web : sessions_total={len(sessions)} linked={n_linked} you_linked={you_linked}")
+        else:
+            out.append(f"📱 WhatsApp Web : you_linked={you_linked}")
     except Exception as exc:
         out.append(f"📱 WhatsApp Web : erreur introspection ({exc})")
 

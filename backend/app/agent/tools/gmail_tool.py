@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/gmail_tool.py
 # @brief      Gmail tools for ELY agent — read, send, organize and clean emails.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -62,6 +62,7 @@ async def gmail_list_emails(
     max_results: int = 10,
     query: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List recent emails from Gmail inbox.
 
@@ -108,6 +109,7 @@ async def gmail_list_emails(
 async def gmail_read_email(
     email_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Read the full content of a specific email.
 
@@ -142,6 +144,7 @@ async def gmail_send_email(
     subject: str,
     body: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Send an email via Gmail. ALWAYS ask user confirmation before sending.
 
@@ -168,6 +171,7 @@ async def gmail_send_email(
 @tool
 async def gmail_list_labels(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List all Gmail labels (folders) for the user's mailbox.
 
@@ -201,6 +205,7 @@ async def gmail_list_labels(
 async def gmail_create_label(
     name: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new Gmail label (folder). Returns the label ID.
 
@@ -233,6 +238,7 @@ async def gmail_move_emails(
     label_name: str,
     remove_from_inbox: bool = True,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Move emails to a label/folder. ALWAYS ask user confirmation before executing.
 
@@ -289,6 +295,7 @@ async def gmail_move_emails(
 async def gmail_trash_emails(
     email_ids: list[str],
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Move emails to Trash. REQUIRES explicit user confirmation before executing.
 
@@ -329,6 +336,7 @@ async def gmail_search_for_cleanup(
     category: str = "newsletters",
     max_results: int = 50,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Search for emails to clean up (newsletters, promotions, marketing, etc.).
 
@@ -429,6 +437,7 @@ async def gmail_reply_email(
     body: str,
     reply_all: bool = False,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Répond à un email. ALWAYS ask user confirmation before sending.
 
@@ -503,6 +512,7 @@ async def gmail_send_with_attachment(
     body: str,
     drive_file_id: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Send an email with an attachment from Google Drive. ALWAYS ask user confirmation before sending.
 
@@ -564,6 +574,7 @@ async def gmail_send_with_attachment(
 async def gmail_mark_read(
     email_ids: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Mark emails as read.
 
@@ -592,6 +603,7 @@ async def gmail_mark_read(
 async def gmail_mark_unread(
     email_ids: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Mark emails as unread.
 
@@ -622,6 +634,7 @@ async def gmail_create_draft(
     subject: str,
     body: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a draft email (not sent).
 
@@ -653,6 +666,7 @@ async def gmail_create_draft(
 async def gmail_list_drafts(
     max_results: int = 10,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List draft emails from Gmail.
 
@@ -703,6 +717,7 @@ async def gmail_batch_modify(
     add_label_ids: str = "",
     remove_label_ids: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Apply label changes to many Gmail messages in a single request (up to 1000).
 
@@ -760,6 +775,7 @@ async def gmail_update_settings(
     value_json: str,
     send_as_email: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Update Gmail account settings: signature, vacation responder, filters, forwarding.
 
@@ -833,6 +849,7 @@ async def gmail_raw_api_call(
     params_json: str = "{}",
     body_json: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Call ANY method of the Gmail API (v1) directly.
 

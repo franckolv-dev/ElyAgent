@@ -3,7 +3,7 @@
 # @file       backend/app/services/rag_service.py
 # @brief      RAG (Retrieval-Augmented Generation) document pipeline
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -413,9 +413,16 @@ class RAGService:
     ) -> list[dict]:
         """Search the knowledge base for chunks relevant to *query*.
 
+        Multi-tenant safety: refuse empty user_id — would leak across users
+        whose payload also has user_id="". See memory_manager._qdrant_candidates
+        for the same guard pattern.
+
         Returns:
             list of {content, title, source_file, chunk_index, score}
         """
+        if not user_id:
+            logger.warning("search_knowledge refused: empty user_id (tenant isolation)")
+            return []
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
 
@@ -453,8 +460,13 @@ class RAGService:
     async def list_documents(self, user_id: str) -> list[dict]:
         """List all documents ingested by *user_id*.
 
+        Multi-tenant safety: refuse empty user_id (see search_knowledge).
+
         Returns a deduplicated list by document_id with metadata.
         """
+        if not user_id:
+            logger.warning("list_documents refused: empty user_id (tenant isolation)")
+            return []
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
 
@@ -497,6 +509,10 @@ class RAGService:
             return []
 
     async def get_document_info(self, document_id: str, user_id: str) -> dict | None:
+        if not user_id:
+            logger.warning("get_document_info refused: empty user_id (tenant isolation)")
+            return None
+        # ── original body below ───────────────────────────────────────────
         """Get metadata for a specific document."""
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
@@ -529,6 +545,10 @@ class RAGService:
             return None
 
     async def delete_document(self, document_id: str, user_id: str) -> bool:
+        if not user_id:
+            logger.warning("delete_document refused: empty user_id (tenant isolation)")
+            return False
+        # ── original body below ───────────────────────────────────────────
         """Delete all chunks for a document from Qdrant.
 
         Returns True on success, False on failure.

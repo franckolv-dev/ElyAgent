@@ -3,7 +3,7 @@
 # @file       backend/app/agent/supervisor.py
 # @brief      Multi-agent supervisor for ELY
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 
 # "system" is intentionally excluded from user-facing routing — it is only
 # accessible programmatically via the sub-agent registry (e.g. scheduler jobs).
-Domain = Literal["research", "workspace", "infra", "creative", "data", "memory", "desktop", "general", "system"]
+Domain = Literal["research", "workspace", "infra", "creative", "data", "memory", "desktop", "general", "system", "diag"]
 
 _DOMAIN_DESCRIPTIONS = {
     "research": (
@@ -430,9 +430,24 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "Tu es une assistante IA personnelle avec accès à tous les outils.\n\n"
         "Utilise les outils disponibles dès que la demande le justifie, sans demander "
         "de confirmation sauf pour les actions irréversibles (envoyer un email, "
-        "supprimer, cliquer, exécuter SSH). Répondre en français par défaut.\n\n"
+        "supprimer, cliquer, exécuter SSH). La langue de réponse est dictée par la "
+        "directive LANGUE/LANGUAGE en tête de ce prompt — respecte-la.\n\n"
         "Rappel outils clés : system_info (infos machine, RAM, CPU, OS, disque), "
-        "weather_get (météo), news_get_headlines (actualités)." + _COMMON_FORMAT
+        "weather_get (météo), news_get_headlines (actualités).\n\n"
+        "🔍 RÈGLE ANTI-HALLUCINATION CRITIQUE — auto-introspection :\n"
+        "Quand l'utilisateur te pose une question sur TOI-MÊME ou ton fonctionnement "
+        "(modèle utilisé, providers LLM, logs, missions, tâches planifiées, canaux, "
+        "santé, pourquoi quelque chose n'a pas marché), tu DOIS appeler l'outil "
+        "approprié AVANT de répondre. Ne jamais répondre depuis tes connaissances "
+        "générales pour ces questions :\n"
+        "  • « Quel modèle/LLM tu utilises ? » → system_check_llm_providers\n"
+        "  • « Quelles sont mes tâches planifiées ? » → system_list_scheduled_tasks\n"
+        "  • « Combien de missions ? » / « Mes missions ? » → system_list_missions\n"
+        "  • « Tous tes canaux fonctionnent ? » → system_check_channels\n"
+        "  • « Comment tu te portes ? » / « Es-tu en bonne santé ? » → system_get_health\n"
+        "  • « Montre-moi les logs » / « Pourquoi X n'a pas marché ? » → system_get_logs\n"
+        "Si tu n'as pas l'outil binded (rare), dis-le franchement plutôt que d'inventer."
+        + _COMMON_FORMAT
     ),
 }
 
@@ -604,6 +619,69 @@ def _quick_route(msg: str) -> str | None:
     ):
         return "general"
 
+    # PRIORITY 0: self-introspection — questions about ELY herself MUST go
+    # to the diag sub-agent (forced Qwen API for reliable tool calling).
+    # Local Gemma/xLAM tend to hallucinate "I use Gemma on Ollama" or emit
+    # tool calls as text JSON instead of using the native protocol — so we
+    # bypass them entirely for diag queries.
+    # Tested patterns — see test_quick_route_diag in tests/test_supervisor.py.
+    # Outer \b boundaries removed because French accented chars (é) confuse
+    # them. Each alternation is anchored on a clear keyword so false positives
+    # are rare. Order: most specific → most general.
+    # Patterns are bilingual (FR + EN) — Éli now switches reply language with
+    # the UI, so the router must catch self-introspection in both.
+    _diag_patterns = [
+        # ── 1. LLM / model / provider questions ──────────────────────────
+        # FR
+        r"\b(quel|quels|quelle|quelles)\s+(est\s+)?(le\s+|la\s+|les\s+)?(llm|llms|mod[èe]les?|providers?|fournisseurs?)\b",
+        r"\b(combien)\s+de\s+(mod[èe]les?|llms?|providers?|fournisseurs?)\b",
+        r"\btu\s+utilises?\b.*\b(llm|mod[èe]le|provider|gemma|gemini|claude|qwen|gpt|ollama|lm.?studio)\b",
+        r"\b(llm|mod[èe]le|provider)\b.*\btu\s+utilises?\b",
+        # EN
+        r"\b(what|which)\s+(llm|llms|model|models|provider|providers)\b",
+        r"\b(are\s+you|you\s+are)\s+(using|running)\b.*\b(llm|model|provider|gemma|gemini|claude|qwen|gpt|ollama|lm.?studio)\b",
+        r"\b(llm|model|provider)\b.*\b(are\s+you|you\s+are)\s+(using|running)\b",
+        r"\bhow\s+many\s+(llm|llms|models|providers)\b",
+        # ── 2. Missions / scheduled tasks diagnostic ─────────────────────
+        # FR
+        r"\b(combien|liste|montre|affiche|donne|quelles?)\b.*\b(missions?|t[âa]ches?\s+planifi[ée]es?|crons?|rappels?\s+programm[ée]s?)\b",
+        r"\bmissions?\b.*\b(échou|echou|réussi|reussi|en\s+cours|termin|active|inactive|status|statut)\b",
+        r"\bmes\s+(missions?|t[âa]ches?\s+planifi[ée]es?|crons?|rappels?\s+programm[ée]s?)\b",
+        # EN
+        r"\b(how\s+many|list|show|display|what\s+are)\b.*\b(missions?|scheduled\s+tasks?|crons?|reminders?)\b",
+        r"\bmissions?\b.*\b(failed|fail|succeeded|running|completed|active|inactive|status)\b",
+        r"\bmy\s+(missions?|scheduled\s+tasks?|crons?|reminders?)\b",
+        # ── 3. Channels diagnostic ───────────────────────────────────────
+        # FR
+        r"\b(canaux|channels?)\b.*\b(fonctionn|march|tourn|actif|connect|disponible)\b",
+        r"\btous\s+(tes|les)\s+(canaux|channels?)\b",
+        # EN
+        r"\b(channels?|messaging)\b.*\b(working|active|connected|available|running)\b",
+        r"\b(all\s+(your\s+|the\s+)?channels?|every\s+channel)\b",
+        # ── 4. Health / state / well-being ───────────────────────────────
+        # FR
+        r"\bcomment\s+(tu\s+)?(te\s+portes|vas[\s-]?tu|va[\s-]?tu|tu\s+vas|tu\s+va|tu\s+te\s+sens)\b",
+        r"\b(es[\s-]?tu|tu\s+es)\s+en\s+bonne\s+sant[ée]\b",
+        r"\bton\s+(état|etat|uptime|status|statut)\b",
+        # EN
+        r"\bhow\s+are\s+you\s+(doing|feeling|going)\b",
+        r"\b(are\s+you|you\s+are)\s+(healthy|ok|okay|fine|alive|running\s+well)\b",
+        r"\byour\s+(state|status|uptime|health)\b",
+        r"\bwhat\s+is\s+your\s+(state|status|uptime|health)\b",
+        # ── 5. Logs / debugging ──────────────────────────────────────────
+        # FR
+        r"\b(montre|affiche|donne|lis|consult|regarde?)[\s-]?(moi|nous)?\b.*\blogs?\b",
+        r"\bderni[èe]res?\s+(lignes?\s+)?(des|de\s+tes|du)?\s*logs?\b",
+        r"\bpourquoi\b.*\b(n.?est?\s+pas|n.?a\s+pas|ne\s+s.?est?\s+pas|ne\s+marche|ne\s+fonctionne|n.?a\s+pas\s+march|jamais\s+(arriv|reçu))\b",
+        # EN
+        r"\b(show|display|give|read|check)\s+(me\s+|us\s+)?\b.*\b(logs?|log\s+lines?)\b",
+        r"\b(last|latest|recent)\s+\d*\s*(lines?\s+of\s+)?\blogs?\b",
+        r"\bwhy\s+(did(n.?t)?|does(n.?t)?|won.?t|wasn.?t|isn.?t)\b.*\b(work|arrive|run|fire|trigger|happen|reach|deliver)\b",
+    ]
+    for _p in _diag_patterns:
+        if _re.search(_p, msg_lower):
+            return "diag"
+
     # PRIORITY 1: recurring schedules ALWAYS go to infra
     _recurrence_kw = _re.search(
         r"\b(chaque (jour|matin|soir|semaine|mois|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|"
@@ -765,7 +843,7 @@ async def router_node(state: AgentState) -> dict:
         response = await llm.ainvoke(_msgs)
         response.content = strip_think_block(getattr(response, 'content', '') or '')
         domain = response.content.strip().lower()
-        if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "desktop", "general"):
+        if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "desktop", "general", "diag"):
             domain = "general"
     except Exception as exc:
         logger.warning("Router LLM failed, falling back to general: %s", exc)
@@ -836,7 +914,35 @@ def create_specialist_node(domain: Domain):
             f"{now.year}, {now.strftime('%H:%M')}"
         )
 
-        system = specialist_prompt
+        # Per-user language directive — fetched once per turn (small SELECT).
+        # Mirrors the logic in app/agent/sub_agents/factory.py so general
+        # and dispatch sub-agents behave identically when the user toggles
+        # the UI language.
+        _user_language = "fr"
+        if user_id:
+            try:
+                from app.models.user import User as _U
+                from app.database import async_session as _async_session
+                async with _async_session() as _db:
+                    _row = await _db.execute(
+                        select(_U.language).where(_U.id == user_id)
+                    )
+                    _user_language = (_row.scalar_one_or_none() or "fr")
+            except Exception:
+                pass
+        if _user_language == "en":
+            _lang_directive = (
+                "LANGUAGE — STRICT : Reply in English only. The user has "
+                "set their UI language to English. Translate any tool output "
+                "to English in your final answer.\n\n"
+            )
+        else:
+            _lang_directive = (
+                "LANGUE — STRICT : Réponds uniquement en français. "
+                "Traduis si besoin la sortie des outils.\n\n"
+            )
+
+        system = _lang_directive + specialist_prompt
         system += f"\n\n📅 Date et heure : {date_str} (Europe/Paris)\n"
 
         if constraints:
@@ -866,7 +972,7 @@ def create_specialist_node(domain: Domain):
 # Sub-agent dispatch nodes
 # ──────────────────────────────────────────────────────────────────────────────
 
-_SUB_AGENT_DOMAINS = ("research", "workspace", "infra", "creative", "data", "memory", "desktop")
+_SUB_AGENT_DOMAINS = ("research", "workspace", "infra", "creative", "data", "memory", "desktop", "diag")
 
 
 def _make_dispatch_node(domain: str):
@@ -939,7 +1045,14 @@ def _make_dispatch_node(domain: str):
                     ]
             # ─────────────────────────────────────────────────────────────
             logger.warning("⏱ TIMING[dispatch→%s] DONE in %.2fs (%d new msgs)", domain, _t.monotonic() - _start, len(new_messages))
-            return {"messages": new_messages, "domain": domain}
+            # Propagate model_used from the sub-agent's compiled subgraph state
+            # to the outer supervisor state — chat.py reads this to call
+            # log_usage() with the real provider/model the sub-agent used.
+            _ret_dispatch: dict = {"messages": new_messages, "domain": domain}
+            _sub_model_used = result.get("model_used") if isinstance(result, dict) else None
+            if _sub_model_used:
+                _ret_dispatch["model_used"] = _sub_model_used
+            return _ret_dispatch
         except Exception as exc:
             logger.error(
                 "Sub-agent '%s' failed (%.2fs, %s) — running general agent with tools loop",

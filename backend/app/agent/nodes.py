@@ -3,7 +3,7 @@
 # @file       backend/app/agent/nodes.py
 # @brief      LangGraph agent node definitions
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -304,6 +304,41 @@ def create_agent_node():
             f"{now.year}, {now.strftime('%H:%M')}"
         )
 
+        # Per-user language fetch — mirrors the logic in
+        # app/agent/sub_agents/factory.py so the general agent honours
+        # the UI language toggle even when the diag sub-agent isn't reached.
+        _user_language = "fr"
+        if user_id:
+            try:
+                from app.models.user import User as _U
+                from app.database import async_session as _async_session
+                from sqlalchemy import select as _select
+                async with _async_session() as _db:
+                    _row = await _db.execute(
+                        _select(_U.language).where(_U.id == user_id)
+                    )
+                    _user_language = (_row.scalar_one_or_none() or "fr")
+            except Exception:
+                pass
+        if _user_language == "en":
+            _lang_directive = (
+                "LANGUAGE — STRICT : Reply in English only. The user has set "
+                "their UI language to English. Translate any tool output to "
+                "English in your final answer.\n\n"
+            )
+            _lang_reminder = "\n\n=== FINAL REMINDER: reply in English. ==="
+        else:
+            _lang_directive = (
+                "LANGUE — STRICT : Réponds uniquement en français. "
+                "Traduis si besoin la sortie des outils.\n\n"
+            )
+            _lang_reminder = "\n\n=== RAPPEL FINAL : réponds en français. ==="
+        logger.info(
+            "[general] lang=%s user=%s",
+            _user_language,
+            (user_id[:8] + "…") if user_id else "(none)",
+        )
+
         if use_slm:
             # ── Lightweight path: minimal prompt, no memory queries ────────
             # Fetching Qdrant memory adds ~150-300ms and is useless for simple tasks
@@ -367,18 +402,20 @@ def create_agent_node():
             if not _use_compact:
                 system = _SYSTEM_PROMPT_BASE
 
-                # ── Inject active LLM info (transparency / self-awareness) ──────
-                _provider = get_active_provider()
-                _model    = get_active_model()
-                _slm_info = ""
-                if settings.slm_enabled:
-                    _slm_info = (
-                        f" Pour les requêtes simples, tu utilises en priorité le modèle local "
-                        f"{settings.slm_model} via Ollama (rapide, données non envoyées dans le cloud)."
-                    )
+                # ── Active LLM info ─────────────────────────────────────────
+                # IMPORTANT : do NOT inject "Model IA actif: X" as a hardcoded
+                # text answer — historically the LLM repeated this verbatim
+                # ("J'utilise gemma4:26b sur ollama") instead of calling
+                # `system_check_llm_providers`. Now we just remind the model
+                # to USE THE TOOL when asked. The active model name is
+                # resolved at tool-call time, factually, in either language.
                 system += (
-                    f"\n\nModèle IA actif : {_model} (fournisseur : {_provider}).{_slm_info}\n"
-                    "Si l'utilisateur te demande quel LLM tu utilises, donne cette information précise.\n"
+                    "\n\nIMPORTANT : if the user asks which LLM/model/provider "
+                    "you are using, you MUST call `system_check_llm_providers` "
+                    "before answering. Never answer from your training memory.\n"
+                    "Si l'utilisateur te demande quel LLM/modèle/fournisseur tu "
+                    "utilises, tu DOIS appeler `system_check_llm_providers` "
+                    "avant de répondre. Ne réponds jamais depuis ta mémoire.\n"
                 )
 
             # NOTE: skills_summary() was injected here historically but produced a
@@ -421,6 +458,13 @@ def create_agent_node():
                             f"- Q: {p.get('user_message', '')[:120]} "
                             f"→ R: {p.get('assistant_message', '')[:120]}\n"
                         )
+
+        # ── Sandwich the system prompt with the language directive ────────
+        # Front-load (primacy) + tail-load (recency) so even when the body
+        # of the prompt drifts in the other language, the LLM honours
+        # the user's UI language preference. Identical to the strategy
+        # used in app/agent/sub_agents/factory.py.
+        system = _lang_directive + system + _lang_reminder
 
         # ── Context fitting (prevent overflow) ────────────────────────────
         # NOTE: get_active_model is imported at create_agent_node() scope (line ~167).
@@ -541,7 +585,15 @@ def create_agent_node():
                     _t.monotonic() - _bind_start, _tier_key, _bind_tools_flag, current_version)
             _base_llm = _tier_llm_cache.get(_base_cache_key) or _tier_llm_cache[_cache_key]
             _llm_with_tools_req = _tier_llm_cache[_cache_key]
-            model_used = f"llm:tier-{_tier_key}{'+tools' if _bind_tools_flag else ''}"
+            # Resolve the actual provider+model behind the tier so analytics
+            # shows "lm_studio/llama-xlam-2-8b-fc-r-mlx" instead of "tier-medium".
+            # Falls back gracefully to the tier label if introspection fails.
+            try:
+                from app.services.llm_provider import describe_llm
+                _p, _m = describe_llm(_base_llm)
+                model_used = f"llm:{_p}/{_m}{'+tools' if _bind_tools_flag else ''}"
+            except Exception:
+                model_used = f"llm:tier-{_tier_key}{'+tools' if _bind_tools_flag else ''}"
 
             _fitted = fit_messages_to_context(
                 messages=_sanitized,

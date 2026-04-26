@@ -3,7 +3,7 @@
  * @file       frontend/src/lib/api.ts
  * @brief      API client — typed HTTP wrappers for backend endpoints
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -51,7 +51,44 @@ export const api = {
 
   getMe: () => fetchAPI("/auth/me"),
 
+  /** Update one or more user preferences (currently: language).
+   *  Best-effort — caller should swallow errors so UI isn't blocked. */
+  updateUserPreferences: (prefs: { language?: "fr" | "en" }) =>
+    fetchAPI("/auth/me/preferences", {
+      method: "PATCH",
+      body: JSON.stringify(prefs),
+    }),
+
   getHosts: () => fetchAPI("/hosts/"),
+
+  // ── Google multi-account (Phase 3) ─────────────────────────────────────
+  /** List every Google account linked to the current user. */
+  listGoogleAccounts: () =>
+    fetchAPI("/google/accounts") as Promise<{
+      accounts: Array<{ id: string; alias: string; email: string; is_default: boolean; created_at: string | null }>;
+    }>,
+
+  /** Open the Google OAuth consent flow for a NEW account with the given alias. */
+  getGoogleAuthUrl: (alias: string) =>
+    fetchAPI(`/google/auth-url?alias=${encodeURIComponent(alias)}`) as Promise<{ url: string }>,
+
+  /** Promote one Google account to the default (mirrors into User.google_credentials). */
+  setGoogleDefault: (account_id: string) =>
+    fetchAPI("/google/accounts/default", {
+      method: "POST",
+      body: JSON.stringify({ account_id }),
+    }),
+
+  /** Rename a Google account's alias. */
+  renameGoogleAccount: (account_id: string, alias: string) =>
+    fetchAPI(`/google/accounts/${account_id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ alias }),
+    }),
+
+  /** Remove a single Google account (auto-promotes the next-oldest if it was default). */
+  deleteGoogleAccount: (account_id: string) =>
+    fetchAPI(`/google/accounts/${account_id}`, { method: "DELETE" }),
 
   getUsers: () => fetchAPI("/admin/users"),
 

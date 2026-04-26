@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tool_sets.py
 # @brief      Single source of truth for tool name sets
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -26,6 +26,15 @@ from __future__ import annotations
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Tools that need Google credentials injection
+#
+# Every tool in this set also accepts an optional injected `account: str`
+# argument used for multi-account selection. The LLM may set it to a
+# user-defined alias ("perso", "pro", …) to drive a specific linked Google
+# account; empty / "default" / unknown alias falls back to the user's
+# default account (mirrored by credential_store / User.google_credentials).
+# Resolution happens in `app/agent/sub_agents/factory.py` BEFORE the tool
+# is invoked — the `account` arg is stripped after resolution so Google
+# API wrappers never see it.
 # ──────────────────────────────────────────────────────────────────────────────
 
 GOOGLE_TOOLS: frozenset[str] = frozenset({
@@ -113,10 +122,17 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     # Memory / preferences tools
     "save_user_preference",
     "save_constraint",
-    # Knowledge base tools
     "knowledge_search",
     "knowledge_list",
     "smart_knowledge_query",
+    # System self-diagnostic tools — scoped per user (logs/missions/tasks/channels)
+    # Must receive the calling user's id so they only return that user's data,
+    # never another user's. system_get_health and system_check_llm_providers
+    # are intentionally global (no user_id) — they describe the backend itself.
+    "system_get_logs",
+    "system_list_scheduled_tasks",
+    "system_list_missions",
+    "system_check_channels",
 })
 
 # ──────────────────────────────────────────────────────────────────────────────

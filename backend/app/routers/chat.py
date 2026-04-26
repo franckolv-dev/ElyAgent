@@ -3,7 +3,7 @@
 # @file       backend/app/routers/chat.py
 # @brief      Chat WebSocket and REST endpoints
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -444,14 +444,30 @@ async def websocket_chat(websocket: WebSocket):
             if model_used_out:
                 try:
                     from app.services.analytics_service import log_usage
-                    # model_used_out is "llm:anthropic/claude-haiku-..." or "slm:qwen2.5:3b"
-                    _parts = model_used_out.split(":", 1)
+                    # model_used_out is "llm:<provider>/<model>+tools?" or "slm:<model>"
+                    # describe_llm() in nodes.py now resolves the real provider name
+                    # (lm_studio, qwen_api, anthropic, …) so this split works for all
+                    # chains incl. LM Studio + OpenAI-compatible local servers.
+                    _strip_suffix = model_used_out.split("+", 1)[0]  # drop "+tools"
+                    _parts = _strip_suffix.split(":", 1)
                     _type = _parts[0]  # "llm" or "slm"
                     _rest = _parts[1] if len(_parts) > 1 else model_used_out
                     if "/" in _rest:
                         _provider, _model = _rest.split("/", 1)
                     else:
                         _provider, _model = ("ollama" if _type == "slm" else "unknown"), _rest
+                    # ── Token fallback estimation ─────────────────────────
+                    # LM Studio (OpenAI-compatible local) often doesn't ship
+                    # usage_metadata in streaming responses, leaving the
+                    # totals at 0. Estimate via 4-chars-per-token heuristic
+                    # so the dashboard isn't dead — flagged as estimate via
+                    # input_tokens_total being computed AFTER, but stored
+                    # opaquely (cost calc handles 0-cost local models anyway).
+                    if input_tokens_total == 0 and user_content:
+                        _uc = user_content if isinstance(user_content, str) else str(user_content)
+                        input_tokens_total = max(1, len(_uc) // 4)
+                    if output_tokens_total == 0 and ai_content:
+                        output_tokens_total = max(1, len(ai_content) // 4)
                     # skill_used = most frequently called tool, or first if tie
                     _skill = (
                         max(set(tools_called), key=tools_called.count)

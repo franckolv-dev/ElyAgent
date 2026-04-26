@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/drive_tool.py
 # @brief      Google Drive tools for ELY agent — read + write.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -42,6 +42,7 @@ async def drive_list_files(
     query: str = "",
     max_results: int = 10,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List files in Google Drive.
 
@@ -89,6 +90,7 @@ async def drive_list_files(
 async def drive_read_file(
     file_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Read the text content of a Google Drive file (Docs, text files).
 
@@ -121,6 +123,7 @@ async def drive_create_folder(
     name: str,
     parent_id: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a folder in Google Drive.
 
@@ -151,6 +154,7 @@ async def drive_create_file(
     mime_type: str = "text/plain",
     parent_id: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a file in Google Drive with text content.
 
@@ -189,6 +193,7 @@ async def drive_update_file(
     content: str,
     mime_type: str = "text/plain",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Update (overwrite) the content of an existing Google Drive file.
 
@@ -222,6 +227,7 @@ async def drive_move_file(
     file_id: str,
     new_parent_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Move a file or folder to a different parent folder in Google Drive.
 
@@ -252,6 +258,7 @@ async def drive_rename_file(
     file_id: str,
     new_name: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Rename a file or folder in Google Drive.
 
@@ -275,6 +282,7 @@ async def drive_rename_file(
 async def drive_delete_file(
     file_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Move a file or folder to Google Drive Trash (does NOT permanently delete).
 
@@ -308,6 +316,7 @@ async def drive_share_file(
     send_notification: bool = False,
     message: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Share a Google Drive file or folder with a user, group, domain, or anyone.
 
@@ -374,6 +383,7 @@ async def drive_copy_file(
     parent_id: str = "",
     target_mime_type: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Duplicate a Google Drive file (or Docs/Sheets/Slides document).
 
@@ -423,6 +433,7 @@ async def drive_export_file(
     file_id: str,
     export_format: str = "pdf",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Export a Google Doc, Sheet or Slide to another format and save it to Drive.
 
@@ -494,6 +505,7 @@ async def drive_raw_api_call(
     params_json: str = "{}",
     body_json: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Call ANY method of the Google Drive API (v3) directly.
 

@@ -3,7 +3,7 @@
 # @file       backend/app/services/llm_provider.py
 # @brief      LLM provider abstraction and routing
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -201,6 +201,7 @@ async def load_llm_settings_from_db() -> None:
             "zhipu":       "api_key_zhipu",
             "openrouter":  "api_key_openrouter",
             "qwen_api":    "api_key_qwen_api",
+            "openai":      "api_key_openai",
         }
         for prov, cfg_key in key_map.items():
             val = await get_config(cfg_key, "")
@@ -465,6 +466,23 @@ def get_llm() -> BaseChatModel:
             model=model,
             api_key=_key("openrouter", settings.openrouter_api_key),
         )
+
+    elif provider == "openai":
+        # Real OpenAI (GPT-4o, GPT-4o-mini, GPT-5.x, o1, o3, …).
+        # Native function-calling, vision support, exceptional instruction
+        # following — strong fit for tier MEDIUM/COMPLEX and the diag agent.
+        # `openai_base_url` lets users target Azure OpenAI or a private proxy.
+        from langchain_openai import ChatOpenAI
+        _base = _runtime.get("openai_base_url") or settings.openai_base_url or None
+        kw = {
+            "model": model,
+            "api_key": _key("openai", settings.openai_api_key),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if _base:
+            kw["base_url"] = _base
+        return ChatOpenAI(**kw)
 
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
@@ -887,6 +905,24 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
             return None
         return _make_openrouter(model=model, api_key=key, max_tokens=max_tokens, temperature=temperature)
 
+    if provider == "openai":
+        # Real OpenAI (api.openai.com). Per-instance api_key takes priority,
+        # falls back to runtime/env. Optional `base_url` for Azure / proxy.
+        key = api_key or settings.openai_api_key
+        if not key:
+            return None
+        from langchain_openai import ChatOpenAI
+        kw = {
+            "model": model,
+            "api_key": key,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        _base = _runtime.get("openai_base_url") or settings.openai_base_url or None
+        if _base:
+            kw["base_url"] = _base
+        return ChatOpenAI(**kw)
+
     logger.warning("_make_llm_for_instance: unknown provider '%s' for instance '%s'", provider, instance_id)
     return None
 
@@ -936,3 +972,67 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
         logger.debug("Tier %s: no provider available, using global LLM", tier.value)
 
     return get_llm()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# describe_llm — analytics helper
+# ──────────────────────────────────────────────────────────────────────────────
+
+def describe_llm(llm) -> tuple[str, str]:
+    """Return ``(provider, model)`` strings for analytics/logging purposes.
+
+    Many LangChain ChatModels share the same Python class (``ChatOpenAI``)
+    while pointing at very different backends — Qwen API, LM Studio, OpenRouter,
+    DeepSeek, Zhipu, even real OpenAI. The ``base_url`` of the underlying
+    HTTP client is the only reliable disambiguator.
+
+    Returns ("unknown", "?") if the LLM type cannot be identified, never
+    raises — so it's safe to call in a hot logging path.
+    """
+    if llm is None:
+        return "unknown", "?"
+    cls = type(llm).__name__
+    model = (
+        getattr(llm, "model", None)
+        or getattr(llm, "model_name", None)
+        or "?"
+    )
+    model = str(model)
+
+    # Direct class-based providers
+    if "Anthropic" in cls:
+        return "anthropic", model
+    if "Google" in cls or "Gemini" in cls or "VertexAI" in cls:
+        return "google", model
+    if "Ollama" in cls:
+        return "ollama", model
+    if "Mistral" in cls:
+        return "mistral", model
+
+    # ChatOpenAI is shared by ~6 providers — use base_url to tell them apart
+    if "OpenAI" in cls:
+        base_url = (
+            getattr(llm, "openai_api_base", None)
+            or getattr(llm, "base_url", None)
+            or ""
+        )
+        # Some langchain clients hide base_url inside .client.base_url
+        if not base_url:
+            client = getattr(llm, "client", None)
+            base_url = getattr(client, "base_url", "") or getattr(client, "_base_url", "")
+        base_url = str(base_url).lower()
+        if any(t in base_url for t in ("host.docker.internal", "127.0.0.1", "localhost", ":1234", "lm-studio", "lmstudio")):
+            return "lm_studio", model
+        if any(t in base_url for t in ("dashscope", "aliyuncs", "alibabacloud")):
+            return "qwen_api", model
+        if "openrouter" in base_url:
+            return "openrouter", model
+        if "deepseek" in base_url:
+            return "deepseek", model
+        if "zhipu" in base_url or "bigmodel" in base_url:
+            return "zhipu", model
+        if "openai.com" in base_url or not base_url:
+            return "openai", model
+        return "openai-compat", model
+
+    return cls.lower().replace("chat", "").replace("model", "") or "unknown", model

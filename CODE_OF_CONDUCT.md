@@ -50,7 +50,7 @@ This Code applies within all project spaces, including :
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behaviour may be reported to the project lead at **franck.olv@gmail.com**. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behaviour may be reported to the project lead at **contact@agent-ely.fr**. All complaints will be reviewed and investigated promptly and fairly.
 
 Project maintainers who do not follow or enforce this Code in good faith may face temporary or permanent repercussions as determined by other members of the project's leadership.
 

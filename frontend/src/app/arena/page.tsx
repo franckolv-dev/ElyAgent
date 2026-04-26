@@ -4,7 +4,7 @@
  * @file       frontend/src/app/arena/page.tsx
  * @brief      Arena page — blind LLM comparison with ELO ranking
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -46,6 +47,7 @@ interface EloRow {
 type VoteValue = "a" | "b" | "tie" | "both_bad";
 
 export default function ArenaPage() {
+  const t = useTranslations("arena");
   const [prompt, setPrompt] = useState("");
   const [match, setMatch] = useState<ArenaMatch | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,7 +80,7 @@ export default function ArenaPage() {
       const result = await api.arenaCreateMatch(prompt.trim());
       setMatch(result);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Erreur inconnue";
+      const msg = e instanceof Error ? e.message : t("unknownError");
       setError(msg);
     } finally {
       setLoading(false);
@@ -93,7 +95,7 @@ export default function ArenaPage() {
       setReveal(true);
       fetchLeaderboard();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Erreur inconnue";
+      const msg = e instanceof Error ? e.message : t("unknownError");
       setError(msg);
     }
   };
@@ -111,11 +113,10 @@ export default function ArenaPage() {
               <Swords className="w-6 h-6 text-cyber-cyan shrink-0 mt-1" />
               <div>
                 <h1 className="text-2xl font-bold text-cyber-cyan glow-cyan-text">
-                  Arena
+                  {t("title")}
                 </h1>
                 <p className="text-sm text-text-secondary mt-1 max-w-2xl">
-                  Teste les modeles en aveugle : deux LLM repondent a la meme
-                  question, tu votes, le classement ELO global est mis a jour.
+                  {t("subtitle")}
                 </p>
               </div>
             </div>
@@ -123,13 +124,13 @@ export default function ArenaPage() {
             {/* Prompt input */}
             <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
               <label className="text-xs text-text-muted uppercase tracking-wider">
-                Prompt
+                {t("promptLabel")}
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={3}
-                placeholder="Pose une question, demande une explication, un resume, un bout de code..."
+                placeholder={t("promptPlaceholder")}
                 className="w-full mt-2 p-3 bg-bg-tertiary border border-border-dim rounded text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 transition-colors resize-none"
                 disabled={loading}
               />
@@ -140,7 +141,7 @@ export default function ArenaPage() {
                   className="flex items-center gap-2 px-4 py-2 text-sm rounded bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/30 hover:bg-cyber-cyan/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   <Send className="w-4 h-4" />
-                  {loading ? "Duel en cours..." : "Lancer le duel"}
+                  {loading ? t("duelInProgress") : t("launchDuel")}
                 </button>
               </div>
               {error && (
@@ -169,7 +170,7 @@ export default function ArenaPage() {
                     >
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-xs text-text-muted uppercase tracking-wider">
-                          {reveal ? label : `Modele ${side.toUpperCase()}`}
+                          {reveal ? label : t("modelLabel", { side: side.toUpperCase() })}
                         </span>
                         <span className="flex items-center gap-1 text-[10px] text-text-muted">
                           <Timer className="w-3 h-3" />
@@ -184,7 +185,7 @@ export default function ArenaPage() {
                           onClick={() => castVote(side)}
                           className="mt-3 py-2 text-xs rounded bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/30 hover:bg-cyber-cyan/20 transition-all"
                         >
-                          Voter pour {side.toUpperCase()}
+                          {t("voteFor", { side: side.toUpperCase() })}
                         </button>
                       )}
                     </div>
@@ -196,13 +197,13 @@ export default function ArenaPage() {
                       onClick={() => castVote("tie")}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-bg-tertiary border border-border-dim text-text-secondary hover:text-text-primary transition-colors"
                     >
-                      <Check className="w-3 h-3" /> Egalite
+                      <Check className="w-3 h-3" /> {t("tie")}
                     </button>
                     <button
                       onClick={() => castVote("both_bad")}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-bg-tertiary border border-border-dim text-text-secondary hover:text-cyber-red transition-colors"
                     >
-                      <XIcon className="w-3 h-3" /> Les deux mauvais
+                      <XIcon className="w-3 h-3" /> {t("bothBad")}
                     </button>
                   </div>
                 )}
@@ -214,25 +215,25 @@ export default function ArenaPage() {
               <div className="flex items-center gap-2 mb-3">
                 <Trophy className="w-5 h-5 text-cyber-cyan" />
                 <h2 className="text-lg font-bold text-cyber-cyan">
-                  Classement ELO global
+                  {t("leaderboardTitle")}
                 </h2>
               </div>
               {leaderboard.length === 0 ? (
                 <p className="text-xs text-text-muted py-4 text-center">
-                  Aucun vote enregistre. Lance un duel pour commencer.
+                  {t("noVotes")}
                 </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-[10px] text-text-muted uppercase tracking-wider border-b border-border-dim">
-                        <th className="text-left py-2">#</th>
-                        <th className="text-left py-2">Modele</th>
-                        <th className="text-right py-2">ELO</th>
-                        <th className="text-right py-2">Victoires</th>
-                        <th className="text-right py-2">Defaites</th>
-                        <th className="text-right py-2">Egalites</th>
-                        <th className="text-right py-2">Matchs</th>
+                        <th className="text-left py-2">{t("colRank")}</th>
+                        <th className="text-left py-2">{t("colModel")}</th>
+                        <th className="text-right py-2">{t("colElo")}</th>
+                        <th className="text-right py-2">{t("colWins")}</th>
+                        <th className="text-right py-2">{t("colLosses")}</th>
+                        <th className="text-right py-2">{t("colTies")}</th>
+                        <th className="text-right py-2">{t("colMatches")}</th>
                       </tr>
                     </thead>
                     <tbody>

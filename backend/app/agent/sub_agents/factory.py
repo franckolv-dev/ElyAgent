@@ -3,7 +3,7 @@
 # @file       backend/app/agent/sub_agents/factory.py
 # @brief      Factory module
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -243,7 +243,14 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             # which Mistral rejects). That constraint doesn't apply to Ollama/Qwen3/
             # Gemma/Claude — so we fall back to MEDIUM tier minimum for these agents,
             # which is the best trade-off between speed and reliability for tool calls.
-            _TOOL_HEAVY_AGENTS = {"workspace", "infra"}
+            #
+            # `diag` is added because self-introspection questions ("What LLM are
+            # you using?") MUST trigger a tool call before answering — picking a
+            # SIMPLE-tier model that struggles with function calling defeats the
+            # whole point and lets the LLM hallucinate model names from training.
+            # MEDIUM tier ensures a reliable tool-caller (typically Qwen 3.6 Plus,
+            # Claude Haiku, or whatever the user picked in Settings → Routage).
+            _TOOL_HEAVY_AGENTS = {"workspace", "infra", "diag"}
             if cfg.llm_provider is not None:
                 llm = get_llm_for_agent(cfg)
             elif cfg.name in _TOOL_HEAVY_AGENTS:
@@ -367,24 +374,52 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 memories = state.get("_mem_memories", []) or []
                 past_interactions = state.get("_mem_interactions", []) or []
                 user_ctx = state.get("_mem_user_ctx", "") or ""
+                user_language = state.get("_mem_user_language", "fr") or "fr"
                 logger.debug("[%s] memory cache HIT for turn (query=%.30s...)", cfg.name, user_query)
                 _cache_updates = {}
             else:
                 # Miss — fetch en parallèle puis stocke pour les tool calls suivants
                 from app.services.memory_service import get_user_context as _get_user_ctx
+
+                async def _fetch_user_language(uid: str) -> str:
+                    """Resolve the calling user's preferred language.
+
+                    Returns "fr" by default if uid is empty, the user no
+                    longer exists, or the DB query fails — Éli was designed
+                    in French so it's the safest fallback. Logs at INFO only.
+                    """
+                    if not uid:
+                        return "fr"
+                    try:
+                        from app.models.user import User as _U
+                        from app.database import async_session as _async_session
+                        from sqlalchemy import select as _select
+                        async with _async_session() as _db:
+                            _row = await _db.execute(
+                                _select(_U.language).where(_U.id == uid)
+                            )
+                            return (_row.scalar_one_or_none() or "fr")
+                    except Exception as exc:
+                        # Log so we don't repeat the silent NameError bug of
+                        # April 2026 — but at INFO level so it doesn't spam.
+                        logger.info("language fetch failed for %s: %s — fallback fr", uid, exc)
+                        return "fr"
+
                 _uc_task = _get_user_ctx(user_id) if user_id else None
-                constraints, memories, past_interactions, user_ctx = await asyncio.gather(
+                constraints, memories, past_interactions, user_ctx, user_language = await asyncio.gather(
                     memory.get_relevant_constraints(user_query, user_id),
                     memory.get_relevant_memories(user_query, user_id),
                     memory.get_relevant_interactions(user_query, user_id, limit=3),
                     _uc_task if _uc_task is not None else asyncio.sleep(0, result=""),
+                    _fetch_user_language(user_id),
                 )
-                logger.debug("[%s] memory cache MISS — fetched for new turn", cfg.name)
+                logger.debug("[%s] memory cache MISS — fetched for new turn (lang=%s)", cfg.name, user_language)
                 _cache_updates = {
                     "_mem_constraints": constraints or [],
                     "_mem_memories": memories or [],
                     "_mem_interactions": past_interactions or [],
                     "_mem_user_ctx": user_ctx or "",
+                    "_mem_user_language": user_language,
                     "_mem_fetched_for_query": user_query,
                 }
 
@@ -416,6 +451,43 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             from app.services.qwen_no_think import is_local_openai_llm
             _use_compact = is_local_openai_llm(llm)
 
+            # Per-user language directive — front-loaded so the model anchors
+            # its reply language before reading the rest of the prompt.
+            # Éli stays "féminin" in both languages (her name is the same;
+            # English just drops the gender markers naturally).
+            if user_language == "en":
+                _lang_directive = (
+                    "LANGUAGE — STRICT : Reply in English only. The user has set "
+                    "their UI language to English; never reply in French unless the "
+                    "user explicitly writes in French in the current message. Tool "
+                    "results may be in any language — translate them to English in "
+                    "your final answer.\n\n"
+                )
+            else:
+                _lang_directive = (
+                    "LANGUE — STRICT : Réponds uniquement en français. "
+                    "Si un outil renvoie du contenu dans une autre langue, traduis-le "
+                    "en français dans ta réponse finale.\n\n"
+                )
+
+            # Quiet trace — keep one line per turn at INFO level so future
+            # debugging is easy if the language flow regresses again.
+            logger.info(
+                "[%s] lang=%s user=%s",
+                cfg.name,
+                user_language,
+                (user_id[:8] + "…") if user_id else "(none)",
+            )
+
+            # Short reminder appended at the very end of the prompt — primacy
+            # alone isn't enough when the body of the prompt is mostly in the
+            # other language (e.g. DIAG_AGENT has French examples, but the user
+            # set language=en). Recency reinforces the directive.
+            if user_language == "en":
+                _lang_reminder = "\n\n=== FINAL REMINDER: reply in English. ==="
+            else:
+                _lang_reminder = "\n\n=== RAPPEL FINAL : réponds en français. ==="
+
             if _use_compact:
                 from app.agent.compact_prompt import build_compact_system_prompt
                 system = build_compact_system_prompt(
@@ -425,11 +497,14 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     memories=memories,
                     constraints=constraints,
                 )
-                logger.info("[%s] compact prompt mode active (%d chars)", cfg.name, len(system))
+                # Sandwich: directive at start (primacy) + reminder at end (recency)
+                system = _lang_directive + system + _lang_reminder
+                logger.info("[%s] compact prompt mode active (%d chars, lang=%s)", cfg.name, len(system), user_language)
             else:
-                # FULL mode — unchanged, dynamic tail ordering preserved
-                # so LM Studio prefix cache can retain cfg.system_prompt.
-                system = cfg.system_prompt
+                # FULL mode — sandwich directive around cfg.system_prompt.
+                # Adding to the end means LM Studio prefix cache invalidates
+                # only the trailing reminder, not the bulk of cfg.system_prompt.
+                system = _lang_directive + cfg.system_prompt + _lang_reminder
 
                 if user_ctx:
                     system += f"\n\n{user_ctx}\n"
@@ -598,6 +673,15 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             _ret = {"messages": [response]}
             if _cache_updates:
                 _ret.update(_cache_updates)
+            # Analytics : expose the actual provider/model used so the outer
+            # supervisor graph (and ultimately chat.py:log_usage) records
+            # something meaningful instead of "unknown/tier-medium".
+            try:
+                from app.services.llm_provider import describe_llm
+                _p, _m = describe_llm(llm)
+                _ret["model_used"] = f"llm:{_p}/{_m}"
+            except Exception:
+                pass
             return _ret
 
         agent_node.__name__ = f"{cfg.name}_agent_node"
@@ -636,9 +720,45 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 if tool_name in _GOOGLE_TOOLS:
                     from app.services.credential_store import get_credential_store
                     _uid = state.get("user_id") or ""
-                    args["user_google_credentials_json"] = (
-                        get_credential_store().get(_uid) or ""
-                    )
+                    # Multi-account resolution — the LLM may pass an `account`
+                    # alias (e.g. "pro") to target a specific linked Google
+                    # account. Empty / "default" / unknown alias falls back
+                    # to the credential_store (which mirrors the row flagged
+                    # is_default = True). The `account` arg is stripped from
+                    # the args before the tool runs — downstream Google API
+                    # wrappers don't accept it.
+                    _requested_alias = (args.pop("account", "") or "").strip()
+                    _resolved_creds: str | None = None
+                    if _uid and _requested_alias and _requested_alias.lower() != "default":
+                        try:
+                            from app.database import async_session as _async_session
+                            from app.models.google_account import GoogleAccount as _GA
+                            from sqlalchemy import select as _select
+                            async with _async_session() as _db:
+                                _row = await _db.execute(
+                                    _select(_GA.credentials_json).where(
+                                        _GA.user_id == _uid,
+                                        _GA.alias == _requested_alias,
+                                    )
+                                )
+                                _resolved_creds = _row.scalar_one_or_none()
+                        except Exception as _ga_exc:
+                            logger.warning(
+                                "GoogleAccount lookup failed for uid=%s alias=%s: %s — falling back to default",
+                                _uid, _requested_alias, _ga_exc,
+                            )
+                            _resolved_creds = None
+                        if _resolved_creds is None:
+                            logger.warning(
+                                "Google account alias '%s' not found for user %s — using default credentials",
+                                _requested_alias, _uid,
+                            )
+                    if _resolved_creds:
+                        args["user_google_credentials_json"] = _resolved_creds
+                    else:
+                        args["user_google_credentials_json"] = (
+                            get_credential_store().get(_uid) or ""
+                        )
                 if tool_name in _USER_ID_TOOLS:
                     args["user_id"] = state.get("user_id") or ""
 

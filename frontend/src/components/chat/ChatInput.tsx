@@ -4,7 +4,7 @@
  * @file       frontend/src/components/chat/ChatInput.tsx
  * @brief      Chat input bar — text, voice dictation, attachments
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -18,6 +18,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import { Send, Loader2, Mic, MicOff, Paperclip, X, FileText, Image, FileCode, Monitor, Square, Headphones } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import { getAccessToken } from "@/lib/auth";
@@ -90,6 +91,7 @@ function formatSize(bytes: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPrefillConsumed, onVoiceModeToggle, isVoiceModeActive }: ChatInputProps) {
+  const t = useTranslations("chatInput");
   const [value, setValue] = useState("");
   const [micError, setMicError] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -398,7 +400,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
               type="button"
               onClick={() => setScreenCapture(null)}
               className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
-              title="Retirer la capture"
+              title={t("removeCapture")}
             >
               <X className="w-3 h-3" />
             </button>
@@ -407,9 +409,9 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`data:image/png;base64,${screenCapture}`}
-            alt="Aperçu capture"
+            alt={t("capturePreview")}
             className="h-10 rounded border border-cyber-cyan/30 object-cover cursor-pointer"
-            title="Aperçu de la capture d'écran"
+            title={t("screenshotPreview")}
           />
         </div>
       )}
@@ -440,7 +442,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
                   type="button"
                   onClick={() => removeFile(pf.localId)}
                   className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-                  title="Retirer ce fichier"
+                  title={t("removeFile")}
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -458,7 +460,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onInput={handleInput}
-          placeholder="Envoyer un message… (Entrée pour envoyer, Maj+Entrée pour nouvelle ligne)"
+          placeholder={t("placeholder")}
           rows={1}
           disabled={disabled}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted resize-none focus:outline-none max-h-[200px] min-h-[24px] leading-6"
@@ -480,7 +482,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          title="Joindre un fichier"
+          title={t("attachFile")}
           className="w-8 h-8 rounded-md border border-border-dim flex items-center justify-center text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10 transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {hasUploading ? (
@@ -495,7 +497,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
           type="button"
           onClick={captureScreen}
           disabled={disabled}
-          title="Partager l'écran avec Ély (Vision IA)"
+          title={t("shareScreen")}
           className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
             screenCapture
               ? "bg-cyber-cyan/20 border-cyber-cyan/50 text-cyber-cyan"
@@ -545,7 +547,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
         {isLoading ? (
           <button
             onClick={onStop}
-            title="Interrompre"
+            title={t("stop")}
             className="w-8 h-8 rounded-md bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-all shrink-0"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
@@ -590,14 +592,14 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
       {/* ── Status line ── */}
       {!micError && !isTranscribing && (
         <p className="text-[10px] text-text-muted mt-1.5 text-center">
-          Entrée ↵ envoyer · Maj+Entrée nouvelle ligne
+          {t("footerHelp")}
           {pendingFiles.length > 0 && !hasUploading && (
-            <> · {pendingFiles.filter(p => !p.error).length} fichier(s) joint(s)</>
+            <> · {t("attachedFiles", { count: pendingFiles.filter(p => !p.error).length })}</>
           )}
         </p>
       )}
       {isTranscribing && (
-        <p className="text-[10px] text-cyber-cyan mt-1.5 text-center animate-pulse">Transcription en cours…</p>
+        <p className="text-[10px] text-cyber-cyan mt-1.5 text-center animate-pulse">{t("transcribing")}</p>
       )}
     </div>
   );

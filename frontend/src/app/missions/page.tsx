@@ -4,13 +4,14 @@
  * @file       frontend/src/app/missions/page.tsx
  * @brief      Missions list — goal-driven persistence loop dashboard
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  */
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -22,6 +23,7 @@ import {
 type FilterTab = "all" | "active" | "terminal";
 
 export default function MissionsPage() {
+  const t = useTranslations("missions");
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -34,11 +36,11 @@ export default function MissionsPage() {
       const data = await missionsApi.list();
       setMissions(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur de chargement");
+      setError(e instanceof Error ? e.message : t("loadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -68,9 +70,9 @@ export default function MissionsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Target className="w-5 h-5 text-cyber-cyan" />
-                <h1 className="text-lg font-medium text-text-primary">Missions</h1>
+                <h1 className="text-lg font-medium text-text-primary">{t("title")}</h1>
                 <span className="text-[11px] text-text-muted">
-                  Goals long-terme poursuivis par Éli — boucle Plan → Act → Eval → Replan
+                  {t("subtitle")}
                 </span>
               </div>
               <button
@@ -78,7 +80,7 @@ export default function MissionsPage() {
                 className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Nouvelle mission
+                {t("newMission")}
               </button>
             </div>
 
@@ -94,7 +96,7 @@ export default function MissionsPage() {
                       : "border-transparent text-text-muted hover:text-text-secondary"
                   }`}
                 >
-                  {tab === "all" ? "Toutes" : tab === "active" ? "Actives" : "Terminées"}
+                  {tab === "all" ? t("tabAll") : tab === "active" ? t("tabActive") : t("tabTerminal")}
                   <span className="ml-1.5 text-[10px] text-text-muted">
                     ({tab === "all" ? missions.length :
                        tab === "active" ? missions.filter(m => ["draft","planning","running","paused"].includes(m.status)).length :
@@ -114,13 +116,15 @@ export default function MissionsPage() {
 
             {loading ? (
               <div className="flex items-center justify-center py-12 text-text-muted">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Chargement…
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t("loading")}
               </div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-12 text-text-muted text-sm">
                 {filter === "all"
-                  ? "Pas encore de missions. Crée-en une via le bouton ci-dessus."
-                  : `Aucune mission ${filter === "active" ? "active" : "terminée"} pour l'instant.`}
+                  ? t("emptyAll")
+                  : filter === "active"
+                  ? t("emptyActive")
+                  : t("emptyTerminal")}
               </div>
             ) : (
               <div className="space-y-2">
@@ -146,6 +150,7 @@ export default function MissionsPage() {
 // ── Mission card ────────────────────────────────────────────────────────────
 
 function MissionCard({ mission }: { mission: Mission }) {
+  const t = useTranslations("missions");
   const meta = STATUS_META[mission.status];
   const progress = mission.budget_iterations
     ? Math.round((mission.iterations_used / mission.budget_iterations) * 100)
@@ -169,15 +174,15 @@ function MissionCard({ mission }: { mission: Mission }) {
       </div>
 
       <div className="mt-3 flex items-center gap-4 text-[10px] text-text-muted">
-        <span title="Itérations utilisées / budget">
+        <span title={t("iterationsTooltip")}>
           ⚙️ {mission.iterations_used}/{mission.budget_iterations}
         </span>
-        <span title="Tokens consommés / budget">
+        <span title={t("tokensTooltip")}>
           🔢 {mission.tokens_used.toLocaleString()}/{mission.budget_tokens.toLocaleString()}
         </span>
         <span>📅 {new Date(mission.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
         {mission.tick_interval_seconds && (
-          <span title="Intervalle heartbeat">⏱️ tick chaque {mission.tick_interval_seconds}s</span>
+          <span title={t("tickIntervalTooltip")}>{t("tickEvery", { seconds: mission.tick_interval_seconds })}</span>
         )}
       </div>
 
@@ -203,6 +208,7 @@ function MissionCard({ mission }: { mission: Mission }) {
 // ── Create modal ────────────────────────────────────────────────────────────
 
 function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const t = useTranslations("missions");
   const [title, setTitle]   = useState("");
   const [goal, setGoal]     = useState("");
   const [budgetIter, setBudgetIter] = useState(15);
@@ -212,7 +218,7 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   const submit = async () => {
     if (!title.trim() || goal.trim().length < 5) {
-      setErr("Titre requis et goal d'au moins 5 caractères");
+      setErr(t("validationError"));
       return;
     }
     setBusy(true);
@@ -226,7 +232,7 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
       });
       onCreated();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erreur création");
+      setErr(e instanceof Error ? e.message : t("createError"));
     } finally {
       setBusy(false);
     }
@@ -236,28 +242,28 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-bg-primary border border-border-dim rounded-lg w-full max-w-xl shadow-xl">
         <div className="flex items-center justify-between p-4 border-b border-border-dim">
-          <h2 className="text-sm font-medium text-text-primary">Nouvelle mission</h2>
+          <h2 className="text-sm font-medium text-text-primary">{t("newMission")}</h2>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-4 space-y-3">
           <div>
-            <label className="text-[11px] text-text-muted block mb-1">Titre court</label>
+            <label className="text-[11px] text-text-muted block mb-1">{t("titleLabel")}</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex. Préparer le résumé hebdo IA"
+              placeholder={t("titlePlaceholder")}
               className="w-full text-sm bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
             />
           </div>
 
           <div>
-            <label className="text-[11px] text-text-muted block mb-1">Goal — décris ce qu'Éli doit accomplir</label>
+            <label className="text-[11px] text-text-muted block mb-1">{t("goalLabel")}</label>
             <textarea
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="Ex. Trouve les 3 articles les plus récents sur Gemma 4, fais un résumé en 200 mots dans un Google Doc nouveau, et envoie-moi un mail avec le lien."
+              placeholder={t("goalPlaceholder")}
               rows={5}
               className="w-full text-sm bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 resize-none"
             />
@@ -266,7 +272,7 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-text-muted block mb-1">
-                Budget itérations <span className="text-text-muted/60">(max ticks)</span>
+                {t("budgetIterations")} <span className="text-text-muted/60">{t("maxTicks")}</span>
               </label>
               <input
                 type="number" min={1} max={200} value={budgetIter}
@@ -276,7 +282,7 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
             </div>
             <div>
               <label className="text-[11px] text-text-muted block mb-1">
-                Budget tokens <span className="text-text-muted/60">(LLM)</span>
+                {t("budgetTokens")} <span className="text-text-muted/60">{t("llmHint")}</span>
               </label>
               <input
                 type="number" min={1000} max={500_000} step={1000} value={budgetTok}
@@ -294,7 +300,7 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
           )}
 
           <p className="text-[10px] text-text-muted">
-            La mission sera créée en mode <strong>brouillon</strong>. Sur la page de détail tu pourras la lancer (ou laisser le heartbeat la déclencher quand il sera implémenté).
+            {t.rich("draftHint", { strong: (chunks) => <strong>{chunks}</strong> })}
           </p>
         </div>
 
@@ -304,14 +310,14 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
             disabled={busy}
             className="text-xs px-3 py-1.5 rounded border border-border-dim text-text-muted hover:text-text-secondary"
           >
-            Annuler
+            {t("cancel")}
           </button>
           <button
             onClick={submit}
             disabled={busy || !title.trim() || goal.trim().length < 5}
             className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 disabled:opacity-50"
           >
-            {busy ? "Création…" : "Créer la mission"}
+            {busy ? t("creating") : t("createMission")}
           </button>
         </div>
       </div>

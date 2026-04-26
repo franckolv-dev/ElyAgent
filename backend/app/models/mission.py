@@ -3,7 +3,7 @@
 # @file       backend/app/models/mission.py
 # @brief      Mission models — goal-driven persistence loop state
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 # =============================================================================

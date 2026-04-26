@@ -3,7 +3,7 @@
 # @file       backend/app/services/google_auth.py
 # @brief      Google OAuth2 helpers — handles the authorization flow and token refresh
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -38,6 +38,11 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 SCOPES = [
+    # OpenID + email — needed to identify which Google account just consented.
+    # Without these, we can't tell perso@gmail apart from pro@boite.fr in the
+    # multi-account flow. Returned in the ID token + queryable via /userinfo.
+    "openid",
+    "email",
     "https://www.googleapis.com/auth/gmail.modify",   # read + modify (labels, trash, move)
     "https://www.googleapis.com/auth/gmail.readonly", # kept so Google's scope response matches exactly
     "https://www.googleapis.com/auth/gmail.send",
@@ -123,6 +128,48 @@ async def exchange_code(code: str, code_verifier: str | None = None) -> dict:
         "refresh_token": creds.refresh_token,
         "token_uri": creds.token_uri,
         "scopes": list(creds.scopes or []),
+    }
+
+
+async def fetch_userinfo(creds_dict: dict) -> dict:
+    """Fetch the Google userinfo (email, name, picture) using the access token.
+
+    Used by the multi-account flow to identify which Google account just
+    consented — Google returns the email as `email` and a verified flag as
+    `email_verified`. Requires the `openid email` scopes (see SCOPES above).
+
+    Returns ``{"email": str, "name": str, "picture": str | None}`` on success.
+    Raises ValueError if the token has no userinfo permission or the call fails.
+    """
+    import httpx
+
+    creds = await build_credentials(creds_dict)
+    # Refresh if needed so we don't 401 on a stale token
+    if creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request as _GReq
+        await asyncio.to_thread(creds.refresh, _GReq())
+    token = creds.token
+    if not token:
+        raise ValueError("No access token available — userinfo fetch impossible")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            "https://openidconnect.googleapis.com/v1/userinfo",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    if resp.status_code != 200:
+        raise ValueError(
+            f"Userinfo HTTP {resp.status_code} — scopes 'openid email' missing? "
+            f"({resp.text[:200]})"
+        )
+    data = resp.json()
+    email = data.get("email")
+    if not email:
+        raise ValueError("Userinfo returned no email field")
+    return {
+        "email": email,
+        "name": data.get("name", ""),
+        "picture": data.get("picture"),
     }
 
 

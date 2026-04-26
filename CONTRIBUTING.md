@@ -113,7 +113,7 @@ By participating you agree to abide by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Reporting security vulnerabilities
 
-**Don't open a public issue.** Email **franck.olv@gmail.com** with subject `[SECURITY] ...` — see [SECURITY.md](SECURITY.md) for the full process.
+**Don't open a public issue.** Email **contact@agent-ely.fr** with subject `[SECURITY] ...` — see [SECURITY.md](SECURITY.md) for the full process.
 
 ---
 

@@ -22,7 +22,7 @@ Only the `master` branch is supported. Tagged releases receive critical security
 
 **Do NOT open a public GitHub issue for security bugs.**
 
-Email **franck.olv@gmail.com** with subject prefix `[SECURITY]`. Include :
+Email **contact@agent-ely.fr** with subject prefix `[SECURITY]`. Include :
 
 1. Affected component (backend / frontend / Android / iOS / desktop / channel)
 2. Exact version or commit SHA

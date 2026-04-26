@@ -3,7 +3,7 @@
 # @file       backend/app/routers/auth.py
 # @brief      Authentication and JWT endpoints
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -227,3 +227,42 @@ async def change_password(
     current_user.hashed_password = await hash_password(req.new_password)
     await db.commit()
     return {"message": "Mot de passe modifié avec succès."}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# User preferences (UI language, etc.)
+# ──────────────────────────────────────────────────────────────────────────────
+from pydantic import BaseModel, Field
+from typing import Literal
+
+
+class UserPreferencesUpdate(BaseModel):
+    """Partial update of per-user preferences. Every field is optional."""
+    language: Literal["fr", "en"] | None = Field(
+        default=None,
+        description="Preferred UI / agent reply language (ISO 639-1)",
+    )
+
+
+@router.patch("/me/preferences")
+async def update_my_preferences(
+    req: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the calling user's preferences. Only set fields are touched.
+
+    Currently supports only `language` — extend this endpoint as new
+    per-user prefs are introduced (timezone, units, voice, etc.) rather
+    than spawning a new endpoint per setting.
+    """
+    changed = False
+    if req.language is not None and req.language != current_user.language:
+        current_user.language = req.language
+        changed = True
+    if changed:
+        await db.commit()
+    return {
+        "language": current_user.language,
+        "changed": changed,
+    }

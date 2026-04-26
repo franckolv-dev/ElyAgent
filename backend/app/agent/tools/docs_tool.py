@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/docs_tool.py
 # @brief      Google Docs tools for ELY agent — create and edit documents.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -54,6 +54,7 @@ async def docs_create_document(
     title: str,
     content: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new Google Docs document (equivalent to a Word document).
 
@@ -85,6 +86,7 @@ async def docs_create_document(
 async def docs_read_document(
     document_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Read the text content of a Google Docs document.
 
@@ -109,6 +111,7 @@ async def docs_append_text(
     document_id: str,
     text: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Append text at the end of an existing Google Docs document.
 
@@ -144,6 +147,7 @@ async def docs_replace_text(
     replace_text: str,
     match_case: bool = True,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Replace all occurrences of a text string in a Google Docs document.
 
@@ -188,6 +192,7 @@ async def docs_insert_table(
     rows: int,
     columns: int,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Insert a table at the end of a Google Docs document.
 
@@ -289,6 +294,7 @@ async def docs_batch_update(
     document_id: str,
     requests_json: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Execute one or more advanced operations on a Google Docs document.
 
@@ -355,6 +361,7 @@ async def docs_raw_api_call(
     params_json: str = "{}",
     body_json: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Call ANY method of the Google Docs API (v1) directly.
 

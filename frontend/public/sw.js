@@ -11,7 +11,9 @@
  *   /tts/*   -- generated TTS audio (one-shot)
  * --------------------------------------------------------------------------- */
 
-const VERSION = "ely-sw-v1";
+// Bump this on any sw.js change so browsers fetch the new file and the
+// activate handler purges the old caches.
+const VERSION = "ely-sw-v2";
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const SHELL_CACHE = `${VERSION}-shell`;
 
@@ -83,20 +85,40 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Same-origin static assets -- stale-while-revalidate
+  // Same-origin static assets -- stale-while-revalidate.
+  // CRITICAL : every code path MUST resolve to a real Response object, never
+  // undefined — otherwise the browser throws
+  // "Failed to convert value to 'Response'" and the request hangs / fails.
+  // This was the root cause of admin page load errors observed in the console.
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        const network = fetch(request)
+      caches.match(request).then(async (cached) => {
+        // Best-effort background refresh — never blocks the response below
+        const refresh = fetch(request)
           .then((resp) => {
             if (resp && resp.ok) {
               const copy = resp.clone();
-              caches.open(RUNTIME_CACHE).then((c) => c.put(request, copy)).catch(() => {});
+              caches.open(RUNTIME_CACHE)
+                .then((c) => c.put(request, copy))
+                .catch(() => {});
             }
             return resp;
           })
-          .catch(() => cached);
-        return cached || network;
+          .catch(() => null);
+
+        if (cached) {
+          // We have a cached version — serve it immediately, refresh in background
+          refresh.catch(() => {});
+          return cached;
+        }
+        // No cache — wait for the network. Guarantee a Response either way.
+        try {
+          const fresh = await refresh;
+          if (fresh) return fresh;
+        } catch {
+          // fall through to safe Response below
+        }
+        return new Response("", { status: 504, statusText: "Gateway Timeout" });
       }),
     );
   }

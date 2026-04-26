@@ -4,7 +4,7 @@
  * @file       frontend/src/components/layout/Header.tsx
  * @brief      Header — top navigation bar and status indicators
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -22,6 +22,7 @@ import { Circle, Wifi, WifiOff } from "lucide-react";
 import type { User } from "@/lib/types";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { LangSwitcher } from "@/components/layout/LangSwitcher";
 
 interface HeaderProps {
   wsStatus?: "connected" | "disconnected" | "connecting";
@@ -58,6 +59,7 @@ export function Header({ wsStatus, children }: HeaderProps) {
 
       <div className="flex items-center gap-3">
         {children}
+        <LangSwitcher />
         <ThemeToggle />
 
         {user && (

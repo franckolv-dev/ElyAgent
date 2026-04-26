@@ -14,7 +14,37 @@ ELY is a fully self-hosted AI agent that integrates with your entire digital lif
 
 **Run it on your laptop, a Mac Studio, or a VPS. Access it from anywhere via Cloudflare Tunnel or Tailscale. No subscription. No data leaving your machine unless you choose it.**
 
-> 💡 **Free for personal use.** Commercial use requires a separate license — see [§ License](#-license) at the bottom or contact [franck.olv@gmail.com](mailto:franck.olv@gmail.com).
+> 💡 **Free for personal use.** Commercial use requires a separate license — see [§ License](#-license) at the bottom or contact [contact@agent-ely.fr](mailto:contact@agent-ely.fr).
+
+---
+
+## Where ELY runs (April 2026)
+
+ELY is **infra-agnostic by design** — same codebase, three deployment profiles:
+
+| Profile | Hardware | LLM stack | Purpose |
+|---------|---------|-----------|---------|
+| **Personal / dev / production** | Mac Studio (M-series) | LM Studio (xLAM-2 8B, Gemma 4 E4B, Gemma REAP 21B) + cloud APIs as fallback | Daily driver — full feature set, 100% local inference, max privacy |
+| **Public demo** *(coming)* | VPS — `https://agent-ely.fr` | Qwen API only (managed, low-latency for shared use) | Showcase for newcomers — try the UI without installing |
+| **Self-hosted by you** | Anything that runs Docker (laptop, NAS, VPS) | Bring your own keys / Ollama | Full control, your hardware, your rules |
+
+> 🌍 **Roadmap — agent-ely.fr (Q2 2026)** — landing page + hosted chat UI plugged on Qwen API, so anyone can try ELY in one click without setting up Docker. The on-prem version (this repo) remains the only way to get the full agent with your own data, your own LLM, and zero cloud round-trip.
+>
+> 🇪🇺 **Why this matters** — ELY is positioned as the only EU agent that combines: GDPR-compliant by architecture (PII never leaves your hardware), feature-complete vs ClawBot / Hermes, and unique capabilities the competition lacks (HITL, persistent missions, blind LLM Arena, mobile + desktop + 6 messaging channels, encrypted vault, on-device dedup).
+
+---
+
+## What's new — April 26, 2026
+
+This release was the final pre-public push before the GitHub repo opens and `agent-ely.fr` goes live. Highlights :
+
+- **🌍 Bilingual UI (FR ↔ EN)** — every page switchable from a header button. The agent **switches reply language too** (sandwich language directive injected in every sub-agent prompt). 616 i18n keys, perfect FR/EN parity.
+- **🤖 OpenAI provider** — GPT-4o, GPT-4o-mini, GPT-5, o1, o3 (and Azure OpenAI / private proxy via `OPENAI_BASE_URL`). Pickable in Settings → Modèles IA.
+- **📧 Multi-Google accounts** — link several mailboxes (perso, perso2, work) to one ELY user. Tools accept an `account` arg, the agent picks the right one based on your phrasing ("send a mail from my pro to …"). Backward compat strict — existing single-account setups keep working untouched.
+- **🔍 Self-introspection (Phase A)** — Éli reads her own logs / missions / scheduled tasks / channels / LLM providers / health. *"Why didn't my email arrive?"* now triggers a real diagnostic instead of a guess.
+- **🛡️ Public-demo hardening** — `DEMO_MODE=true` flag enables stricter tenant isolation : non-admin users on the shared `agent-ely.fr` instance can't see cross-tenant logs or global linked-user counts. Qdrant queries refuse empty `user_id` by construction (no silent leaks).
+- **📊 Dashboard analytics fix** — *"Usage by LLM"* now shows real provider/model names (`lm_studio / llama-xlam-2-8b-fc-r-mlx`, `qwen_api / qwen3.6-plus`) instead of `unknown / tier-medium`.
+- **🤝 Repo prep for public** — license headers updated to `contact@agent-ely.fr`, security audit pass, CONTRIBUTING / SECURITY / CODE_OF_CONDUCT in place.
 
 ---
 
@@ -204,6 +234,45 @@ Routing: missions use the local **xLAM-2 8B** model for tool-calling (specialise
 
 ---
 
+### 🔍 Self-Introspection — ELY answers questions about herself
+
+ELY can read her own runtime state. Ask her things like *"Pourquoi mon mail planifié de ce matin n'est pas arrivé ?"*, *"Quel modèle tu utilises ?"*, *"Tous les canaux fonctionnent-ils ?"*, *"Comment tu te portes ?"* and she will actually look at logs / scheduled tasks / mission history / channel status / LLM provider config and answer factually — instead of guessing or hallucinating.
+
+**6 read-only diagnostic tools** (Phase A — no self-modification, that comes later behind HITL):
+
+| Tool | What it inspects |
+|------|------------------|
+| `system_get_logs` | Last N lines of the in-memory ring buffer (5000 entries, secrets auto-masked) |
+| `system_list_scheduled_tasks` | All scheduled tasks for the calling user — next run, last run, channel, status |
+| `system_list_missions` | All missions for the calling user — state, ticks consumed, last error |
+| `system_check_channels` | Telegram / Discord / Slack / WhatsApp / ntfy — which are configured + connected |
+| `system_check_llm_providers` | Configured providers, current tier mapping, default model per tier |
+| `system_get_health` | Backend uptime, RAM, DB size, Qdrant collections, scheduler running, log buffer stats |
+
+**Security model**: pure read-only, no shell, no DB writes, no secret disclosure. The log capture handler (`app/services/log_buffer.py`) sanitises 13 secret patterns *before* storing — Bearer tokens, API keys, JWTs, refresh tokens, SMTP passwords, Slack signing secrets, etc. — so even if the LLM ends up paraphrasing a log line in chat, no key leaks.
+
+Self-modification (restart bot, change tier, edit config) is reserved for **Phase B** with mandatory HITL gating.
+
+#### 🔧 Self-Healing in practice — a real case study
+
+This isn't a feature on a slide deck. **It's how the project gets debugged.**
+
+While building the FR/EN i18n flow (April 2026), a bug appeared : Éli answered in French even when the user had switched the UI to English. Six layers of fixes later, she was still doing it. Conventional debugging meant SSH-ing into the server, tailing logs, grepping for stack traces — minutes per cycle.
+
+Instead, the developer typed in chat :
+
+> **User**: *"Show me the last 5 logs containing LANG_FETCH"*
+>
+> **Éli**: *"There are 4 entries containing LANG_FETCH in the recent logs. They show a repeated exception : **`name 'async_session' is not defined`** in the language detection module, with automatic fallback to French. This error occurred three times between 18:25:30 and 18:25:45 UTC."*
+
+The bug was a **silent `NameError`** — a missing import inside a try/except that swallowed the exception and returned the default. The next commit fixed it in 30 seconds. **Éli debugged her own bilingual layer in plain language, in three messages.**
+
+This is what *"Exactly Like You"* means — not just an assistant that does what you ask, but an agent that **diagnoses itself when you don't know what to ask**. Competing self-hosted agents (ClawBot, Hermes) treat the LLM as a chatbox over a closed runtime. ELY treats the runtime as **legible to the LLM**, with safe boundaries (read-only, secrets sanitised, per-user scoped).
+
+Phase B will let the agent *act* on what she diagnoses — restart a stalled scheduler job, retry a failed mission with reflection, propose a config change for HITL approval. Phase A is the foundation : an agent that **knows herself**.
+
+---
+
 ### 🤖 Multi-Provider LLM Engine
 
 Route each request to the optimal model based on detected complexity. **Configure everything in Settings — no code, no restart.**
@@ -217,7 +286,7 @@ Route each request to the optimal model based on detected complexity. **Configur
 | **SYS — Maintenance** | Qwen 3.6 Flash or Ollama (local) | Background tasks, memory |
 
 **Supported providers:**
-- **Cloud API** — Qwen API (Alibaba DashScope) · OpenRouter (200+ models) · Anthropic Claude · Google Gemini · DeepSeek · Mistral AI · Zhipu GLM
+- **Cloud API** — **OpenAI** (GPT-4o, GPT-5, o1, o3, Azure OpenAI proxy ready) · Qwen API (Alibaba DashScope) · OpenRouter (200+ models) · Anthropic Claude · Google Gemini · DeepSeek · Mistral AI · Zhipu GLM
 - **Local** — Ollama · LM Studio (MLX on Apple Silicon, OpenAI-compatible endpoint)
 
 **Local mode optimisations** (2026-04) :
@@ -494,7 +563,11 @@ Store API keys and passwords encrypted at rest (AES-256-GCM), injected into tool
 
 ## Quick Start
 
-**Prerequisites:** Docker, Git, Ollama *(optional but recommended)*
+**Prerequisites:** Docker, Git, [LM Studio](https://lmstudio.ai/) *(recommended on Apple Silicon — MLX models)* or [Ollama](https://ollama.com)
+
+> 🍎 **Mac Studio is the reference dev/prod target** — Apple Silicon + LM Studio MLX gives the best local inference on consumer hardware (xLAM-2 8B 8-bit for tool calls, Gemma 4 E4B 4-bit for chat, Gemma REAP 21B for complex reasoning). Linux/Windows + Ollama works too but is less battle-tested as of April 2026.
+
+> 🌐 **UI language** — currently French only. **English UI** is on the immediate roadmap (next release) for the European launch on `agent-ely.fr`.
 
 ```bash
 # 1. Clone
@@ -622,4 +695,4 @@ make slm-enable            # Enable local model for simple tasks
 - Redistribution of modified versions
 - Training other AI models on this codebase
 
-For commercial licensing: [franck.olv@gmail.com](mailto:franck.olv@gmail.com)
+For commercial licensing: [contact@agent-ely.fr](mailto:contact@agent-ely.fr)

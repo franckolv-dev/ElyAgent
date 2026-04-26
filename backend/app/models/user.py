@@ -3,7 +3,7 @@
 # @file       backend/app/models/user.py
 # @brief      SQLAlchemy User model
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -40,3 +40,7 @@ class User(Base):
     slack_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
     discord_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
     fcm_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # UI / agent reply language. ISO 639-1 code. Default "fr" — Éli was
+    # designed in French. The frontend sets this when the user clicks the
+    # LangSwitcher; the agent prompt is rebuilt every turn to honor it.
+    language: Mapped[str] = mapped_column(String(2), default="fr", server_default="fr")

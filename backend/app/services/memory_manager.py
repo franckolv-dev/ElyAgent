@@ -3,7 +3,7 @@
 # @file       backend/app/services/memory_manager.py
 # @brief      Hybrid vector + full-text memory backed by Qdrant + SQLite FTS5
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -244,7 +244,20 @@ class MemoryManager:
         limit: int,
         score_threshold: float,
     ) -> list:
-        """Async Qdrant ANN search — runs in a thread to avoid blocking the event loop."""
+        """Async Qdrant ANN search — runs in a thread to avoid blocking the event loop.
+
+        Multi-tenant safety: an empty ``user_id`` would be matched against
+        every Qdrant point whose payload also has ``user_id == ""`` (typically
+        system-created entries) — which IS a cross-tenant leak. Reject early
+        rather than silently leak. Anonymous flows must use a sentinel value
+        (e.g. ``"__anon__"``) explicitly, never the empty string.
+        """
+        if not user_id:
+            logger.warning(
+                "Qdrant candidates query refused: empty user_id on collection=%s "
+                "(would have leaked across tenants — returning [])", collection
+            )
+            return []
         from qdrant_client.models import FieldCondition, Filter, MatchValue
         result = await asyncio.to_thread(
             self.client.query_points,

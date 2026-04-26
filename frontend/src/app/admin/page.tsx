@@ -4,7 +4,7 @@
  * @file       frontend/src/app/admin/page.tsx
  * @brief      Admin dashboard page — system overview and management
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -40,13 +40,13 @@ interface AdminUser {
 
 // ── Google OAuth config form ──────────────────────────────────────────────────
 
-const GOOGLE_FIELDS = [
-  { key: "google_client_id",     label: "Client ID",     is_secret: false, description: "Google OAuth2 Client ID" },
-  { key: "google_client_secret", label: "Client Secret", is_secret: true,  description: "Google OAuth2 Client Secret" },
-  { key: "google_redirect_uri",  label: "Redirect URI",  is_secret: false, description: "URI de redirection OAuth (doit correspondre à Google Cloud Console)" },
-];
-
 function OAuthConfigPanel() {
+  const t = useTranslations("admin");
+  const GOOGLE_FIELDS = [
+    { key: "google_client_id",     label: t("oauthClientIdLabel"),     is_secret: false, description: t("oauthClientIdDesc") },
+    { key: "google_client_secret", label: t("oauthClientSecretLabel"), is_secret: true,  description: t("oauthClientSecretDesc") },
+    { key: "google_redirect_uri",  label: t("oauthRedirectUriLabel"),  is_secret: false, description: t("oauthRedirectUriDesc") },
+  ];
   const [values, setValues] = useState<Record<string, string>>({
     google_client_id: "",
     google_client_secret: "",
@@ -68,7 +68,7 @@ function OAuthConfigPanel() {
       setSaved((s) => ({ ...s, [key]: true }));
       setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 2000);
     } catch {
-      alert(`Erreur lors de la sauvegarde de ${key}`);
+      alert(t("saveError", { key }));
     } finally {
       setSaving((s) => ({ ...s, [key]: false }));
     }
@@ -82,14 +82,14 @@ function OAuthConfigPanel() {
   return (
     <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4 max-w-xl">
       <div className="text-xs text-text-muted space-y-1">
-        <p>Ces credentials sont <strong className="text-text-primary">partagés</strong> entre tous les utilisateurs de l'instance.</p>
-        <p>Chaque utilisateur connecte son propre compte Google via Settings → Services Google.</p>
+        <p>{t.rich("oauthSharedNote", { strong: (chunks) => <strong className="text-text-primary">{chunks}</strong> })}</p>
+        <p>{t("oauthUserNote")}</p>
         <p className="text-[11px]">
-          Créer sur&nbsp;
+          {t("oauthCreateOn")}&nbsp;
           <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">
             console.cloud.google.com
           </a>
-          &nbsp;→ API & Services → Identifiants → ID client OAuth 2.0 (Application Web)
+          &nbsp;{t("oauthCreateOnSuffix")}
         </p>
       </div>
 
@@ -122,12 +122,12 @@ function OAuthConfigPanel() {
                 className="px-2.5 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-40 flex items-center gap-1 text-[11px]"
               >
                 {saved[key] ? <CheckCircle className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-                {saved[key] ? "OK" : "Sauver"}
+                {saved[key] ? t("savedBtn") : t("saveBtn")}
               </button>
               <button
                 onClick={() => handleDelete(key)}
                 className="px-2 py-1.5 rounded border border-border-dim text-text-muted hover:text-cyber-red hover:border-cyber-red/30 transition-all"
-                title="Supprimer"
+                title={t("deleteTooltip")}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -141,11 +141,11 @@ function OAuthConfigPanel() {
 
 // ── Telegram config ──────────────────────────────────────────────────────────
 
-const TELEGRAM_FIELDS = [
-  { key: "telegram_bot_token", label: "Bot Token", is_secret: true, description: "Token du bot Telegram (obtenu via @BotFather)" },
-];
-
 function TelegramConfigPanel() {
+  const t = useTranslations("admin");
+  const TELEGRAM_FIELDS = [
+    { key: "telegram_bot_token", label: t("telegramBotTokenLabel"), is_secret: true, description: t("telegramBotTokenDesc") },
+  ];
   const [values, setValues] = useState<Record<string, string>>({ telegram_bot_token: "" });
   const [show, setShow] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -163,7 +163,7 @@ function TelegramConfigPanel() {
       setSaved((s) => ({ ...s, [key]: true }));
       setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 2000);
     } catch {
-      alert(`Erreur lors de la sauvegarde de ${key}`);
+      alert(t("saveError", { key }));
     } finally {
       setSaving((s) => ({ ...s, [key]: false }));
     }
@@ -177,17 +177,19 @@ function TelegramConfigPanel() {
   return (
     <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4 max-w-xl">
       <div className="text-xs text-text-muted space-y-1">
-        <p>Connectez ELY à <strong className="text-text-primary">Telegram</strong> pour envoyer des messages à votre assistant depuis n'importe où.</p>
+        <p>{t.rich("telegramIntro", { strong: (chunks) => <strong className="text-text-primary">{chunks}</strong> })}</p>
         <p className="text-[11px]">
-          1. Parler à&nbsp;
-          <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">@BotFather</a>
-          &nbsp;→ /newbot → copier le token
+          {t.rich("telegramStep1", {
+            link: (chunks) => (
+              <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">{chunks}</a>
+            ),
+          })}
         </p>
         <p className="text-[11px]">
-          2. Coller le token ci-dessous et sauvegarder
+          {t("telegramStep2")}
         </p>
         <p className="text-[11px]">
-          3. Redémarrer le backend puis envoyer <code className="text-cyber-cyan">/link identifiant motdepasse</code> au bot
+          {t.rich("telegramStep3", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}
         </p>
       </div>
 
@@ -220,12 +222,12 @@ function TelegramConfigPanel() {
                 className="px-2.5 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-40 flex items-center gap-1 text-[11px]"
               >
                 {saved[key] ? <CheckCircle className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-                {saved[key] ? "OK" : "Sauver"}
+                {saved[key] ? t("savedBtn") : t("saveBtn")}
               </button>
               <button
                 onClick={() => handleDelete(key)}
                 className="px-2 py-1.5 rounded border border-border-dim text-text-muted hover:text-cyber-red hover:border-cyber-red/30 transition-all"
-                title="Supprimer"
+                title={t("deleteTooltip")}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

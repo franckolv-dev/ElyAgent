@@ -4,7 +4,7 @@
  * @file       frontend/src/app/settings/page.tsx
  * @brief      Settings page — user preferences and configuration
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -21,6 +21,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
+import { GoogleAccountsSection } from "@/components/settings/GoogleAccountsSection";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
@@ -42,7 +43,6 @@ const PROVIDERS = [
     id: "zhipu",
     label: "Zhipu AI — GLM",
     flag: "🇨🇳",
-    desc: "GLM-4.7 · Excellent function-calling · Prefix caching auto (−80 % coût) · API OpenAI-compatible",
     needsKey: true,
     defaultModel: "glm-4.7",
     docsUrl: "https://open.bigmodel.cn/",
@@ -51,7 +51,6 @@ const PROVIDERS = [
     id: "anthropic",
     label: "Anthropic Claude",
     flag: "🇺🇸",
-    desc: "Fiable, rapide — prompt caching activé (−90 % sur system prompt) · serveurs US",
     needsKey: true,
     defaultModel: "claude-haiku-4-5-20251001",
     docsUrl: "https://console.anthropic.com/",
@@ -60,7 +59,6 @@ const PROVIDERS = [
     id: "gemini",
     label: "Google Gemini",
     flag: "🇺🇸",
-    desc: "Gemini 2.0 Flash / Pro — caching implicite activé",
     needsKey: true,
     defaultModel: "gemini-2.5-flash",
     docsUrl: "https://aistudio.google.com/",
@@ -69,7 +67,6 @@ const PROVIDERS = [
     id: "openrouter",
     label: "OpenRouter",
     flag: "🔀",
-    desc: "200+ modèles (Meta, Google, Mistral, Qwen…) — modèles gratuits disponibles",
     needsKey: true,
     defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
     docsUrl: "https://openrouter.ai/",
@@ -78,7 +75,6 @@ const PROVIDERS = [
     id: "deepseek",
     label: "DeepSeek",
     flag: "🇨🇳",
-    desc: "Coût très faible — serveurs en Chine",
     needsKey: true,
     defaultModel: "deepseek-chat",
     docsUrl: "https://platform.deepseek.com/",
@@ -87,7 +83,6 @@ const PROVIDERS = [
     id: "mistral",
     label: "Mistral AI",
     flag: "🇫🇷",
-    desc: "IA française, serveurs en Europe (RGPD) — fallback uniquement",
     needsKey: true,
     defaultModel: "mistral-small-latest",
     docsUrl: "https://console.mistral.ai/",
@@ -96,7 +91,6 @@ const PROVIDERS = [
     id: "ollama",
     label: "Ollama (Local)",
     flag: "🖥️",
-    desc: "100 % local, zéro données transmises — tâches de fond (mémoire)",
     needsKey: false,
     defaultModel: "",
     docsUrl: "https://ollama.com/",
@@ -105,7 +99,6 @@ const PROVIDERS = [
     id: "lm_studio",
     label: "LM Studio (Local)",
     flag: "🖥️",
-    desc: "API OpenAI-compatible · Port 1234 · Gemma, Llama, Phi… via MLX/CUDA — le nom du modèle doit correspondre à l'onglet « Local Server » de LM Studio",
     needsKey: false,
     defaultModel: "gemma-4-26B-A4B-it-MLX-4bit",
     docsUrl: "https://lmstudio.ai/docs/api/openai-api",
@@ -114,17 +107,24 @@ const PROVIDERS = [
     id: "qwen_api",
     label: "Qwen API (Alibaba Cloud)",
     flag: "🇨🇳",
-    desc: "API OpenAI-compatible DashScope · Qwen 3.6 Plus/Max, Qwen 2.5-VL 72B · enable_thinking auto-désactivé",
     needsKey: true,
     defaultModel: "qwen-plus-latest",
     docsUrl: "https://help.aliyun.com/zh/model-studio",
   },
+  {
+    id: "openai",
+    label: "OpenAI",
+    flag: "🇺🇸",
+    needsKey: true,
+    defaultModel: "gpt-4o-mini",
+    docsUrl: "https://platform.openai.com/api-keys",
+  },
 ];
 
 const GOOGLE_SERVICES = [
-  { id: "gmail",    label: "Gmail",          icon: Mail,     scope: "Lecture et envoi d'emails" },
-  { id: "calendar", label: "Google Calendar", icon: Calendar, scope: "Consultation et création d'événements" },
-  { id: "drive",    label: "Google Drive",    icon: HardDrive, scope: "Lecture des fichiers (lecture seule)" },
+  { id: "gmail",    label: "Gmail",          icon: Mail,     scopeKey: "googleScopeGmail" },
+  { id: "calendar", label: "Google Calendar", icon: Calendar, scopeKey: "googleScopeCalendar" },
+  { id: "drive",    label: "Google Drive",    icon: HardDrive, scopeKey: "googleScopeDrive" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -132,30 +132,30 @@ const GOOGLE_SERVICES = [
 // ---------------------------------------------------------------------------
 interface PasswordStrength {
   score: number;       // 0-5
-  label: string;
+  labelKey: string;    // i18n key under settings.* for the strength level
   color: string;       // Tailwind text color
   barColor: string;    // Tailwind bg color
-  hints: string[];     // règles non satisfaites
+  hintKeys: string[];  // i18n keys for unmet rules
 }
 
 function checkPasswordStrength(pwd: string): PasswordStrength {
-  const hints: string[] = [];
+  const hintKeys: string[] = [];
   let score = 0;
-  if (pwd.length >= 12)           score++; else hints.push("Au moins 12 caractères");
-  if (/[A-Z]/.test(pwd))          score++; else hints.push("Une lettre majuscule");
-  if (/[a-z]/.test(pwd))          score++; else hints.push("Une lettre minuscule");
-  if (/\d/.test(pwd))             score++; else hints.push("Un chiffre");
-  if (/[^a-zA-Z0-9]/.test(pwd))  score++; else hints.push("Un caractère spécial (!@#...)");
+  if (pwd.length >= 12)           score++; else hintKeys.push("pwdHintLength");
+  if (/[A-Z]/.test(pwd))          score++; else hintKeys.push("pwdHintUpper");
+  if (/[a-z]/.test(pwd))          score++; else hintKeys.push("pwdHintLower");
+  if (/\d/.test(pwd))             score++; else hintKeys.push("pwdHintDigit");
+  if (/[^a-zA-Z0-9]/.test(pwd))  score++; else hintKeys.push("pwdHintSpecial");
 
   const levels = [
-    { label: "Très faible", color: "text-red-400",    barColor: "bg-red-500" },
-    { label: "Faible",      color: "text-orange-400", barColor: "bg-orange-500" },
-    { label: "Moyen",       color: "text-yellow-400", barColor: "bg-yellow-500" },
-    { label: "Bon",         color: "text-lime-400",   barColor: "bg-lime-500" },
-    { label: "Fort",        color: "text-emerald-400",barColor: "bg-emerald-500" },
-    { label: "Excellent",   color: "text-cyber-cyan", barColor: "bg-cyber-cyan" },
+    { labelKey: "pwdStrengthVeryWeak", color: "text-red-400",    barColor: "bg-red-500" },
+    { labelKey: "pwdStrengthWeak",      color: "text-orange-400", barColor: "bg-orange-500" },
+    { labelKey: "pwdStrengthMedium",       color: "text-yellow-400", barColor: "bg-yellow-500" },
+    { labelKey: "pwdStrengthGood",         color: "text-lime-400",   barColor: "bg-lime-500" },
+    { labelKey: "pwdStrengthStrong",        color: "text-emerald-400",barColor: "bg-emerald-500" },
+    { labelKey: "pwdStrengthExcellent",   color: "text-cyber-cyan", barColor: "bg-cyber-cyan" },
   ];
-  return { score, hints, ...levels[score] };
+  return { score, hintKeys, ...levels[score] };
 }
 
 // ---------------------------------------------------------------------------
@@ -317,14 +317,14 @@ export default function SettingsPage() {
         if (waWebPollRef.current) clearInterval(waWebPollRef.current);
         waWebPollRef.current = setInterval(refreshWaWebStatus, 2000);
       } else {
-        push("error", "Impossible de démarrer la session WhatsApp");
+        push("error", t("waStartFailed"));
       }
     } catch {
-      push("error", "Erreur réseau WhatsApp Web");
+      push("error", t("waNetworkError"));
     } finally {
       setWaWebLoading(false);
     }
-  }, [refreshWaWebStatus]);
+  }, [refreshWaWebStatus, t, push]);
 
   // Alternative pairing: phone number → 8-char code (when QR scan fails)
   const [waPhoneInput, setWaPhoneInput] = useState("");
@@ -332,7 +332,7 @@ export default function SettingsPage() {
   const handleWaWebPairPhone = useCallback(async () => {
     const phone = waPhoneInput.trim();
     if (!phone) {
-      push("error", "Entre ton numéro de téléphone");
+      push("error", t("waEnterPhone"));
       return;
     }
     setWaWebLoading(true);
@@ -346,35 +346,35 @@ export default function SettingsPage() {
       const data = await res.json();
       if (res.ok && data.code) {
         setWaPairCode(data.code);
-        push("success", `Code généré — entre ${data.code} dans WhatsApp`);
+        push("success", t("waCodeGenerated", { code: data.code }));
         // Start polling in case we weren't already
         if (waWebPollRef.current) clearInterval(waWebPollRef.current);
         waWebPollRef.current = setInterval(refreshWaWebStatus, 2000);
       } else {
-        push("error", data.error || "Impossible de générer le code");
+        push("error", data.error || t("waCodeFailed"));
       }
     } catch {
-      push("error", "Erreur réseau");
+      push("error", t("networkError"));
     } finally {
       setWaWebLoading(false);
     }
-  }, [waPhoneInput, refreshWaWebStatus]);
+  }, [waPhoneInput, refreshWaWebStatus, t, push]);
 
   // Log out / unlink — wipes the local session
   const handleWaWebLogout = useCallback(async () => {
-    if (!confirm("Déconnecter WhatsApp Web ? Il faudra rescanner le QR pour se relier.")) return;
+    if (!confirm(t("waLogoutConfirm"))) return;
     setWaWebLoading(true);
     try {
       const res = await authFetch(`${API_URL}/api/whatsapp-web/session/logout`, { method: "POST" });
       if (res.ok) {
         setWaWebStatus({ status: "not_started" });
         if (waWebPollRef.current) clearInterval(waWebPollRef.current);
-        push("success", "WhatsApp déconnecté");
+        push("success", t("waDisconnected"));
       }
     } finally {
       setWaWebLoading(false);
     }
-  }, []);
+  }, [t, push]);
 
   // Stop polling when paired, clean up on unmount
   useEffect(() => {
@@ -428,7 +428,7 @@ export default function SettingsPage() {
 
   const handleTgSave = useCallback(async () => {
     const token = tgToken.trim();
-    if (!token) { push("error", "Colle le token BotFather"); return; }
+    if (!token) { push("error", t("tgPasteToken")); return; }
     setTgBusy(true);
     try {
       const res = await authFetch(`${API_URL}/api/channels/telegram/save`, {
@@ -437,29 +437,29 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (res.ok && data.saved) {
-        push("success", `Telegram configuré — @${data.bot_username}`);
+        push("success", t("tgConfigured", { username: data.bot_username }));
         setTgToken("");
         await refreshChannelsStatus();
       } else {
-        push("error", data.detail || "Token invalide");
+        push("error", data.detail || t("invalidToken"));
       }
-    } catch { push("error", "Erreur réseau Telegram"); }
+    } catch { push("error", t("tgNetworkError")); }
     finally { setTgBusy(false); }
-  }, [tgToken, refreshChannelsStatus]);
+  }, [tgToken, refreshChannelsStatus, t, push]);
 
   const handleTgDisable = useCallback(async () => {
-    if (!confirm("Désactiver Telegram ? Le bot cessera de recevoir les messages.")) return;
+    if (!confirm(t("tgDisableConfirm"))) return;
     setTgBusy(true);
     try {
       await authFetch(`${API_URL}/api/channels/telegram/disable`, { method: "POST" });
-      push("success", "Telegram désactivé");
+      push("success", t("tgDisabled"));
       await refreshChannelsStatus();
     } finally { setTgBusy(false); }
-  }, [refreshChannelsStatus]);
+  }, [refreshChannelsStatus, t, push]);
 
   const handleDcSave = useCallback(async () => {
     const token = dcToken.trim();
-    if (!token) { push("error", "Colle le token du Discord Developer Portal"); return; }
+    if (!token) { push("error", t("dcPasteToken")); return; }
     setDcBusy(true);
     try {
       const res = await authFetch(`${API_URL}/api/channels/discord/save`, {
@@ -468,30 +468,30 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (res.ok && data.saved) {
-        push("success", `Discord configuré — ${data.bot_username ?? "OK"}`);
+        push("success", t("dcConfigured", { username: data.bot_username ?? "OK" }));
         setDcToken("");
         await refreshChannelsStatus();
       } else {
-        push("error", data.detail || "Token invalide");
+        push("error", data.detail || t("invalidToken"));
       }
-    } catch { push("error", "Erreur réseau Discord"); }
+    } catch { push("error", t("dcNetworkError")); }
     finally { setDcBusy(false); }
-  }, [dcToken, refreshChannelsStatus]);
+  }, [dcToken, refreshChannelsStatus, t, push]);
 
   const handleDcDisable = useCallback(async () => {
-    if (!confirm("Désactiver Discord ?")) return;
+    if (!confirm(t("dcDisableConfirm"))) return;
     setDcBusy(true);
     try {
       await authFetch(`${API_URL}/api/channels/discord/disable`, { method: "POST" });
-      push("success", "Discord désactivé");
+      push("success", t("dcDisabled"));
       await refreshChannelsStatus();
     } finally { setDcBusy(false); }
-  }, [refreshChannelsStatus]);
+  }, [refreshChannelsStatus, t, push]);
 
   const handleSlSave = useCallback(async () => {
     const bot = slBotToken.trim();
     const app = slAppToken.trim();
-    if (!bot || !app) { push("error", "Les 2 tokens Slack (bot + app) sont requis"); return; }
+    if (!bot || !app) { push("error", t("slTokensRequired")); return; }
     setSlBusy(true);
     try {
       const res = await authFetch(`${API_URL}/api/channels/slack/save`, {
@@ -500,25 +500,25 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (res.ok && data.saved) {
-        push("success", "Slack configuré");
+        push("success", t("slConfigured"));
         setSlBotToken(""); setSlAppToken("");
         await refreshChannelsStatus();
       } else {
-        push("error", data.detail || "Tokens invalides");
+        push("error", data.detail || t("invalidTokens"));
       }
-    } catch { push("error", "Erreur réseau Slack"); }
+    } catch { push("error", t("slNetworkError")); }
     finally { setSlBusy(false); }
-  }, [slBotToken, slAppToken, refreshChannelsStatus]);
+  }, [slBotToken, slAppToken, refreshChannelsStatus, t, push]);
 
   const handleSlDisable = useCallback(async () => {
-    if (!confirm("Désactiver Slack ?")) return;
+    if (!confirm(t("slDisableConfirm"))) return;
     setSlBusy(true);
     try {
       await authFetch(`${API_URL}/api/channels/slack/disable`, { method: "POST" });
-      push("success", "Slack désactivé");
+      push("success", t("slDisabled"));
       await refreshChannelsStatus();
     } finally { setSlBusy(false); }
-  }, [refreshChannelsStatus]);
+  }, [refreshChannelsStatus, t, push]);
 
   // Initialise admin role and default tab once mounted (client-side only)
   useEffect(() => {
@@ -708,16 +708,16 @@ export default function SettingsPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        push("error", err.detail ?? `Erreur ${res.status}`);
+        push("error", err.detail ?? t("errorStatus", { status: res.status }));
         return;
       }
-      push("success", "Instance créée");
+      push("success", t("instanceCreated"));
       setShowAddModal(false);
       await loadInstances();
       // Refresh tier config to get updated instances list
       await loadTierConfig();
     } catch {
-      push("error", "Impossible de contacter le serveur");
+      push("error", t("serverUnreachable"));
     } finally {
       setModalSaving(false);
     }
@@ -730,10 +730,10 @@ export default function SettingsPage() {
       });
       if (!res.ok && res.status !== 204) {
         const err = await res.json().catch(() => ({}));
-        push("error", err.detail ?? `Erreur ${res.status}`);
+        push("error", err.detail ?? t("errorStatus", { status: res.status }));
         return;
       }
-      push("success", "Instance supprimée");
+      push("success", t("instanceDeleted"));
       setInstances((prev) => prev.filter((i) => i.id !== id));
       // Remove from tier configs that reference this instance
       setTierConfig((prev) => {
@@ -746,7 +746,7 @@ export default function SettingsPage() {
       // Refresh tier config to get updated instances list
       await loadTierConfig();
     } catch {
-      push("error", "Impossible de contacter le serveur");
+      push("error", t("serverUnreachable"));
     }
   };
 
@@ -758,11 +758,11 @@ export default function SettingsPage() {
     try {
       const res = await authFetch(`${API_URL}/api/google/auth-url`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || `Erreur serveur ${res.status}`);
-      if (!data.url) throw new Error("URL de connexion Google non reçue du serveur");
+      if (!res.ok) throw new Error(data.detail || t("serverErrorStatus", { status: res.status }));
+      if (!data.url) throw new Error(t("googleAuthUrlMissing"));
       window.location.href = data.url;
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Erreur lors de la connexion Google.");
+      alert(e instanceof Error ? e.message : t("googleConnectError"));
     } finally {
       setGoogleLoading(false);
     }
@@ -857,12 +857,12 @@ export default function SettingsPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        push("error", err.detail ?? `Erreur ${res.status}`);
+        push("error", err.detail ?? t("errorStatus", { status: res.status }));
       } else {
-        push("success", "Niveaux de routage sauvegardés");
+        push("success", t("tiersSaved"));
       }
     } catch {
-      push("error", "Impossible de contacter le serveur");
+      push("error", t("serverUnreachable"));
     } finally {
       setSavingTiers(false);
     }
@@ -894,12 +894,12 @@ export default function SettingsPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        push("error", err.detail ?? `Erreur ${res.status}`);
+        push("error", err.detail ?? t("errorStatus", { status: res.status }));
       } else {
-        push("success", "Configuration ELY Desktop sauvegardée");
+        push("success", t("desktopConfigSaved"));
       }
     } catch {
-      push("error", "Impossible de contacter le serveur");
+      push("error", t("serverUnreachable"));
     } finally {
       setSavingDesktop(false);
     }
@@ -909,7 +909,7 @@ export default function SettingsPage() {
     try {
       const res = await authFetch(`${API_URL}/api/desktop/download-config`);
       if (!res.ok) {
-        push("error", "Erreur lors de la génération du fichier de configuration");
+        push("error", t("desktopConfigGenError"));
         return;
       }
       const blob = await res.blob();
@@ -920,7 +920,7 @@ export default function SettingsPage() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch {
-      push("error", "Impossible de télécharger la configuration");
+      push("error", t("desktopDownloadError"));
     }
   };
 
@@ -930,12 +930,12 @@ export default function SettingsPage() {
   const handleChangePassword = async () => {
     if (savingPwd) return;
     if (newPwd !== confirmPwd) {
-      push("error", "Les deux nouveaux mots de passe ne correspondent pas.");
+      push("error", t("pwdMismatchError"));
       return;
     }
     const strength = checkPasswordStrength(newPwd);
     if (strength.score < 5) {
-      push("error", "Le mot de passe ne respecte pas les critères de sécurité.");
+      push("error", t("pwdNotStrongEnough"));
       return;
     }
     setSavingPwd(true);
@@ -947,15 +947,15 @@ export default function SettingsPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        push("error", err.detail ?? `Erreur ${res.status}`);
+        push("error", err.detail ?? t("errorStatus", { status: res.status }));
       } else {
-        push("success", "Mot de passe modifié avec succès.");
+        push("success", t("pwdChangedSuccess"));
         setCurrentPwd("");
         setNewPwd("");
         setConfirmPwd("");
       }
     } catch {
-      push("error", "Impossible de contacter le serveur.");
+      push("error", t("serverUnreachable"));
     } finally {
       setSavingPwd(false);
     }
@@ -978,12 +978,12 @@ export default function SettingsPage() {
   // Tab definitions — admin-only tabs are hidden for regular users
   const TABS = [
     ...(admin ? [
-      { id: "modeles",      label: "Modèles IA",    icon: Cpu        },
-      { id: "routage",      label: "Routage",        icon: GitBranch  },
+      { id: "modeles",      label: t("tabModels"),         icon: Cpu        },
+      { id: "routage",      label: t("tabRouting"),        icon: GitBranch  },
     ] : []),
-    { id: "integrations", label: "Intégrations",  icon: Plug       },
-    { id: "channels",     label: "Channels",       icon: Mail       },
-    { id: "compte",       label: "Mon compte",     icon: User       },
+    { id: "integrations", label: t("tabIntegrations"),  icon: Plug       },
+    { id: "channels",     label: t("tabChannels"),       icon: Mail       },
+    { id: "compte",       label: t("tabAccount"),        icon: User       },
   ];
 
   return (
@@ -1045,9 +1045,9 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Cpu className="w-4 h-4 text-cyber-cyan" />
-                    <h2 className="text-sm font-medium text-text-primary">Modèles configurés</h2>
+                    <h2 className="text-sm font-medium text-text-primary">{t("modelsConfigured")}</h2>
                     {instancesLoading && (
-                      <span className="text-[10px] text-text-muted animate-pulse">Chargement…</span>
+                      <span className="text-[10px] text-text-muted animate-pulse">{t("loading")}</span>
                     )}
                   </div>
                   <button
@@ -1055,19 +1055,19 @@ export default function SettingsPage() {
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Ajouter
+                    {t("add")}
                   </button>
                 </div>
 
                 <p className="text-[11px] text-text-muted mb-3">
-                  Chaque instance combine un provider, un modèle et une clé API optionnelle. Vous pouvez créer plusieurs instances du même provider (ex. plusieurs modèles Ollama) et les assigner librement aux niveaux de routage.
+                  {t("instanceDescription")}
                 </p>
 
                 {/* Instance list */}
                 {instances.length === 0 && !instancesLoading ? (
                   <div className="bg-bg-secondary border border-border-dim rounded-lg p-6 text-center">
                     <p className="text-[11px] text-text-muted italic">
-                      Aucune instance configurée. Cliquez sur "Ajouter" pour créer votre première instance.
+                      {t("noInstances")}
                     </p>
                   </div>
                 ) : (
@@ -1087,7 +1087,7 @@ export default function SettingsPage() {
                                 {inst.has_key && (
                                   <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
                                     <Key className="w-2 h-2" />
-                                    Clé
+                                    {t("keyBadge")}
                                   </span>
                                 )}
                               </div>
@@ -1099,7 +1099,7 @@ export default function SettingsPage() {
                           <button
                             onClick={() => handleDeleteInstance(inst.id)}
                             className="shrink-0 text-text-muted hover:text-cyber-red transition-colors"
-                            title="Supprimer"
+                            title={t("delete")}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1119,26 +1119,25 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <GitBranch className="w-4 h-4 text-cyber-cyan" />
-                    <h2 className="text-sm font-medium text-text-primary">Niveaux de routage</h2>
+                    <h2 className="text-sm font-medium text-text-primary">{t("routingTiers")}</h2>
                   </div>
                   <button
                     onClick={handleSaveTiers}
                     disabled={savingTiers}
                     className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all disabled:opacity-50"
                   >
-                    {savingTiers ? "…" : "Enregistrer"}
+                    {savingTiers ? "…" : t("save")}
                   </button>
                 </div>
 
                 <p className="text-[11px] text-text-muted mb-3">
-                  Définissez quel modèle est utilisé selon la complexité détectée. Les modèles en tête de liste sont prioritaires ; le fallback tente le suivant en cas d'erreur.
-                  Vous pouvez utiliser des instances nommées (configurées dans l'onglet "Modèles IA") ou les providers génériques.
+                  {t("routingDescription")}
                 </p>
 
                 {routingItems.length === 0 && (
                   <div className="mb-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
                     <p className="text-[11px] text-amber-400">
-                      Aucune instance configurée. Allez dans l'onglet "Modèles IA" pour créer des instances, ou utilisez les providers génériques.
+                      {t("routingNoInstances")}
                     </p>
                   </div>
                 )}
@@ -1157,11 +1156,11 @@ export default function SettingsPage() {
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>
                               {tier.badge}
                             </span>
-                            <span className="text-xs font-medium text-text-primary">{tier.label}</span>
+                            <span className="text-xs font-medium text-text-primary">{t.has(`tierLabels.${tier.id}`) ? t(`tierLabels.${tier.id}`) : tier.label}</span>
                             <button
                               onClick={() => setTierTooltip(tierTooltip === tier.id ? null : tier.id)}
                               className="text-text-muted hover:text-text-secondary transition-colors shrink-0"
-                              title="Explication"
+                              title={t("explanation")}
                             >
                               <Info className="w-3 h-3" />
                             </button>
@@ -1170,13 +1169,13 @@ export default function SettingsPage() {
                           <button
                             onClick={() => toggleTierFallback(tier.id)}
                             className="flex items-center gap-1.5 text-[10px] shrink-0 transition-colors"
-                            title={entry.fallback_enabled ? "Désactiver le fallback" : "Activer le fallback"}
+                            title={entry.fallback_enabled ? t("disableFallback") : t("enableFallback")}
                           >
                             {entry.fallback_enabled
                               ? <ToggleRight className="w-4 h-4 text-cyber-cyan" />
                               : <ToggleLeft className="w-4 h-4 text-text-muted" />}
                             <span className={entry.fallback_enabled ? "text-cyber-cyan" : "text-text-muted"}>
-                              Fallback {entry.fallback_enabled ? "activé" : "désactivé"}
+                              {entry.fallback_enabled ? t("fallbackEnabled") : t("fallbackDisabled")}
                             </span>
                           </button>
                         </div>
@@ -1184,14 +1183,14 @@ export default function SettingsPage() {
                         {/* Tooltip description */}
                         {tierTooltip === tier.id && (
                           <p className="text-[11px] text-text-muted bg-bg-primary rounded px-3 py-2 mb-3 border border-border-dim">
-                            {tier.description}
+                            {t.has(`tierDescriptions.${tier.id}`) ? t(`tierDescriptions.${tier.id}`) : tier.description}
                           </p>
                         )}
 
                         {/* Ordered provider / instance list */}
                         <div className="space-y-1.5">
                           {entry.providers.length === 0 && (
-                            <p className="text-[11px] text-text-muted italic">Aucun modèle configuré — le provider global sera utilisé.</p>
+                            <p className="text-[11px] text-text-muted italic">{t("noTierModels")}</p>
                           )}
                           {entry.providers.map((provId, idx) => {
                             const item = resolveRoutingItem(provId);
@@ -1205,7 +1204,7 @@ export default function SettingsPage() {
                                   <span className="truncate">{item.label}</span>
                                   {item.isInstance && (
                                     <span className="ml-auto text-[8px] px-1 py-0.5 rounded bg-cyber-cyan/10 border border-cyber-cyan/20 text-cyber-cyan shrink-0">
-                                      instance
+                                      {t("instanceBadge")}
                                     </span>
                                   )}
                                 </div>
@@ -1250,10 +1249,10 @@ export default function SettingsPage() {
                               }}
                               className="text-[11px] bg-bg-primary border border-border-dim rounded px-2 py-1 text-text-muted w-full"
                             >
-                              <option value="">+ Ajouter un modèle…</option>
+                              <option value="">{t("addModelOption")}</option>
                               {/* Instances group */}
                               {availableToAdd.filter((ri) => ri.isInstance).length > 0 && (
-                                <optgroup label="— Instances nommées">
+                                <optgroup label={t("namedInstancesGroup")}>
                                   {availableToAdd.filter((ri) => ri.isInstance).map((ri) => (
                                     <option key={ri.id} value={ri.id}>
                                       {ri.flag} {ri.label}
@@ -1263,7 +1262,7 @@ export default function SettingsPage() {
                               )}
                               {/* Legacy providers group */}
                               {availableToAdd.filter((ri) => !ri.isInstance).length > 0 && (
-                                <optgroup label="— Providers génériques">
+                                <optgroup label={t("genericProvidersGroup")}>
                                   {availableToAdd.filter((ri) => !ri.isInstance).map((ri) => (
                                     <option key={ri.id} value={ri.id}>
                                       {ri.flag} {ri.label}
@@ -1303,7 +1302,7 @@ export default function SettingsPage() {
 
               <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
                 <div className="space-y-2">
-                  {GOOGLE_SERVICES.map(({ id, label, icon: Icon, scope }) => (
+                  {GOOGLE_SERVICES.map(({ id, label, icon: Icon, scopeKey }) => (
                     <div key={id} className="flex items-center gap-3">
                       <div className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${
                         googleConnected ? "bg-emerald-500/10 border border-emerald-500/20" : "bg-bg-primary border border-border-dim"
@@ -1312,7 +1311,7 @@ export default function SettingsPage() {
                       </div>
                       <div>
                         <div className="text-xs font-medium text-text-primary">{label}</div>
-                        <div className="text-[11px] text-text-muted">{scope}</div>
+                        <div className="text-[11px] text-text-muted">{t(scopeKey as never)}</div>
                       </div>
                     </div>
                   ))}
@@ -1320,7 +1319,7 @@ export default function SettingsPage() {
 
                 <p className="text-[11px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
                   <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-emerald-400" />
-                  ELY n&apos;accède à ces services que sur demande explicite. Un token OAuth2 est stocké localement — aucune donnée ne transite par un serveur tiers.
+                  {t("googlePrivacyNote")}
                 </p>
 
                 <div className="pt-1">
@@ -1344,15 +1343,24 @@ export default function SettingsPage() {
                   )}
                 </div>
 
+                {/* Multi-account section — Phase 3 of multi-Google.
+                    Lists every linked GoogleAccount (alias/email/default badge),
+                    lets the user add more, rename, set-default, remove. */}
+                {googleConnected && (
+                  <div className="pt-3 border-t border-border-dim">
+                    <GoogleAccountsSection />
+                  </div>
+                )}
+
                 <details className="text-[11px] text-text-muted">
                   <summary className="cursor-pointer hover:text-text-secondary">{t("howToConfigure")}</summary>
                   <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                    <li>Aller sur <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">console.cloud.google.com</a></li>
-                    <li>Créer un projet → API &amp; Services → Identifiants</li>
-                    <li>Créer un ID client OAuth 2.0 (application Web)</li>
-                    <li>Ajouter l&apos;URI de redirection : <code className="text-cyber-cyan">http://localhost:8000/api/google/callback</code></li>
-                    <li>Renseigner le Client ID et Secret dans <a href="/admin" className="text-cyber-cyan hover:underline">Admin → OAuth Google</a> (sans redémarrage)</li>
-                    <li>Revenir ici et cliquer sur &quot;Connecter mon compte Google&quot;</li>
+                    <li>{t.rich("googleStep1", { link: (chunks) => <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">{chunks}</a> })}</li>
+                    <li>{t("googleStep2")}</li>
+                    <li>{t("googleStep3")}</li>
+                    <li>{t.rich("googleStep4", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
+                    <li>{t.rich("googleStep5", { link: (chunks) => <a href="/admin" className="text-cyber-cyan hover:underline">{chunks}</a> })}</li>
+                    <li>{t("googleStep6")}</li>
                   </ol>
                 </details>
               </div>
@@ -1367,9 +1375,9 @@ export default function SettingsPage() {
             {activeTab === "channels" && (
             <section className="space-y-8">
               <div>
-                <h2 className="text-sm font-medium text-text-primary mb-1">Canaux de conversation</h2>
+                <h2 className="text-sm font-medium text-text-primary mb-1">{t("channelsTitle")}</h2>
                 <p className="text-[11px] text-text-muted">
-                  Configure ici les canaux par lesquels tu peux échanger avec Éli depuis ton téléphone ou d&apos;autres apps. Chaque canal est indépendant et peut être activé ou désactivé séparément. Déplie « Comment configurer ? » pour l&apos;aide pas-à-pas.
+                  {t("channelsIntro")}
                 </p>
               </div>
 
@@ -1380,24 +1388,24 @@ export default function SettingsPage() {
                   <h3 className="text-sm font-medium text-text-primary">WhatsApp</h3>
                   {waWebStatus.status === "linked" && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                      <CheckCircle className="w-2.5 h-2.5" /> lié{waWebStatus.phone ? ` — +${waWebStatus.phone}` : ""}
+                      <CheckCircle className="w-2.5 h-2.5" /> {waWebStatus.phone ? t("waLinkedPhone", { phone: waWebStatus.phone }) : t("waLinked")}
                     </span>
                   )}
                   {waWebStatus.status === "pending_qr" && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                      En attente du scan
+                      {t("waWaitingScan")}
                     </span>
                   )}
                   {waWebStatus.status === "error" && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400">
-                      <XCircle className="w-2.5 h-2.5" /> erreur
+                      <XCircle className="w-2.5 h-2.5" /> {t("waErrorBadge")}
                     </span>
                   )}
                 </div>
 
                 <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
                   <p className="text-[11px] text-text-muted">
-                    Lie ton compte WhatsApp personnel en scannant un QR code. Aucune app Meta Developer n&apos;est requise — ELY utilise le protocole WhatsApp Web. <strong>Tu discutes avec Éli uniquement via le self-chat</strong> (conversation avec toi-même). Tes autres conversations WhatsApp restent inchangées.
+                    {t.rich("waIntro", { strong: (chunks) => <strong>{chunks}</strong> })}
                   </p>
 
                   {/* Pending QR — big so iPhone cameras decode reliably */}
@@ -1405,11 +1413,11 @@ export default function SettingsPage() {
                     <div className="flex flex-col items-center gap-3 py-2">
                       <img
                         src={`data:image/png;base64,${waWebStatus.qr_png_b64}`}
-                        alt="QR WhatsApp"
+                        alt={t("waQrAlt")}
                         className="w-[420px] h-[420px] max-w-full rounded bg-white p-3 border border-border-dim"
                       />
                       <p className="text-[11px] text-text-muted text-center max-w-xs">
-                        Ouvre WhatsApp sur ton téléphone → Paramètres → Appareils connectés → Associer un appareil → scanne ce QR.
+                        {t("waQrInstructions")}
                       </p>
                     </div>
                   )}
@@ -1427,7 +1435,7 @@ export default function SettingsPage() {
                         disabled={waWebLoading}
                         className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
                       >
-                        {waWebLoading ? "..." : "Déconnecter WhatsApp"}
+                        {waWebLoading ? "..." : t("waDisconnect")}
                       </button>
                     ) : (
                       <button
@@ -1435,7 +1443,7 @@ export default function SettingsPage() {
                         disabled={waWebLoading || waWebStatus.status === "pending_qr"}
                         className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50"
                       >
-                        {waWebLoading ? "..." : waWebStatus.status === "pending_qr" ? "Scan en cours..." : "Lier mon WhatsApp"}
+                        {waWebLoading ? "..." : waWebStatus.status === "pending_qr" ? t("waScanInProgress") : t("waLinkMy")}
                       </button>
                     )}
                   </div>
@@ -1444,11 +1452,14 @@ export default function SettingsPage() {
                   {waWebStatus.status !== "linked" && waWebStatus.status !== "not_started" && (
                     <details className="pt-2 border-t border-border-dim">
                       <summary className="text-[11px] text-text-muted cursor-pointer hover:text-text-secondary">
-                        Le QR échoue ? Essayer avec un numéro de téléphone
+                        {t("waQrFailedTitle")}
                       </summary>
                       <div className="mt-3 space-y-2">
                         <p className="text-[11px] text-text-muted">
-                          Entre ton numéro au format international (ex. <code className="text-cyber-cyan">33612345678</code>, sans le +). ELY génère un code à 8 caractères que tu saisis dans <strong>WhatsApp → Appareils connectés → Lier avec un numéro de téléphone à la place</strong>.
+                          {t.rich("waPhoneIntro", {
+                            code: (chunks) => <code className="text-cyber-cyan">{chunks}</code>,
+                            strong: (chunks) => <strong>{chunks}</strong>,
+                          })}
                         </p>
                         <div className="flex gap-2">
                           <input
@@ -1463,14 +1474,14 @@ export default function SettingsPage() {
                             disabled={waWebLoading || !waPhoneInput.trim()}
                             className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
                           >
-                            {waWebLoading ? "..." : "Obtenir un code"}
+                            {waWebLoading ? "..." : t("waGetCode")}
                           </button>
                         </div>
                         {waPairCode && (
                           <div className="text-center py-3 bg-emerald-500/5 border border-emerald-500/20 rounded">
-                            <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">Code à entrer dans WhatsApp</div>
+                            <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">{t("waCodeLabel")}</div>
                             <div className="text-2xl font-mono font-bold text-emerald-300 tracking-widest">{waPairCode}</div>
-                            <div className="text-[10px] text-text-muted mt-1">Valide quelques minutes</div>
+                            <div className="text-[10px] text-text-muted mt-1">{t("waCodeValidity")}</div>
                           </div>
                         )}
                       </div>
@@ -1478,18 +1489,18 @@ export default function SettingsPage() {
                   )}
 
                   <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
-                    <summary className="cursor-pointer hover:text-text-secondary">Comment ça marche ?</summary>
+                    <summary className="cursor-pointer hover:text-text-secondary">{t("waHowItWorks")}</summary>
                     <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                      <li>Clique sur <strong>Lier mon WhatsApp</strong> — un QR code s&apos;affiche.</li>
-                      <li>Dans WhatsApp sur ton téléphone : Paramètres → Appareils connectés → Associer un appareil.</li>
-                      <li>Scanne le QR affiché ici.</li>
-                      <li>Une fois lié, envoie-toi un message dans le chat <em>« Messagerie avec vous-même »</em> — ELY répondra uniquement dans ce chat-là.</li>
+                      <li>{t.rich("waStep1", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t("waStep2")}</li>
+                      <li>{t("waStep3")}</li>
+                      <li>{t.rich("waStep4", { em: (chunks) => <em>{chunks}</em> })}</li>
                     </ol>
                   </details>
 
                   <p className="text-[10px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
                     <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-amber-400" />
-                    Méthode non-officielle (WhatsApp Web). Ton compte peut théoriquement être restreint par WhatsApp. Pour un usage professionnel à grande échelle, préférez Meta Cloud API.
+                    {t("waUnofficialNote")}
                   </p>
                 </div>
               </div>
@@ -1501,24 +1512,27 @@ export default function SettingsPage() {
                   <h3 className="text-sm font-medium text-text-primary">Telegram</h3>
                   {tgStatus.configured && tgStatus.running && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                      <CheckCircle className="w-2.5 h-2.5" /> actif{tgStatus.bot_username ? ` — @${tgStatus.bot_username}` : ""}
+                      <CheckCircle className="w-2.5 h-2.5" /> {tgStatus.bot_username ? t("activeNamed", { name: tgStatus.bot_username }) : t("active")}
                     </span>
                   )}
                   {tgStatus.configured && !tgStatus.running && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                      configuré mais arrêté
+                      {t("configuredButStopped")}
                     </span>
                   )}
                   {!tgStatus.configured && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
-                      non configuré
+                      {t("notConfiguredBadge")}
                     </span>
                   )}
                 </div>
 
                 <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
                   <p className="text-[11px] text-text-muted">
-                    Crée un bot via <strong>@BotFather</strong> sur Telegram, colle son token ici, puis lie ton compte en envoyant <code className="text-cyber-cyan">/link &lt;username&gt; &lt;motdepasse&gt;</code> au bot (en DM).
+                    {t.rich("tgIntro", {
+                      strong: (chunks) => <strong>{chunks}</strong>,
+                      code: (chunks) => <code className="text-cyber-cyan">{chunks}</code>,
+                    })}
                   </p>
 
                   <div className="flex gap-2">
@@ -1526,7 +1540,7 @@ export default function SettingsPage() {
                       type="password"
                       value={tgToken}
                       onChange={(e) => setTgToken(e.target.value)}
-                      placeholder={tgStatus.configured ? "••••••• (déjà configuré, écraser si besoin)" : "Token BotFather — 8537xxxxxx:AAH..."}
+                      placeholder={tgStatus.configured ? t("tgTokenPlaceholderConfigured") : t("tgTokenPlaceholder")}
                       className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyan-500/40 font-mono"
                     />
                     <button
@@ -1534,7 +1548,7 @@ export default function SettingsPage() {
                       disabled={tgBusy || !tgToken.trim()}
                       className="text-xs px-3 py-1.5 rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
                     >
-                      {tgBusy ? "..." : tgStatus.configured ? "Mettre à jour" : "Activer"}
+                      {tgBusy ? "..." : tgStatus.configured ? t("update") : t("enable")}
                     </button>
                     {tgStatus.configured && (
                       <button
@@ -1542,24 +1556,27 @@ export default function SettingsPage() {
                         disabled={tgBusy}
                         className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50 whitespace-nowrap"
                       >
-                        Désactiver
+                        {t("disable")}
                       </button>
                     )}
                   </div>
 
                   <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
-                    <summary className="cursor-pointer hover:text-text-secondary">Comment configurer ?</summary>
+                    <summary className="cursor-pointer hover:text-text-secondary">{t("howToConfigure")}</summary>
                     <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                      <li>Ouvre Telegram → cherche <strong>@BotFather</strong> (coche bleue officielle).</li>
-                      <li>Envoie <code className="text-cyber-cyan">/newbot</code>, choisis un nom et un username finissant par <code>_bot</code>.</li>
-                      <li>BotFather te renvoie un token du style <code className="text-cyber-cyan">8537074323:AAHxxxxx</code> — copie-le.</li>
-                      <li>Colle-le dans le champ ci-dessus puis clique <strong>Activer</strong>.</li>
-                      <li>Retourne sur Telegram, ouvre une conversation avec ton bot, clique <strong>Démarrer</strong>.</li>
-                      <li>Envoie <code className="text-cyber-cyan">/link ton_username ton_motdepasse</code> (les identifiants ELY de cette interface).</li>
-                      <li>Ton compte est lié — tu peux discuter librement en DM avec ton bot.</li>
+                      <li>{t.rich("tgHelpStep1", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t.rich("tgHelpStep2", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
+                      <li>{t.rich("tgHelpStep3", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
+                      <li>{t.rich("tgHelpStep4", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t.rich("tgHelpStep5", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t.rich("tgHelpStep6", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
+                      <li>{t("tgHelpStep7")}</li>
                     </ol>
                     <p className="mt-2">
-                      💡 <strong>Latence :</strong> actuellement en mode polling (~10 s de décalage). Pour passer en temps réel, il faut exposer <code>/webhook/*</code> via le tunnel Cloudflare.
+                      {t.rich("tgLatencyNote", {
+                        strong: (chunks) => <strong>{chunks}</strong>,
+                        code: (chunks) => <code>{chunks}</code>,
+                      })}
                     </p>
                   </details>
                 </div>
@@ -1572,24 +1589,28 @@ export default function SettingsPage() {
                   <h3 className="text-sm font-medium text-text-primary">Discord</h3>
                   {dcStatus.configured && dcStatus.running && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                      <CheckCircle className="w-2.5 h-2.5" /> actif
+                      <CheckCircle className="w-2.5 h-2.5" /> {t("active")}
                     </span>
                   )}
                   {dcStatus.configured && !dcStatus.running && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                      configuré mais arrêté
+                      {t("configuredButStopped")}
                     </span>
                   )}
                   {!dcStatus.configured && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
-                      non configuré
+                      {t("notConfiguredBadge")}
                     </span>
                   )}
                 </div>
 
                 <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
                   <p className="text-[11px] text-text-muted">
-                    Crée un bot sur le <strong>Discord Developer Portal</strong>, active le <em>Message Content Intent</em>, copie son token, puis DM ton bot avec <code className="text-cyber-cyan">!link &lt;username&gt; &lt;motdepasse&gt;</code>.
+                    {t.rich("dcIntro", {
+                      strong: (chunks) => <strong>{chunks}</strong>,
+                      em: (chunks) => <em>{chunks}</em>,
+                      code: (chunks) => <code className="text-cyber-cyan">{chunks}</code>,
+                    })}
                   </p>
 
                   <div className="flex gap-2">
@@ -1597,7 +1618,7 @@ export default function SettingsPage() {
                       type="password"
                       value={dcToken}
                       onChange={(e) => setDcToken(e.target.value)}
-                      placeholder={dcStatus.configured ? "••••••• (déjà configuré, écraser si besoin)" : "Token du Discord Developer Portal"}
+                      placeholder={dcStatus.configured ? t("dcTokenPlaceholderConfigured") : t("dcTokenPlaceholder")}
                       className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-indigo-500/40 font-mono"
                     />
                     <button
@@ -1605,7 +1626,7 @@ export default function SettingsPage() {
                       disabled={dcBusy || !dcToken.trim()}
                       className="text-xs px-3 py-1.5 rounded border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
                     >
-                      {dcBusy ? "..." : dcStatus.configured ? "Mettre à jour" : "Activer"}
+                      {dcBusy ? "..." : dcStatus.configured ? t("update") : t("enable")}
                     </button>
                     {dcStatus.configured && (
                       <button
@@ -1613,21 +1634,21 @@ export default function SettingsPage() {
                         disabled={dcBusy}
                         className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50 whitespace-nowrap"
                       >
-                        Désactiver
+                        {t("disable")}
                       </button>
                     )}
                   </div>
 
                   <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
-                    <summary className="cursor-pointer hover:text-text-secondary">Comment configurer ?</summary>
+                    <summary className="cursor-pointer hover:text-text-secondary">{t("howToConfigure")}</summary>
                     <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                      <li>Va sur <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">discord.com/developers/applications</a>.</li>
-                      <li>Clique <strong>New Application</strong> → donne-lui un nom (ex. « ELY »).</li>
-                      <li>Onglet <strong>Bot</strong> → <strong>Reset Token</strong> → copie le token (ne se revoit plus).</li>
-                      <li>Dans <em>Privileged Gateway Intents</em>, coche <strong>MESSAGE CONTENT INTENT</strong> (obligatoire sinon le bot reçoit des messages vides). <strong>Save Changes</strong>.</li>
-                      <li>(Optionnel — pour utilisation en serveur) Onglet <strong>OAuth2 → URL Generator</strong>, coche <em>bot</em> + permissions <em>Send Messages / Read Message History / Add Reactions / Manage Messages</em>, ouvre l&apos;URL et invite le bot sur ton serveur.</li>
-                      <li>Colle le token dans le champ ci-dessus → <strong>Activer</strong>.</li>
-                      <li>Dans Discord, DM ton bot avec <code className="text-cyber-cyan">!link ton_username ton_motdepasse</code>.</li>
+                      <li>{t.rich("dcHelpStep1", { link: (chunks) => <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">{chunks}</a> })}</li>
+                      <li>{t.rich("dcHelpStep2", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t.rich("dcHelpStep3", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t.rich("dcHelpStep4", { strong: (chunks) => <strong>{chunks}</strong>, em: (chunks) => <em>{chunks}</em> })}</li>
+                      <li>{t.rich("dcHelpStep5", { strong: (chunks) => <strong>{chunks}</strong>, em: (chunks) => <em>{chunks}</em> })}</li>
+                      <li>{t.rich("dcHelpStep6", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t.rich("dcHelpStep7", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
                     </ol>
                   </details>
                 </div>
@@ -1640,33 +1661,36 @@ export default function SettingsPage() {
                   <h3 className="text-sm font-medium text-text-primary">Slack</h3>
                   {slStatus.configured && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                      <CheckCircle className="w-2.5 h-2.5" /> configuré
+                      <CheckCircle className="w-2.5 h-2.5" /> {t("configuredBadge")}
                     </span>
                   )}
                   {!slStatus.configured && (
                     <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
-                      non configuré
+                      {t("notConfiguredBadge")}
                     </span>
                   )}
                 </div>
 
                 <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
                   <p className="text-[11px] text-text-muted">
-                    Crée une app Slack (Socket Mode), copie les <strong>deux</strong> tokens : <code className="text-cyber-cyan">xoxb-</code> (Bot User OAuth Token) et <code className="text-cyber-cyan">xapp-</code> (App-Level Token).
+                    {t.rich("slIntro", {
+                      strong: (chunks) => <strong>{chunks}</strong>,
+                      code: (chunks) => <code className="text-cyber-cyan">{chunks}</code>,
+                    })}
                   </p>
 
                   <input
                     type="password"
                     value={slBotToken}
                     onChange={(e) => setSlBotToken(e.target.value)}
-                    placeholder={slStatus.has_bot_token ? "Bot token ••••••• (déjà configuré)" : "Bot token — xoxb-..."}
+                    placeholder={slStatus.has_bot_token ? t("slBotTokenPlaceholderConfigured") : t("slBotTokenPlaceholder")}
                     className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-purple-500/40 font-mono"
                   />
                   <input
                     type="password"
                     value={slAppToken}
                     onChange={(e) => setSlAppToken(e.target.value)}
-                    placeholder={slStatus.has_app_token ? "App token ••••••• (déjà configuré)" : "App token — xapp-..."}
+                    placeholder={slStatus.has_app_token ? t("slAppTokenPlaceholderConfigured") : t("slAppTokenPlaceholder")}
                     className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-purple-500/40 font-mono"
                   />
 
@@ -1676,7 +1700,7 @@ export default function SettingsPage() {
                       disabled={slBusy || !slBotToken.trim() || !slAppToken.trim()}
                       className="text-xs px-3 py-1.5 rounded border border-purple-500/30 text-purple-400 hover:bg-purple-500/5 transition-all disabled:opacity-50"
                     >
-                      {slBusy ? "..." : slStatus.configured ? "Mettre à jour" : "Activer"}
+                      {slBusy ? "..." : slStatus.configured ? t("update") : t("enable")}
                     </button>
                     {slStatus.configured && (
                       <button
@@ -1684,21 +1708,25 @@ export default function SettingsPage() {
                         disabled={slBusy}
                         className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
                       >
-                        Désactiver
+                        {t("disable")}
                       </button>
                     )}
                   </div>
 
                   <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
-                    <summary className="cursor-pointer hover:text-text-secondary">Comment configurer ?</summary>
+                    <summary className="cursor-pointer hover:text-text-secondary">{t("howToConfigure")}</summary>
                     <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                      <li>Va sur <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">api.slack.com/apps</a> → <strong>Create New App</strong> → <em>From scratch</em>.</li>
-                      <li>Dans <strong>Socket Mode</strong>, active-le et génère un <strong>App-Level Token</strong> avec scope <code>connections:write</code> — copie le token <code>xapp-...</code>.</li>
-                      <li>Dans <strong>OAuth &amp; Permissions</strong>, ajoute les scopes Bot : <code>app_mentions:read</code>, <code>chat:write</code>, <code>im:history</code>, <code>im:read</code>, <code>im:write</code>, <code>reactions:write</code>.</li>
-                      <li>Install App to Workspace → copie le <strong>Bot User OAuth Token</strong> <code>xoxb-...</code>.</li>
-                      <li>Dans <strong>Event Subscriptions</strong>, active et abonne-toi à <code>message.im</code> et <code>app_mention</code>.</li>
-                      <li>Colle les deux tokens ci-dessus → <strong>Activer</strong>.</li>
-                      <li>Dans Slack, DM ton bot avec <code className="text-cyber-cyan">!link ton_username ton_motdepasse</code>.</li>
+                      <li>{t.rich("slHelpStep1", {
+                        link: (chunks) => <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">{chunks}</a>,
+                        strong: (chunks) => <strong>{chunks}</strong>,
+                        em: (chunks) => <em>{chunks}</em>,
+                      })}</li>
+                      <li>{t.rich("slHelpStep2", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
+                      <li>{t.rich("slHelpStep3", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
+                      <li>{t.rich("slHelpStep4", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
+                      <li>{t.rich("slHelpStep5", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
+                      <li>{t.rich("slHelpStep6", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
+                      <li>{t.rich("slHelpStep7", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
                     </ol>
                   </details>
                 </div>
@@ -1746,10 +1774,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
                   <p className="text-xs text-text-muted">
-                    Configurer les hôtes SSH et leurs commandes autorisées dans{" "}
-                    <code className="text-cyber-cyan">config/hosts.yaml</code>.
-                    Chaque hôte requiert une liste explicite de commandes — l&apos;agent ne peut pas
-                    exécuter de commandes arbitraires.
+                    {t.rich("sshConfigDesc", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}
                   </p>
                   <pre className="mt-3 text-[11px] text-text-secondary bg-bg-primary border border-border-dim rounded p-3 overflow-x-auto">
 {`hosts:
@@ -1776,14 +1801,14 @@ export default function SettingsPage() {
                 <h2 className="text-sm font-medium text-text-primary">ELY Desktop</h2>
                 {desktopConnected === true && (
                   <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                    <Wifi className="w-2.5 h-2.5" /> Connecté
+                    <Wifi className="w-2.5 h-2.5" /> {t("connected")}
                     {desktopPlatform && ` · ${desktopPlatform}`}
                     {desktopVersion && ` v${desktopVersion}`}
                   </span>
                 )}
                 {desktopConnected === false && (
                   <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
-                    <WifiOff className="w-2.5 h-2.5" /> Non connecté
+                    <WifiOff className="w-2.5 h-2.5" /> {t("notConnected")}
                   </span>
                 )}
               </div>
@@ -1792,20 +1817,18 @@ export default function SettingsPage() {
 
                 {/* Description */}
                 <p className="text-xs text-text-muted">
-                  ELY Desktop est un daemon léger qui tourne sur votre machine et donne à ELY
-                  un accès contrôlé à votre système de fichiers local. Seuls les répertoires
-                  listés ci-dessous sont accessibles.
+                  {t("desktopDescription")}
                 </p>
 
                 {/* Sandbox dirs */}
                 <div className="space-y-2">
                   <span className="text-xs text-text-muted uppercase tracking-wider">
-                    Répertoires autorisés
+                    {t("allowedDirs")}
                   </span>
 
                   {sandboxDirs.length === 0 && (
                     <p className="text-[11px] text-text-muted italic">
-                      Aucun répertoire configuré — ajoutez-en un ci-dessous.
+                      {t("noDirsConfigured")}
                     </p>
                   )}
 
@@ -1819,7 +1842,7 @@ export default function SettingsPage() {
                         <button
                           onClick={() => handleRemoveSandboxDir(dir)}
                           className="shrink-0 text-text-muted hover:text-cyber-red transition-colors"
-                          aria-label="Supprimer"
+                          aria-label={t("delete")}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -1852,22 +1875,20 @@ export default function SettingsPage() {
                   disabled={savingDesktop}
                   className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-50"
                 >
-                  {savingDesktop ? "Sauvegarde…" : "Sauvegarder"}
+                  {savingDesktop ? t("saving") : t("save")}
                 </button>
 
                 {/* Download config */}
                 <div className="pt-3 border-t border-border-dim space-y-2">
                   <p className="text-[11px] text-text-muted">
-                    Téléchargez le fichier de configuration et placez-le dans le même répertoire
-                    que le daemon ELY Desktop. Il contient un token d&apos;authentification valable
-                    30 jours.
+                    {t("desktopDownloadDesc")}
                   </p>
                   <button
                     onClick={handleDownloadConfig}
                     className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
                   >
                     <Download className="w-3 h-3" />
-                    Télécharger ely-config.json
+                    {t("downloadConfig")}
                   </button>
                 </div>
 
@@ -1875,7 +1896,7 @@ export default function SettingsPage() {
                 {desktopBinaries.length > 0 && (
                   <div className="pt-3 border-t border-border-dim space-y-2">
                     <span className="text-xs text-text-muted uppercase tracking-wider">
-                      Télécharger le daemon
+                      {t("downloadDaemon")}
                     </span>
                     <div className="space-y-1.5">
                       {desktopBinaries.map((b) => (
@@ -1897,17 +1918,17 @@ export default function SettingsPage() {
                     </div>
                     <details className="text-[11px] text-text-muted">
                       <summary className="cursor-pointer hover:text-text-secondary">
-                        Instructions d&apos;installation
+                        {t("installInstructions")}
                       </summary>
                       <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                        <li>Télécharger le binaire correspondant à votre OS</li>
-                        <li>Télécharger <code className="text-cyber-cyan">ely-config.json</code> (bouton ci-dessus)</li>
-                        <li>Placer les deux fichiers dans le même répertoire</li>
+                        <li>{t("installStep1")}</li>
+                        <li>{t.rich("installStep2", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
+                        <li>{t("installStep3")}</li>
                         <li>
-                          Linux/macOS : <code className="text-cyber-cyan">chmod +x ely-desktop-* &amp;&amp; ./ely-desktop-*</code>
+                          {t.rich("installStep4", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}
                         </li>
-                        <li>Windows : double-cliquer sur <code className="text-cyber-cyan">ely-desktop-windows-amd64.exe</code></li>
-                        <li>Le statut ci-dessus passera à &quot;Connecté&quot; en quelques secondes</li>
+                        <li>{t.rich("installStep5", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
+                        <li>{t("installStep6")}</li>
                       </ol>
                     </details>
                   </div>
@@ -1928,18 +1949,17 @@ export default function SettingsPage() {
                 <section>
                   <div className="flex items-center gap-2 mb-4">
                     <Lock className="w-4 h-4 text-cyber-cyan" />
-                    <h2 className="text-sm font-medium text-text-primary">Mon compte</h2>
+                    <h2 className="text-sm font-medium text-text-primary">{t("myAccount")}</h2>
                   </div>
 
                   <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
                     <p className="text-xs text-text-muted">
-                      Conformément au RGPD, vous pouvez modifier votre mot de passe à tout moment.
-                      Le mot de passe doit respecter les recommandations de la CNIL.
+                      {t("accountIntro")}
                     </p>
 
                     {/* Mot de passe actuel */}
                     <div className="space-y-1">
-                      <label className="text-xs text-text-secondary">Mot de passe actuel</label>
+                      <label className="text-xs text-text-secondary">{t("currentPassword")}</label>
                       <div className="relative">
                         <input
                           type={showCurrentPwd ? "text" : "password"}
@@ -1960,7 +1980,7 @@ export default function SettingsPage() {
 
                     {/* Nouveau mot de passe */}
                     <div className="space-y-1">
-                      <label className="text-xs text-text-secondary">Nouveau mot de passe</label>
+                      <label className="text-xs text-text-secondary">{t("newPassword")}</label>
                       <div className="relative">
                         <input
                           type={showNewPwd ? "text" : "password"}
@@ -1993,15 +2013,15 @@ export default function SettingsPage() {
                               ))}
                             </div>
                             <span className={`text-[10px] font-medium ${strength.color} shrink-0`}>
-                              {strength.label}
+                              {t(strength.labelKey as never)}
                             </span>
                           </div>
-                          {strength.hints.length > 0 && (
+                          {strength.hintKeys.length > 0 && (
                             <ul className="space-y-0.5">
-                              {strength.hints.map((h) => (
+                              {strength.hintKeys.map((h) => (
                                 <li key={h} className="text-[10px] text-text-muted flex items-center gap-1">
                                   <XCircle className="w-3 h-3 text-red-400 shrink-0" />
-                                  {h}
+                                  {t(h as never)}
                                 </li>
                               ))}
                             </ul>
@@ -2012,7 +2032,7 @@ export default function SettingsPage() {
 
                     {/* Confirmation */}
                     <div className="space-y-1">
-                      <label className="text-xs text-text-secondary">Confirmer le nouveau mot de passe</label>
+                      <label className="text-xs text-text-secondary">{t("confirmNewPassword")}</label>
                       <input
                         type="password"
                         value={confirmPwd}
@@ -2026,7 +2046,7 @@ export default function SettingsPage() {
                       />
                       {mismatch && (
                         <p className="text-[10px] text-red-400 flex items-center gap-1">
-                          <XCircle className="w-3 h-3" /> Les mots de passe ne correspondent pas.
+                          <XCircle className="w-3 h-3" /> {t("pwdMismatchInline")}
                         </p>
                       )}
                     </div>
@@ -2036,7 +2056,7 @@ export default function SettingsPage() {
                       disabled={savingPwd || !currentPwd || !newPwd || !confirmPwd}
                       className="w-full py-2 rounded-md text-xs font-medium bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      {savingPwd ? "Modification en cours…" : "Modifier le mot de passe"}
+                      {savingPwd ? t("pwdChanging") : t("changePassword")}
                     </button>
                   </div>
                 </section>
@@ -2058,7 +2078,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Cpu className="w-4 h-4 text-cyber-cyan" />
-                <h3 className="text-sm font-medium text-text-primary">Ajouter un modèle</h3>
+                <h3 className="text-sm font-medium text-text-primary">{t("addModel")}</h3>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -2070,7 +2090,7 @@ export default function SettingsPage() {
 
             {/* Step 1: Provider */}
             <div className="space-y-2">
-              <label className="text-xs text-text-muted uppercase tracking-wider">Provider</label>
+              <label className="text-xs text-text-muted uppercase tracking-wider">{t("providerLabel")}</label>
               <div className="grid grid-cols-2 gap-2">
                 {PROVIDERS.map((p) => (
                   <button
@@ -2091,7 +2111,7 @@ export default function SettingsPage() {
 
             {/* Step 2: Model */}
             <div className="space-y-2">
-              <label className="text-xs text-text-muted uppercase tracking-wider">Modèle</label>
+              <label className="text-xs text-text-muted uppercase tracking-wider">{t("modelLabel")}</label>
               {modalProvider === "ollama" ? (
                 modalOllamaModels.length > 0 ? (
                   <select
@@ -2109,10 +2129,10 @@ export default function SettingsPage() {
                       type="text"
                       value={modalModel}
                       onChange={(e) => setModalModel(e.target.value)}
-                      placeholder="gemma4:26b, phi4-mini, qwen2.5:7b…"
+                      placeholder={t("ollamaModelPlaceholder")}
                       className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
                     />
-                    <p className="text-[10px] text-text-muted">Ollama non joignable — saisir le nom du modèle manuellement.</p>
+                    <p className="text-[10px] text-text-muted">{t("ollamaUnreachable")}</p>
                   </div>
                 )
               ) : (
@@ -2120,7 +2140,7 @@ export default function SettingsPage() {
                   type="text"
                   value={modalModel}
                   onChange={(e) => setModalModel(e.target.value)}
-                  placeholder={selectedModalProvider?.defaultModel ?? "nom-du-modele"}
+                  placeholder={selectedModalProvider?.defaultModel ?? t("modelNamePlaceholder")}
                   className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
                 />
               )}
@@ -2129,7 +2149,7 @@ export default function SettingsPage() {
             {/* Step 3: API Key (cloud providers only) */}
             {selectedModalProvider?.needsKey && (
               <div className="space-y-2">
-                <label className="text-xs text-text-muted uppercase tracking-wider">Clé API</label>
+                <label className="text-xs text-text-muted uppercase tracking-wider">{t("apiKey")}</label>
                 <input
                   type="password"
                   value={modalApiKey}
@@ -2139,19 +2159,19 @@ export default function SettingsPage() {
                   className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
                 />
                 <p className="text-[10px] text-text-muted">
-                  Optionnelle si déjà configurée globalement. Stockée en clair dans la base locale.
+                  {t("apiKeyOptional")}
                 </p>
               </div>
             )}
 
             {/* Step 4: Label */}
             <div className="space-y-2">
-              <label className="text-xs text-text-muted uppercase tracking-wider">Nom (label)</label>
+              <label className="text-xs text-text-muted uppercase tracking-wider">{t("nameLabel")}</label>
               <input
                 type="text"
                 value={modalLabel}
                 onChange={(e) => setModalLabel(e.target.value)}
-                placeholder="Ex : Ollama — Gemma 4 26B"
+                placeholder={t("namePlaceholder")}
                 className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
               />
             </div>
@@ -2162,14 +2182,14 @@ export default function SettingsPage() {
                 onClick={() => setShowAddModal(false)}
                 className="flex-1 text-xs py-2 rounded border border-border-dim text-text-muted hover:text-text-secondary transition-all"
               >
-                Annuler
+                {tc("cancel")}
               </button>
               <button
                 onClick={handleCreateInstance}
                 disabled={modalSaving || !modalLabel.trim() || !modalModel.trim()}
                 className="flex-1 text-xs py-2 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {modalSaving ? "Création…" : "Créer l'instance"}
+                {modalSaving ? t("creatingInstance") : t("createInstance")}
               </button>
             </div>
           </div>

@@ -4,7 +4,7 @@
  * @file       frontend/src/app/security/page.tsx
  * @brief      Security page — audit logs and access management
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -43,8 +44,8 @@ import { motion } from "framer-motion";
 
 interface SecurityFeature {
   id: string;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   icon: React.ComponentType<{ className?: string }>;
   liveStatus?: boolean; // whether to fetch real-time status
 }
@@ -56,98 +57,37 @@ interface VaultStatus {
 // -- Security features definition --------------------------------------------
 
 const SECURITY_FEATURES: SecurityFeature[] = [
-  {
-    id: "hitl",
-    title: "HITL (Human-In-The-Loop)",
-    description:
-      "Les actions sensibles necessitent une approbation humaine avant execution. SSH, envoi de mails, et operations critiques sont toujours valides par l'utilisateur.",
-    icon: UserCheck,
-    liveStatus: true,
-  },
-  {
-    id: "vault",
-    title: "Coffre-fort chiffre",
-    description:
-      "Stockage AES-256-GCM des secrets avec verrouillage automatique. Les valeurs ne sont jamais retournees par l'API apres enregistrement.",
-    icon: Lock,
-    liveStatus: true,
-  },
-  {
-    id: "pii",
-    title: "Anonymisation PII",
-    description:
-      "SecurityFilter supprime automatiquement emails, telephones, IBANs et numeros de carte des prompts envoyes au LLM.",
-    icon: EyeOff,
-  },
-  {
-    id: "docker",
-    title: "Isolation Docker",
-    description:
-      "Le backend s'execute dans des conteneurs isoles avec des volumes en lecture seule pour la configuration.",
-    icon: Container,
-  },
-  {
-    id: "ssh",
-    title: "SSH Whitelist",
-    description:
-      "Seules les commandes explicitement autorisees sur des hotes approuves sont executables. Toute commande SSH passe par HITL.",
-    icon: Terminal,
-  },
-  {
-    id: "jwt",
-    title: "JWT + Rotation de tokens",
-    description:
-      "Access tokens courts (60 min) + refresh cookies HttpOnly avec blacklist. Rotation automatique a chaque rafraichissement.",
-    icon: KeyRound,
-  },
-  {
-    id: "rate",
-    title: "Rate Limiting",
-    description:
-      "Limitation par endpoint via slowapi. Protection contre le brute-force et les abus d'API.",
-    icon: Gauge,
-  },
-  {
-    id: "audit",
-    title: "Audit Logging",
-    description:
-      "Toutes les actions admin et SSH sont journalisees avec horodatage, utilisateur, commande et code retour.",
-    icon: FileSearch,
-  },
-  {
-    id: "pkce",
-    title: "PKCE OAuth",
-    description:
-      "Authentification Google OAuth avec PKCE + state tokens (TTL 10 min). Protection contre les attaques d'interception.",
-    icon: ShieldCheck,
-  },
-  {
-    id: "upload",
-    title: "Validation des uploads",
-    description:
-      "Verification des magic bytes, allowlist d'extensions et limite de 50 Mo. Aucun fichier executable n'est accepte.",
-    icon: Upload,
-  },
+  { id: "hitl",   titleKey: "features.hitlTitle",   descriptionKey: "features.hitlDescription",   icon: UserCheck,   liveStatus: true },
+  { id: "vault",  titleKey: "features.vaultTitle",  descriptionKey: "features.vaultDescription",  icon: Lock,        liveStatus: true },
+  { id: "pii",    titleKey: "features.piiTitle",    descriptionKey: "features.piiDescription",    icon: EyeOff },
+  { id: "docker", titleKey: "features.dockerTitle", descriptionKey: "features.dockerDescription", icon: Container },
+  { id: "ssh",    titleKey: "features.sshTitle",    descriptionKey: "features.sshDescription",    icon: Terminal },
+  { id: "jwt",    titleKey: "features.jwtTitle",    descriptionKey: "features.jwtDescription",    icon: KeyRound },
+  { id: "rate",   titleKey: "features.rateTitle",   descriptionKey: "features.rateDescription",   icon: Gauge },
+  { id: "audit",  titleKey: "features.auditTitle",  descriptionKey: "features.auditDescription",  icon: FileSearch },
+  { id: "pkce",   titleKey: "features.pkceTitle",   descriptionKey: "features.pkceDescription",   icon: ShieldCheck },
+  { id: "upload", titleKey: "features.uploadTitle", descriptionKey: "features.uploadDescription", icon: Upload },
 ];
 
 // -- Comparison data ---------------------------------------------------------
 
 const COMPARISON_ROWS = [
-  { feature: "Validation HITL", ely: true, openclaw: false },
-  { feature: "Coffre-fort chiffre (AES-256-GCM)", ely: true, openclaw: false },
-  { feature: "Anonymisation PII", ely: true, openclaw: false },
-  { feature: "Isolation Docker", ely: true, openclaw: false },
-  { feature: "SSH whitelist + fingerprints", ely: true, openclaw: false },
-  { feature: "JWT + rotation de tokens", ely: true, openclaw: false },
-  { feature: "Rate limiting par endpoint", ely: true, openclaw: false },
-  { feature: "Audit logging complet", ely: true, openclaw: false },
-  { feature: "PKCE OAuth", ely: true, openclaw: false },
-  { feature: "Validation magic bytes uploads", ely: true, openclaw: false },
+  { id: "hitl",   ely: true, openclaw: false },
+  { id: "vault",  ely: true, openclaw: false },
+  { id: "pii",    ely: true, openclaw: false },
+  { id: "docker", ely: true, openclaw: false },
+  { id: "ssh",    ely: true, openclaw: false },
+  { id: "jwt",    ely: true, openclaw: false },
+  { id: "rate",   ely: true, openclaw: false },
+  { id: "audit",  ely: true, openclaw: false },
+  { id: "pkce",   ely: true, openclaw: false },
+  { id: "upload", ely: true, openclaw: false },
 ];
 
 // -- Main page ---------------------------------------------------------------
 
 export default function SecurityPage() {
+  const t = useTranslations("security");
   const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
   const [hitlActive, setHitlActive] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,7 +124,7 @@ export default function SecurityPage() {
     if (id === "hitl") {
       if (hitlActive === null && loading) return null;
       return {
-        label: hitlActive ? "Actif" : "Inactif",
+        label: hitlActive ? t("statusActive") : t("statusInactive"),
         color: hitlActive ? "text-emerald-400" : "text-amber-400",
         bgColor: hitlActive ? "bg-emerald-400/10" : "bg-amber-400/10",
       };
@@ -193,13 +133,13 @@ export default function SecurityPage() {
       if (vaultStatus === null && loading) return null;
       if (vaultStatus === null) {
         return {
-          label: "Actif",
+          label: t("statusActive"),
           color: "text-emerald-400",
           bgColor: "bg-emerald-400/10",
         };
       }
       return {
-        label: vaultStatus.locked ? "Verrouille" : "Deverrouille",
+        label: vaultStatus.locked ? t("statusLocked") : t("statusUnlocked"),
         color: vaultStatus.locked ? "text-emerald-400" : "text-amber-400",
         bgColor: vaultStatus.locked
           ? "bg-emerald-400/10"
@@ -208,7 +148,7 @@ export default function SecurityPage() {
     }
     // Static features always active
     return {
-      label: "Actif",
+      label: t("statusActive"),
       color: "text-emerald-400",
       bgColor: "bg-emerald-400/10",
     };
@@ -228,10 +168,10 @@ export default function SecurityPage() {
               </div>
               <div>
                 <h1 className="text-lg font-medium text-text-primary">
-                  Securite
+                  {t("pageTitle")}
                 </h1>
                 <p className="text-xs text-text-muted">
-                  10 couches de protection actives
+                  {t("subtitle")}
                 </p>
               </div>
             </div>
@@ -267,10 +207,10 @@ export default function SecurityPage() {
                     </div>
                     <div>
                       <h3 className="text-sm font-medium text-text-primary mb-1">
-                        {feature.title}
+                        {t(feature.titleKey)}
                       </h3>
                       <p className="text-xs text-text-muted leading-relaxed">
-                        {feature.description}
+                        {t(feature.descriptionKey)}
                       </p>
                     </div>
                   </motion.div>
@@ -283,7 +223,7 @@ export default function SecurityPage() {
               <div className="flex items-center gap-2 mb-4">
                 <ShieldCheck className="w-4 h-4 text-cyber-cyan" />
                 <h2 className="text-xs text-text-muted uppercase tracking-wider">
-                  Comparaison securite : ELY vs OpenClaw
+                  {t("comparisonTitle")}
                 </h2>
               </div>
               <div className="bg-bg-secondary border border-border-dim rounded-lg overflow-hidden">
@@ -291,27 +231,27 @@ export default function SecurityPage() {
                   <thead>
                     <tr className="border-b border-border-dim">
                       <th className="text-left px-4 py-3 text-text-muted uppercase tracking-wider font-medium">
-                        Protection
+                        {t("colProtection")}
                       </th>
                       <th className="text-center px-4 py-3 text-cyber-cyan uppercase tracking-wider font-medium w-28">
-                        ELY
+                        {t("colEly")}
                       </th>
                       <th className="text-center px-4 py-3 text-text-muted uppercase tracking-wider font-medium w-28">
-                        OpenClaw
+                        {t("colOpenclaw")}
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-dim">
                     {COMPARISON_ROWS.map((row, i) => (
                       <motion.tr
-                        key={row.feature}
+                        key={row.id}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.4 + i * 0.03 }}
                         className="hover:bg-bg-tertiary/50 transition-colors"
                       >
                         <td className="px-4 py-2.5 text-text-secondary">
-                          {row.feature}
+                          {t(`comparison.${row.id}`)}
                         </td>
                         <td className="text-center px-4 py-2.5">
                           {row.ely ? (
@@ -333,7 +273,7 @@ export default function SecurityPage() {
                 </table>
               </div>
               <p className="text-[10px] text-text-muted mt-2">
-                OpenClaw : vulnérabilités documentées par Cisco, CrowdStrike, Microsoft et al.
+                {t("openclawNote")}
               </p>
             </div>
           </div>

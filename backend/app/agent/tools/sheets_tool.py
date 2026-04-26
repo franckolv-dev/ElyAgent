@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/sheets_tool.py
 # @brief      Google Sheets tools for ELY agent — create and edit spreadsheets.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -44,6 +44,7 @@ async def sheets_create_spreadsheet(
     headers: list[str] | None = None,
     rows: list[list[str]] | None = None,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new Google Sheets spreadsheet (equivalent to an Excel file).
 
@@ -94,6 +95,7 @@ async def sheets_read_spreadsheet(
     sheet_range: str = "Sheet1",
     max_rows: int = 100,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Read data from a Google Sheets spreadsheet.
 
@@ -134,6 +136,7 @@ async def sheets_append_rows(
     rows: list[list[str]],
     sheet_name: str = "Sheet1",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Append rows to an existing Google Sheets spreadsheet.
 
@@ -168,6 +171,7 @@ async def sheets_update_cells(
     sheet_range: str,
     values: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Update specific cells in a Google Sheets spreadsheet.
 
@@ -204,6 +208,7 @@ async def sheets_delete_rows(
     start_row: int,
     end_row: int,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Delete rows from a Google Sheets spreadsheet.
 
@@ -247,6 +252,7 @@ async def sheets_add_sheet(
     spreadsheet_id: str,
     title: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Add a new sheet tab to an existing Google Sheets spreadsheet.
 
@@ -283,6 +289,7 @@ async def sheets_add_sheet(
 async def sheets_list_sheets(
     spreadsheet_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List all sheet tabs in a Google Sheets spreadsheet.
 
@@ -411,6 +418,7 @@ async def sheets_batch_update(
     spreadsheet_id: str,
     requests_json: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Execute one or more advanced operations on a Google Sheets spreadsheet.
 
@@ -490,6 +498,7 @@ async def sheets_raw_api_call(
     params_json: str = "{}",
     body_json: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Call ANY method of the Google Sheets API (v4) directly.
 

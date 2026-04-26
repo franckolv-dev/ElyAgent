@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/calendar_tool.py
 # @brief      Google Calendar tools for ELY agent.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -45,6 +45,7 @@ async def calendar_list_events(
     time_min: str = "",
     time_max: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List upcoming events from Google Calendar.
 
@@ -101,6 +102,7 @@ async def calendar_create_event(
     description: str = "",
     location: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create an event in Google Calendar. ALWAYS confirm with user before creating.
 
@@ -144,6 +146,7 @@ async def calendar_create_event(
 async def calendar_get_event(
     event_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Get full details of a specific Google Calendar event.
 
@@ -191,6 +194,7 @@ async def calendar_update_event(
     description: str = "",
     location: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Update an existing Google Calendar event. Only provided fields are modified.
 
@@ -242,6 +246,7 @@ async def calendar_update_event(
 async def calendar_delete_event(
     event_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Supprime un événement. ALWAYS ask user confirmation.
 
@@ -267,6 +272,7 @@ async def calendar_check_availability(
     time_min: str,
     time_max: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Check availability (free/busy) on Google Calendar for a given time range.
 
@@ -306,6 +312,7 @@ async def calendar_check_availability(
 @tool
 async def calendar_list_calendars(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List all calendars accessible by the user.
 
@@ -347,6 +354,7 @@ async def calendar_quick_add(
     text: str,
     calendar_id: str = "primary",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a calendar event from a free-form natural-language string.
 
@@ -391,6 +399,7 @@ async def calendar_create_meet_event(
     reminders_minutes: str = "",
     calendar_id: str = "primary",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a Google Calendar event WITH a Google Meet video conference link.
 
@@ -483,6 +492,7 @@ async def calendar_raw_api_call(
     params_json: str = "{}",
     body_json: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Call ANY method of the Google Calendar API (v3) directly.
 

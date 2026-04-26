@@ -4,7 +4,7 @@
  * @file       frontend/src/components/layout/Sidebar.tsx
  * @brief      Sidebar — navigation menu and conversation history
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -37,18 +37,20 @@ interface RecentConv {
 
 const PAGE_SIZE = 50;
 
+// Nav entries — `labelKey` is resolved at render time via t(labelKey) so
+// the sidebar follows the user's locale automatically.
 const BASE_NAV = [
-  { href: "/chat",      label: "Chat",          icon: MessageSquare },
-  { href: "/missions",  label: "Missions",      icon: Target        },
-  { href: "/knowledge", label: "Connaissances", icon: BookOpen      },
-  { href: "/arena",     label: "Arena",         icon: Swords        },
-  { href: "/settings",  label: "Settings",      icon: Settings      },
+  { href: "/chat",      labelKey: "navChat",        icon: MessageSquare },
+  { href: "/missions",  labelKey: "navMissions",    icon: Target        },
+  { href: "/knowledge", labelKey: "navKnowledge",   icon: BookOpen      },
+  { href: "/arena",     labelKey: "navArena",       icon: Swords        },
+  { href: "/settings",  labelKey: "navSettings",    icon: Settings      },
 ];
 
 const ADMIN_NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/security",  label: "Securite",  icon: ShieldCheck     },
-  { href: "/admin",     label: "Admin",     icon: Shield          },
+  { href: "/dashboard", labelKey: "navDashboard", icon: LayoutDashboard },
+  { href: "/security",  labelKey: "navSecurity",  icon: ShieldCheck     },
+  { href: "/admin",     labelKey: "navAdmin",     icon: Shield          },
 ];
 
 export function Sidebar() {
@@ -226,7 +228,7 @@ export function Sidebar() {
 
       {/* Main nav + new conversation */}
       <nav className="p-2 space-y-1 shrink-0">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, labelKey, icon: Icon }) => {
           // Active when current path equals href OR is a sub-route (e.g.
           // /missions/<id> should highlight the "Missions" entry).
           // Use "/" as boundary to avoid /chat-foo matching /chat.
@@ -245,7 +247,7 @@ export function Sidebar() {
               }`}
             >
               <Icon className="w-4 h-4 shrink-0" />
-              <span className="hidden lg:block">{label}</span>
+              <span className="hidden lg:block">{t(labelKey)}</span>
             </Link>
           );
         })}
@@ -428,7 +430,7 @@ export function Sidebar() {
           className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-text-secondary hover:text-cyber-red hover:bg-cyber-red/5 transition-all w-full"
         >
           <LogOut className="w-4 h-4 shrink-0" />
-          <span className="hidden lg:block">Logout</span>
+          <span className="hidden lg:block">{t("logout")}</span>
         </button>
       </div>
     </aside>

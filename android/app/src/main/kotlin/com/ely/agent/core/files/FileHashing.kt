@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       core/files/FileHashing.kt
 // @brief      MD5 + perceptual dHash — for duplicate detection
-// @author     Franck OLLIVIER <franck.olv@gmail.com>
+// @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    PolyForm Strict License 1.0.0
 // =============================================================================
 

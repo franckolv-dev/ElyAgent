@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       core/files/FileManagerRepository.kt
 // @brief      Storage Access Framework wrapper — scan, filter, dedupe, delete
-// @author     Franck OLLIVIER <franck.olv@gmail.com>
+// @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    PolyForm Strict License 1.0.0
 // =============================================================================
 

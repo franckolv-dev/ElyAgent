@@ -3,7 +3,7 @@
 // @file       android/app/src/main/kotlin/com/ely/agent/service/VoiceRecorderManager.kt
 // @brief      Voice recorder manager
 //
-// @author     Franck OLLIVIER <franck.olv@gmail.com>
+// @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 // @license    PolyForm Strict License 1.0.0
 //             https://polyformproject.org/licenses/strict/1.0.0/

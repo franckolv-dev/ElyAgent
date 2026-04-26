@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/tasks_tool.py
 # @brief      Google Tasks tools for ELY agent.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -42,6 +42,7 @@ async def tasks_list(
     show_completed: bool = False,
     max_results: int = 20,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List tasks from Google Tasks.
 
@@ -83,6 +84,7 @@ async def tasks_create(
     notes: str = "",
     due_date: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new task in Google Tasks.
 
@@ -112,6 +114,7 @@ async def tasks_create(
 async def tasks_complete(
     task_id: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Mark a Google Task as completed.
 
@@ -141,6 +144,7 @@ async def tasks_update(
     due_date: str = "",
     tasklist: str = "@default",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Update an existing Google Task. Only non-empty fields are modified.
 
@@ -179,6 +183,7 @@ async def tasks_delete(
     task_id: str,
     tasklist: str = "@default",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Delete a Google Task. This action is irreversible — requires user confirmation (HITL).
 
@@ -204,6 +209,7 @@ async def tasks_delete(
 async def tasks_list_tasklists(
     max_results: int = 20,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List all Google Tasks task lists.
 
@@ -240,6 +246,7 @@ async def tasks_list_tasklists(
 async def tasks_create_tasklist(
     title: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new Google Tasks task list.
 
@@ -270,6 +277,7 @@ async def tasks_raw_api_call(
     params_json: str = "{}",
     body_json: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Call ANY method of the Google Tasks API (v1) directly.
 

@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/contacts_tool.py
 # @brief      Google Contacts (People API) tools for ELY agent.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -44,6 +44,7 @@ async def contacts_search(
     query: str,
     max_results: int = 10,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Search Google Contacts by name, email or phone number.
 
@@ -96,6 +97,7 @@ async def contacts_search(
 async def contacts_list(
     max_results: int = 20,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """List Google Contacts (most recently updated first).
 
@@ -147,6 +149,7 @@ async def contacts_create(
     phone: str = "",
     company: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new Google Contact.
 
@@ -181,6 +184,7 @@ async def contacts_create(
 async def contacts_get(
     resource_name: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Get full details of a Google Contact.
 
@@ -237,6 +241,7 @@ async def contacts_update(
     phone: str = "",
     company: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Update an existing Google Contact. Only non-empty fields are modified.
 
@@ -289,6 +294,7 @@ async def contacts_update(
 async def contacts_delete(
     resource_name: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Delete a Google Contact. This action is irreversible — requires user confirmation (HITL).
 
@@ -322,6 +328,7 @@ async def contacts_batch_operations(
     operation: str,
     payload_json: str,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Batch create, update, or delete up to 200 Google Contacts in one request.
 
@@ -405,6 +412,7 @@ async def contacts_raw_api_call(
     params_json: str = "{}",
     body_json: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Call ANY method of the Google People API (v1) directly.
 

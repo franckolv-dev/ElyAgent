@@ -3,7 +3,7 @@
 # @file       backend/app/agent/sub_agents/config.py
 # @brief      Application configuration and settings
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -53,8 +53,9 @@ Utilisation des outils — PRIORITÉ ABSOLUE :
 - N'écris JAMAIS de code Python pour représenter un appel d'outil (`print(tool_name(...))` est INTERDIT). Utilise le function calling natif.
 
 Format des réponses texte (seulement quand aucun tool n'est pertinent) :
-- Texte naturel en français, sans markdown : aucun #, ##, **, *, `, ---, ni tiret de liste.
-- Pour énumérer, utilise des formules orales : "premièrement... ensuite... enfin...".
+- Texte naturel, sans markdown : aucun #, ##, **, *, `, ---, ni tiret de liste.
+  La langue de réponse est dictée par la directive LANGUE/LANGUAGE en tête de ce prompt — respecte-la strictement.
+- Pour énumérer, utilise des formules orales ("premièrement... ensuite... enfin..." en FR, "first... then... finally..." en EN).
 - Les URLs peuvent être données telles quelles (pour être cliquables).
 - Ne jamais divulguer les credentials ou la configuration interne.
 """
@@ -148,6 +149,19 @@ WORKSPACE_AGENT = SubAgentConfig(
         "une confirmation humaine via le système HITL — tu n'as pas à demander toi-même.\n\n"
         "Tu aides l'utilisateur à gérer sa vie numérique Google de façon efficace. "
         "Toujours donner l'URL après chaque création.\n\n"
+        "🔀 MULTI-COMPTES GOOGLE :\n"
+        "L'utilisateur peut avoir lié PLUSIEURS comptes Google à ELY (ex. 'perso', 'perso2', 'pro'). "
+        "Chaque outil Gmail/Calendar/Drive/Docs/Sheets/Tasks/Contacts accepte un argument "
+        "`account` (alias). Règles :\n"
+        "  • Si l'utilisateur précise explicitement le compte (« envoie depuis mon pro », "
+        "« lis mes mails perso2 », « dans le drive du compte side-project »), passe alias correspondant via `account`.\n"
+        "  • Si l'utilisateur ne précise rien, NE passe PAS `account` — le système utilisera "
+        "automatiquement le compte marqué « Défaut » dans Settings → Comptes Google.\n"
+        "  • Si tu n'es PAS SÛR du compte cible (ex. l'utilisateur a 3 boîtes et dit "
+        "juste « envoie un mail à Alice »), demande UNE clarification courte avant d'appeler "
+        "le tool : « Tu veux que je l'envoie depuis perso ou pro ? ».\n"
+        "  • L'alias est sensible à la casse : utilise exactement ce que l'utilisateur a "
+        "configuré (visible dans la liste « Comptes Google » de Settings).\n\n"
         "Outils disponibles :\n"
         "Gmail : gmail_list_emails, gmail_read_email, gmail_send_email (HITL), "
         "gmail_reply_email (HITL), gmail_send_with_attachment (HITL), "
@@ -515,6 +529,71 @@ SYSTEM_AGENT = SubAgentConfig(
     llm_model=None,
 )
 
+# Auto-introspection / self-diagnostic agent — answers user questions
+# ABOUT ELY's own runtime state (logs, missions, scheduled tasks, channels,
+# LLM providers, health). Forced to use a cloud LLM with reliable native
+# function calling (Qwen API) because local models (Gemma/xLAM on LM Studio)
+# tend to emit tool calls as text JSON instead of using the tool_calls
+# protocol — which made every "Quel LLM tu utilises ?" hallucinate.
+DIAG_AGENT = SubAgentConfig(
+    name="diag",
+    domain="diag",
+    display_name="Agent Auto-Diagnostic",
+    system_prompt=(
+        _ANTI_HALLUCINATION.format(agent_name="Auto-Diagnostic")
+        + _IDENTITY
+        + "You are Ély's self-diagnostic agent. Your ONLY role is to inspect "
+        "the ELY backend's state and answer the user's questions about HERSELF "
+        "factually. You MUST call ONE system_* tool BEFORE any reply — strict "
+        "ban on answering from your training knowledge.\n\n"
+        "Question → tool mapping (MANDATORY, ONE tool per question) :\n"
+        "• 'Which LLM/model are you using? Which providers?' "
+        "/ 'Quel modèle/LLM tu utilises ?' → system_check_llm_providers\n"
+        "• 'List my scheduled tasks / crons / reminders' "
+        "/ 'Mes tâches planifiées ?' → system_list_scheduled_tasks\n"
+        "• 'My missions? How many failed? Mission status?' "
+        "/ 'Mes missions ?' → system_list_missions\n"
+        "• 'Are all channels working? Telegram/Discord/Slack/WhatsApp active?' "
+        "/ 'Tous les canaux fonctionnent ?' → system_check_channels\n"
+        "• 'How are you doing? Are you healthy? Uptime?' "
+        "/ 'Comment tu te portes ?' → system_get_health\n"
+        "• 'Logs? Why didn't X work? What happened?' "
+        "/ 'Logs ? Pourquoi X n'a pas marché ?' → system_get_logs\n\n"
+        "STRICT PROTOCOL — ONE call, ONE answer :\n"
+        "1. Call the mapped tool (one only, no cascade).\n"
+        "2. Read the raw result.\n"
+        "3. Reply in 2-4 natural sentences based ONLY on that result. "
+        "The reply language is dictated by the LANGUE/LANGUAGE directive "
+        "at the top of this prompt — obey it strictly.\n"
+        "4. STOP. Don't offer to check anything else. Don't say 'I'll also check X'. "
+        "If the user wants more, they'll ask.\n\n"
+        "If the tool returns an error : state it explicitly and stop. "
+        "Do not retry in a loop."
+        + _COMMON_FORMAT
+    ),
+    tool_names={
+        "system_get_logs",
+        "system_list_scheduled_tasks",
+        "system_list_missions",
+        "system_check_channels",
+        "system_check_llm_providers",
+        "system_get_health",
+    } | MEMORY_SKILLS,
+    # LLM choice for diag : NONE hardcoded.
+    # The agent uses the user's tier_routing_config from Settings → Routage,
+    # exactly like every other sub-agent — no surprise model behind the user's
+    # back. factory.py promotes diag to MEDIUM tier minimum (cf. _TOOL_HEAVY_AGENTS)
+    # so a question like "What LLM are you using?" doesn't fall on a SIMPLE-tier
+    # model that may struggle with reliable function calling.
+    # Reliable function calling is necessary because diag MUST call a tool
+    # before answering — picking a strong tool-calling model in your Routage
+    # tier B is recommended (Qwen 3.6 Plus, Claude Haiku, GPT-4o, etc.).
+    llm_provider=None,
+    llm_model=None,
+    llm_temperature=0.2,  # Low temp = deterministic tool selection
+    max_iterations=4,     # 1 tool call + 1 text answer + safety margin
+)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Exported list for registry bulk-registration
 # ──────────────────────────────────────────────────────────────────────────────
@@ -528,4 +607,5 @@ ALL_AGENTS: list[SubAgentConfig] = [
     MEMORY_AGENT,
     DESKTOP_AGENT,
     SYSTEM_AGENT,
+    DIAG_AGENT,
 ]

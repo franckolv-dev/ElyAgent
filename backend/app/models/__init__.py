@@ -3,7 +3,7 @@
 # @file       backend/app/models/__init__.py
 # @brief      Package init for models
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -20,8 +20,9 @@ from app.models.conversation import Conversation, Message
 from app.models.audit import AuditLog
 from app.models.revoked_token import RevokedToken
 from app.models.mission import Mission, MissionPlan, MissionStep
+from app.models.google_account import GoogleAccount
 
 __all__ = [
     "User", "Conversation", "Message", "AuditLog", "RevokedToken",
-    "Mission", "MissionPlan", "MissionStep",
+    "Mission", "MissionPlan", "MissionStep", "GoogleAccount",
 ]

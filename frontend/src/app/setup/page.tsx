@@ -4,7 +4,7 @@
  * @file       frontend/src/app/setup/page.tsx
  * @brief      Setup page — first-run configuration wizard
  *
- * @author     Franck OLLIVIER <franck.olv@gmail.com>
+ * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
  *             https://polyformproject.org/licenses/strict/1.0.0/
@@ -68,11 +68,8 @@ interface ProviderConfig {
   id: string;
   name: string;
   shortName: string;
-  description: string;
-  role: string;
   url: string;
   urlLabel: string;
-  steps: string[];
   keyPlaceholder: string;
   color: string;
 }
@@ -86,16 +83,8 @@ const PROVIDERS: ProviderConfig[] = [
     id: "anthropic",
     name: "Anthropic Claude",
     shortName: "Claude",
-    description: "Tâches complexes, raisonnement avancé",
-    role: "Cerveau complexe",
     url: "https://console.anthropic.com/settings/keys",
     urlLabel: "console.anthropic.com",
-    steps: [
-      "Créez un compte sur console.anthropic.com",
-      "Allez dans Settings → API Keys",
-      'Cliquez "Create Key"',
-      "Copiez la clé (elle commence par sk-ant-...)",
-    ],
     keyPlaceholder: "sk-ant-api03-...",
     color: "#c97d2f",
   },
@@ -103,16 +92,8 @@ const PROVIDERS: ProviderConfig[] = [
     id: "mistral",
     name: "Mistral AI",
     shortName: "Mistral",
-    description: "Tâches moyennes, IA française RGPD",
-    role: "Cerveau moyen",
     url: "https://console.mistral.ai/api-keys/",
     urlLabel: "console.mistral.ai",
-    steps: [
-      "Créez un compte sur console.mistral.ai",
-      'Allez dans "API Keys"',
-      'Cliquez "Create new key"',
-      "Copiez la clé générée",
-    ],
     keyPlaceholder: "...",
     color: "#ff6b35",
   },
@@ -120,16 +101,8 @@ const PROVIDERS: ProviderConfig[] = [
     id: "gemini",
     name: "Google Gemini",
     shortName: "Gemini",
-    description: "Tâches complexes + images",
-    role: "Vision & images",
     url: "https://aistudio.google.com/app/apikey",
     urlLabel: "aistudio.google.com",
-    steps: [
-      "Connectez-vous à aistudio.google.com",
-      'Cliquez "Get API key"',
-      'Puis "Create API key"',
-      "Copiez la clé générée (commence par AIza...)",
-    ],
     keyPlaceholder: "AIzaSy...",
     color: "#4285f4",
   },
@@ -137,20 +110,21 @@ const PROVIDERS: ProviderConfig[] = [
     id: "deepseek",
     name: "DeepSeek",
     shortName: "DeepSeek",
-    description: "Très économique, bon rapport qualité/prix",
-    role: "Option économique",
     url: "https://platform.deepseek.com/api_keys",
     urlLabel: "platform.deepseek.com",
-    steps: [
-      "Créez un compte sur platform.deepseek.com",
-      'Allez dans "API Keys"',
-      'Cliquez "Create new API key"',
-      "Copiez la clé générée",
-    ],
     keyPlaceholder: "sk-...",
     color: "#7c3aed",
   },
 ];
+
+// Number of "Steps with provider" entries per provider. Keys stored in JSON
+// under setup.providerSteps.<id>.<index>. Keep in sync with messages/*.json.
+const PROVIDER_STEP_COUNTS: Record<string, number> = {
+  anthropic: 4,
+  mistral: 4,
+  gemini: 4,
+  deepseek: 4,
+};
 
 // ---------------------------------------------------------------------------
 // Validation state per provider
@@ -229,12 +203,19 @@ function ProgressBar({ current, steps }: { current: number; steps: { label: stri
 // Step 0 — Welcome
 // ---------------------------------------------------------------------------
 
-function StepWelcomeContent({ onNext, welcomeTitle, welcomeDescription, welcomeTime, startSetup }: {
+function StepWelcomeContent({ onNext, welcomeTitle, welcomeDescription, welcomeTime, startSetup, tagline, iconAi, iconAiDesc, iconGoogle, iconGoogleDesc, iconTelegram, iconTelegramDesc }: {
   onNext: () => void;
   welcomeTitle: string;
   welcomeDescription: string;
   welcomeTime: string;
   startSetup: string;
+  tagline: string;
+  iconAi: string;
+  iconAiDesc: string;
+  iconGoogle: string;
+  iconGoogleDesc: string;
+  iconTelegram: string;
+  iconTelegramDesc: string;
 }) {
   return (
     <div className="flex flex-col items-center text-center gap-6 py-8">
@@ -245,7 +226,7 @@ function StepWelcomeContent({ onNext, welcomeTitle, welcomeDescription, welcomeT
 
       <div>
         <p className="text-xs font-mono text-cyber-cyan/60 tracking-widest uppercase mb-2">
-          Exactly Like You
+          {tagline}
         </p>
         <h1 className="text-2xl font-bold text-text-primary mb-3">
           {welcomeTitle}
@@ -258,9 +239,9 @@ function StepWelcomeContent({ onNext, welcomeTitle, welcomeDescription, welcomeT
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-lg text-left">
         {[
-          { icon: Zap, label: "Modèle IA", desc: "Au moins un fournisseur" },
-          { icon: Globe, label: "Google (optionnel)", desc: "Gmail, Drive, Agenda" },
-          { icon: MessageCircle, label: "Telegram (optionnel)", desc: "Parlez depuis votre téléphone" },
+          { icon: Zap, label: iconAi, desc: iconAiDesc },
+          { icon: Globe, label: iconGoogle, desc: iconGoogleDesc },
+          { icon: MessageCircle, label: iconTelegram, desc: iconTelegramDesc },
         ].map(({ icon: Icon, label, desc }) => (
           <div
             key={label}
@@ -293,6 +274,13 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
       welcomeDescription={t("welcomeDescription")}
       welcomeTime={t("welcomeTime")}
       startSetup={t("startSetup")}
+      tagline={t("tagline")}
+      iconAi={t("welcomeIconAi")}
+      iconAiDesc={t("welcomeIconAiDesc")}
+      iconGoogle={t("welcomeIconGoogle")}
+      iconGoogleDesc={t("welcomeIconGoogleDesc")}
+      iconTelegram={t("welcomeIconTelegram")}
+      iconTelegramDesc={t("welcomeIconTelegramDesc")}
     />
   );
 }
@@ -322,6 +310,7 @@ function ProviderCard({
   onToggle: () => void;
   onElyMode: () => void;
 }) {
+  const t = useTranslations("setup");
   const keyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -332,6 +321,13 @@ function ProviderCard({
 
   const isSaved = state.validation === "saved" || alreadyConfigured;
   const isValid = state.validation === "valid";
+
+  const role = t(`providerRoles.${provider.id}` as never);
+  const description = t(`providerDescriptions.${provider.id}` as never);
+  const stepCount = PROVIDER_STEP_COUNTS[provider.id] ?? 0;
+  const steps: string[] = Array.from({ length: stepCount }, (_, i) =>
+    t(`providerSteps.${provider.id}.${i}` as never)
+  );
 
   return (
     <div
@@ -364,16 +360,16 @@ function ProviderCard({
                   backgroundColor: `${provider.color}10`,
                 }}
               >
-                {provider.role}
+                {role}
               </span>
               {isSaved && (
                 <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
                   <Check className="w-2.5 h-2.5" />
-                  Configuré
+                  {t("configured")}
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-text-muted mt-0.5">{provider.description}</p>
+            <p className="text-[11px] text-text-muted mt-0.5">{description}</p>
           </div>
         </div>
         <ChevronRight
@@ -391,14 +387,14 @@ function ProviderCard({
               <Bot className="w-4 h-4 text-cyber-cyan shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs font-medium text-cyber-cyan">
-                  ELY a ouvert la page de création de clé
+                  {t("elyOpenedKeyPage")}
                 </p>
                 <p className="text-[11px] text-text-secondary mt-1">
-                  Suivez les étapes ci-dessous, copiez votre clé et collez-la dans le champ.
+                  {t("elyOpenedKeyPageDesc")}
                 </p>
                 <div className="flex items-center gap-1.5 mt-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyber-cyan animate-pulse" />
-                  <span className="text-[10px] text-text-muted font-mono">En attente de votre clé...</span>
+                  <span className="text-[10px] text-text-muted font-mono">{t("waitingForKey")}</span>
                 </div>
               </div>
             </div>
@@ -407,10 +403,10 @@ function ProviderCard({
           {/* Steps */}
           <div>
             <p className="text-[11px] text-text-muted uppercase tracking-wider mb-2 font-mono">
-              Étapes
+              {t("stepsLabel")}
             </p>
             <ol className="space-y-1.5">
-              {provider.steps.map((step, i) => (
+              {steps.map((step, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-text-secondary">
                   <span className="shrink-0 w-4 h-4 rounded-full border border-border-dim text-[9px] flex items-center justify-center text-text-muted font-mono">
                     {i + 1}
@@ -430,7 +426,7 @@ function ProviderCard({
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border-dim text-text-secondary hover:border-cyber-cyan/30 hover:text-cyber-cyan transition-all"
             >
               <ExternalLink className="w-3 h-3" />
-              Ouvrir {provider.urlLabel} →
+              {t("openLink", { label: provider.urlLabel })}
             </a>
             {!state.elyMode && (
               <button
@@ -438,7 +434,7 @@ function ProviderCard({
                 className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-cyan/20 bg-cyber-cyan/5 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all"
               >
                 <Bot className="w-3 h-3" />
-                ELY ouvre la page pour vous
+                {t("elyOpensPage")}
               </button>
             )}
           </div>
@@ -469,7 +465,7 @@ function ProviderCard({
                   {state.validation === "validating" ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    "Valider"
+                    t("validate")
                   )}
                 </button>
               )}
@@ -479,7 +475,7 @@ function ProviderCard({
             {(state.validation === "valid" || state.validation === "saving") && (
               <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
                 <CheckCircle className="w-3 h-3" />
-                Clé valide !
+                {t("keyValid")}
                 <button
                   onClick={onSave}
                   disabled={state.validation === "saving"}
@@ -488,7 +484,7 @@ function ProviderCard({
                   {state.validation === "saving" ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    "Enregistrer"
+                    t("save")
                   )}
                 </button>
               </div>
@@ -502,7 +498,7 @@ function ProviderCard({
             {(state.validation === "saved" || alreadyConfigured) && (
               <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
                 <CheckCircle className="w-3 h-3" />
-                Clé enregistrée avec succès
+                {t("keySavedSuccess")}
               </div>
             )}
           </div>
@@ -521,6 +517,7 @@ function StepLLM({
   onNext: () => void;
   onBack: () => void;
 }) {
+  const t = useTranslations("setup");
   const [providerStates, setProviderStates] = useState<Record<string, ProviderState>>(
     makeInitialProviderState
   );
@@ -559,13 +556,13 @@ function StepLLM({
         if (data.valid) {
           updateProvider(id, { validation: "valid" });
         } else {
-          updateProvider(id, { validation: "invalid", error: data.error ?? "Clé invalide" });
+          updateProvider(id, { validation: "invalid", error: data.error ?? t("invalidKey") });
         }
       } catch {
-        updateProvider(id, { validation: "invalid", error: "Erreur réseau" });
+        updateProvider(id, { validation: "invalid", error: t("networkError") });
       }
     },
-    [providerStates, updateProvider]
+    [providerStates, updateProvider, t]
   );
 
   const handleSave = useCallback(
@@ -584,14 +581,14 @@ function StepLLM({
           const err = await res.json().catch(() => ({}));
           updateProvider(id, {
             validation: "invalid",
-            error: err.detail ?? "Erreur lors de la sauvegarde",
+            error: err.detail ?? t("saveError"),
           });
         }
       } catch {
-        updateProvider(id, { validation: "invalid", error: "Erreur réseau" });
+        updateProvider(id, { validation: "invalid", error: t("networkError") });
       }
     },
-    [providerStates, updateProvider]
+    [providerStates, updateProvider, t]
   );
 
   const handleElyMode = useCallback(
@@ -617,10 +614,10 @@ function StepLLM({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-text-primary mb-1">
-          Intelligence — Choisissez vos modèles IA
+          {t("llmTitle")}
         </h2>
         <p className="text-sm text-text-secondary">
-          ELY route chaque requête intelligemment : local pour les questions simples, puissant pour les tâches complexes.
+          {t("llmDescription")}
         </p>
       </div>
 
@@ -636,23 +633,25 @@ function StepLLM({
           <Server className={`w-5 h-5 ${ollamaStatus?.available ? "text-emerald-400" : "text-text-muted"}`} />
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-text-primary">Ollama (local)</span>
+              <span className="text-sm font-medium text-text-primary">{t("ollamaLocal")}</span>
               <span className="text-[9px] px-1.5 py-0.5 rounded border border-border-dim text-text-muted font-mono">
-                100% local
+                {t("oneHundredPercentLocal")}
               </span>
               {ollamaStatus?.available && (
                 <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
                   <Check className="w-2.5 h-2.5" />
-                  Disponible
+                  {t("available")}
                 </span>
               )}
             </div>
             <p className="text-[11px] text-text-muted mt-0.5">
               {ollamaStatus === null
-                ? "Détection en cours..."
+                ? t("detecting")
                 : ollamaStatus.available
-                ? `Modèles : ${ollamaStatus.models.slice(0, 3).join(", ") || "aucun modèle chargé"}`
-                : "Non détecté — démarrez Ollama pour l'utiliser"}
+                ? t("ollamaModels", {
+                    models: ollamaStatus.models.slice(0, 3).join(", ") || t("noModelLoaded"),
+                  })
+                : t("ollamaNotDetected")}
             </p>
           </div>
         </div>
@@ -686,7 +685,7 @@ function StepLLM({
       {!anySaved && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          Configurez au moins un fournisseur IA pour continuer.
+          {t("configureAtLeastOne")}
         </div>
       )}
 
@@ -696,14 +695,14 @@ function StepLLM({
           className="flex items-center gap-1.5 text-sm px-4 py-2 rounded border border-border-dim text-text-secondary hover:border-text-muted transition-all"
         >
           <ChevronLeft className="w-4 h-4" />
-          Retour
+          {t("back")}
         </button>
         <button
           onClick={onNext}
           disabled={!anySaved}
           className="flex items-center gap-1.5 text-sm px-5 py-2 rounded border border-cyber-cyan/40 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-40"
         >
-          Continuer
+          {t("continue")}
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
@@ -724,6 +723,7 @@ function StepGoogle({
   onNext: () => void;
   onBack: () => void;
 }) {
+  const t = useTranslations("setup");
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(status?.google?.connected ?? false);
   const [error, setError] = useState<string | null>(null);
@@ -742,41 +742,41 @@ function StepGoogle({
     try {
       const res = await authFetch(`${API_URL}/api/google/auth-url`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || `Erreur ${res.status}`);
-      if (!data.url) throw new Error("URL OAuth manquante");
+      if (!res.ok) throw new Error(data.detail || t("errorWithStatus", { status: res.status }));
+      if (!data.url) throw new Error(t("oauthUrlMissing"));
       // Save the current step so we come back here after OAuth
       localStorage.setItem("ely_setup_step", "2");
       window.location.href = data.url;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur lors de la connexion Google");
+      setError(e instanceof Error ? e.message : t("googleConnectError"));
     } finally {
       setGoogleLoading(false);
     }
   };
 
   const googleServices = [
-    { label: "Gmail", desc: "Lire et envoyer des emails sur demande" },
-    { label: "Google Calendar", desc: "Consulter et créer des événements" },
-    { label: "Google Drive", desc: "Accéder aux documents (lecture)" },
-    { label: "Google Tasks", desc: "Gérer vos listes de tâches" },
-    { label: "Contacts", desc: "Retrouver vos contacts" },
+    { label: "Gmail", desc: t("googleSvcGmail") },
+    { label: "Google Calendar", desc: t("googleSvcCalendar") },
+    { label: "Google Drive", desc: t("googleSvcDrive") },
+    { label: "Google Tasks", desc: t("googleSvcTasks") },
+    { label: t("googleSvcContactsLabel"), desc: t("googleSvcContacts") },
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-text-primary mb-1">
-          Google Workspace — Gmail, Drive, Agenda
+          {t("googleTitle")}
         </h2>
         <p className="text-sm text-text-secondary">
-          Connectez votre compte Google pour qu'ELY puisse accéder à vos outils sur demande.
+          {t("googleDescription")}
         </p>
       </div>
 
       {/* Services list */}
       <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
         <p className="text-xs text-text-muted uppercase tracking-wider font-mono">
-          Ce qu'ELY peut faire avec Google
+          {t("googleCanDo")}
         </p>
         {googleServices.map(({ label, desc }) => (
           <div key={label} className="flex items-start gap-2 text-xs">
@@ -789,7 +789,7 @@ function StepGoogle({
         ))}
 
         <p className="text-[11px] text-text-muted pt-2 border-t border-border-dim">
-          ELY n'accède à ces services que sur votre demande explicite. Les tokens OAuth sont stockés localement et chiffrés.
+          {t("googlePrivacyNote")}
         </p>
       </div>
 
@@ -797,7 +797,7 @@ function StepGoogle({
       {googleConnected ? (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
           <CheckCircle className="w-4 h-4 text-emerald-400" />
-          <span className="text-sm text-emerald-400 font-medium">Google connecté</span>
+          <span className="text-sm text-emerald-400 font-medium">{t("googleConnected")}</span>
         </div>
       ) : (
         <div className="space-y-3">
@@ -805,10 +805,9 @@ function StepGoogle({
             <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                L'application Google OAuth n'est pas encore configurée.
-                Rendez-vous dans{" "}
-                <a href="/admin" className="underline">Admin → OAuth Google</a>{" "}
-                pour renseigner le Client ID et Secret.
+                {t.rich("googleNotConfigured", {
+                  link: (chunks) => <a href="/admin" className="underline">{chunks}</a>,
+                })}
               </span>
             </div>
           )}
@@ -824,7 +823,7 @@ function StepGoogle({
             className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-lg border border-cyber-cyan/30 bg-cyber-cyan/5 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all disabled:opacity-40"
           >
             <Globe className="w-4 h-4" />
-            {googleLoading ? "Redirection..." : "Connecter mon compte Google"}
+            {googleLoading ? t("redirecting") : t("connectGoogle")}
             <ExternalLink className="w-3.5 h-3.5 opacity-60" />
           </button>
         </div>
@@ -836,21 +835,21 @@ function StepGoogle({
           className="flex items-center gap-1.5 text-sm px-4 py-2 rounded border border-border-dim text-text-secondary hover:border-text-muted transition-all"
         >
           <ChevronLeft className="w-4 h-4" />
-          Retour
+          {t("back")}
         </button>
         <div className="flex items-center gap-3">
           <button
             onClick={onNext}
             className="text-xs text-text-muted hover:text-text-secondary transition-all"
           >
-            Passer cette étape
+            {t("skipStep")}
           </button>
           {googleConnected && (
             <button
               onClick={onNext}
               className="flex items-center gap-1.5 text-sm px-5 py-2 rounded border border-cyber-cyan/40 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 transition-all"
             >
-              Continuer
+              {t("continue")}
               <ChevronRight className="w-4 h-4" />
             </button>
           )}
@@ -873,6 +872,7 @@ function StepTelegram({
   onNext: () => void;
   onBack: () => void;
 }) {
+  const t = useTranslations("setup");
   const [token, setToken] = useState("");
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -901,11 +901,11 @@ function StepTelegram({
         setBotName(data.bot_name ?? null);
       } else {
         setValid(false);
-        setError(data.error ?? "Token invalide");
+        setError(data.error ?? t("invalidToken"));
       }
     } catch {
       setValid(false);
-      setError("Erreur réseau");
+      setError(t("networkError"));
     } finally {
       setValidating(false);
     }
@@ -924,10 +924,10 @@ function StepTelegram({
         setSaved(true);
       } else {
         const err = await res.json().catch(() => ({}));
-        setError(err.detail ?? "Erreur lors de la sauvegarde");
+        setError(err.detail ?? t("saveError"));
       }
     } catch {
-      setError("Erreur réseau");
+      setError(t("networkError"));
     } finally {
       setSaving(false);
     }
@@ -937,10 +937,10 @@ function StepTelegram({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-text-primary mb-1">
-          Telegram — Parlez à ELY depuis votre téléphone
+          {t("telegramTitle")}
         </h2>
         <p className="text-sm text-text-secondary">
-          Créez un bot Telegram en 2 minutes avec BotFather et connectez-le à ELY.
+          {t("telegramDescription")}
         </p>
       </div>
 
@@ -948,7 +948,7 @@ function StepTelegram({
         <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
           <CheckCircle className="w-4 h-4 text-emerald-400" />
           <span className="text-sm text-emerald-400 font-medium">
-            Bot Telegram connecté{botName ? ` (@${botName})` : ""}
+            {botName ? t("telegramBotConnectedNamed", { name: botName }) : t("telegramBotConnected")}
           </span>
         </div>
       ) : (
@@ -957,15 +957,15 @@ function StepTelegram({
           {/* Instructions */}
           <div>
             <p className="text-xs text-text-muted uppercase tracking-wider font-mono mb-3">
-              Étapes avec BotFather
+              {t("botFatherSteps")}
             </p>
             <ol className="space-y-2">
               {[
-                "Ouvrez Telegram et cherchez @BotFather",
-                "Envoyez la commande /newbot",
-                "Choisissez un nom pour votre bot (ex : Mon ELY)",
-                "Choisissez un nom d'utilisateur (doit finir par bot, ex : mon_ely_bot)",
-                "Copiez le token que BotFather vous envoie",
+                t("telegramStep1"),
+                t("telegramStep2"),
+                t("telegramStep3"),
+                t("telegramStep4"),
+                t("telegramStep5"),
               ].map((step, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-text-secondary">
                   <span className="shrink-0 w-4 h-4 rounded-full border border-border-dim text-[9px] flex items-center justify-center text-text-muted font-mono">
@@ -986,14 +986,14 @@ function StepTelegram({
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border-dim text-text-secondary hover:border-cyber-cyan/30 hover:text-cyber-cyan transition-all"
             >
               <ExternalLink className="w-3 h-3" />
-              Ouvrir Telegram Web →
+              {t("openTelegramWeb")}
             </a>
             <button
               onClick={handleElyMode}
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-cyan/20 bg-cyber-cyan/5 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all"
             >
               <Bot className="w-3 h-3" />
-              ELY ouvre BotFather pour vous
+              {t("elyOpensBotFather")}
             </button>
           </div>
 
@@ -1020,20 +1020,20 @@ function StepTelegram({
                 disabled={!token.trim() || validating}
                 className="text-xs px-3 py-2 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-40 shrink-0"
               >
-                {validating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Valider"}
+                {validating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t("validate")}
               </button>
             </div>
 
             {valid === true && (
               <div className="flex items-center gap-2 text-[11px] text-emerald-400">
                 <CheckCircle className="w-3 h-3" />
-                Token valide{botName ? ` — bot @${botName}` : ""} !
+                {botName ? t("tokenValidNamed", { name: botName }) : t("tokenValid")}
                 <button
                   onClick={handleSave}
                   disabled={saving}
                   className="ml-1 text-xs px-3 py-1 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-40"
                 >
-                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Enregistrer"}
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : t("save")}
                 </button>
               </div>
             )}
@@ -1053,21 +1053,21 @@ function StepTelegram({
           className="flex items-center gap-1.5 text-sm px-4 py-2 rounded border border-border-dim text-text-secondary hover:border-text-muted transition-all"
         >
           <ChevronLeft className="w-4 h-4" />
-          Retour
+          {t("back")}
         </button>
         <div className="flex items-center gap-3">
           <button
             onClick={onNext}
             className="text-xs text-text-muted hover:text-text-secondary transition-all"
           >
-            Passer cette étape
+            {t("skipStep")}
           </button>
           {saved && (
             <button
               onClick={onNext}
               className="flex items-center gap-1.5 text-sm px-5 py-2 rounded border border-cyber-cyan/40 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 transition-all"
             >
-              Continuer
+              {t("continue")}
               <ChevronRight className="w-4 h-4" />
             </button>
           )}
@@ -1090,6 +1090,7 @@ function StepSummary({
   onBack: () => void;
   onLaunch: () => void;
 }) {
+  const t = useTranslations("setup");
   const llmConfigured = status
     ? Object.entries(status.llm)
         .filter(([id]) => id !== "ollama")
@@ -1099,22 +1100,22 @@ function StepSummary({
 
   const items = [
     {
-      label: "Intelligence IA",
+      label: t("summaryAiLabel"),
       ok: llmConfigured,
       required: true,
-      hint: "Au moins un fournisseur LLM configuré",
+      hint: t("summaryAiHint"),
     },
     {
-      label: "Google Workspace",
+      label: t("summaryGoogleLabel"),
       ok: status?.google?.connected ?? false,
       required: false,
-      hint: "Gmail, Drive, Agenda",
+      hint: t("summaryGoogleHint"),
     },
     {
-      label: "Telegram",
+      label: t("summaryTelegramLabel"),
       ok: status?.telegram?.configured ?? false,
       required: false,
-      hint: "Bot Telegram",
+      hint: t("summaryTelegramHint"),
     },
   ];
 
@@ -1125,10 +1126,10 @@ function StepSummary({
           <CyberpunkAvatar state="speaking" className="w-full h-full" minimal />
         </div>
         <h2 className="text-xl font-bold text-text-primary mt-4 mb-1">
-          ELY est prêt !
+          {t("readyTitle")}
         </h2>
         <p className="text-sm text-text-secondary">
-          Voici un résumé de votre configuration.
+          {t("readyDescription")}
         </p>
       </div>
 
@@ -1165,18 +1166,20 @@ function StepSummary({
                   : "text-text-muted border-border-dim"
               }`}
             >
-              {ok ? "Configuré" : required ? "Requis" : "Optionnel"}
+              {ok ? t("configured") : required ? t("required") : t("optional")}
             </span>
           </div>
         ))}
       </div>
 
       <p className="text-[11px] text-text-muted text-center">
-        Ces paramètres peuvent être modifiés à tout moment dans les{" "}
-        <a href="/settings" className="text-cyber-cyan hover:underline">
-          Paramètres
-        </a>
-        .
+        {t.rich("settingsCanBeChanged", {
+          link: (chunks) => (
+            <a href="/settings" className="text-cyber-cyan hover:underline">
+              {chunks}
+            </a>
+          ),
+        })}
       </p>
 
       <div className="flex justify-between pt-2">
@@ -1185,7 +1188,7 @@ function StepSummary({
           className="flex items-center gap-1.5 text-sm px-4 py-2 rounded border border-border-dim text-text-secondary hover:border-text-muted transition-all"
         >
           <ChevronLeft className="w-4 h-4" />
-          Retour
+          {t("back")}
         </button>
         <button
           onClick={onLaunch}
@@ -1193,7 +1196,7 @@ function StepSummary({
           className="flex items-center gap-2 text-sm px-6 py-3 rounded-lg border border-cyber-cyan/40 bg-cyber-cyan/10 text-cyber-cyan font-medium hover:bg-cyber-cyan/20 transition-all disabled:opacity-40"
         >
           <Rocket className="w-4 h-4" />
-          Lancer ELY
+          {t("launchEly")}
         </button>
       </div>
     </div>
@@ -1253,7 +1256,7 @@ export default function SetupPage() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#060c16]">
         <div className="text-cyber-cyan animate-pulse text-sm font-mono">
-          Vérification de l'accès...
+          {t("checkingAccess")}
         </div>
       </div>
     );
@@ -1275,7 +1278,7 @@ export default function SetupPage() {
         {/* Header */}
         <div className="text-center mb-6">
           <p className="text-xs font-mono text-cyber-cyan/60 tracking-widest uppercase">
-            ELY — Assistant Setup
+            {t("assistantSetupHeader")}
           </p>
         </div>
 

@@ -3,7 +3,7 @@
 # @file       backend/app/config.py
 # @brief      Application configuration and settings
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     zhipu_api_key: str = ""          # Zhipu AI (GLM-4.7) — https://open.bigmodel.cn
     openrouter_api_key: str = ""    # OpenRouter — https://openrouter.ai
+    openai_api_key: str = ""        # OpenAI — https://platform.openai.com (GPT-4o, GPT-5.x)
+    openai_base_url: str = ""       # Optional override (e.g. Azure OpenAI proxy); empty = api.openai.com
+
+    # Public demo mode (set on the agent-ely.fr instance, false everywhere else).
+    # When true:
+    #   - non-admin users can NOT use system_get_logs (cross-tenant leak risk)
+    #   - non-admin users see redacted output from system_check_llm_providers
+    #     (config secrets like region URLs hidden)
+    #   - other tightening hooks may follow as the demo evolves
+    # Always false in self-hosted instances — defaults are safe.
+    demo_mode: bool = False
     ollama_base_url: str = "http://ollama:11434"
     lm_studio_base_url: str = "http://host.docker.internal:1234/v1"
     qwen_api_key: str = ""          # Alibaba Cloud DashScope (Qwen API)

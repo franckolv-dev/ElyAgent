@@ -3,7 +3,7 @@
 # @file       backend/app/routers/channels.py
 # @brief      Unified admin API for configuring chat channels from the UI
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 # =============================================================================

@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       ui/files/FileManagerScreen.kt
 // @brief      Intelligent folder browser — filters, dedupe, cleanup
-// @author     Franck OLLIVIER <franck.olv@gmail.com>
+// @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    PolyForm Strict License 1.0.0
 // =============================================================================
 

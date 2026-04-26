@@ -3,7 +3,7 @@
 # @file       backend/app/agent/sub_agents/state.py
 # @brief      LangGraph agent state schema
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -46,4 +46,10 @@ class SubAgentState(TypedDict, total=False):
     _mem_memories: list[str]
     _mem_interactions: list[dict]
     _mem_user_ctx: str
+    _mem_user_language: str       # cached user.language (fr/en) for the turn
     _mem_fetched_for_query: str   # sentinel = user_query pour lequel on a fetch
+    # ── Analytics ─────────────────────────────────────────────────────────
+    # Filled by agent_node so dispatch_node can propagate it back to the
+    # outer supervisor graph and chat.py can call log_usage() with the
+    # real provider/model instead of "unknown/tier-medium".
+    model_used: str
