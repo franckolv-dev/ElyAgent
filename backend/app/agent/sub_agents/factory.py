@@ -187,6 +187,12 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     # Image / vision
                     (_re_filter.compile(r"\b(images?|photos?|pictures?|screenshots?|captur)\b"),
                      ("image_", "vision_")),
+                    # System self-diagnostic — when user asks why something
+                    # didn't work, what state services are in, "tu te
+                    # portes bien ?", etc. Routes to system_get_logs,
+                    # system_check_channels, etc.
+                    (_re_filter.compile(r"\b(logs?|journal|debug|diagnostic|santé|sante|health|status|état|etat|tâches?\s+planif|scheduled|missions?|canaux|channels?|fonctionne|marche|tourne|pourquoi.*pas|pourquoi.*marche)\b"),
+                     ("system_",)),
                 ]
                 _matched_prefixes: set[str] = set()
                 for _pattern, _prefixes in _kw_filters:

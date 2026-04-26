@@ -62,6 +62,7 @@ def register_all() -> None:
     from app.skills.builtin import memory_skill          # noqa: F401
     from app.skills.builtin import knowledge_skill       # noqa: F401
     from app.skills.builtin import agentic_rag_skill     # noqa: F401
+    from app.skills.builtin import system_diag_skill     # noqa: F401
     from app.skills.builtin.desktop_skill import register_desktop_skill
     register_desktop_skill()
     from app.skills.builtin.trainer_skill import register_trainer_skill

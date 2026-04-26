@@ -76,6 +76,12 @@ async def lifespan(app: FastAPI):
     _logging.getLogger("app").setLevel(_logging.INFO)
     _startup_logger = _logging.getLogger("app.startup")
 
+    # Install the in-memory log ring buffer so the `system_get_logs`
+    # tool can let the agent introspect its own runtime. Must be done
+    # BEFORE any other module logs anything we want captured.
+    from app.services.log_buffer import install_handler as _install_log_buffer
+    _install_log_buffer()
+
     # Register all built-in skills BEFORE the agent graph is built
     from app.skills.builtin import register_all
     register_all()
