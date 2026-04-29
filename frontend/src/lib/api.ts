@@ -62,33 +62,107 @@ export const api = {
   getHosts: () => fetchAPI("/hosts/"),
 
   // ── Google multi-account (Phase 3) ─────────────────────────────────────
+  // The google router is mounted under /api in main.py, so all paths must
+  // start with /api/google (matching the existing /api/google/auth-url usage
+  // in settings/page.tsx — keep consistency).
   /** List every Google account linked to the current user. */
   listGoogleAccounts: () =>
-    fetchAPI("/google/accounts") as Promise<{
+    fetchAPI("/api/google/accounts") as Promise<{
       accounts: Array<{ id: string; alias: string; email: string; is_default: boolean; created_at: string | null }>;
     }>,
 
   /** Open the Google OAuth consent flow for a NEW account with the given alias. */
   getGoogleAuthUrl: (alias: string) =>
-    fetchAPI(`/google/auth-url?alias=${encodeURIComponent(alias)}`) as Promise<{ url: string }>,
+    fetchAPI(`/api/google/auth-url?alias=${encodeURIComponent(alias)}`) as Promise<{ url: string }>,
 
   /** Promote one Google account to the default (mirrors into User.google_credentials). */
   setGoogleDefault: (account_id: string) =>
-    fetchAPI("/google/accounts/default", {
+    fetchAPI("/api/google/accounts/default", {
       method: "POST",
       body: JSON.stringify({ account_id }),
     }),
 
   /** Rename a Google account's alias. */
   renameGoogleAccount: (account_id: string, alias: string) =>
-    fetchAPI(`/google/accounts/${account_id}`, {
+    fetchAPI(`/api/google/accounts/${account_id}`, {
       method: "PATCH",
       body: JSON.stringify({ alias }),
     }),
 
   /** Remove a single Google account (auto-promotes the next-oldest if it was default). */
   deleteGoogleAccount: (account_id: string) =>
-    fetchAPI(`/google/accounts/${account_id}`, { method: "DELETE" }),
+    fetchAPI(`/api/google/accounts/${account_id}`, { method: "DELETE" }),
+
+  // ── Watched folders (RAG auto-indexing) ─────────────────────────────────
+  listWatchedFolders: () =>
+    fetchAPI("/api/knowledge/watched-folders") as Promise<{
+      folders: Array<{
+        id: string;
+        path: string;
+        recursive: boolean;
+        enabled: boolean;
+        include_extensions: string;
+        exclude_paths: string;
+        last_scan_at: string | null;
+        last_scan_status: string;
+        last_scan_message: string;
+        files_indexed: number;
+        created_at: string;
+      }>;
+    }>,
+
+  createWatchedFolder: (body: {
+    path: string;
+    recursive?: boolean;
+    include_extensions?: string;
+    exclude_paths?: string;
+  }) =>
+    fetchAPI("/api/knowledge/watched-folders", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateWatchedFolder: (
+    folder_id: string,
+    body: {
+      enabled?: boolean;
+      recursive?: boolean;
+      include_extensions?: string;
+      exclude_paths?: string;
+    },
+  ) =>
+    fetchAPI(`/api/knowledge/watched-folders/${folder_id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteWatchedFolder: (folder_id: string) =>
+    fetchAPI(`/api/knowledge/watched-folders/${folder_id}`, { method: "DELETE" }),
+
+  scanWatchedFolderNow: (folder_id: string) =>
+    fetchAPI(`/api/knowledge/watched-folders/${folder_id}/scan`, {
+      method: "POST",
+    }) as Promise<{
+      indexed: number;
+      skipped: number;
+      errors: number;
+      status: string;
+      message: string;
+    }>,
+
+  // ── HITL preferences ─────────────────────────────────────────────────────
+  listHitlPreferences: () =>
+    fetchAPI("/api/hitl/preferences") as Promise<Array<{
+      tool_name: string;
+      requires_confirmation: boolean;
+      locked: boolean;
+      description: string | null;
+    }>>,
+  updateHitlPreference: (tool_name: string, requires_confirmation: boolean) =>
+    fetchAPI("/api/hitl/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ tool_name, requires_confirmation }),
+    }),
 
   getUsers: () => fetchAPI("/admin/users"),
 

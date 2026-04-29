@@ -21,8 +21,11 @@ from app.models.audit import AuditLog
 from app.models.revoked_token import RevokedToken
 from app.models.mission import Mission, MissionPlan, MissionStep
 from app.models.google_account import GoogleAccount
+from app.models.watched_folder import WatchedFolder
+from app.models.hitl_preference import HitlPreference
 
 __all__ = [
     "User", "Conversation", "Message", "AuditLog", "RevokedToken",
-    "Mission", "MissionPlan", "MissionStep", "GoogleAccount",
+    "Mission", "MissionPlan", "MissionStep", "GoogleAccount", "WatchedFolder",
+    "HitlPreference",
 ]

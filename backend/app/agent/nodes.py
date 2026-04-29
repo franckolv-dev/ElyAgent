@@ -320,19 +320,13 @@ def create_agent_node():
                     _user_language = (_row.scalar_one_or_none() or "fr")
             except Exception:
                 pass
+        # Compact directives — see factory.py rationale (don't bloat xLAM 8B context)
         if _user_language == "en":
-            _lang_directive = (
-                "LANGUAGE — STRICT : Reply in English only. The user has set "
-                "their UI language to English. Translate any tool output to "
-                "English in your final answer.\n\n"
-            )
-            _lang_reminder = "\n\n=== FINAL REMINDER: reply in English. ==="
+            _lang_directive = "REPLY LANGUAGE = English. Translate any tool output.\n\n"
+            _lang_reminder = "\n\n[reply in English]"
         else:
-            _lang_directive = (
-                "LANGUE — STRICT : Réponds uniquement en français. "
-                "Traduis si besoin la sortie des outils.\n\n"
-            )
-            _lang_reminder = "\n\n=== RAPPEL FINAL : réponds en français. ==="
+            _lang_directive = "LANGUE DE RÉPONSE = Français. Traduis si besoin.\n\n"
+            _lang_reminder = "\n\n[réponds en français]"
         logger.info(
             "[general] lang=%s user=%s",
             _user_language,

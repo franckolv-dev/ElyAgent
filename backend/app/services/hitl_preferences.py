@@ -1,0 +1,92 @@
+# =============================================================================
+# @project    ELY — Exactly Like You
+# @file       backend/app/services/hitl_preferences.py
+# @brief      Per-user HITL preferences resolver
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+# @license    PolyForm Strict License 1.0.0
+# =============================================================================
+"""Per-user HITL preferences — resolve whether a tool needs confirmation.
+
+Used by the sub-agent factory's HITL block. The function falls back to the
+secure default (``True`` = HITL required) on any error so a misconfigured
+DB row can never make the system silently bypass approval.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Final
+
+from sqlalchemy import select
+
+from app.database import async_session
+from app.models.hitl_preference import HitlPreference
+
+logger = logging.getLogger(__name__)
+
+
+# Tools where HITL is FORCED on, even if the user toggles it off in Settings.
+# These are the most destructive / costly / irreversible operations. The UI
+# greys out the slider for these so the user understands they can't disable.
+LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
+    # Mass / batch destructive Gmail operations
+    "gmail_batch_modify",
+    "gmail_trash_emails",
+    "gmail_move_emails",
+    # Filesystem destructive
+    "desktop_delete_file",
+    "desktop_write_file",   # overwrites existing files
+    # Drive destructive
+    "drive_delete_file",
+    "drive_share_file",     # privacy-sensitive (could expose private docs)
+    # Calendar destructive
+    "calendar_delete_event",
+    # SSH (could rm -rf)
+    "ssh_execute",
+    # Raw API escape hatches — by design unrestricted, must always confirm
+    "gmail_raw_api_call",
+    "calendar_raw_api_call",
+    "drive_raw_api_call",
+    "docs_raw_api_call",
+    "sheets_raw_api_call",
+    "tasks_raw_api_call",
+    "contacts_raw_api_call",
+    # Vault — sensitive secret operations
+    "vault_unlock",
+    "vault_set_secret",
+    # Contacts batch (can delete up to 200 contacts in one shot)
+    "contacts_batch_operations",
+    # Tasks bulk delete via raw
+    "tasks_delete",
+})
+
+
+async def user_requires_hitl(user_id: str, tool_name: str) -> bool:
+    """Return True if HITL approval is required for ``user_id`` on ``tool_name``.
+
+    Resolution order :
+      1. If ``tool_name`` is in ``LOCKED_HITL_TOOLS`` → always True.
+      2. If a user-specific row exists in ``hitl_preferences`` → use it.
+      3. Otherwise fall back to True (= secure default, HITL on).
+
+    Never raises — any DB error degrades to True.
+    """
+    if not user_id or not tool_name:
+        return True
+    if tool_name in LOCKED_HITL_TOOLS:
+        return True
+    try:
+        async with async_session() as db:
+            row = await db.execute(
+                select(HitlPreference.requires_confirmation).where(
+                    HitlPreference.user_id == user_id,
+                    HitlPreference.tool_name == tool_name,
+                )
+            )
+            val = row.scalar_one_or_none()
+            if val is None:
+                return True   # no override → secure default
+            return bool(val)
+    except Exception as exc:
+        logger.warning("HITL preference lookup failed for %s/%s: %s — default True", user_id[:8], tool_name, exc)
+        return True

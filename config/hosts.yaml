@@ -14,6 +14,186 @@
 #   - Les métacaractères shell (; | & ` $ < >) sont toujours bloqués
 
 hosts:
+  # ─── Host LOCAL (Mac hôte via host.docker.internal) ────────────────────
+  # Pour que ça marche :
+  #   1. macOS : System Settings → General → Sharing → activer "Remote Login"
+  #   2. Ajouter ta clé publique (~/.ssh/id_ed25519.pub) dans ~/.ssh/authorized_keys
+  #   3. Dans le repo Ely : copier la clé privée dans ./data/ssh/id_ed25519
+  #      et faire `chmod 600 ./data/ssh/id_ed25519`
+  #   4. Récupérer la fingerprint :  ssh-keyscan -t ed25519 -p 22 host.docker.internal
+  #      et la coller dans host_key (sans cette ligne : WarningPolicy = MITM possible)
+  local:
+    hostname: host.docker.internal
+    port: 22
+    username: franck
+    key_file: /root/.ssh/id_ed25519
+    # host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."   # à compléter (cf. ssh-keyscan)
+
+    # Whitelist — lecture seule, debug, diagnostic. Aucune modification de fichier.
+    allowed_commands:
+      # Lecture / inspection de fichiers
+      - "tail *"
+      - "tail -n * *"
+      - "tail -f *"
+      - "head *"
+      - "head -n * *"
+      - "cat /var/log/*"
+      - "cat /etc/*"
+      - "less /var/log/*"
+      - "ls *"
+      - "ls -la *"
+      - "ls -lh *"
+      - "ls -la"
+      - "ls -lh"
+      - "find /var/log/* -name *"
+      - "find /tmp/* -name *"
+      - "stat *"
+      - "file *"
+      - "wc *"
+      - "wc -l *"
+
+      # Recherche dans des fichiers
+      - "grep *"
+      - "grep -r *"
+      - "grep -i *"
+      - "grep -E *"
+      - "egrep *"
+      - "fgrep *"
+
+      # Système & ressources
+      - "df -h"
+      - "df -i"
+      - "du -sh *"
+      - "du -h *"
+      - "free"
+      - "free -m"
+      - "free -h"
+      - "vm_stat"
+      - "top -b -n 1"
+      - "top -l 1"
+      - "ps aux"
+      - "ps -ef"
+      - "uptime"
+      - "uname"
+      - "uname -a"
+      - "whoami"
+      - "id"
+      - "date"
+      - "env"
+      - "printenv"
+
+      # Logs systemd / kernel
+      - "journalctl"
+      - "journalctl -u *"
+      - "journalctl -n *"
+      - "journalctl --since *"
+      - "dmesg"
+      - "log show --last *"
+      - "log show --predicate *"
+
+      # Réseau (diagnostic)
+      - "netstat -tlnp"
+      - "netstat -an"
+      - "ss -tlnp"
+      - "ss -an"
+      - "lsof -i"
+      - "lsof -nP"
+      - "ping -c * *"
+      - "traceroute *"
+      - "dig *"
+      - "nslookup *"
+      - "host *"
+      - "curl -s *"
+      - "curl -v *"
+      - "curl -I *"
+
+      # Services / état (lecture seule)
+      - "systemctl status *"
+      - "systemctl status"
+      - "systemctl is-active *"
+      - "systemctl is-enabled *"
+      - "service status *"
+
+      # Docker — lecture seule (status/logs uniquement, pas exec/start/stop/rm)
+      - "docker ps"
+      - "docker ps -a"
+      - "docker logs *"
+      - "docker logs --tail * *"
+      - "docker logs --since * *"
+      - "docker stats --no-stream"
+      - "docker inspect *"
+      - "docker images"
+      - "docker volume ls"
+      - "docker network ls"
+
+    # Patterns interdits (en plus du whitelist) — défense en profondeur
+    blocked_patterns:
+      - "rm "
+      - "rm -"
+      - "rmdir"
+      - "mv "
+      - "cp "
+      - "chmod"
+      - "chown"
+      - "chgrp"
+      - "dd "
+      - "mkfs"
+      - "mount"
+      - "umount"
+      - "shutdown"
+      - "reboot"
+      - "halt"
+      - "poweroff"
+      - "kill "
+      - "pkill"
+      - "killall"
+      - "iptables"
+      - "ufw"
+      - "firewall"
+      - "passwd"
+      - "useradd"
+      - "userdel"
+      - "groupadd"
+      - "groupdel"
+      - "apt "
+      - "apt-get"
+      - "yum"
+      - "dnf"
+      - "brew install"
+      - "brew uninstall"
+      - "brew remove"
+      - "git push"
+      - "git commit"
+      - "git rm"
+      - "git reset --hard"
+      - "git clean"
+      - "docker stop"
+      - "docker start"
+      - "docker restart"
+      - "docker rm"
+      - "docker rmi"
+      - "docker exec"
+      - "docker run"
+      - "docker build"
+      - "docker compose down"
+      - "docker compose up"
+      - "systemctl start"
+      - "systemctl stop"
+      - "systemctl restart"
+      - "systemctl reload"
+      - "service start"
+      - "service stop"
+      - "sed -i"
+      - "awk -i"
+      - "tee "
+      - "> /"
+      - ">> /"
+      - "| sh"
+      - "| bash"
+      - "eval "
+      - "exec "
+      - "source "
+
   # Exemple : VPS de production
   # vps:
   #   hostname: ely.catalogmaker.fr

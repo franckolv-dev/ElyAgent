@@ -288,3 +288,121 @@ async def tick(mission_id: str, current_user: User = Depends(get_current_user)) 
         "final_summary": result.get("final_summary"),
         "last_eval_success": result.get("last_eval_success"),
     }
+
+
+@router.delete("/{mission_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete(
+    mission_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete a mission, its plan and its steps.
+
+    Allowed regardless of mission state — useful for cleaning up failed
+    missions stuck in the list (e.g. after a code-level crash like the
+    `langgraph.checkpoint.sqlite` import error of April 2026). The mission's
+    LangGraph checkpoint state is also cleared via thread_id.
+    """
+    m = await _own_or_404(mission_id, current_user)
+
+    # Remove any LangGraph checkpoint persisted under this mission's thread_id
+    # so a future mission with the same id doesn't inherit stale state. This
+    # is best-effort — failures here don't block the DB delete.
+    try:
+        from app.agent.missions.graph import build_mission_graph
+        graph = build_mission_graph()
+        config = {"configurable": {"thread_id": mission_id}}
+        # AsyncSqliteSaver exposes adelete_thread on recent versions
+        ckpt = getattr(graph, "checkpointer", None)
+        if ckpt is not None and hasattr(ckpt, "adelete_thread"):
+            try:
+                await ckpt.adelete_thread(mission_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Delete cascades : MissionPlan + MissionStep rows have FK on mission_id.
+    # We do explicit deletes in case CASCADE isn't declared on every relation.
+    from app.database import async_session
+    from app.models.mission import Mission, MissionPlan, MissionStep
+    from sqlalchemy import delete as _sqldel
+    async with async_session() as db:
+        await db.execute(_sqldel(MissionStep).where(MissionStep.mission_id == mission_id))
+        await db.execute(_sqldel(MissionPlan).where(MissionPlan.mission_id == mission_id))
+        await db.execute(_sqldel(Mission).where(Mission.id == mission_id))
+        await db.commit()
+    return None  # 204 No Content
+
+
+class _RestartBody(BaseModel):
+    """Optional fresh budgets for the restarted mission."""
+    max_iterations: int | None = None
+    max_tokens: int | None = None
+    keep_history: bool = False  # if False (default) plan + steps wiped, if True kept
+
+
+@router.post("/{mission_id}/restart", response_model=MissionOut)
+async def restart(
+    mission_id: str,
+    body: _RestartBody | None = None,
+    current_user: User = Depends(get_current_user),
+) -> MissionOut:
+    """Reset a mission to ``draft`` status so it can be started again.
+
+    Useful when a mission failed (e.g. due to a transient bug like a missing
+    Python module) and the user wants to retry without re-typing the title +
+    goal + budgets.
+
+    Default behaviour : wipe plan history + steps so the next ``start`` produces
+    a fresh plan. Pass ``keep_history=true`` if you want the previous plan
+    kept for reference (rare).
+    """
+    body = body or _RestartBody()
+    m = await _own_or_404(mission_id, current_user)
+
+    from app.database import async_session
+    from app.models.mission import Mission, MissionPlan, MissionStep
+    from sqlalchemy import delete as _sqldel
+    from datetime import datetime, timezone
+
+    async with async_session() as db:
+        if not body.keep_history:
+            await db.execute(_sqldel(MissionStep).where(MissionStep.mission_id == mission_id))
+            await db.execute(_sqldel(MissionPlan).where(MissionPlan.mission_id == mission_id))
+
+        fresh = await db.get(Mission, mission_id)
+        if fresh is None:
+            raise HTTPException(status_code=404, detail="Mission not found")
+
+        fresh.status = "draft"
+        fresh.failure_reason = None
+        fresh.iterations_used = 0
+        fresh.tokens_used = 0
+        fresh.started_at = None
+        fresh.completed_at = None
+        fresh.next_tick_at = None
+        fresh.final_summary = None
+        fresh.updated_at = datetime.now(timezone.utc)
+        if body.max_iterations is not None:
+            fresh.budget_iterations = max(1, body.max_iterations)
+        if body.max_tokens is not None:
+            fresh.budget_tokens = max(100, body.max_tokens)
+        await db.commit()
+        await db.refresh(fresh)
+
+    # Also wipe the LangGraph checkpoint so the next start doesn't replay
+    # the previous terminal state. Without this, a mission that had reached
+    # 'completed' in its checkpoint will be re-marked completed on the very
+    # first tick after restart (no real work performed). The previous
+    # implementation called `build_mission_graph()` without compiling, which
+    # always returned `checkpointer=None` — so the deletion never ran.
+    try:
+        from app.agent.missions.checkpointer import get_mission_checkpointer
+        cp = await get_mission_checkpointer()
+        if cp is not None and hasattr(cp, "adelete_thread"):
+            await cp.adelete_thread(mission_id)
+            logger.info("Mission checkpoint wiped for %s", mission_id[:8])
+    except Exception as _exc:
+        logger.warning("Mission checkpoint wipe failed for %s: %s", mission_id[:8], _exc)
+
+    return MissionOut.model_validate(fresh)

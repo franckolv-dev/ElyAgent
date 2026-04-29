@@ -534,7 +534,11 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
         r"dessin[ea][rz]?|illustr[ea])\b",
         _re.IGNORECASE)),
     ("workspace", _re.compile(
-        r"\b(gmail|emails?|mails?|courriels?|messagerie|inbox|boîte|courrier|"
+        # "messages" added — common French phrasing : « supprime les messages
+        # dans le répertoire X » means Gmail label X, not a filesystem folder.
+        # Also "labels?" and "étiquettes?" since Gmail-savvy users use these.
+        r"\b(gmail|emails?|mails?|messages?|courriels?|messagerie|inbox|boîte|courrier|"
+        r"labels?|étiquettes?|"
         r"brouillons?|drafts?|répondre? (à|au)|"
         r"calendar|calendrier|agenda|rendez.?vous|événements?|réunions?|meetings?|"
         r"drive|dossiers?|fichiers?(?!.*local)|documents?(?!.*pdf)|google doc|gdoc|"
@@ -618,6 +622,24 @@ def _quick_route(msg: str) -> str | None:
         msg_lower,
     ):
         return "general"
+
+    # PRIORITY -1: explicit local filesystem path → force desktop, BEFORE
+    # any keyword that could pull toward workspace (drive/fichier/document).
+    # Why : after we added "messages" / "fichiers" to workspace patterns,
+    # phrases like « liste les fichiers dans /Users/franck/Documents » or
+    # « supprime test.txt sur le bureau » started matching workspace.
+    # The cleanest disambiguator is whether the phrase carries a literal
+    # filesystem path or a "machine-local" marker. If so → desktop, period.
+    if _re.search(
+        r"(\B|^|\s)(?:~/|/users/|/home/|/var/|/etc/|/tmp/|/opt/|c:\\|d:\\)",
+        msg_lower,
+    ) or _re.search(
+        r"\b(?:sur (?:mon|le) (?:bureau|desktop)|dans (?:mon|le) (?:bureau|desktop)|"
+        r"localement|sur ma machine|fichier local|fichiers locaux|"
+        r"\.txt\b|\.py\b|\.sh\b|\.log\b|\.app\b|\.dmg\b)\b",
+        msg_lower,
+    ):
+        return "desktop"
 
     # PRIORITY 0: self-introspection — questions about ELY herself MUST go
     # to the diag sub-agent (forced Qwen API for reliable tool calling).
@@ -1058,6 +1080,16 @@ def _make_dispatch_node(domain: str):
                 "Sub-agent '%s' failed (%.2fs, %s) — running general agent with tools loop",
                 domain, _t.monotonic() - _start, exc,
             )
+            # NOTE 2026-04-27 : a previous version tried to be clever here and
+            # auto-confirm "the action succeeded" if a recent ToolMessage
+            # looked non-error. That logic was REMOVED because it created a
+            # worse failure mode — the LLM tool result might be empty/void
+            # (e.g. 0 matches found) which is NOT a failure but also NOT a
+            # success, and the auto-confirm wrongly told the user the action
+            # was done when nothing happened. Better : let the general agent
+            # re-read the state and produce its own honest answer. The real
+            # underlying bug (sub-agent introspection crash) needs a proper
+            # fix in factory.py, not a band-aid here.
             # Run a full agent+tools loop (not just one turn) so tool_calls
             # like pdf_read, search_web, etc. are actually executed and the
             # user gets a real response instead of an empty bubble.

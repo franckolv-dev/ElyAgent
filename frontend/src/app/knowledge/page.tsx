@@ -28,6 +28,7 @@ import {
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
+import { WatchedFoldersSection } from "@/components/knowledge/WatchedFoldersSection";
 import { authFetch } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -286,6 +287,11 @@ export default function KnowledgePage() {
                   className="hidden"
                 />
               </div>
+            </div>
+
+            {/* Watched folders card — auto-index a local folder via Desktop daemon */}
+            <div className="bg-bg-secondary border border-border-dim rounded-lg p-5">
+              <WatchedFoldersSection />
             </div>
 
             {/* Documents list card */}

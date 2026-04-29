@@ -22,6 +22,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { GoogleAccountsSection } from "@/components/settings/GoogleAccountsSection";
+import { HitlPreferencesSection } from "@/components/settings/HitlPreferencesSection";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
@@ -983,6 +984,7 @@ export default function SettingsPage() {
     ] : []),
     { id: "integrations", label: t("tabIntegrations"),  icon: Plug       },
     { id: "channels",     label: t("tabChannels"),       icon: Mail       },
+    { id: "hitl",         label: t("tabHitl"),           icon: ShieldCheck },
     { id: "compte",       label: t("tabAccount"),        icon: User       },
   ];
 
@@ -1732,6 +1734,13 @@ export default function SettingsPage() {
                 </div>
               </div>
             </section>
+            )}
+
+            {/* ================================================================
+                TAB: HITL preferences (Human-in-the-Loop on/off per tool)
+            ================================================================ */}
+            {activeTab === "hitl" && (
+              <HitlPreferencesSection />
             )}
 
             {/* ================================================================

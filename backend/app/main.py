@@ -218,6 +218,20 @@ async def lifespan(app: FastAPI):
         hours=1,
         id="credential_store_eviction",
     )
+    # Schedule auto-indexing of WatchedFolder entries every hour.
+    # The service no-ops if the user's ELY Desktop daemon is offline, so
+    # the cron is safe even when no daemon is connected.
+    from app.services.auto_indexer import scan_all_enabled as _scan_watched_folders
+    _vault_scheduler.add_job(
+        _scan_watched_folders,
+        trigger="interval",
+        hours=1,
+        id="watched_folders_autoindex",
+        # Skip if a previous tick is still running (large folder = long scan)
+        max_instances=1,
+        coalesce=True,
+    )
+
     _vault_scheduler.start()
 
     # Schedule user memory consolidation — twice a day to keep the backlog
@@ -372,6 +386,8 @@ app.include_router(voice_router.router, prefix="/ws", tags=["voice"])
 app.include_router(arena_router.router)
 app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
 app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])
+from app.routers import hitl_prefs as _hitl_prefs_router
+app.include_router(_hitl_prefs_router.router, prefix="/api")
 
 # ── Static files — ELY Desktop binaries ─────────────────────────────────────
 import os as _os

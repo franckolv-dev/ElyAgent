@@ -15,7 +15,8 @@ import { useTranslations } from "next-intl";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
-import { Target, Plus, Loader2, AlertCircle, X } from "lucide-react";
+import { Target, Plus, Loader2, AlertCircle, X, RefreshCw, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   missionsApi, type Mission, type MissionStatus, STATUS_META,
 } from "@/lib/missions";
@@ -129,7 +130,7 @@ export default function MissionsPage() {
             ) : (
               <div className="space-y-2">
                 {filtered.map((m) => (
-                  <MissionCard key={m.id} mission={m} />
+                  <MissionCard key={m.id} mission={m} onChanged={fetchAll} />
                 ))}
               </div>
             )}
@@ -149,17 +150,54 @@ export default function MissionsPage() {
 
 // ── Mission card ────────────────────────────────────────────────────────────
 
-function MissionCard({ mission }: { mission: Mission }) {
+function MissionCard({ mission, onChanged }: { mission: Mission; onChanged: () => void }) {
   const t = useTranslations("missions");
+  const router = useRouter();
   const meta = STATUS_META[mission.status];
   const progress = mission.budget_iterations
     ? Math.round((mission.iterations_used / mission.budget_iterations) * 100)
     : 0;
+  const isTerminal = ["failed", "completed", "aborted"].includes(mission.status);
+
+  const [busy, setBusy] = useState<null | "restart" | "delete">(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  const handleRestart = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBusy("restart");
+    setActionError("");
+    try {
+      await missionsApi.restart(mission.id);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t("restartFailed"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBusy("delete");
+    setActionError("");
+    try {
+      await missionsApi.remove(mission.id);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t("deleteFailed"));
+      setConfirmDelete(false);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
-    <Link
-      href={`/missions/${mission.id}`}
-      className="block bg-bg-secondary border border-border-dim hover:border-cyber-cyan/40 rounded-lg p-4 transition-all"
+    <div
+      onClick={() => router.push(`/missions/${mission.id}`)}
+      className="block bg-bg-secondary border border-border-dim hover:border-cyber-cyan/40 rounded-lg p-4 transition-all cursor-pointer"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -171,6 +209,38 @@ function MissionCard({ mission }: { mission: Mission }) {
           </div>
           <p className="text-[11px] text-text-muted line-clamp-2">{mission.goal}</p>
         </div>
+
+        {/* Action buttons — visible only on terminal missions for now to
+            avoid accidental restart/delete of a running one. The detail
+            page can offer a "force-stop then delete" flow later. */}
+        {isTerminal && (
+          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={handleRestart}
+              disabled={busy !== null}
+              title={t("restartTooltip")}
+              className="p-1.5 text-text-muted hover:text-cyber-cyan hover:bg-cyber-cyan/10 rounded transition-colors disabled:opacity-50"
+            >
+              {busy === "restart"
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <RefreshCw className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setConfirmDelete(true);
+              }}
+              disabled={busy !== null}
+              title={t("deleteTooltip")}
+              className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-3 flex items-center gap-4 text-[10px] text-text-muted">
@@ -201,7 +271,47 @@ function MissionCard({ mission }: { mission: Mission }) {
       {mission.failure_reason && (
         <p className="mt-2 text-[11px] text-red-300/80 line-clamp-1">⚠ {mission.failure_reason}</p>
       )}
-    </Link>
+      {actionError && (
+        <p className="mt-2 text-[11px] text-red-400 line-clamp-2">{actionError}</p>
+      )}
+
+      {/* Confirm-delete inline sheet */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+        >
+          <div
+            className="bg-bg-secondary border border-red-500/30 rounded-lg p-5 w-full max-w-md mx-4 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-sm font-semibold text-red-400">{t("deleteModalTitle")}</h4>
+            <p className="text-xs text-text-secondary">
+              {t("deleteModalBody", { title: mission.title })}
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDelete(false); }}
+                disabled={busy === "delete"}
+                className="text-xs px-3 py-1.5 rounded border border-border-dim text-text-secondary hover:text-text-primary"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy === "delete"}
+                className="text-xs px-3 py-1.5 rounded bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 flex items-center gap-1.5"
+              >
+                {busy === "delete" && <Loader2 className="w-3 h-3 animate-spin" />}
+                <span>{t("deleteConfirm")}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

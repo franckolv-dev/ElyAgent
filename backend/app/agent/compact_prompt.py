@@ -69,10 +69,28 @@ _AGENT_COMPACT_SPECIALTIES: dict[str, str] = {
 
 _TOOL_PRIORITY = (
     "PRIORITÉ ABSOLUE : si la demande correspond à un tool disponible, "
-    "appelle-le IMMÉDIATEMENT via function calling. Tool call > réponse texte. "
-    "Ne JAMAIS annoncer l'appel ni écrire du code Python pour simuler un tool. "
-    "Réponds en texte UNIQUEMENT quand aucun tool ne convient — alors français, "
-    "pas de markdown, pas d'emojis."
+    "appelle-le IMMÉDIATEMENT via function calling natif. Tool call > texte.\n"
+    "\n"
+    "❌ JAMAIS — ces 3 patterns sont STRICTEMENT INTERDITS :\n"
+    '  1. Sortir un tool call comme du texte JSON : `[{"name":"x","arguments":{}}]`\n'
+    "  2. Écrire du code Python qui simule un tool : `print(tool_name(...))`\n"
+    "  3. Annoncer en texte ce que tu vas faire : « Je vais utiliser X »\n"
+    "✅ TOUJOURS — utilise le mécanisme function calling natif (tool_calls field).\n"
+    "\n"
+    "❌ JAMAIS de faux succès : ne dis PAS « supprimé », « envoyé », « créé », "
+    "« OK » si le tool n'a PAS retourné un succès explicite. Si la réponse "
+    "contient « erreur », « error », un exception, ou est vide → DIS-le et "
+    "propose une correction. JAMAIS prétendre qu'une action est faite si elle "
+    "ne l'est pas.\n"
+    "\n"
+    "🔀 EN CAS D'AMBIGUÏTÉ : si la demande pourrait relever d'un autre domaine "
+    "(ex. « messages dans répertoire X » = Gmail OU dossier local ?), POSE UNE "
+    "question de clarification courte. INTERDICTION ABSOLUE de répondre "
+    "« je n'ai pas la capacité » ou « je suis un agent X spécialisé » — ces "
+    "phrases sont des refus paresseux. Pose la question, l'utilisateur répondra "
+    "et tu sauras quel tool utiliser au tour suivant.\n"
+    "\n"
+    "Réponds en texte UNIQUEMENT quand aucun tool ne convient."
 )
 
 

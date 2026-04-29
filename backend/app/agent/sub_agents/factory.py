@@ -451,24 +451,14 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             from app.services.qwen_no_think import is_local_openai_llm
             _use_compact = is_local_openai_llm(llm)
 
-            # Per-user language directive — front-loaded so the model anchors
-            # its reply language before reading the rest of the prompt.
-            # Éli stays "féminin" in both languages (her name is the same;
-            # English just drops the gender markers naturally).
+            # Per-user language directive — kept SHORT (~10 tokens × 2) so it
+            # doesn't bloat the prompt for small local LLMs (xLAM 8B starts
+            # hallucinating beyond ~3000 tokens of context). Sandwich head+tail
+            # is enough to anchor reply language without further reinforcement.
             if user_language == "en":
-                _lang_directive = (
-                    "LANGUAGE — STRICT : Reply in English only. The user has set "
-                    "their UI language to English; never reply in French unless the "
-                    "user explicitly writes in French in the current message. Tool "
-                    "results may be in any language — translate them to English in "
-                    "your final answer.\n\n"
-                )
+                _lang_directive = "REPLY LANGUAGE = English. Translate any tool output.\n\n"
             else:
-                _lang_directive = (
-                    "LANGUE — STRICT : Réponds uniquement en français. "
-                    "Si un outil renvoie du contenu dans une autre langue, traduis-le "
-                    "en français dans ta réponse finale.\n\n"
-                )
+                _lang_directive = "LANGUE DE RÉPONSE = Français. Traduis si besoin.\n\n"
 
             # Quiet trace — keep one line per turn at INFO level so future
             # debugging is easy if the language flow regresses again.
@@ -479,14 +469,11 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 (user_id[:8] + "…") if user_id else "(none)",
             )
 
-            # Short reminder appended at the very end of the prompt — primacy
-            # alone isn't enough when the body of the prompt is mostly in the
-            # other language (e.g. DIAG_AGENT has French examples, but the user
-            # set language=en). Recency reinforces the directive.
+            # Short reminder at end (recency anchor) — same idea, kept tiny.
             if user_language == "en":
-                _lang_reminder = "\n\n=== FINAL REMINDER: reply in English. ==="
+                _lang_reminder = "\n\n[reply in English]"
             else:
-                _lang_reminder = "\n\n=== RAPPEL FINAL : réponds en français. ==="
+                _lang_reminder = "\n\n[réponds en français]"
 
             if _use_compact:
                 from app.agent.compact_prompt import build_compact_system_prompt
@@ -756,9 +743,51 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     if _resolved_creds:
                         args["user_google_credentials_json"] = _resolved_creds
                     else:
-                        args["user_google_credentials_json"] = (
-                            get_credential_store().get(_uid) or ""
-                        )
+                        # Try the in-memory store first (fast path, populated
+                        # by the WebSocket chat handshake).
+                        _creds_default = get_credential_store().get(_uid) or ""
+                        # Fallback to DB if store is empty — happens for
+                        # mission heartbeats / scheduled tasks / cron jobs
+                        # that don't go through chat.py to populate the store
+                        # (and after every backend restart that wipes the
+                        # in-memory store). Without this fallback, all Google
+                        # tools fail with "Google not connected" even though
+                        # credentials exist in DB. April 2026 mission #19/15
+                        # spam-delete loop was caused by exactly this.
+                        if not _creds_default and _uid:
+                            try:
+                                from app.database import async_session as _async_session
+                                from app.models.google_account import GoogleAccount as _GA
+                                from app.models.user import User as _U
+                                from sqlalchemy import select as _select
+                                async with _async_session() as _db:
+                                    # 1. Prefer the default GoogleAccount row
+                                    _row = await _db.execute(
+                                        _select(_GA.credentials_json).where(
+                                            _GA.user_id == _uid,
+                                            _GA.is_default == True,  # noqa: E712
+                                        )
+                                    )
+                                    _creds_default = _row.scalar_one_or_none() or ""
+                                    # 2. Legacy fallback : User.google_credentials
+                                    if not _creds_default:
+                                        _u = await _db.get(_U, _uid)
+                                        if _u and _u.google_credentials:
+                                            _creds_default = _u.google_credentials
+                                # Re-populate the store so subsequent tool
+                                # calls in this turn (and beyond) are fast.
+                                if _creds_default:
+                                    get_credential_store().set(_uid, _creds_default)
+                                    logger.info(
+                                        "Credential store re-populated from DB for user %s",
+                                        _uid[:8] + "…",
+                                    )
+                            except Exception as _exc:
+                                logger.warning(
+                                    "Credential DB fallback failed for %s: %s",
+                                    _uid[:8] + "…", _exc,
+                                )
+                        args["user_google_credentials_json"] = _creds_default
                 if tool_name in _USER_ID_TOOLS:
                     args["user_id"] = state.get("user_id") or ""
 
@@ -818,6 +847,68 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 needs_hitl = (
                     tool_name in ALWAYS_CRITICAL_TOOLS
                 ) or sf.is_critical(action_desc)
+
+                # ── Per-user HITL preferences override (Phase 3 below) ────
+                # Users can disable HITL for specific tools via Settings →
+                # HITL preferences. We honour their choice except for the
+                # most dangerous tools (which the UI also locks).
+                if needs_hitl:
+                    try:
+                        from app.services.hitl_preferences import (
+                            user_requires_hitl as _user_requires_hitl,
+                        )
+                        if not await _user_requires_hitl(user_id, tool_name):
+                            logger.info(
+                                "HITL skipped (user preference) for %s on tool %s",
+                                user_id[:8] + "…", tool_name,
+                            )
+                            needs_hitl = False
+                    except Exception:
+                        pass
+
+                # ── Self-mail auto-approve ────────────────────────────────
+                # Sending an email to the calling user's own email address
+                # carries near-zero risk (you can't 'leak' your own data to
+                # yourself) but used to trigger HITL — which is impossible
+                # to satisfy when the user is offline (e.g. scheduled task
+                # at 6 a.m. sends a daily AI digest to franck@gmail.com →
+                # HITL prompt nobody approves → email never sent).
+                if needs_hitl and tool_name in {
+                    "gmail_send_email", "gmail_reply_email",
+                    "gmail_send_with_attachment",
+                }:
+                    try:
+                        _to = (args.get("to") or "").strip().lower()
+                        # Resolve user's email(s) — both User.email and any
+                        # GoogleAccount.email belonging to this user count
+                        # as "self" for this check.
+                        from app.database import async_session as _async_session
+                        from app.models.user import User as _U
+                        from app.models.google_account import GoogleAccount as _GA
+                        from sqlalchemy import select as _sel
+                        async with _async_session() as _db:
+                            _u = await _db.get(_U, user_id) if user_id else None
+                            _self_emails: set[str] = set()
+                            if _u and _u.email:
+                                _self_emails.add(_u.email.strip().lower())
+                            if user_id:
+                                _rows = await _db.execute(
+                                    _sel(_GA.email).where(_GA.user_id == user_id)
+                                )
+                                for (_em,) in _rows.all():
+                                    if _em:
+                                        _self_emails.add(str(_em).strip().lower())
+                        # Match also handles "Name <email@x.com>" formatting
+                        if any(em and em in _to for em in _self_emails):
+                            logger.info(
+                                "HITL skipped (self-mail) — to=%s matches user's own address",
+                                _to[:80],
+                            )
+                            needs_hitl = False
+                    except Exception as _exc:
+                        # Any error here → keep HITL enabled (safer default)
+                        logger.debug("self-mail check failed: %s", _exc)
+
                 if needs_hitl:
                     logger.info("HITL required for action: %s", action_desc)
                     decision, reason = await hitl.request_validation(

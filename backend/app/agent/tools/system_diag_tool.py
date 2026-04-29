@@ -76,6 +76,13 @@ async def system_get_logs(
 ) -> str:
     """Read recent backend log lines (in-memory ring buffer, last ~5000 entries).
 
+    NO TIME FILTER — this tool only filters by line count, substring (grep),
+    log level, and logger module. Do NOT pass `time`, `date`, `since`, `from`,
+    `to`, `today`, `yesterday` — these are NOT valid arguments and the call
+    will FAIL. To get "this morning's logs" simply ask for the last N lines
+    (the buffer holds ~5000 entries = a few minutes of activity, so recent =
+    everything in the buffer).
+
     Sensitive values (API keys, tokens, JWTs, passwords) are automatically
     masked before being returned. Use this to diagnose why a feature is
     not working as expected.

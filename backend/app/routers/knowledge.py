@@ -209,3 +209,174 @@ async def search_knowledge(
     )
     _fields = set(SearchResult.model_fields)
     return [SearchResult(**{k: v for k, v in r.items() if k in _fields}) for r in results]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Watched folders — auto-indexing of local folders into the RAG knowledge base
+# ──────────────────────────────────────────────────────────────────────────────
+from pydantic import BaseModel, Field
+from sqlalchemy import select as _select_wf
+from app.database import async_session as _async_session_wf
+from app.models.watched_folder import (
+    WatchedFolder,
+    DEFAULT_INCLUDE_EXTENSIONS,
+    DEFAULT_EXCLUDE_PATHS,
+)
+
+
+class _WatchedFolderOut(BaseModel):
+    id: str
+    path: str
+    recursive: bool
+    enabled: bool
+    include_extensions: str
+    exclude_paths: str
+    last_scan_at: str | None
+    last_scan_status: str
+    last_scan_message: str
+    files_indexed: int
+    created_at: str
+
+
+class _WatchedFolderCreate(BaseModel):
+    path: str = Field(..., min_length=1, max_length=1024)
+    recursive: bool = True
+    include_extensions: str = DEFAULT_INCLUDE_EXTENSIONS
+    exclude_paths: str = DEFAULT_EXCLUDE_PATHS
+
+
+class _WatchedFolderUpdate(BaseModel):
+    enabled: bool | None = None
+    recursive: bool | None = None
+    include_extensions: str | None = None
+    exclude_paths: str | None = None
+
+
+def _wf_to_dict(f: WatchedFolder) -> dict:
+    return {
+        "id": f.id,
+        "path": f.path,
+        "recursive": f.recursive,
+        "enabled": f.enabled,
+        "include_extensions": f.include_extensions,
+        "exclude_paths": f.exclude_paths,
+        "last_scan_at": f.last_scan_at.isoformat() if f.last_scan_at else None,
+        "last_scan_status": f.last_scan_status,
+        "last_scan_message": f.last_scan_message,
+        "files_indexed": f.files_indexed,
+        "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
+
+
+@router.get("/knowledge/watched-folders")
+async def list_watched_folders(user: User = Depends(get_current_user)):
+    """List every folder this user has set up for auto-indexing."""
+    async with _async_session_wf() as db:
+        rows = await db.execute(
+            _select_wf(WatchedFolder)
+            .where(WatchedFolder.user_id == user.id)
+            .order_by(WatchedFolder.created_at.asc())
+        )
+        return {"folders": [_wf_to_dict(f) for f in rows.scalars()]}
+
+
+@router.post("/knowledge/watched-folders")
+async def create_watched_folder(
+    req: _WatchedFolderCreate,
+    user: User = Depends(get_current_user),
+):
+    """Register a new folder for auto-indexing.
+
+    Does NOT scan immediately — call ``POST /knowledge/watched-folders/{id}/scan``
+    or wait for the cron tick. This split avoids a 30-second HTTP request
+    on first add.
+    """
+    async with _async_session_wf() as db:
+        # Reject duplicate (user_id, path) explicitly so the UI can show a
+        # nice error instead of a 500 from the DB constraint.
+        existing = await db.execute(
+            _select_wf(WatchedFolder).where(
+                WatchedFolder.user_id == user.id,
+                WatchedFolder.path == req.path,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(status_code=409, detail=f"Folder already watched: {req.path}")
+
+        f = WatchedFolder(
+            user_id=user.id,
+            path=req.path.strip(),
+            recursive=req.recursive,
+            include_extensions=req.include_extensions or DEFAULT_INCLUDE_EXTENSIONS,
+            exclude_paths=req.exclude_paths or DEFAULT_EXCLUDE_PATHS,
+            enabled=True,
+            last_scan_status="pending",
+            last_scan_message="",
+        )
+        db.add(f)
+        await db.flush()
+        await db.refresh(f)
+        await db.commit()
+        return _wf_to_dict(f)
+
+
+@router.patch("/knowledge/watched-folders/{folder_id}")
+async def update_watched_folder(
+    folder_id: str,
+    req: _WatchedFolderUpdate,
+    user: User = Depends(get_current_user),
+):
+    """Toggle enabled/recursive or update extension filters."""
+    async with _async_session_wf() as db:
+        f = await db.get(WatchedFolder, folder_id)
+        if not f or f.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        if req.enabled is not None:
+            f.enabled = req.enabled
+        if req.recursive is not None:
+            f.recursive = req.recursive
+        if req.include_extensions is not None:
+            f.include_extensions = req.include_extensions or DEFAULT_INCLUDE_EXTENSIONS
+        if req.exclude_paths is not None:
+            f.exclude_paths = req.exclude_paths or DEFAULT_EXCLUDE_PATHS
+        await db.commit()
+        await db.refresh(f)
+        return _wf_to_dict(f)
+
+
+@router.delete("/knowledge/watched-folders/{folder_id}")
+async def delete_watched_folder(
+    folder_id: str,
+    user: User = Depends(get_current_user),
+):
+    """Remove a watched folder. Does NOT delete ingested chunks from Qdrant —
+    use the existing ``DELETE /knowledge/documents/{id}`` for that, per-document.
+    """
+    async with _async_session_wf() as db:
+        f = await db.get(WatchedFolder, folder_id)
+        if not f or f.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        await db.delete(f)
+        await db.commit()
+        return {"message": "Folder removed", "id": folder_id}
+
+
+@router.post("/knowledge/watched-folders/{folder_id}/scan")
+async def scan_watched_folder_now(
+    folder_id: str,
+    user: User = Depends(get_current_user),
+):
+    """Trigger an immediate scan of a watched folder. Returns when done.
+
+    Long-running (can take 30s+ on a folder with many files). The UI
+    should show a spinner. Concurrency is handled in the service layer
+    (mutex per folder).
+    """
+    async with _async_session_wf() as db:
+        f = await db.get(WatchedFolder, folder_id)
+        if not f or f.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Folder not found")
+
+    from app.services.auto_indexer import scan_folder
+    summary = await scan_folder(folder_id)
+    return summary

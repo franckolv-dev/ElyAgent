@@ -338,25 +338,36 @@ async def gmail_search_for_cleanup(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Search for emails to clean up (newsletters, promotions, marketing, etc.).
+    """Search for emails to clean up (newsletters, promotions, social, spam, etc.).
 
     Returns a list of email IDs and summaries for the user to review before acting.
     Always present results to the user before calling gmail_move_emails or gmail_trash_emails.
 
     Args:
-        category: Type of emails to find. Options:
-          - 'newsletters' : newsletters et abonnements
-          - 'promotions'  : emails promotionnels et offres commerciales
-          - 'social'      : notifications réseaux sociaux
-          - 'demarchage'  : démarchage commercial et prospection
-          - 'all_cleanup' : toutes les catégories ci-dessus combinées
+        category: Type of emails to find. Allowed values (must match exactly,
+            unknown categories raise an error rather than silently falling back) :
+          - 'newsletters'   : newsletters et abonnements (heuristique unsubscribe)
+          - 'promotions'    : Gmail tab "Promotions" (category:promotions)
+          - 'social'        : Gmail tab "Réseaux sociaux" (category:social)
+          - 'forums'        : Gmail tab "Forums" (category:forums)
+          - 'updates'       : Gmail tab "Mises à jour / Notifications" (category:updates)
+          - 'notifications' : alias historique pour 'updates' (compat)
+          - 'spam'          : dossier SPAM (in:spam)
+          - 'trash'         : dossier corbeille (in:trash) — utile pour purge définitive
+          - 'demarchage'    : démarchage commercial et prospection (heuristique mots-clés)
+          - 'all_cleanup'   : promotions + updates + heuristique unsubscribe
+          - 'all_categories': les 4 onglets Gmail (promotions + social + forums + updates)
         max_results: Max number of emails to find (default 50, max 100)
     """
     service = await _get_gmail_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
-    # Gmail search queries per category
+    # Gmail search queries per category. Keys MUST match the docstring's
+    # whitelist — unknown categories are rejected rather than silently
+    # mapped to a default (the silent fallback was the root cause of an
+    # April 2026 mission loop : LLM asked for "spam", got "newsletters",
+    # eval kept saying "wrong category", replan looped 16x → budget exhausted).
     queries = {
         "newsletters": (
             "category:updates OR (unsubscribe AND (newsletter OR mailing)) "
@@ -364,6 +375,11 @@ async def gmail_search_for_cleanup(
         ),
         "promotions": "category:promotions",
         "social": "category:social",
+        "forums": "category:forums",
+        "updates": "category:updates",
+        "notifications": "category:updates",  # legacy alias
+        "spam": "in:spam",
+        "trash": "in:trash",
         "demarchage": (
             "(démarchage OR prospection OR \"offre commerciale\" OR \"offre exclusive\" "
             "OR \"ne manquez pas\" OR \"offre limitée\" OR \"promo\" OR soldes) "
@@ -373,9 +389,20 @@ async def gmail_search_for_cleanup(
             "category:promotions OR category:updates OR "
             "(unsubscribe AND (newsletter OR mailing OR promo OR offre))"
         ),
+        "all_categories": (
+            "category:promotions OR category:social OR "
+            "category:forums OR category:updates"
+        ),
     }
 
-    query = queries.get(category, queries["all_cleanup"])
+    if category not in queries:
+        # Hard error so the LLM eval node sees the mistake and replans with
+        # a valid category instead of looping forever on garbage results.
+        return (
+            f"Catégorie '{category}' non reconnue. Valeurs acceptées : "
+            f"{', '.join(sorted(queries.keys()))}."
+        )
+    query = queries[category]
     max_results = min(max_results, 100)
 
     try:

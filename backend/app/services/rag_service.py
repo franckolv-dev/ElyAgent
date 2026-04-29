@@ -327,8 +327,16 @@ class RAGService:
         user_id: str,
         title: str | None = None,
         collection_name: str | None = None,
+        source_file: str | None = None,
     ) -> dict:
         """Chunk, embed, and store a document in Qdrant.
+
+        Args:
+            source_file: optional override for the ``source_file`` payload
+                stored alongside each chunk. Used by the auto-indexer to
+                preserve the user-facing original path (e.g.
+                ``/Users/franck/Documents/budget.xlsx``) instead of the
+                temp file path used during ingestion.
 
         Returns:
             dict with document_id, title, chunk_count, status.
@@ -352,7 +360,10 @@ class RAGService:
         # Generate document ID and title
         document_id = str(uuid.uuid4())
         doc_title = title or file_path.stem
-        source_file = file_path.name
+        # Honour the explicit override if the caller (auto-indexer) passed it,
+        # so the chunk payload stores the original user-facing path instead
+        # of the temp file used for extraction.
+        source_file = source_file or file_path.name
 
         # Chunk the text
         chunks = _split_text(text)

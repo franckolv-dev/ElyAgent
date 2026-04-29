@@ -71,7 +71,47 @@ async def dispatch_tool(
     args = dict(tool_args)
     if tool_name in GOOGLE_TOOLS:
         from app.services.credential_store import get_credential_store
-        args["user_google_credentials_json"] = get_credential_store().get(user_id) or ""
+        _store = get_credential_store()
+        _creds = _store.get(user_id) or ""
+        # Fallback to DB if the in-memory store is empty — happens for
+        # mission heartbeats / scheduled tasks / cron jobs that don't
+        # go through chat.py to populate the store (and after every
+        # backend restart that wipes the in-memory store). Without this
+        # fallback, all Google tools fail with "Google non connecté"
+        # even though credentials exist in DB. April 2026 mission #19/15
+        # spam-delete loop was caused by exactly this.
+        if not _creds and user_id:
+            try:
+                from app.database import async_session as _async_session
+                from app.models.google_account import GoogleAccount as _GA
+                from app.models.user import User as _U
+                from sqlalchemy import select as _select
+                async with _async_session() as _db:
+                    # 1. Prefer the default GoogleAccount row
+                    _row = await _db.execute(
+                        _select(_GA.credentials_json).where(
+                            _GA.user_id == user_id,
+                            _GA.is_default == True,  # noqa: E712
+                        )
+                    )
+                    _creds = _row.scalar_one_or_none() or ""
+                    # 2. Legacy fallback : User.google_credentials column
+                    if not _creds:
+                        _u = await _db.get(_U, user_id)
+                        if _u and _u.google_credentials:
+                            _creds = _u.google_credentials
+                if _creds:
+                    _store.set(user_id, _creds)
+                    logger.info(
+                        "Mission credential store re-populated from DB for user %s",
+                        user_id[:8] + "…",
+                    )
+            except Exception as _exc:
+                logger.warning(
+                    "Mission credential DB fallback failed for %s: %s",
+                    user_id[:8] + "…", _exc,
+                )
+        args["user_google_credentials_json"] = _creds
     if tool_name in USER_ID_TOOLS:
         args["user_id"] = user_id
 
@@ -497,27 +537,81 @@ async def act_node(state: MissionState) -> dict:
 
 # ── eval_node ────────────────────────────────────────────────────────────────
 
-_EVAL_SYSTEM = """Tu es l'évaluateur de l'agent ELY. Voici le contexte d'une étape qui vient d'être exécutée :
+_EVAL_SYSTEM = """Tu es l'évaluateur strict de l'agent ELY. Voici le contexte d'une étape qui vient d'être exécutée :
 
-Goal global : {goal}
-Étape : « {step_desc} »
+Goal global de la mission : {goal}
+Étape exécutée : « {step_desc} »
 Outil utilisé : {tool_name}
 Résultat brut de l'outil :
 ---
 {tool_output}
 ---
 
-Question : cette étape est-elle un SUCCÈS qui permet d'avancer dans le goal ?
-
-Réponds STRICTEMENT en JSON :
+Tu réponds STRICTEMENT en JSON :
 {{
   "success": true|false,
   "reason": "<une phrase max>",
   "all_done": true|false
 }}
 
-- "success" = l'étape précise est OK
-- "all_done" = le goal global est complètement atteint après cette étape (true si plus rien à faire)"""
+DÉFINITIONS PRÉCISES (lis-les avant de répondre) :
+
+- "success" = l'étape qui vient de tourner s'est techniquement bien passée
+  (pas d'erreur, pas d'exception, le tool a renvoyé un résultat plausible)
+  ET l'outil utilisé correspond SÉMANTIQUEMENT à ce que demande l'étape.
+
+  ⚠️ CRITIQUE — vérifie la cohérence outil ↔ description :
+    - Si l'étape demande « SUPPRIMER / TRASH / DELETE / EFFACER » et l'outil
+      appelé est un search/list/get → success=FALSE. Le tool a beau avoir
+      réussi techniquement, il N'A PAS exécuté l'action demandée.
+    - Si l'étape demande « ENVOYER / SEND » et l'outil est un read/list →
+      success=FALSE.
+    - Si l'étape demande « CRÉER / CREATE » et l'outil est un get/list →
+      success=FALSE.
+    - Règle générale : l'outil doit CHANGER L'ÉTAT DU SYSTÈME quand l'étape
+      le demande. Un search/list/get/read ne change rien — donc il ne peut
+      jamais valider une étape d'action mutative.
+
+  Exemples positifs :
+    - étape "Lister les spams" + tool gmail_search → success=true
+    - étape "Supprimer les spams" + tool gmail_trash_emails → success=true
+    - étape "Supprimer les spams" + tool gmail_search → success=FALSE
+      (le LLM a appelé le mauvais outil — il faut replan vers gmail_trash_emails)
+
+- "all_done" = ⚠️ TRÈS STRICT ⚠️ — vrai UNIQUEMENT si l'EFFET RÉEL ATTENDU
+  par le goal global est CONCRÈTEMENT réalisé sur le système cible.
+  PAS « toutes les étapes du plan sont done ». PAS « j'ai préparé / identifié /
+  listé les IDs ». MAIS « l'état du système a changé conformément au goal ».
+
+  Test mental obligatoire :
+    1. Relis le goal global au mot près.
+    2. Pose-toi : « si je vérifiais le système maintenant, le résultat
+       observable correspondrait-il à ce que demande le goal ? »
+    3. Si OUI → all_done=true. Si NON, ou si tu n'es pas SÛR → all_done=false.
+
+  Exemples qui ÉCLAIRENT :
+
+  Goal : « Supprime tous les emails du dossier SPAM »
+  - Étape : gmail_search retourne 50 IDs SPAM
+    → success=true, all_done=FALSE (les emails ne sont pas encore supprimés)
+  - Étape suivante : gmail_trash_emails(ids=[...50...]) retourne « 50 trashed »
+    → success=true, all_done=TRUE (la corbeille est faite)
+
+  Goal : « Envoie chaque matin un résumé IA à mon adresse »
+  - Étape : web_search_news retourne 10 articles
+    → success=true, all_done=FALSE (le mail n'est pas envoyé)
+  - Étape suivante : gmail_send_email retourne un message_id
+    → success=true, all_done=TRUE
+
+  Goal : « Crée un dossier Q3-budget dans Drive et partage-le avec alice »
+  - Étape : drive_create_folder retourne un folder_id
+    → success=true, all_done=FALSE (pas encore partagé)
+  - Étape suivante : drive_share_file(role=writer) retourne success
+    → success=true, all_done=TRUE
+
+  En cas de DOUTE : all_done=false. Une mission marquée « accomplie » alors
+  que rien n'a été fait sur le système est un BUG GRAVE — on préfère
+  toujours laisser le planner replan une étape de plus."""
 
 
 async def eval_node(state: MissionState) -> dict:
@@ -588,9 +682,16 @@ async def eval_node(state: MissionState) -> dict:
     failures = state.get("consecutive_failures", 0)
     new_failures = 0 if success else failures + 1
 
-    # If goal is reached or all steps are done, mark mission complete
-    pending_after = [s for s in new_plan_json.get("steps", []) if s.get("status") not in {"done", "failed", "skipped"}]
-    is_done = all_done or (success and not pending_after)
+    # CRITICAL : we now ONLY trust the LLM's `all_done` verdict, not "no
+    # pending steps left". Reason : the planner can produce an incomplete
+    # plan (e.g. "list IDs" without the matching "delete IDs" step), and
+    # the legacy heuristic (success && no pending) would mark the mission
+    # complete even though the goal wasn't reached. The hardened evaluator
+    # prompt above pushes the LLM to compare the SYSTEM EFFECT to the
+    # GOAL, not just the step list.
+    # If `all_done=false` but the plan has no pending step, the next
+    # iteration falls into replan_node which will add the missing steps.
+    is_done = all_done
 
     out: dict = {
         "last_eval_success": success,

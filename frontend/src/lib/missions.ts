@@ -118,6 +118,15 @@ export const missionsApi = {
     call(`/api/missions/${id}/abort`, { method: "POST", body: JSON.stringify({ reason }) }),
   tick: (id: string): Promise<{ iteration: number | null; plan_version: number | null; done: boolean; final_summary: string | null; last_eval_success: boolean | null }> =>
     call(`/api/missions/${id}/tick`, { method: "POST" }),
+  /** Reset a mission to draft so it can be started again (clears plan + steps by default). */
+  restart: (id: string, opts?: { keep_history?: boolean; max_iterations?: number; max_tokens?: number }): Promise<Mission> =>
+    call(`/api/missions/${id}/restart`, {
+      method: "POST",
+      body: JSON.stringify(opts ?? {}),
+    }),
+  /** Permanently delete a mission, its plan and its steps (also wipes LangGraph checkpoint). */
+  remove: (id: string): Promise<void> =>
+    call(`/api/missions/${id}`, { method: "DELETE" }),
 };
 
 // ── UI helpers ──────────────────────────────────────────────────────────────
