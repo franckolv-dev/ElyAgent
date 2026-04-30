@@ -945,16 +945,35 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
 
     providers: list[str] = tier_cfg.get("providers", ["ollama"])
     fallback_enabled: bool = tier_cfg.get("fallback_enabled", True)
-    max_tokens = 8192 if tier in (ComplexityTier.COMPLEX, ComplexityTier.MAINTENANCE) else 4096
+
+    # Per-tier hyperparameters — the previous hardcoded `temperature=0.7` for
+    # ALL tiers caused massive non-determinism in tool selection and JSON
+    # generation (April 2026 mission "Vide spam" fiasco : LLM hallucinated
+    # email IDs because the sampler had too much variance).
+    #   - SIMPLE / MEDIUM / COMPLEX : tool-calling + planning → low temp
+    #     (Anthropic, OpenAI agentic guidelines all recommend 0.0–0.2).
+    #   - MAINTENANCE              : structured summaries → low temp.
+    #   - IMAGE                    : vision/creative → keep 0.7.
+    # Token budget : MEDIUM / COMPLEX / MAINTENANCE need room for multi-step
+    # plans and replans. SIMPLE stays small for cost.
+    if tier == ComplexityTier.IMAGE:
+        temperature = 0.7
+        max_tokens = 4096
+    elif tier == ComplexityTier.SIMPLE:
+        temperature = 0.1
+        max_tokens = 4096
+    else:  # MEDIUM, COMPLEX, MAINTENANCE
+        temperature = 0.1
+        max_tokens = 8192
 
     last_exc: Optional[Exception] = None
     for i, provider_id in enumerate(providers):
         try:
             if _is_instance_id(provider_id):
-                llm = _make_llm_for_instance(provider_id, max_tokens=max_tokens, temperature=0.7)
+                llm = _make_llm_for_instance(provider_id, max_tokens=max_tokens, temperature=temperature)
             else:
                 llm = _make_llm_for_provider(provider_id, settings,
-                                             max_tokens=max_tokens, temperature=0.7)
+                                             max_tokens=max_tokens, temperature=temperature)
             if llm is not None:
                 return llm
             # llm is None = no key for this provider/instance → skip silently

@@ -170,17 +170,17 @@ async def memory_recent(
     user_id: Annotated[str, InjectedToolArg],
     limit: int = 5,
 ) -> str:
-    """Récupère les N derniers faits archivés dans une catégorie donnée.
+    """Retrieve the last N archived facts in a given category.
 
-    Utile pour faire le point sur une catégorie sans requête sémantique
-    spécifique. Exemples :
-    - "Quelles sont mes dernières préférences ?" → category="preference"
-    - "Liste mes projets en cours" → category="project"
-    - "Qui sont les contacts récemment mentionnés" → category="contact"
+    Useful for reviewing a category without a specific semantic query.
+    Examples:
+    - "What are my latest preferences?" → category="preference"
+    - "List my ongoing projects" → category="project"
+    - "Who are the recently mentioned contacts?" → category="contact"
 
     Args:
-        category: Une de : fact, preference, project, contact, task, event, constraint, other.
-        limit: Nombre max de résultats (1-20). Défaut : 5.
+        category: One of: fact, preference, project, contact, task, event, constraint, other.
+        limit: Max number of results (1-20). Default: 5.
     """
     if not user_id:
         return "Échec : identification utilisateur requise."

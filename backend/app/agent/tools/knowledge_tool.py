@@ -35,15 +35,15 @@ async def knowledge_search(
     query: str,
     user_id: Annotated[str, InjectedToolArg],
 ) -> str:
-    """Recherche dans la base de connaissances personnelle de l'utilisateur.
+    """Search in the user's personal knowledge base.
 
-    Utilise cet outil quand l'utilisateur pose une question sur un document
-    qu'il a telecharge ou ajoute a sa base de connaissances.
-    Exemples : "que dit le contrat ?", "resume le rapport", "trouve dans mes documents",
-    "qu'est-ce que dit la facture ?", "cherche dans mes fichiers".
+    Use this tool when the user asks a question about a document they have
+    uploaded or added to their knowledge base.
+    Examples: "what does the contract say?", "summarize the report", "find in
+    my documents", "what does the invoice say?", "search in my files".
 
     Args:
-        query: La question ou les termes de recherche
+        query: The question or search terms.
     """
     rag = get_rag_service()
     results = await rag.search_knowledge(query, user_id)
@@ -69,12 +69,12 @@ async def knowledge_search(
 async def knowledge_list(
     user_id: Annotated[str, InjectedToolArg],
 ) -> str:
-    """Liste tous les documents dans la base de connaissances de l'utilisateur.
+    """List all documents in the user's personal knowledge base.
 
-    Utilise cet outil quand l'utilisateur demande la liste de ses documents indexes,
-    ou veut savoir ce qui se trouve dans sa base de connaissances.
-    Exemples : "quels documents j'ai ?", "liste mes fichiers indexes",
-    "qu'est-ce que tu connais comme documents ?".
+    Use this tool when the user asks for the list of their indexed documents,
+    or wants to know what is stored in their knowledge base.
+    Examples: "what documents do I have?", "list my indexed files",
+    "what documents do you know about?".
     """
     rag = get_rag_service()
     docs = await rag.list_documents(user_id)

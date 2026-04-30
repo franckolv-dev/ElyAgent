@@ -168,27 +168,115 @@ def _get_planner_llm():
     return get_llm_for_tier(ComplexityTier.MEDIUM)
 
 
-def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str) -> list:
+# ──────────────────────────────────────────────────────────────────────────────
+# ACTION_KEYWORDS — biaise le tool selection par INTENTION (pas par DOMAINE).
+#
+# FAMILY_KEYWORDS plus bas répond à « le user parle de mail » → expose les 18
+# tools gmail_*. ACTION_KEYWORDS répond à « le user veut SUPPRIMER des mails »
+# → boost gmail_trash_by_category en tête, plutôt que de noyer le LLM dans
+# 18 candidats équivalents. Plus le verbe est précis, plus le boost est utile.
+#
+# Maintenu manuellement : ajouter une entrée ici quand un tool est mal choisi
+# de façon répétée. Mots-clés en FR-first (l'UI est francophone) avec quelques
+# équivalents EN pour tenir compte du switch de langue côté user.
+# ──────────────────────────────────────────────────────────────────────────────
+ACTION_KEYWORDS: dict[str, list[str]] = {
+    # Gmail — suppressions / nettoyage (le bug de la session pré-launch)
+    "gmail_trash_by_category": [
+        "supprime", "supprimer", "vide", "vider", "videz",
+        "nettoie", "nettoyer", "purge", "purger", "ménage",
+        "débarrasse", "debarrasse",
+        "fais le ménage", "fais le menage", "fais place nette",
+        "delete", "empty", "clean up", "cleanup", "purge", "remove",
+        "spam", "spams", "indesirables", "indésirables",
+        "newsletter", "newsletters", "mailing", "mailings",
+        "promotions", "promos",
+    ],
+    # Gmail — envois
+    "gmail_send_email": [
+        "envoie un mail", "envoie un email", "envoyer un mail", "envoie un courriel",
+        "écris à", "ecris a", "rédige un mail", "redige un mail",
+        "compose un mail", "send email", "send a mail", "write to",
+    ],
+    # Gmail — réponses
+    "gmail_reply_email": [
+        "réponds à", "reponds a", "répondre à", "repondre a", "réponds au mail",
+        "reply to", "answer the email",
+    ],
+    # Calendar
+    "calendar_create_event": [
+        "planifie", "planifier", "ajoute au calendrier", "crée un rendez-vous",
+        "cree un rdv", "ajoute un événement", "schedule", "add to calendar",
+        "book a meeting", "create appointment",
+    ],
+    "calendar_check_availability": [
+        "es-tu libre", "es tu libre", "suis-je libre", "disponibilité",
+        "disponibilites", "free time", "availability", "am i free",
+    ],
+    # Drive
+    "drive_share_file": [
+        "partage", "partager", "donne accès", "donne acces", "envoie le lien",
+        "share with", "share file",
+    ],
+    "drive_create_folder": [
+        "crée un dossier", "cree un dossier", "nouveau dossier",
+        "create folder", "new folder",
+    ],
+    # Knowledge / RAG
+    "smart_knowledge_query": [
+        "dans mes documents", "dans mes fichiers", "dans ma base",
+        "que dit le document", "que dit le contrat", "résume le rapport",
+        "in my documents", "in my files", "in my knowledge base",
+    ],
+    # Web
+    "web_search": [
+        "cherche sur internet", "cherche en ligne", "recherche web",
+        "search the web", "google", "look online",
+    ],
+}
+
+
+def _boost_by_action_keywords(text: str, all_tools: list) -> list:
+    """Return tools whose registered action keywords match the goal/step text.
+
+    Uses simple lowercase substring matching. The boosted tools are placed
+    at the head of the candidate list passed to the LLM, which biases it
+    strongly towards them (position #1 in the function-calling list is the
+    most likely choice at low temperature).
+    """
+    text_low = (text or "").lower()
+    boosted_names: list[str] = []
+    for tool_name, kws in ACTION_KEYWORDS.items():
+        if any(kw in text_low for kw in kws):
+            boosted_names.append(tool_name)
+    if not boosted_names:
+        return []
+    by_name = {t.name: t for t in all_tools}
+    return [by_name[n] for n in boosted_names if n in by_name]
+
+
+def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str, current_step_desc: str = "") -> list:
     """Reduce the tool inventory to a manageable subset for this iteration.
 
     With 76 tools binded simultaneously, smaller models (xLAM-2-8B,
     Gemini-flash) hit payload-size limits or get confused. We pre-filter
-    to ~10-15 tools using two signals :
+    to ~10-15 tools using THREE signals (in priority order) :
 
-    1. `tool_hint` from the plan step (most reliable) — strict match by
-       prefix/family. Ex: hint="weather_get" → all tools starting with
-       "weather_" or containing "weather".
-    2. Keyword extraction from the goal text (fallback) — match tool
-       names against significant words in the goal.
+    1. `ACTION_KEYWORDS` boost from goal+step text (most precise) — matches
+       INTENTION verbs to specific tools. Ex: "supprime spam" boosts
+       `gmail_trash_by_category` to position #1.
+    2. `tool_hint` from the plan step — strict match by prefix/family.
+       Ex: hint="weather_get" → all tools starting with "weather_".
+    3. `FAMILY_KEYWORDS` from goal text (broader fallback) — match tool
+       families against significant words in the goal.
 
-    If neither yields enough candidates, we top up with a few "generic"
+    If none yield enough candidates, we top up with a few "generic"
     tools (web_search, web_browse) so the model always has something
     to fall back to.
     """
     if not all_tools:
         return all_tools
 
-    # If hint is set, prioritise tools matching its family
     candidates: list = []
     seen: set[str] = set()
 
@@ -196,6 +284,14 @@ def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str)
         if t.name not in seen:
             candidates.append(t)
             seen.add(t.name)
+
+    # ── 1. ACTION_KEYWORDS boost (highest priority — adds in head) ──
+    boost_text = f"{goal} {current_step_desc}".strip()
+    for t in _boost_by_action_keywords(boost_text, all_tools):
+        _add(t)
+    if candidates:
+        logger.info("act: ACTION_KEYWORDS boosted %d tools: %s",
+                    len(candidates), [t.name for t in candidates])
 
     if tool_hint:
         hint_low = tool_hint.lower()
@@ -246,7 +342,7 @@ def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str)
     return candidates[:15] if candidates else all_tools[:15]
 
 
-def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
+def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
     """Return (primary_llm_bound, [(label, fallback_llm_bound)], raw_tools).
 
     `primary` is the local model (xLAM-2-8B or Gemma 4 21B REAP) — fast
@@ -267,8 +363,9 @@ def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "") -> tuple[An
     from app.skills import get_skill_registry
 
     all_tools = get_skill_registry().all_tools
-    tools = _filter_tools_for_step(all_tools, tool_hint, goal)
-    logger.info("act: filtered %d → %d tools (hint=%s)", len(all_tools), len(tools), tool_hint)
+    tools = _filter_tools_for_step(all_tools, tool_hint, goal, current_step_desc)
+    logger.info("act: filtered %d → %d tools (hint=%s, step=%r)",
+                len(all_tools), len(tools), tool_hint, current_step_desc[:60])
 
     primary = get_llm_for_tier(ComplexityTier.MEDIUM)
     primary_bound = primary.bind_tools(tools)
@@ -431,6 +528,7 @@ async def act_node(state: MissionState) -> dict:
     primary_llm, fallbacks, _tools = _get_actor_llms(
         tool_hint=current_tool_hint,
         goal=state.get("goal", ""),
+        current_step_desc=current_step_desc,
     )
     messages: list[BaseMessage] = [
         SystemMessage(content=_ACT_SYSTEM.format(plan_text=plan_text, current_step_desc=current_step_desc)),

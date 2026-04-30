@@ -46,19 +46,18 @@ async def smart_knowledge_query(
     query: str,
     user_id: Annotated[str, InjectedToolArg],
 ) -> str:
-    """Recherche intelligente dans la base de connaissances personnelle.
+    """Smart search in the user's personal knowledge base (agentic RAG).
 
-    Outil "agentique" qui verifie d'abord si la requete est pertinente pour
-    la base documentaire (via detection par mots-cles + probe de similarite),
-    puis effectue une recherche enrichie avec reranking document-level.
+    Agentic tool : first checks if the query is relevant to the document
+    corpus (keyword detection + similarity probe), then runs an enriched
+    retrieval with document-level reranking.
 
-    A UTILISER EN PRIORITE avant de repondre a toute question factuelle
-    susceptible de concerner un document personnel. Si aucun document n'est
-    pertinent, l'outil retourne un signal explicite et tu peux repondre
-    normalement sans le mentionner a l'utilisateur.
+    USE THIS FIRST before answering any factual question that may concern
+    a personal document. If no document is relevant, returns an explicit
+    sentinel so the assistant can answer normally without mentioning the KB.
 
     Args:
-        query: La question ou les termes a rechercher.
+        query: The question or search terms.
     """
     # Stage 1 — cheap relevance gate
     should_search, refined_query = await should_search_knowledge(query, user_id)

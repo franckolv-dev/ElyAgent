@@ -118,3 +118,72 @@
 - **Multi-agent** : ELY peut déléguer des sous-tâches à des agents spécialisés
 - **Marketplace de skills** communautaire
 - **Dashboard analytics** : usage, coûts LLM, interactions par jour
+
+---
+
+## Idées post-launch — feuille de route
+
+### Onboarding conversationnel (proposé 2026-04-30 par Franck)
+
+**Idée** : au premier login, Éli initie une conversation guidée pour apprendre
+le vocabulaire et les habitudes de l'utilisateur. Évite les approximations
+quand le user dit "mes mailings" ou "mes achats" et que ces termes ne sont
+pas dans le dictionnaire générique.
+
+**Architecture proposée** :
+
+```
+backend/
+├── models/user.py               # + onboarding_completed_at
+├── models/user_vocabulary.py    # NEW table (user_term ↔ canonical_term)
+├── services/onboarding.py       # NEW — séquence de questions structurée
+└── routers/onboarding.py        # NEW — REST API + WebSocket trigger
+
+frontend/
+└── components/OnboardingChat.tsx  # NEW — surcouche du chat normal
+```
+
+**Questions clés à poser** :
+1. "Comment veux-tu que je t'appelle ?"
+2. "Concise ou détaillée ?"
+3. "Quelles catégories utilises-tu dans ta boîte mail ? (texte ou capture d'écran)"
+4. "As-tu plusieurs calendriers (perso/pro/famille) ? Comment les nommes-tu ?"
+5. "Y a-t-il des mots que j'ai besoin d'apprendre ? (ex: 'mes mailings' = newsletters)"
+6. "Une routine quotidienne à mettre en place ? (briefing matin, etc.)"
+7. "Des règles strictes à respecter ? (toujours HITL pour X, jamais Y, etc.)"
+
+**Bonus** : support capture d'écran via tier IMG (Gemma 4 21B REAP / Qwen 3 VL Plus).
+Éli analyse la sidebar Gmail/Drive et liste les libellés détectés pour confirmation.
+
+**Injection à l'inférence** :
+À chaque tour, le system prompt est enrichi avec :
+```
+## Vocabulaire personnel de cet utilisateur :
+- "mes mailings" = newsletters
+- "boulot" = calendrier "Travail Pro"
+- "ELY-Test" = libellé Gmail personnalisé
+```
+
+**Estimation** :
+- MVP (texte seulement, stockage memory_manager existant) : ~3h
+- Full (table dédiée, capture d'écran, UI séparée, possibilité de réviser) : ~1-2 jours
+
+**Status** : à démarrer post-launch, sans doute MVP en premier puis Full V2.
+
+### Refacto session (déjà mentionné précédemment)
+
+- `settings/page.tsx` ~2200 lignes → split par tab
+- `supervisor.py` ~1200 → routing.py / dispatch.py / graph_builder.py
+- `main.py` lifespan → `app/bootstrap/`
+- Prompts agents en Jinja2 templates externes (`app/agent/prompts/*.j2`)
+
+### i18n vague 4
+
+- `admin/CreateUserForm.tsx` — laissé en FR (out of scope vague 3)
+
+### System prompts en EN (post-launch)
+
+- Tous les prompts (`_PLANNER_SYSTEM`, `_ACT_SYSTEM`, `_EVAL_SYSTEM`, sub-agents)
+  réécrits en EN avec instruction finale `Reply in {user_language}`
+- Économie tokens + meilleure précision tool-calling
+- Risque de régression — à faire avec tests parallèles avant switch

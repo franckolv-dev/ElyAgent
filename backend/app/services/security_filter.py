@@ -68,6 +68,7 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "drive_delete_file",
     "tasks_delete",
     "gmail_trash_emails",
+    "gmail_trash_by_category",
     "contacts_delete",
     "calendar_delete_event",
     # ── 2. Envois de mail (relecture obligatoire) ──

@@ -34,6 +34,161 @@ from app.services.google_raw_api import execute_raw_call
 logger = logging.getLogger(__name__)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Cleanup categories — shared between gmail_search_for_cleanup and
+# gmail_trash_by_category. The user vocabulary is FR-first so we accept many
+# aliases (singular/plural, FR/EN, common synonyms) and normalize to a
+# canonical key. Each canonical key maps to a Gmail search query.
+#
+# Why so many aliases : the LLM often parrots the user's exact wording
+# ("vide les indésirables", "supprime mes mailings", "purge les achats").
+# Without aliases the tool returns "category not recognized" and the LLM has
+# to guess — which sometimes fails. Aliases eliminate the guessing.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_CLEANUP_QUERIES: dict[str, str] = {
+    # Gmail tab categories (the 5 system tabs)
+    "promotions":   "category:promotions",
+    "social":       "category:social",
+    "forums":       "category:forums",
+    "updates":      "category:updates",
+    "purchases":    "category:purchases",  # Onglet "Achats" Gmail
+    # Special folders
+    "spam":         "in:spam",
+    "trash":        "in:trash",
+    # Heuristic-based searches
+    "newsletters":  (
+        "category:updates OR (unsubscribe AND (newsletter OR mailing)) "
+        "OR subject:(newsletter OR \"se désabonner\" OR unsubscribe)"
+    ),
+    "demarchage":   (
+        "(démarchage OR prospection OR \"offre commerciale\" OR \"offre exclusive\" "
+        "OR \"ne manquez pas\" OR \"offre limitée\" OR soldes) "
+        "AND (unsubscribe OR désabonner OR \"se désinscrire\")"
+    ),
+    # Aggregations
+    "all_cleanup":  (
+        "category:promotions OR category:updates OR category:purchases OR "
+        "(unsubscribe AND (newsletter OR mailing OR promo OR offre))"
+    ),
+    "all_categories": (
+        "category:promotions OR category:social OR category:forums OR "
+        "category:updates OR category:purchases"
+    ),
+}
+
+# Alias → canonical key. Lowercased on lookup. Accept singular/plural,
+# FR/EN, and common user wording. Maintained alphabetically.
+_CLEANUP_ALIASES: dict[str, str] = {
+    # spam
+    "spams":               "spam",
+    "indesirable":         "spam",
+    "indesirables":        "spam",
+    "indésirable":         "spam",
+    "indésirables":        "spam",
+    "courrier indesirable":  "spam",
+    "courriers indesirables": "spam",
+    "courrier indésirable":   "spam",
+    "courriers indésirables": "spam",
+    "junk":                "spam",
+    # trash / corbeille
+    "corbeille":           "trash",
+    "poubelle":            "trash",
+    # newsletters / mailings
+    "newsletter":          "newsletters",
+    "mailing":             "newsletters",
+    "mailings":            "newsletters",
+    "infolettre":          "newsletters",
+    "infolettres":         "newsletters",
+    "abonnement":          "newsletters",
+    "abonnements":         "newsletters",
+    "lettre d'information":   "newsletters",
+    "lettres d'information":  "newsletters",
+    # promotions
+    "promo":               "promotions",
+    "promos":              "promotions",
+    "promotion":           "promotions",
+    "soldes":              "promotions",
+    "offre":               "promotions",
+    "offres":              "promotions",
+    "offres commerciales": "promotions",
+    "deals":               "promotions",
+    # social
+    "réseaux sociaux":     "social",
+    "reseaux sociaux":     "social",
+    "réseaux":             "social",
+    "reseaux":             "social",
+    "social media":        "social",
+    "facebook":            "social",
+    "instagram":           "social",
+    "linkedin":            "social",
+    "twitter":             "social",
+    # forums
+    "forum":               "forums",
+    "discussion":          "forums",
+    "discussions":         "forums",
+    "groupes":             "forums",
+    # updates / notifications
+    "notification":        "updates",
+    "notifications":       "updates",
+    "alerte":              "updates",
+    "alertes":             "updates",
+    "mise à jour":         "updates",
+    "mises à jour":        "updates",
+    "mise a jour":         "updates",
+    "mises a jour":        "updates",
+    # purchases / achats
+    "achat":               "purchases",
+    "achats":              "purchases",
+    "commande":            "purchases",
+    "commandes":           "purchases",
+    "factures":            "purchases",
+    "facture":             "purchases",
+    "receipts":            "purchases",
+    "receipt":             "purchases",
+    # demarchage
+    "prospection":         "demarchage",
+    "publicité":           "demarchage",
+    "publicités":          "demarchage",
+    "publicites":          "demarchage",
+    "pub":                 "demarchage",
+    "pubs":                "demarchage",
+    "spam commercial":     "demarchage",
+    # all
+    "tout":                "all_cleanup",
+    "tous":                "all_cleanup",
+    "all":                 "all_cleanup",
+    "everything":          "all_cleanup",
+    "all categories":      "all_categories",
+    "toutes catégories":   "all_categories",
+    "toutes categories":   "all_categories",
+}
+
+
+def _resolve_cleanup_category(category: str) -> str | None:
+    """Normalize user input to a canonical category key, or None if unknown.
+
+    Tries (in order) :
+      1. Exact match in _CLEANUP_QUERIES (canonical key).
+      2. Lowercased exact match.
+      3. Alias lookup in _CLEANUP_ALIASES.
+      4. Strip plural 's' as last resort.
+    """
+    if not category:
+        return None
+    if category in _CLEANUP_QUERIES:
+        return category
+    low = category.strip().lower()
+    if low in _CLEANUP_QUERIES:
+        return low
+    if low in _CLEANUP_ALIASES:
+        return _CLEANUP_ALIASES[low]
+    # Last resort : strip trailing 's' (achats → achat → purchases)
+    if low.endswith("s") and low[:-1] in _CLEANUP_ALIASES:
+        return _CLEANUP_ALIASES[low[:-1]]
+    return None
+
+
 def _extract_body(payload: dict) -> str:
     """Recursively extract text/plain body from a Gmail message payload.
 
@@ -344,65 +499,43 @@ async def gmail_search_for_cleanup(
     Always present results to the user before calling gmail_move_emails or gmail_trash_emails.
 
     Args:
-        category: Type of emails to find. Allowed values (must match exactly,
-            unknown categories raise an error rather than silently falling back) :
-          - 'newsletters'   : newsletters et abonnements (heuristique unsubscribe)
-          - 'promotions'    : Gmail tab "Promotions" (category:promotions)
-          - 'social'        : Gmail tab "Réseaux sociaux" (category:social)
-          - 'forums'        : Gmail tab "Forums" (category:forums)
-          - 'updates'       : Gmail tab "Mises à jour / Notifications" (category:updates)
-          - 'notifications' : alias historique pour 'updates' (compat)
-          - 'spam'          : dossier SPAM (in:spam)
-          - 'trash'         : dossier corbeille (in:trash) — utile pour purge définitive
-          - 'demarchage'    : démarchage commercial et prospection (heuristique mots-clés)
-          - 'all_cleanup'   : promotions + updates + heuristique unsubscribe
-          - 'all_categories': les 4 onglets Gmail (promotions + social + forums + updates)
+        category: Type of emails to find. Many natural-language aliases are
+            accepted (singular/plural, FR/EN). Canonical values :
+          - 'newsletters'   : newsletters/mailings (aliases: newsletter, mailing,
+                              mailings, infolettre, abonnements)
+          - 'promotions'    : Gmail tab "Promotions" (aliases: promo, soldes,
+                              offres, deals)
+          - 'social'        : Gmail tab "Réseaux sociaux" (aliases: reseaux,
+                              facebook, linkedin, ...)
+          - 'forums'        : Gmail tab "Forums" (alias: discussions, groupes)
+          - 'updates'       : Gmail tab "Notifications" (aliases: notifications,
+                              alertes, mises a jour)
+          - 'purchases'     : Gmail tab "Achats" (aliases: achats, commandes,
+                              factures, receipts)
+          - 'spam'          : dossier SPAM (aliases: spams, indesirables, junk)
+          - 'trash'         : corbeille (aliases: corbeille, poubelle)
+          - 'demarchage'    : démarchage / prospection (aliases: pubs, publicites)
+          - 'all_cleanup'   : promotions + updates + purchases + heuristique
+          - 'all_categories': tous les onglets Gmail combinés
         max_results: Max number of emails to find (default 50, max 100)
     """
     service = await _get_gmail_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
-    # Gmail search queries per category. Keys MUST match the docstring's
-    # whitelist — unknown categories are rejected rather than silently
-    # mapped to a default (the silent fallback was the root cause of an
-    # April 2026 mission loop : LLM asked for "spam", got "newsletters",
-    # eval kept saying "wrong category", replan looped 16x → budget exhausted).
-    queries = {
-        "newsletters": (
-            "category:updates OR (unsubscribe AND (newsletter OR mailing)) "
-            "OR subject:(newsletter OR \"se désabonner\" OR unsubscribe)"
-        ),
-        "promotions": "category:promotions",
-        "social": "category:social",
-        "forums": "category:forums",
-        "updates": "category:updates",
-        "notifications": "category:updates",  # legacy alias
-        "spam": "in:spam",
-        "trash": "in:trash",
-        "demarchage": (
-            "(démarchage OR prospection OR \"offre commerciale\" OR \"offre exclusive\" "
-            "OR \"ne manquez pas\" OR \"offre limitée\" OR \"promo\" OR soldes) "
-            "AND (unsubscribe OR désabonner OR \"se désinscrire\")"
-        ),
-        "all_cleanup": (
-            "category:promotions OR category:updates OR "
-            "(unsubscribe AND (newsletter OR mailing OR promo OR offre))"
-        ),
-        "all_categories": (
-            "category:promotions OR category:social OR "
-            "category:forums OR category:updates"
-        ),
-    }
-
-    if category not in queries:
-        # Hard error so the LLM eval node sees the mistake and replans with
-        # a valid category instead of looping forever on garbage results.
+    # Resolve aliases (FR/EN, singular/plural, common synonyms). The shared
+    # _resolve_cleanup_category helper accepts e.g. "indesirables", "mailings",
+    # "achats", "réseaux sociaux", etc. Hard error if still not recognized so
+    # the LLM eval node sees the mistake and replans with a valid category.
+    canonical = _resolve_cleanup_category(category)
+    if canonical is None:
         return (
             f"Catégorie '{category}' non reconnue. Valeurs acceptées : "
-            f"{', '.join(sorted(queries.keys()))}."
+            f"{', '.join(sorted(_CLEANUP_QUERIES.keys()))} "
+            f"(alias FR/EN également acceptés : achats, indésirables, mailing, "
+            f"promo, notifications, corbeille, ...)."
         )
-    query = queries[category]
+    query = _CLEANUP_QUERIES[canonical]
     max_results = min(max_results, 100)
 
     try:
@@ -459,6 +592,99 @@ async def gmail_search_for_cleanup(
 
 
 @tool
+async def gmail_trash_by_category(
+    category: str = "spam",
+    max_results: int = 100,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Search emails by category AND move them to trash in ONE atomic call.
+
+    PREFER this tool whenever the goal is to delete, empty, or clean up
+    a Gmail folder or category. Combines search + trash so the LLM never
+    has to manipulate individual email IDs (which it tends to hallucinate).
+
+    The tool DOES NOT take IDs — just pass the category name.
+    HITL is forced (this is a destructive batch operation).
+
+    Args:
+        category: Category to purge. Many natural-language aliases accepted
+          (singular/plural, FR/EN). Canonical values :
+          'spam' (alias: spams, indesirables, junk), 'trash' (corbeille,
+          poubelle), 'newsletters' (mailing, mailings, infolettre, abonnements),
+          'promotions' (promo, soldes, offres), 'social' (reseaux sociaux,
+          facebook, linkedin), 'forums' (discussions, groupes), 'updates'
+          (notifications, alertes), 'purchases' (achats, commandes, factures),
+          'demarchage' (pubs, prospection), 'all_cleanup' (tout),
+          'all_categories' (toutes catégories).
+        max_results: Max number of emails to trash in one call (default 100,
+          max 500). If the folder has more, call this tool again until empty.
+
+    Returns: a human-readable summary with N emails trashed.
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connectez votre compte dans les paramètres."
+
+    canonical = _resolve_cleanup_category(category)
+    if canonical is None:
+        return (
+            f"Catégorie '{category}' non reconnue. Valeurs acceptées : "
+            f"{', '.join(sorted(_CLEANUP_QUERIES.keys()))} "
+            f"(alias FR/EN également acceptés : achats, indésirables, mailing, "
+            f"promo, notifications, corbeille, ...)."
+        )
+
+    max_results = min(max(1, max_results), 500)
+    query = _CLEANUP_QUERIES[canonical]
+
+    try:
+        # 1. Find all matching IDs (paginated for large folders)
+        ids: list[str] = []
+        page_token = None
+        while len(ids) < max_results:
+            req = service.users().messages().list(
+                userId="me",
+                maxResults=min(100, max_results - len(ids)),
+                q=query,
+                pageToken=page_token,
+            ).execute()
+            batch = req.get("messages", [])
+            ids.extend([m["id"] for m in batch])
+            page_token = req.get("nextPageToken")
+            if not page_token or not batch:
+                break
+
+        if not ids:
+            return f"✅ Rien à faire : aucun email '{category}' trouvé."
+
+        # 2. Trash them all (Gmail API supports up to 1000 IDs per batchModify)
+        trashed = 0
+        errors = 0
+        for i in range(0, len(ids), 1000):
+            chunk = ids[i:i + 1000]
+            try:
+                # batchModify with addLabelIds=['TRASH'] is the bulk trash API
+                service.users().messages().batchModify(
+                    userId="me",
+                    body={"ids": chunk, "addLabelIds": ["TRASH"], "removeLabelIds": ["INBOX"]},
+                ).execute()
+                trashed += len(chunk)
+            except Exception as exc:
+                errors += len(chunk)
+                logger.warning("gmail_trash_by_category chunk failed: %s", exc)
+
+        if errors == 0:
+            return f"🗑️ ✅ {trashed} email(s) de catégorie '{category}' déplacés vers la corbeille."
+        return (
+            f"🗑️ {trashed} email(s) déplacés vers la corbeille, "
+            f"{errors} échec(s). Catégorie : '{category}'."
+        )
+    except Exception as e:
+        return f"Erreur gmail_trash_by_category: {e}"
+
+
+@tool
 async def gmail_reply_email(
     email_id: str,
     body: str,
@@ -466,7 +692,7 @@ async def gmail_reply_email(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Répond à un email. ALWAYS ask user confirmation before sending.
+    """Reply to an email. ALWAYS ask user confirmation before sending.
 
     Args:
         email_id: The email ID to reply to (from gmail_list_emails)
