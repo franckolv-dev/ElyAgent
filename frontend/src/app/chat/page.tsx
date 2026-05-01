@@ -25,6 +25,7 @@ import { Sidebar }             from "@/components/layout/Sidebar";
 import { Header }              from "@/components/layout/Header";
 import { ChatWindow }          from "@/components/chat/ChatWindow";
 import { ChatInput }           from "@/components/chat/ChatInput";
+import { OnboardingFlow }      from "@/components/chat/OnboardingFlow";
 import { AvatarPanel }         from "@/components/avatar/AvatarPanel";
 import { LiveBrowserPanel }    from "@/components/browser/LiveBrowserPanel";
 import { VoiceModeOverlay }    from "@/components/chat/VoiceModeOverlay";
@@ -97,6 +98,25 @@ function usePanelResize() {
 // ── Page (inner — needs Suspense for useSearchParams) ────────────────────
 function ChatPageInner() {
   const t = useTranslations("chat");
+  // Onboarding overlay : at first /chat visit we check the user's status
+  // and either show the conversational onboarding OR the regular chat.
+  // null = not yet checked (initial loading), true = show onboarding,
+  // false = show normal chat.
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await api.getOnboardingStatus();
+        if (!cancelled) setShowOnboarding(status.should_show);
+      } catch {
+        // If the endpoint fails (e.g. before backend deploy), fall back to chat
+        if (!cancelled) setShowOnboarding(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const [messages,        setMessages]        = useState<ChatMessage[]>([]);
   const [isLoading,       setIsLoading]       = useState(false);
   const [wsStatus,        setWsStatus]        = useState<"connected" | "disconnected" | "connecting">("disconnected");
@@ -395,6 +415,10 @@ function ChatPageInner() {
           <div className="flex flex-1 overflow-hidden">
             {/* ── Chat column ── */}
             <div className="flex flex-col flex-1 overflow-hidden">
+              {showOnboarding === true ? (
+                <OnboardingFlow onComplete={() => setShowOnboarding(false)} />
+              ) : (
+              <>
               <ChatWindow
                 messages={messages}
                 isLoading={isLoading}
@@ -422,6 +446,8 @@ function ChatPageInner() {
                 onVoiceModeToggle={handleToggleVoiceMode}
                 isVoiceModeActive={voiceConv.state.isActive}
               />
+              </>
+              )}
             </div>
 
             {/* ── Avatar panel (resizable, desktop only) ── */}

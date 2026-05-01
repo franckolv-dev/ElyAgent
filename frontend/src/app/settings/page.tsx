@@ -23,12 +23,13 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { GoogleAccountsSection } from "@/components/settings/GoogleAccountsSection";
 import { HitlPreferencesSection } from "@/components/settings/HitlPreferencesSection";
+import { api } from "@/lib/api";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
   Monitor, Download, Plus, Trash2, Wifi, WifiOff, Lock, Eye, EyeOff,
   GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight, User,
-  Plug,
+  Plug, Sparkles,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations } from "next-intl";
@@ -2066,6 +2067,32 @@ export default function SettingsPage() {
                       className="w-full py-2 rounded-md text-xs font-medium bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {savingPwd ? t("pwdChanging") : t("changePassword")}
+                    </button>
+                  </div>
+
+                  {/* ── Onboarding personnalisé ── */}
+                  <div className="mt-6 bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-cyber-cyan" />
+                      <h3 className="text-sm font-medium text-text-primary">Onboarding personnalisé</h3>
+                    </div>
+                    <p className="text-xs text-text-muted">
+                      Refais le tour des questions pour qu'Éli apprenne (ou réapprenne) ton vocabulaire,
+                      tes catégories Gmail, tes habitudes. Tes réponses précédentes sont conservées —
+                      cette action ne fait que rouvrir le flux dans la page <code>/chat</code>.
+                    </p>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.restartOnboarding();
+                          window.location.href = "/chat";
+                        } catch (e) {
+                          console.error("Restart onboarding failed:", e);
+                        }
+                      }}
+                      className="w-full py-2 rounded-md text-xs font-medium bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors"
+                    >
+                      Refaire l'onboarding
                     </button>
                   </div>
                 </section>

@@ -153,6 +153,9 @@ QUESTIONS: list[OnboardingQuestion] = [
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
 
+SKIP_LIMIT = 3  # After this many "Plus tard" clicks, stop auto-prompting.
+
+
 async def get_status(user_id: str) -> dict:
     """Return the onboarding state for a user.
 
@@ -162,9 +165,13 @@ async def get_status(user_id: str) -> dict:
         "skipped": bool,     # user explicitly clicked "plus tard"
         "step": int,         # next question index (0-based)
         "total": int,        # total number of questions
+        "skip_count": int,   # how many times user has clicked "Plus tard"
+        "should_show": bool, # frontend hint : auto-display the flow ?
         "completed_at": iso8601 | None,
         "skipped_at": iso8601 | None,
       }
+    `should_show` = true if (not completed AND skip_count < SKIP_LIMIT).
+    The frontend uses this to decide whether to take over /chat at login.
     """
     from app.database import async_session
     from app.models.user import User
@@ -172,12 +179,19 @@ async def get_status(user_id: str) -> dict:
     async with async_session() as db:
         u = await db.get(User, user_id)
         if u is None:
-            return {"completed": False, "skipped": False, "step": 0, "total": len(QUESTIONS)}
+            return {
+                "completed": False, "skipped": False, "step": 0,
+                "total": len(QUESTIONS), "skip_count": 0, "should_show": True,
+            }
+        completed = u.onboarding_completed_at is not None
+        skip_count = int(u.onboarding_skip_count or 0)
         return {
-            "completed": u.onboarding_completed_at is not None,
+            "completed": completed,
             "skipped": u.onboarding_skipped_at is not None,
             "step": int(u.onboarding_step or 0),
             "total": len(QUESTIONS),
+            "skip_count": skip_count,
+            "should_show": (not completed) and (skip_count < SKIP_LIMIT),
             "completed_at": u.onboarding_completed_at.isoformat() if u.onboarding_completed_at else None,
             "skipped_at": u.onboarding_skipped_at.isoformat() if u.onboarding_skipped_at else None,
         }
@@ -264,7 +278,10 @@ async def record_answer(user_id: str, question_id: str, answer: str) -> dict:
 
 async def skip_onboarding(user_id: str) -> dict:
     """User clicked « Plus tard ». Stays in 'skipped' state — re-prompted at
-    next login but no nag during the current session."""
+    next login but no nag during the current session.
+
+    After SKIP_LIMIT clicks, we stop re-prompting automatically — the user
+    can still launch the flow manually via Settings."""
     from app.database import async_session
     from app.models.user import User
     async with async_session() as db:
@@ -272,13 +289,18 @@ async def skip_onboarding(user_id: str) -> dict:
         if u is None:
             raise ValueError("Utilisateur introuvable.")
         u.onboarding_skipped_at = datetime.now(timezone.utc)
+        u.onboarding_skip_count = int(u.onboarding_skip_count or 0) + 1
         await db.commit()
     return await get_status(user_id)
 
 
 async def restart_onboarding(user_id: str) -> dict:
     """Wipe progress and start over. Existing user_vocabulary entries are
-    KEPT (this lets the user refine, not reset entirely)."""
+    KEPT (this lets the user refine, not reset entirely).
+
+    Also resets `onboarding_skip_count` so the flow re-displays at next
+    /chat visit (otherwise a user who skipped 3 times couldn't restart
+    without a manual reset)."""
     from app.database import async_session
     from app.models.user import User
     async with async_session() as db:
@@ -288,6 +310,7 @@ async def restart_onboarding(user_id: str) -> dict:
         u.onboarding_step = 0
         u.onboarding_completed_at = None
         u.onboarding_skipped_at = None
+        u.onboarding_skip_count = 0
         await db.commit()
     return await get_status(user_id)
 

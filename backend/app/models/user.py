@@ -79,3 +79,9 @@ class User(Base):
     onboarding_step: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0"
     )
+    # How many times the user clicked "Plus tard". After 3, we stop
+    # re-prompting at login — they can still launch it manually from
+    # Settings → Mon compte → « Refaire l'onboarding ».
+    onboarding_skip_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )

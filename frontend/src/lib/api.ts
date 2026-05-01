@@ -189,6 +189,40 @@ export const api = {
       }>;
     }>,
 
+  // ── Onboarding (conversational) ──────────────────────────────────────────
+  getOnboardingStatus: () =>
+    fetchAPI("/api/onboarding/status") as Promise<{
+      completed: boolean;
+      skipped: boolean;
+      step: number;
+      total: number;
+      skip_count: number;
+      should_show: boolean;
+      completed_at: string | null;
+      skipped_at: string | null;
+    }>,
+  getNextOnboardingQuestion: () =>
+    fetchAPI("/api/onboarding/next-question") as Promise<{
+      done: boolean;
+      question: {
+        id: string;
+        text: string;
+        placeholder: string;
+        step: number;
+        total: number;
+        skippable: boolean;
+      } | null;
+    }>,
+  submitOnboardingAnswer: (question_id: string, answer: string) =>
+    fetchAPI("/api/onboarding/answer", {
+      method: "POST",
+      body: JSON.stringify({ question_id, answer }),
+    }),
+  skipOnboarding: () =>
+    fetchAPI("/api/onboarding/skip", { method: "POST" }),
+  restartOnboarding: () =>
+    fetchAPI("/api/onboarding/restart", { method: "POST" }),
+
   getUsers: () => fetchAPI("/admin/users"),
 
   getAuditLogs: (limit = 50) => fetchAPI(`/admin/audit?limit=${limit}`),

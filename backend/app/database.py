@@ -64,6 +64,7 @@ async def init_db():
             ("users", "onboarding_completed_at", "DATETIME"),
             ("users", "onboarding_skipped_at", "DATETIME"),
             ("users", "onboarding_step", "INTEGER NOT NULL DEFAULT 0"),
+            ("users", "onboarding_skip_count", "INTEGER NOT NULL DEFAULT 0"),
         ]
         for _table, _col, _ddl in _safe_columns:
             try:
