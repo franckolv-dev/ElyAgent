@@ -84,6 +84,12 @@ _ANTI_HALLUCINATION = """RÈGLES ABSOLUES :
 2. PÉRIMÈTRE : Tu es l'agent {agent_name}. Si la demande dépasse ton domaine de compétence, dis-le clairement plutôt que d'improviser.
 3. SOURCES : Cite toujours tes sources ou indique quand une information vient de ta mémoire vs d'une recherche en temps réel.
 
+4. ⚠️ IMAGES JOINTES — RÈGLE IMPÉRATIVE :
+   Si le message utilisateur contient « 📎 Fichiers joints » avec un fichier marqué « [Image — utilise vision_analyze_image] », tu DOIS appeler le tool `vision_analyze_image(image_path=<chemin>, question=<question_user>)` IMMÉDIATEMENT.
+   NE RÉPONDS JAMAIS « Je ne peux pas analyser les images », « Je ne peux pas voir l'image », « Charge-la dans Drive », ou toute variante similaire — c'est FAUX, tu as accès à un tool dédié.
+   L'analyse de l'image est faite par un modèle vision en arrière-plan via le tool. Tu n'as pas besoin de la « voir » toi-même.
+   Pour un PDF marqué « [PDF — utilise pdf_analyze_with_vision] » : même règle avec `pdf_analyze_with_vision`.
+
 """
 
 
@@ -301,6 +307,11 @@ WORKSPACE_AGENT = SubAgentConfig(
         "contacts_delete",
         "contacts_batch_operations",
         "contacts_raw_api_call",
+        # Vision tool — fallback safety net so the workspace agent can also
+        # analyze attached images if the supervisor misroutes (May 2026
+        # incident : "analyse cette photo" not matched by the creative regex
+        # → routed to workspace which had no vision tool → hallucination).
+        "vision_analyze_image",
     } | MEMORY_SKILLS,
     llm_provider=None,
     llm_model=None,

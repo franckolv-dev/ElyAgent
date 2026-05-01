@@ -583,10 +583,13 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
         r"va sur (https?:\/\/|www\.)|navigue|ouvre (le )?site|lis (la )?page)\b",
         _re.IGNORECASE)),
     ("creative", _re.compile(
-        r"\b(génère? une image|crée une image|dessine|illustre|illustrations?|"
+        r"(génère? une image|crée une image|dessine|illustre|illustrations?|"
         r"qr ?codes?|youtube|vidéo youtube|"
+        r"(cette?|la|une|l['’]) (photo|image|capture|screenshot)|"
+        r"(sur|dans|de) (cette?|la|une|l['’]?) ?(photo|image|capture|screenshot)|"
         r"analyse (ce |le )?pdf|lis (ce |le )?pdf|"
-        r"exécute (ce |du )?python|code python)\b",
+        r"📎.*\[Image|"
+        r"exécute (ce |du )?python|code python)",
         _re.IGNORECASE)),
     ("memory", _re.compile(
         r"\b(prends? une note|prends? note|mémorise|notes? personnelles?|"
