@@ -629,7 +629,77 @@ _ACT_SYSTEM = """Tu es l'agent ELY exécutant une mission. Voici le plan en cour
 
 Choisis UN outil disponible dans ton inventaire pour avancer sur cette étape.
 Émets UN SEUL appel d'outil. Tu ne dois pas répondre en texte — uniquement émettre un tool_call.
-Si aucun outil ne semble adapté, choisis l'outil qui s'en rapproche le plus."""
+Si aucun outil ne semble adapté, choisis l'outil qui s'en rapproche le plus.
+
+⚠️ RÈGLE CRITIQUE — REMPLISSAGE DES PARAMÈTRES :
+Si l'étape consiste à COMBINER, ENVOYER, RÉSUMER ou TRANSMETTRE des données
+issues des étapes précédentes, tu DOIS utiliser les VRAIES VALEURS retournées
+par les tools précédents (visibles dans le contexte ci-dessous).
+N'écris JAMAIS de placeholders comme [meteo_data], [email_summary],
+[INSERT_X_HERE], <data>, {{value}}, etc. dans les arguments du tool.
+Lis le contexte « OUTPUTS DES ÉTAPES PRÉCÉDENTES » et copie/résume les vraies
+données dedans avant de remplir les arguments."""
+
+
+async def _load_recent_step_outputs(mission_id: str, max_steps: int = 8, max_chars: int = 1200) -> str:
+    """Render the last N successful tool outputs as a context block.
+
+    Used to give the actor LLM access to the data produced by previous
+    steps so it can fill `telegram_send_message(text=...)` with the real
+    weather string, email list, etc. — instead of hallucinating placeholders.
+
+    Caps each output at `max_chars` to keep the prompt tight (some tool
+    outputs are huge, e.g. RAG queries with 10 chunks).
+    """
+    from app.database import async_session
+    from app.models.mission import MissionStep
+    from sqlalchemy import select, desc as _desc
+
+    try:
+        async with async_session() as db:
+            rows = (await db.execute(
+                select(MissionStep)
+                .where(
+                    MissionStep.mission_id == mission_id,
+                    MissionStep.phase == "act",
+                    MissionStep.success == True,  # noqa: E712
+                    MissionStep.tool_output.isnot(None),
+                )
+                .order_by(_desc(MissionStep.iteration))
+                .limit(max_steps)
+            )).scalars().all()
+    except Exception as exc:
+        logger.debug("Could not load recent step outputs: %s", exc)
+        return ""
+
+    if not rows:
+        return ""
+
+    # Reverse so we present them in chronological order (most recent last,
+    # matching how a human would think of "the data so far").
+    rows_chrono = list(reversed(rows))
+    blocks: list[str] = []
+    for s in rows_chrono:
+        out = (s.tool_output or "").strip()
+        if not out:
+            continue
+        if len(out) > max_chars:
+            out = out[:max_chars] + " […tronqué]"
+        thought = (s.thought or "").strip()
+        # Strip the leading "Étape « ... »" prefix from the thought to
+        # avoid duplication with the iter header.
+        if thought.startswith("Étape «"):
+            thought = ""
+        header = f"[iter={s.iteration}] {s.tool_name or '?'}"
+        blocks.append(f"{header}\n{out}")
+
+    if not blocks:
+        return ""
+    return (
+        "OUTPUTS DES ÉTAPES PRÉCÉDENTES (à utiliser tels quels pour remplir "
+        "les arguments du prochain tool — JAMAIS de placeholder) :\n\n"
+        + "\n\n---\n\n".join(blocks)
+    )
 
 
 def _next_pending_step(plan_json: Optional[dict]) -> Optional[dict]:
@@ -671,10 +741,19 @@ async def act_node(state: MissionState) -> dict:
         goal=state.get("goal", ""),
         current_step_desc=current_step_desc,
     )
+
+    # Load outputs of previous successful tool invocations so the LLM can
+    # fill arguments with REAL values (fix #19, May 2026 — agent was sending
+    # "[meteo_data]" placeholders to telegram_send_message because it had no
+    # context window into what weather_get had returned earlier in the run).
+    prev_context = await _load_recent_step_outputs(mission_id)
+
     messages: list[BaseMessage] = [
         SystemMessage(content=_ACT_SYSTEM.format(plan_text=plan_text, current_step_desc=current_step_desc)),
         HumanMessage(content=f"Goal : {state.get('goal','?')}"),
     ]
+    if prev_context:
+        messages.append(HumanMessage(content=prev_context))
 
     t0 = time.monotonic()
     response = None
