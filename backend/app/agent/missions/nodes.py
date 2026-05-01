@@ -39,6 +39,105 @@ from app.services import mission_service
 logger = logging.getLogger(__name__)
 
 
+def _extract_provider_model(llm: Any) -> tuple[str, str]:
+    """Best-effort extraction of (provider, model) from a LangChain LLM.
+
+    LangChain's BaseChatModel doesn't expose a uniform "provider" attribute —
+    we sniff the class name + common model attributes. Used only for usage
+    analytics tagging, so a "unknown" fallback is acceptable.
+    """
+    cls_name = type(llm).__name__.lower()
+    if "anthropic" in cls_name:
+        provider = "anthropic"
+    elif "google" in cls_name or "genai" in cls_name or "gemini" in cls_name:
+        provider = "gemini"
+    elif "ollama" in cls_name:
+        provider = "ollama"
+    elif "openai" in cls_name:
+        # Could be real OpenAI, LM Studio, OpenRouter, Qwen API, vLLM…
+        # Use base_url to disambiguate.
+        base = getattr(llm, "openai_api_base", "") or getattr(llm, "base_url", "") or ""
+        base_low = str(base).lower()
+        if (
+            "lmstudio" in base_low
+            or "127.0.0.1:1234" in base_low
+            or "localhost:1234" in base_low
+            or "host.docker.internal:1234" in base_low
+            or ":1234/v1" in base_low
+        ):
+            provider = "lm_studio"
+        elif "openrouter" in base_low:
+            provider = "openrouter"
+        elif "dashscope" in base_low or "qwen" in base_low:
+            provider = "qwen_api"
+        elif "deepseek" in base_low:
+            provider = "deepseek"
+        else:
+            provider = "openai"
+    else:
+        provider = cls_name.replace("chat", "") or "unknown"
+    model = (
+        getattr(llm, "model", None)
+        or getattr(llm, "model_name", None)
+        or "unknown"
+    )
+    return provider, str(model)
+
+
+async def _log_mission_llm_usage(
+    response: BaseMessage,
+    user_id: str,
+    mission_id: str,
+    phase: str,
+    llm: Any,
+) -> None:
+    """Log token usage for a mission-graph LLM invocation.
+
+    Called fire-and-forget after every `await llm.ainvoke(...)` in this
+    module. Reads `response.usage_metadata` (LangChain's normalized
+    usage shape — works across Anthropic, OpenAI, Gemini, Qwen, LM Studio,
+    Ollama). Falls back to a 4-chars-per-token heuristic when the provider
+    doesn't ship usage_metadata (some streaming local models).
+
+    Pre-launch fix #13 : the dashboard was empty because mission ticks
+    NEVER called log_usage. With ~3 LLM calls per tick × multiple ticks
+    per mission × many missions per day, this represents the bulk of
+    LLM activity.
+    """
+    try:
+        from app.services.analytics_service import log_usage
+
+        usage = getattr(response, "usage_metadata", None) or {}
+        in_tok = int(usage.get("input_tokens") or 0)
+        out_tok = int(usage.get("output_tokens") or 0)
+
+        # Heuristic fallback when usage_metadata is empty (LM Studio streaming)
+        if in_tok == 0 and out_tok == 0:
+            content = getattr(response, "content", "") or ""
+            out_tok = max(1, len(str(content)) // 4)
+            # Approximate input by adding a fixed slack — not perfect but
+            # better than 0 for cost graphs (and most local models cost $0
+            # anyway so the imprecision doesn't matter financially).
+            in_tok = max(1, len(str(content)) // 4)
+
+        provider, model = _extract_provider_model(llm)
+
+        import asyncio
+        asyncio.create_task(log_usage(
+            user_id=user_id,
+            model=model,
+            provider=provider,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            skill_used=f"mission_{phase}",
+            channel="mission",
+        ))
+    except Exception as exc:
+        # Non-critical — analytics must never break a mission.
+        logger.debug("log_mission_llm_usage failed for mission %s phase %s: %s",
+                     mission_id, phase, exc)
+
+
 # ── Tool dispatch helper (factored from agent/nodes.py:tool_node) ────────────
 
 async def dispatch_tool(
@@ -135,6 +234,47 @@ async def dispatch_tool(
     # HITL gate for sensitive tools
     sf = SecurityFilter()
     needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
+
+    # ── Self-mail auto-approve ────────────────────────────────────────
+    # Sending an email to the calling user's own address carries near-zero
+    # risk (no data leak to oneself) but used to trigger HITL — impossible
+    # to satisfy when the user is offline (e.g. scheduled task at 6 a.m.
+    # sends a daily AI digest to franck@gmail.com → HITL prompt nobody
+    # answers → email never sent).
+    # Mirror of the same logic in app/agent/sub_agents/factory.py used by
+    # chat-mode dispatch. April 2026 mission « météo + résumé mails » :
+    # self-mail HITL was blocking unattended runs from the heartbeat —
+    # missions don't have a UI handler standing by.
+    if needs_hitl and tool_name in {
+        "gmail_send_email", "gmail_reply_email", "gmail_send_with_attachment",
+    }:
+        try:
+            _to = (args.get("to") or "").strip().lower()
+            from app.database import async_session as _async_session
+            from app.models.user import User as _U
+            from app.models.google_account import GoogleAccount as _GA
+            from sqlalchemy import select as _sel
+            async with _async_session() as _db:
+                _u = await _db.get(_U, user_id) if user_id else None
+                _self_emails: set[str] = set()
+                if _u and _u.email:
+                    _self_emails.add(_u.email.strip().lower())
+                if user_id:
+                    _rows = await _db.execute(
+                        _sel(_GA.email).where(_GA.user_id == user_id)
+                    )
+                    for (_em,) in _rows.all():
+                        if _em:
+                            _self_emails.add(str(_em).strip().lower())
+            if any(em and em in _to for em in _self_emails):
+                logger.info(
+                    "Mission HITL skipped (self-mail) — to=%s matches user own address",
+                    _to[:80],
+                )
+                needs_hitl = False
+        except Exception as _exc:
+            logger.debug("Mission self-mail check failed: %s", _exc)
+
     if needs_hitl:
         logger.info("Mission HITL required: %s", action_desc)
         hitl = get_hitl_manager()
@@ -438,6 +578,7 @@ async def plan_node(state: MissionState) -> dict:
         HumanMessage(content=f"Goal de l'utilisateur :\n\n{goal}"),
     ]
     response = await llm.ainvoke(messages)
+    await _log_mission_llm_usage(response, state["user_id"], mission_id, "plan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     raw = getattr(response, "content", "") or ""
 
@@ -541,6 +682,7 @@ async def act_node(state: MissionState) -> dict:
     model_used = "medium-tier (primary)"
     try:
         response = await primary_llm.ainvoke(messages)
+        await _log_mission_llm_usage(response, state["user_id"], mission_id, "act", primary_llm)
         tool_calls = getattr(response, "tool_calls", []) or []
     except Exception as exc:
         # Known MLX limitation : Gemma 4 21B REAP-4bit + 76 tools bound
@@ -562,6 +704,7 @@ async def act_node(state: MissionState) -> dict:
             try:
                 t_fb = time.monotonic()
                 response = await fb_llm.ainvoke(messages)
+                await _log_mission_llm_usage(response, state["user_id"], mission_id, "act_fallback", fb_llm)
                 tool_calls = getattr(response, "tool_calls", []) or []
                 logger.warning(
                     "[mission %s] act.fallback %.1fs %s → tool_calls=%d",
@@ -656,25 +799,44 @@ DÉFINITIONS PRÉCISES (lis-les avant de répondre) :
 
 - "success" = l'étape qui vient de tourner s'est techniquement bien passée
   (pas d'erreur, pas d'exception, le tool a renvoyé un résultat plausible)
-  ET l'outil utilisé correspond SÉMANTIQUEMENT à ce que demande l'étape.
+  ET l'outil utilisé est COMPATIBLE avec le type d'étape.
 
-  ⚠️ CRITIQUE — vérifie la cohérence outil ↔ description :
-    - Si l'étape demande « SUPPRIMER / TRASH / DELETE / EFFACER » et l'outil
-      appelé est un search/list/get → success=FALSE. Le tool a beau avoir
-      réussi techniquement, il N'A PAS exécuté l'action demandée.
-    - Si l'étape demande « ENVOYER / SEND » et l'outil est un read/list →
-      success=FALSE.
-    - Si l'étape demande « CRÉER / CREATE » et l'outil est un get/list →
-      success=FALSE.
-    - Règle générale : l'outil doit CHANGER L'ÉTAT DU SYSTÈME quand l'étape
-      le demande. Un search/list/get/read ne change rien — donc il ne peut
-      jamais valider une étape d'action mutative.
+  La cohérence outil ↔ étape dépend du TYPE de l'étape. On distingue 3 types :
 
-  Exemples positifs :
-    - étape "Lister les spams" + tool gmail_search → success=true
-    - étape "Supprimer les spams" + tool gmail_trash_emails → success=true
-    - étape "Supprimer les spams" + tool gmail_search → success=FALSE
-      (le LLM a appelé le mauvais outil — il faut replan vers gmail_trash_emails)
+  1️⃣ ÉTAPE MUTATIVE (modifie le système — verbes : SUPPRIMER, ENVOYER, CRÉER,
+     PARTAGER, EFFACER, MODIFIER, DÉPLACER, ENVOIE, POSTE, PUBLIE, etc.)
+     → STRICT : l'outil DOIT être un outil mutatif correspondant.
+       - étape "Supprime les spams" + tool gmail_trash_by_category → success=true ✅
+       - étape "Supprime les spams" + tool gmail_search           → success=FALSE ❌
+         (search ne supprime pas — il faut replan vers gmail_trash_emails)
+       - étape "Envoie le résumé"   + tool gmail_send_email       → success=true ✅
+       - étape "Envoie le résumé"   + tool gmail_list_emails      → success=FALSE ❌
+
+  2️⃣ ÉTAPE DE LECTURE (récupère de l'info — verbes : LISTER, CHERCHER, RÉCUPÉRER,
+     LIRE, CONSULTER, OBTENIR, FETCH, GET, VOIR)
+     → SOUPLE : un outil list/search/read/get est cohérent.
+       - étape "Liste mes emails non lus" + tool gmail_list_emails → success=true ✅
+       - étape "Récupère la météo"        + tool weather_get        → success=true ✅
+
+  3️⃣ ÉTAPE DE SYNTHÈSE / ANALYSE (le LLM raisonne sur les données — verbes :
+     RÉSUMER, ANALYSER, COMPARER, CONCLURE, FORMATER, REFORMULER, IDENTIFIER,
+     EXTRAIRE, DÉCRIRE, EXPLIQUER, FAIRE UN RÉSUMÉ, FAIRE LE BILAN)
+     → TRÈS SOUPLE : l'outil n'a pas à matcher le verbe de synthèse, parce
+       qu'il N'EXISTE PAS d'outil "résume" ou "analyse" dédié — le LLM
+       produit la synthèse directement à partir du contexte (output du step
+       précédent ou raisonnement interne).
+       - étape "Résume les emails listés" + tool gmail_list_emails → success=true ✅
+         (le LLM a relu la liste et est censé produire le résumé en sortie)
+       - étape "Résume les emails listés" + AUCUN tool appelé      → success=true ✅
+         (le LLM a tout fait dans son raisonnement, c'est OK)
+       - étape "Analyse mon agenda"       + tool calendar_list_events → success=true ✅
+       - étape "Compare A et B"           + tool web_search           → success=true ✅
+       NE JAMAIS retourner FALSE pour « l'outil ne fait pas de résumé/analyse » :
+       cette analyse incombe au LLM, pas au tool.
+
+  Règle simple : ne mets success=FALSE QUE si l'étape est MUTATIVE (catégorie 1)
+  et que l'outil ne change PAS l'état du système. Les étapes de lecture et de
+  synthèse sont toujours validées tant que le tool a réussi techniquement.
 
 - "all_done" = ⚠️ TRÈS STRICT ⚠️ — vrai UNIQUEMENT si l'EFFET RÉEL ATTENDU
   par le goal global est CONCRÈTEMENT réalisé sur le système cible.
@@ -746,6 +908,7 @@ async def eval_node(state: MissionState) -> dict:
         tool_output=(state.get("last_tool_output", "") or "")[:2000],
     )
     response = await llm.ainvoke([HumanMessage(content=prompt)])
+    await _log_mission_llm_usage(response, state["user_id"], mission_id, "eval", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     raw = getattr(response, "content", "") or ""
 
@@ -848,6 +1011,7 @@ async def replan_node(state: MissionState) -> dict:
         last_reason=state.get("last_eval_reason", "(non spécifié)"),
     )
     response = await llm.ainvoke([HumanMessage(content=prompt)])
+    await _log_mission_llm_usage(response, state["user_id"], mission_id, "replan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     raw = getattr(response, "content", "") or ""
 

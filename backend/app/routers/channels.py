@@ -25,6 +25,7 @@ lifecycle is different (per-user QR pairing). This router is for the four
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 import httpx
@@ -37,6 +38,20 @@ from app.services.system_config import get_config, set_config
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_channel_token(db_key: str, env_key: str) -> str:
+    """Return token from DB first, fallback to env var.
+
+    Historical channels (Telegram/Discord/Slack) were configured via .env
+    before the Settings UI existed. The DB write happens only when the user
+    re-saves via the UI. Without this fallback, the UI shows "non configuré"
+    while the bot is actually running off env credentials.
+    """
+    val = await get_config(db_key, fallback="")
+    if val:
+        return val
+    return os.environ.get(env_key, "") or ""
 
 
 # =============================================================================
@@ -76,7 +91,7 @@ class TelegramSaveBody(BaseModel):
 @router.get("/telegram/status")
 async def telegram_status(current_user: User = Depends(get_current_user)) -> dict:
     _admin_only(current_user)
-    token = await get_config("telegram_bot_token", fallback="")
+    token = await _resolve_channel_token("telegram_bot_token", "TELEGRAM_BOT_TOKEN")
     bot_username: Optional[str] = None
     if token:
         try:
@@ -151,7 +166,7 @@ class DiscordSaveBody(BaseModel):
 @router.get("/discord/status")
 async def discord_status(current_user: User = Depends(get_current_user)) -> dict:
     _admin_only(current_user)
-    token = await get_config("discord_bot_token", fallback="")
+    token = await _resolve_channel_token("discord_bot_token", "DISCORD_BOT_TOKEN")
     return {
         "configured": bool(token),
         "running": await _is_running("_discord_client", "app.channels.discord_bot"),
@@ -219,8 +234,8 @@ class SlackSaveBody(BaseModel):
 @router.get("/slack/status")
 async def slack_status(current_user: User = Depends(get_current_user)) -> dict:
     _admin_only(current_user)
-    bot_token = await get_config("slack_bot_token", fallback="")
-    app_token = await get_config("slack_app_token", fallback="")
+    bot_token = await _resolve_channel_token("slack_bot_token", "SLACK_BOT_TOKEN")
+    app_token = await _resolve_channel_token("slack_app_token", "SLACK_APP_TOKEN")
     return {
         "configured": bool(bot_token and app_token),
         "has_bot_token": bool(bot_token),
@@ -280,3 +295,41 @@ async def slack_disable(current_user: User = Depends(get_current_user)) -> dict:
     except Exception as exc:
         logger.debug("stop_slack_bot: %s", exc)
     return {"disabled": True}
+
+
+# =============================================================================
+# ELY Android (FCM) — per-user, not admin-level
+# =============================================================================
+# Unlike Telegram/Discord/Slack which are configured globally by an admin
+# (one bot serves all users), the ELY Android channel is per-user : each
+# user's app registers its own FCM token via PUT /api/device-token. This
+# endpoint reports whether THE CALLING USER has linked their app.
+
+@router.get("/ely-android/status")
+async def ely_android_status(current_user: User = Depends(get_current_user)) -> dict:
+    """Report whether the calling user has linked their ELY Android app.
+
+    Linked = there's an FCM token registered for this user.
+    Used by Settings UI to show 'configured/not configured' badge.
+    """
+    has_token = bool(getattr(current_user, "fcm_token", None))
+    # Firebase needs to be configured server-side too (firebase_credentials_path).
+    from app.config import get_settings
+    fb_configured = bool(get_settings().firebase_credentials_path)
+    return {
+        "configured": has_token and fb_configured,
+        "user_token_registered": has_token,
+        "firebase_configured": fb_configured,
+    }
+
+
+@router.post("/ely-android/unlink")
+async def ely_android_unlink(current_user: User = Depends(get_current_user)) -> dict:
+    """Clear the FCM token for the calling user (un-pair the Android app)."""
+    from app.database import async_session
+    async with async_session() as db:
+        u = await db.get(User, current_user.id)
+        if u:
+            u.fcm_token = None
+            await db.commit()
+    return {"unlinked": True}

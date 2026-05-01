@@ -134,6 +134,10 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "system_list_scheduled_tasks",
     "system_list_missions",
     "system_check_channels",
+    # Telegram outbound — recipient is ALWAYS the calling user themselves
+    # (resolved from User.telegram_id). user_id injected so the LLM can't
+    # target arbitrary chats.
+    "telegram_send_message",
 })
 
 # ──────────────────────────────────────────────────────────────────────────────

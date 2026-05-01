@@ -164,6 +164,31 @@ export const api = {
       body: JSON.stringify({ tool_name, requires_confirmation }),
     }),
 
+  // ── HITL preferred channel (fix #18 — May 2026) ──────────────────────────
+  getHitlChannel: () =>
+    fetchAPI("/api/hitl/channel") as Promise<{
+      preferred_channel: string;
+      available_channels: Array<{
+        value: string;
+        label: string;
+        available: boolean;
+        icon: string;
+      }>;
+    }>,
+  updateHitlChannel: (preferred_channel: string) =>
+    fetchAPI("/api/hitl/channel", {
+      method: "PATCH",
+      body: JSON.stringify({ preferred_channel }),
+    }) as Promise<{
+      preferred_channel: string;
+      available_channels: Array<{
+        value: string;
+        label: string;
+        available: boolean;
+        icon: string;
+      }>;
+    }>,
+
   getUsers: () => fetchAPI("/admin/users"),
 
   getAuditLogs: (limit = 50) => fetchAPI(`/admin/audit?limit=${limit}`),

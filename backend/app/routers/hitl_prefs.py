@@ -172,3 +172,92 @@ async def update_preference(
         "tool_name": body.tool_name,
         "requires_confirmation": body.requires_confirmation,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HITL preferred channel
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Whitelist of accepted channel values. Keep in sync with the frontend
+# Settings UI dropdown and the dispatch logic in hitl_manager.request_validation.
+_ALLOWED_CHANNELS = frozenset({
+    "ely_android",
+    "ntfy",
+    "telegram",
+    "discord",
+    "slack",
+    "web_only",
+    "all",
+})
+
+
+class HitlChannelOut(BaseModel):
+    preferred_channel: str
+    available_channels: list[dict]
+
+
+class HitlChannelPatch(BaseModel):
+    preferred_channel: str = Field(..., description="One of: ely_android, ntfy, telegram, discord, slack, web_only, all.")
+
+
+@router.get("/channel", response_model=HitlChannelOut)
+async def get_hitl_channel(current_user: User = Depends(get_current_user)) -> HitlChannelOut:
+    """Return the user's preferred HITL channel + which channels are available
+    for them (linked / configured).
+
+    Used by the Settings UI to populate the dropdown with grayed-out options
+    for unlinked channels.
+    """
+    import os
+    pref = (current_user.hitl_preferred_channel or "all").strip().lower()
+    if pref not in _ALLOWED_CHANNELS:
+        pref = "all"
+
+    # Resolve availability per channel
+    has_telegram = bool(getattr(current_user, "telegram_id", None))
+    has_fcm = bool(getattr(current_user, "fcm_token", None))
+    has_discord = bool(getattr(current_user, "discord_id", None))
+    has_slack = bool(getattr(current_user, "slack_id", None))
+
+    # ntfy is configured server-side (env or DB)
+    from app.services.system_config import get_config
+    ntfy_url = await get_config("ntfy_url", "") or os.environ.get("NTFY_URL", "")
+    has_ntfy = bool(ntfy_url)
+
+    available = [
+        {"value": "ely_android", "label": "App ELY Android", "available": has_fcm,    "icon": "📱"},
+        {"value": "ntfy",        "label": "ntfy (push)",     "available": has_ntfy,   "icon": "🔔"},
+        {"value": "telegram",    "label": "Telegram",        "available": has_telegram, "icon": "✈️"},
+        {"value": "discord",     "label": "Discord",         "available": has_discord,  "icon": "💜"},
+        {"value": "slack",       "label": "Slack",           "available": has_slack,    "icon": "🟣"},
+        {"value": "web_only",    "label": "Web seulement",   "available": True,         "icon": "🌐"},
+        {"value": "all",         "label": "Tous (broadcast)","available": True,         "icon": "📢"},
+    ]
+    return HitlChannelOut(preferred_channel=pref, available_channels=available)
+
+
+@router.patch("/channel", response_model=HitlChannelOut)
+async def patch_hitl_channel(
+    body: HitlChannelPatch,
+    current_user: User = Depends(get_current_user),
+) -> HitlChannelOut:
+    """Set the user's preferred HITL notification channel."""
+    val = (body.preferred_channel or "all").strip().lower()
+    if val not in _ALLOWED_CHANNELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Canal '{body.preferred_channel}' invalide. Valeurs : {sorted(_ALLOWED_CHANNELS)}.",
+        )
+
+    async with async_session() as db:
+        u = await db.get(User, current_user.id)
+        if u is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        # Store None for "all" (legacy default behaviour) so a freshly migrated
+        # column reads as None and we don't clutter the DB with default values.
+        u.hitl_preferred_channel = None if val == "all" else val
+        await db.commit()
+        await db.refresh(u)
+
+    # Re-use the GET to return the same shape (with availability flags)
+    return await get_hitl_channel(u)

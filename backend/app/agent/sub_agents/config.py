@@ -455,7 +455,8 @@ MEMORY_AGENT = SubAgentConfig(
         "Ne passe JAMAIS un titre dans note_id — ça retourne toujours "
         "« note introuvable » même si la note existe.\n\n"
         "Outils disponibles : notes_create, notes_list, notes_read, notes_update, "
-        "notes_delete, notes_search, whatsapp_send, knowledge_search, knowledge_list."
+        "notes_delete, notes_search, whatsapp_send, telegram_send_message, "
+        "knowledge_search, knowledge_list."
         + _COMMON_FORMAT
     ),
     tool_names={
@@ -466,6 +467,7 @@ MEMORY_AGENT = SubAgentConfig(
         "notes_delete",
         "notes_search",
         "whatsapp_send",
+        "telegram_send_message",
         "knowledge_search",
         "knowledge_list",
     } | MEMORY_SKILLS,

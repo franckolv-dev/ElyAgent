@@ -60,6 +60,7 @@ async def init_db():
         from sqlalchemy import text
         _safe_columns = [
             ("users", "language", "VARCHAR(2) NOT NULL DEFAULT 'fr'"),
+            ("users", "hitl_preferred_channel", "VARCHAR(20)"),
         ]
         for _table, _col, _ddl in _safe_columns:
             try:

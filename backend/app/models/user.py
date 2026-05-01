@@ -44,3 +44,19 @@ class User(Base):
     # designed in French. The frontend sets this when the user clicks the
     # LangSwitcher; the agent prompt is rebuilt every turn to honor it.
     language: Mapped[str] = mapped_column(String(2), default="fr", server_default="fr")
+    # Preferred channel for HITL push notifications. None / "all" = broadcast
+    # to all linked channels (legacy behaviour). Specific value silences the
+    # others — useful when multiple channels are linked and the user doesn't
+    # want a notif on each every time. Allowed values :
+    #   "ely_android" — native Android app (FCM)
+    #   "ntfy"        — ntfy push (lockscreen action buttons, no app needed)
+    #   "telegram"    — Telegram bot inline keyboard
+    #   "discord"     — Discord DM with reactions
+    #   "slack"       — Slack DM with Block Kit
+    #   "web_only"    — only the web frontend (silent on phone)
+    #   "all" / null  — broadcast to every linked channel (default)
+    # The web frontend is ALWAYS notified regardless of this preference,
+    # because it must sync the chat UI in real time.
+    hitl_preferred_channel: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default=None
+    )
