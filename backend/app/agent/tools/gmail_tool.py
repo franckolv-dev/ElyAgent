@@ -595,6 +595,10 @@ async def gmail_search_for_cleanup(
 async def gmail_trash_by_category(
     category: str = "spam",
     max_results: int = 100,
+    from_sender: str = "",
+    subject_contains: str = "",
+    after_date: str = "",
+    before_date: str = "",
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
@@ -606,6 +610,17 @@ async def gmail_trash_by_category(
 
     The tool DOES NOT take IDs — just pass the category name.
     HITL is forced (this is a destructive batch operation).
+
+    OPTIONAL FILTERS — combine with the category to narrow down :
+      - from_sender       : restrict to a sender (matches `from:<sender>`)
+      - subject_contains  : restrict to subjects containing this text
+      - after_date        : YYYY/MM/DD lower bound (matches `after:`)
+      - before_date       : YYYY/MM/DD upper bound (matches `before:`)
+    ⚠️ If the user request mentions a SENDER, a SUBJECT KEYWORD, or a DATE
+    RANGE, you MUST pass these filters — otherwise the tool will purge
+    the WHOLE category indiscriminately, which is dangerous (May 2026
+    incident : « supprime les achats Temu » without from_sender purged
+    100+ legitimate non-Temu purchase emails).
 
     Args:
         category: Category to purge. Many natural-language aliases accepted
@@ -619,8 +634,17 @@ async def gmail_trash_by_category(
           'all_categories' (toutes catégories).
         max_results: Max number of emails to trash in one call (default 100,
           max 500). If the folder has more, call this tool again until empty.
+        from_sender: Optional. Restrict to emails from this sender (name or
+          address). Example: "Temu", "noreply@amazon.fr".
+        subject_contains: Optional. Restrict to emails whose subject contains
+          this text. Example: "facture", "confirmation".
+        after_date: Optional. Format YYYY/MM/DD. Only emails received after
+          this date.
+        before_date: Optional. Format YYYY/MM/DD. Only emails received before
+          this date.
 
-    Returns: a human-readable summary with N emails trashed.
+    Returns: a human-readable summary with N emails trashed (and the exact
+    Gmail query used, for transparency).
     """
     service = await _get_gmail_service(user_google_credentials_json)
     if not service:
@@ -636,7 +660,26 @@ async def gmail_trash_by_category(
         )
 
     max_results = min(max(1, max_results), 500)
-    query = _CLEANUP_QUERIES[canonical]
+    base_query = _CLEANUP_QUERIES[canonical]
+
+    # Compose the final Gmail query with optional filters
+    query_parts = [f"({base_query})"]
+    if from_sender.strip():
+        sender = from_sender.strip()
+        # Quote if contains spaces (Gmail accepts both forms)
+        if " " in sender and not (sender.startswith('"') and sender.endswith('"')):
+            sender = f'"{sender}"'
+        query_parts.append(f"from:{sender}")
+    if subject_contains.strip():
+        sub = subject_contains.strip()
+        if " " in sub and not (sub.startswith('"') and sub.endswith('"')):
+            sub = f'"{sub}"'
+        query_parts.append(f"subject:{sub}")
+    if after_date.strip():
+        query_parts.append(f"after:{after_date.strip()}")
+    if before_date.strip():
+        query_parts.append(f"before:{before_date.strip()}")
+    query = " ".join(query_parts)
 
     try:
         # 1. Find all matching IDs (paginated for large folders)
@@ -674,14 +717,123 @@ async def gmail_trash_by_category(
                 errors += len(chunk)
                 logger.warning("gmail_trash_by_category chunk failed: %s", exc)
 
+        # Build a transparent summary mentioning the actual filters applied
+        # (so the LLM evaluator + the user can see exactly what was matched).
+        filter_desc = []
+        if from_sender.strip():
+            filter_desc.append(f"expéditeur≈« {from_sender.strip()} »")
+        if subject_contains.strip():
+            filter_desc.append(f"sujet contient « {subject_contains.strip()} »")
+        if after_date.strip():
+            filter_desc.append(f"après {after_date.strip()}")
+        if before_date.strip():
+            filter_desc.append(f"avant {before_date.strip()}")
+        filter_str = (" + " + " + ".join(filter_desc)) if filter_desc else ""
+
         if errors == 0:
-            return f"🗑️ ✅ {trashed} email(s) de catégorie '{category}' déplacés vers la corbeille."
+            return (
+                f"🗑️ ✅ {trashed} email(s) déplacés vers la corbeille. "
+                f"Catégorie : '{category}'{filter_str}. "
+                f"Query Gmail : `{query}`"
+            )
         return (
             f"🗑️ {trashed} email(s) déplacés vers la corbeille, "
-            f"{errors} échec(s). Catégorie : '{category}'."
+            f"{errors} échec(s). Catégorie : '{category}'{filter_str}."
         )
     except Exception as e:
         return f"Erreur gmail_trash_by_category: {e}"
+
+
+@tool
+async def gmail_trash_by_query(
+    query: str,
+    max_results: int = 100,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Trash emails matching an arbitrary Gmail search query.
+
+    USE THIS for complex deletions that don't map cleanly to a category :
+    multiple senders combined with date ranges, custom labels, OR
+    expressions, attachments, etc. The query syntax is exactly Gmail's
+    search bar syntax.
+
+    For simple « purge a whole category » : prefer `gmail_trash_by_category`.
+    For « purge category X from sender Y » : ALSO prefer `gmail_trash_by_category`
+    with `from_sender=Y` (it's narrower and safer).
+
+    HITL is forced (this is a destructive batch operation).
+
+    Examples :
+      query='from:Temu category:purchases'              → only Temu purchases
+      query='label:ELY-Test before:2025/01/01'           → old custom label
+      query='subject:facture has:attachment older_than:1y' → 1+ y/o invoices
+      query='(from:noreply OR from:no-reply) is:unread'  → unread automated
+      query='in:spam from:*@temu.com'                    → only Temu spam
+
+    Args:
+        query: A valid Gmail search expression (same syntax as the Gmail
+            search bar). The function will paginate up to `max_results`.
+        max_results: Max number of emails to trash (default 100, max 500).
+            If the query matches more, call again until the result is empty.
+
+    Returns: a summary with N emails trashed and the exact query used.
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connectez votre compte dans les paramètres."
+
+    if not query or not query.strip():
+        return (
+            "Erreur : query vide. Pour vider toute une catégorie sans filtre, "
+            "utilise gmail_trash_by_category(category='...')."
+        )
+
+    max_results = min(max(1, max_results), 500)
+
+    try:
+        # 1. Find matching IDs (paginated)
+        ids: list[str] = []
+        page_token = None
+        while len(ids) < max_results:
+            req = service.users().messages().list(
+                userId="me",
+                maxResults=min(100, max_results - len(ids)),
+                q=query,
+                pageToken=page_token,
+            ).execute()
+            batch = req.get("messages", [])
+            ids.extend([m["id"] for m in batch])
+            page_token = req.get("nextPageToken")
+            if not page_token or not batch:
+                break
+
+        if not ids:
+            return f"✅ Rien à faire : aucun email ne matche `{query}`."
+
+        # 2. Trash via batchModify (chunks of 1000 max per Gmail API)
+        trashed = 0
+        errors = 0
+        for i in range(0, len(ids), 1000):
+            chunk = ids[i:i + 1000]
+            try:
+                service.users().messages().batchModify(
+                    userId="me",
+                    body={"ids": chunk, "addLabelIds": ["TRASH"], "removeLabelIds": ["INBOX"]},
+                ).execute()
+                trashed += len(chunk)
+            except Exception as exc:
+                errors += len(chunk)
+                logger.warning("gmail_trash_by_query chunk failed: %s", exc)
+
+        if errors == 0:
+            return f"🗑️ ✅ {trashed} email(s) déplacés vers la corbeille. Query : `{query}`"
+        return (
+            f"🗑️ {trashed} email(s) déplacés vers la corbeille, {errors} échec(s). "
+            f"Query : `{query}`"
+        )
+    except Exception as e:
+        return f"Erreur gmail_trash_by_query: {e}"
 
 
 @tool

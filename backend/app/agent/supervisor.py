@@ -372,7 +372,10 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "gmail_mark_read, gmail_mark_unread, gmail_create_draft, gmail_list_drafts, "
         "gmail_search_for_cleanup, gmail_list_labels, gmail_create_label, "
         "gmail_move_emails (HITL), gmail_trash_emails (HITL), "
-        "gmail_trash_by_category (HITL — search+trash atomique, à PRÉFÉRER pour vider spam/promotions/newsletters), "
+        "gmail_trash_by_category (HITL — search+trash atomique avec filtres "
+        "optionnels from_sender/subject_contains/after_date/before_date, "
+        "à PRÉFÉRER pour vider une catégorie même partiellement), "
+        "gmail_trash_by_query (HITL — query Gmail libre pour cas complexes), "
         "gmail_batch_modify (modif lot jusqu'à 1000 msgs), "
         "gmail_update_settings (signature/vacation/filtre/transfert, HITL), "
         "gmail_raw_api_call (API brute, HITL).\n"
@@ -479,7 +482,7 @@ _WORKSPACE_SKILLS = {
     "gmail_create_draft", "gmail_list_drafts",
     "gmail_list_labels", "gmail_create_label",
     "gmail_move_emails", "gmail_trash_emails", "gmail_search_for_cleanup",
-    "gmail_trash_by_category",
+    "gmail_trash_by_category", "gmail_trash_by_query",
     "gmail_batch_modify", "gmail_update_settings", "gmail_raw_api_call",
     # Calendar
     "calendar_list_events", "calendar_create_event",

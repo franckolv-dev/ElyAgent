@@ -45,7 +45,7 @@ GOOGLE_TOOLS: frozenset[str] = frozenset({
     "gmail_create_draft", "gmail_list_drafts",
     "gmail_list_labels", "gmail_create_label",
     "gmail_move_emails", "gmail_trash_emails", "gmail_search_for_cleanup",
-    "gmail_trash_by_category",
+    "gmail_trash_by_category", "gmail_trash_by_query",
     "gmail_batch_modify", "gmail_update_settings", "gmail_raw_api_call",
     # Calendar
     "calendar_list_events", "calendar_create_event",

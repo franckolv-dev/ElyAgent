@@ -332,6 +332,21 @@ ACTION_KEYWORDS: dict[str, list[str]] = {
         "newsletter", "newsletters", "mailing", "mailings",
         "promotions", "promos",
     ],
+    # Gmail — suppressions par query custom (sender, subject, date, OR, label
+    # custom, etc.). Boost ce tool quand la demande contient un FILTRE en plus
+    # d'une catégorie — sinon le LLM choisirait gmail_trash_by_category sans
+    # le filtre et viderait toute la catégorie (incident mai 2026 « supprime
+    # achats Temu » → 100+ mails non-Temu purgés).
+    "gmail_trash_by_query": [
+        "expéditeur", "expediteur", "envoyé par", "envoye par",
+        "dont le sujet", "qui contient", "avec sujet", "objet",
+        "from:", "subject:", "label:",
+        "avant le", "après le", "apres le", "datant de",
+        "before:", "after:", "older_than", "newer_than",
+        # Common combinations of sender + verb that strongly suggest filtering
+        "de temu", "de amazon", "de facebook", "de linkedin",
+        "from temu", "from amazon",
+    ],
     # Gmail — envois
     "gmail_send_email": [
         "envoie un mail", "envoie un email", "envoyer un mail", "envoie un courriel",
