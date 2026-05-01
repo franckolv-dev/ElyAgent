@@ -357,23 +357,22 @@ function ChatPageInner() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
+      {/* Layout refonte : header full-width au-dessus de la sidebar + main + avatar */}
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header wsStatus={wsStatus}>
+          <button
+            onClick={handleToggleVoiceMode}
+            title="Mode vocal"
+            className={`icon-btn ${voiceConv.state.isActive ? "active" : ""}`}
+          >
+            <Mic size={15} />
+          </button>
+        </Header>
 
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header wsStatus={wsStatus}>
-            <button
-              onClick={handleToggleVoiceMode}
-              title="Mode vocal"
-              className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all ${
-                voiceConv.state.isActive
-                  ? "bg-cyber-cyan/20 border-cyber-cyan/50 text-cyber-cyan shadow-[0_0_8px_rgba(0,229,255,0.3)]"
-                  : "border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10"
-              }`}
-            >
-              <Mic className="w-4 h-4" />
-            </button>
-          </Header>
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+
+          <div className="flex flex-col flex-1 overflow-hidden">
 
           {/* Conversation title bar */}
           {conversationId && convTitle && (
@@ -412,13 +411,10 @@ function ChatPageInner() {
             </div>
           )}
 
-          <div className="flex flex-1 overflow-hidden">
-            {/* ── Chat column ── */}
-            <div className="flex flex-col flex-1 overflow-hidden">
-              {showOnboarding === true ? (
-                <OnboardingFlow onComplete={() => setShowOnboarding(false)} />
-              ) : (
-              <>
+          {showOnboarding === true ? (
+            <OnboardingFlow onComplete={() => setShowOnboarding(false)} />
+          ) : (
+            <>
               <ChatWindow
                 messages={messages}
                 isLoading={isLoading}
@@ -427,7 +423,6 @@ function ChatPageInner() {
                 conversationId={conversationId}
                 activeTool={activeTool}
               />
-              {/* ── Live Browser Copilot — visible whenever Ély uses the browser ── */}
               {browserFrame && (
                 <div className="px-4 pb-1">
                   <LiveBrowserPanel
@@ -446,31 +441,26 @@ function ChatPageInner() {
                 onVoiceModeToggle={handleToggleVoiceMode}
                 isVoiceModeActive={voiceConv.state.isActive}
               />
-              </>
-              )}
+            </>
+          )}
+          </div>
+
+          {/* ── Avatar panel (resizable, desktop only) ── */}
+          <div
+            className="hidden lg:flex shrink-0 relative"
+            style={{ width: avatarWidth }}
+          >
+            <div
+              onMouseDown={onHandleMouseDown}
+              className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize group z-10 flex items-center justify-center"
+              title={t("resize")}
+            >
+              <div className="w-px h-full bg-border-dim group-hover:bg-cyber-cyan/40 transition-colors" />
+              <div className="absolute w-1 h-8 rounded-full bg-border-dim group-hover:bg-cyber-cyan/60 transition-colors opacity-0 group-hover:opacity-100" />
             </div>
 
-            {/* ── Avatar panel (resizable, desktop only) ── */}
-            <div
-              className="hidden lg:flex shrink-0 relative"
-              style={{ width: avatarWidth }}
-            >
-              {/* Drag handle — 6 px wide, sits at the left edge */}
-              <div
-                onMouseDown={onHandleMouseDown}
-                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize group z-10 flex items-center justify-center"
-                title={t("resize")}
-              >
-                {/* Visible track */}
-                <div className="w-px h-full bg-border-dim group-hover:bg-cyber-cyan/40 transition-colors" />
-                {/* Pill indicator */}
-                <div className="absolute w-1 h-8 rounded-full bg-border-dim group-hover:bg-cyber-cyan/60 transition-colors opacity-0 group-hover:opacity-100" />
-              </div>
-
-              {/* Panel content */}
-              <div className="flex flex-col items-center justify-start p-4 overflow-y-auto w-full pl-5 bg-bg-secondary/40">
-                <AvatarPanel wsMessage={lastWsMessage} isLoading={isLoading} />
-              </div>
+            <div className="avatar-panel" style={{ width: "100%", paddingLeft: 24 }}>
+              <AvatarPanel wsMessage={lastWsMessage} isLoading={isLoading} />
             </div>
           </div>
         </div>

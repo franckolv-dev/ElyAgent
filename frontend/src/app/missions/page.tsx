@@ -61,12 +61,11 @@ export default function MissionsPage() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header />
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto p-6 space-y-4" style={{ background: "var(--bg-app)" }}>
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -78,9 +77,9 @@ export default function MissionsPage() {
               </div>
               <button
                 onClick={() => setShowCreate(true)}
-                className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
+                className="btn primary"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus size={14} />
                 {t("newMission")}
               </button>
             </div>
@@ -134,7 +133,6 @@ export default function MissionsPage() {
                 ))}
               </div>
             )}
-          </div>
 
           {showCreate && (
             <CreateMissionModal
@@ -142,6 +140,7 @@ export default function MissionsPage() {
               onCreated={() => { setShowCreate(false); fetchAll(); }}
             />
           )}
+          </main>
         </div>
       </div>
     </AuthGuard>

@@ -156,11 +156,11 @@ export default function SecurityPage() {
 
   return (
     <AdminGuard>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header />
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto p-6 space-y-6" style={{ background: "var(--bg-app)" }}>
             {/* Page header */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center">
@@ -276,7 +276,7 @@ export default function SecurityPage() {
                 {t("openclawNote")}
               </p>
             </div>
-          </div>
+          </main>
         </div>
       </div>
     </AdminGuard>

@@ -32,6 +32,12 @@ interface AvatarPanelProps {
   isLoading: boolean;
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
 // ── NEURAL score per model ──────────────────────────────────────────────────
 // Reflects the capability tier of the active LLM (0-100 scale).
 // Higher = more capable / larger model.
@@ -101,6 +107,10 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   const [syncPercent, setSyncPercent] = useState<number>(100);
   const [neuralScore, setNeuralScore] = useState<number | undefined>(undefined); // undefined until first model known
   const [version,     setVersion]     = useState<string>("…");
+  // Last known model — persisted across WS messages so SESSION panel keeps
+  // the value visible after the streaming ends (wsMessage drops to null).
+  const [lastModel,   setLastModel]   = useState<string>("");
+  const [tokensUsed,  setTokensUsed]  = useState<{ input: number; output: number }>({ input: 0, output: 0 });
 
   // SYNC = rolling success rate over last 10 messages (1=success, 0=error)
   const recentOutcomes = useRef<number[]>([]);
@@ -162,7 +172,18 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
 
       // NEURAL — capability tier of the active model
       const modelUsed = wsMessage.model_used ?? "";
-      if (modelUsed) setNeuralScore(neuralScoreForModel(modelUsed));
+      if (modelUsed) {
+        setNeuralScore(neuralScoreForModel(modelUsed));
+        setLastModel(modelUsed);
+      }
+      // Tokens cumulés sur la session (incrément par message)
+      const wsAny = wsMessage as unknown as { input_tokens?: number; output_tokens?: number };
+      if (wsAny.input_tokens || wsAny.output_tokens) {
+        setTokensUsed((prev) => ({
+          input: prev.input + (wsAny.input_tokens || 0),
+          output: prev.output + (wsAny.output_tokens || 0),
+        }));
+      }
 
       setHitlAction(null);
       if (ttsEnabled && wsMessage.content) ttsRef.current?.speak(wsMessage.content);
@@ -178,83 +199,263 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   }, [wsMessage, ttsEnabled]);
 
   return (
-    <div className="flex flex-col items-center gap-3 w-full">
-      {/* Avatar canvas — fills available width */}
-      <div className="w-full" style={{ aspectRatio: "5/6" }}>
-        <CyberpunkAvatar state={avatarState} className="w-full h-full" latencyMs={latencyMs} syncPercent={syncPercent} neuralScore={neuralScore} version={version} />
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)", width: "100%" }}>
+      {/* ── Avatar wireframe stage : grille + halo + tête 3D ── */}
+      <div className="avatar-stage" style={{ height: "auto", aspectRatio: "1 / 1" }}>
+        {/* Corners HUD */}
+        <div className="avatar-corner tl">
+          NEURAL:{neuralScore !== undefined ? neuralScore.toFixed(1) : "—"}
+        </div>
+        <div className="avatar-corner tr">
+          LAT:{latencyMs !== undefined ? `${latencyMs}ms` : "—"}
+        </div>
+        <div className="avatar-corner bl">SYNC:{syncPercent.toFixed(1)}%</div>
+        <div className="avatar-corner br">VER:{version}</div>
+
+        {/* Halo de fond derrière la tête */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(circle at 50% 45%, var(--accent-glow) 0%, transparent 55%)",
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* Tête 3D Cyberpunk — composant existant, intacte */}
+        <div style={{ position: "absolute", inset: 0 }}>
+          <CyberpunkAvatar
+            state={avatarState}
+            className="w-full h-full"
+            latencyMs={latencyMs}
+            syncPercent={syncPercent}
+            neuralScore={neuralScore}
+            version={version}
+          />
+        </div>
       </div>
 
-      {/* HITL validation — in-place Approve / Deny / Ban buttons.
-          Hits the same /validation/{id}/{decision} endpoint as the mobile
-          app, so the web UI is self-sufficient when FCM is not set up. */}
+      {/* ── Actions (TTS + état) ── */}
+      <div className="avatar-actions">
+        <button
+          onClick={() => setTtsEnabled((v) => !v)}
+          className={`avatar-action ${ttsEnabled ? "primary" : ""}`}
+        >
+          {ttsEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+          {ttsEnabled ? t("voiceActive") : t("voiceMuted")}
+        </button>
+        <div className="avatar-action ghost">
+          <Shield size={11} /> ELY :: {avatarState.toUpperCase()}
+        </div>
+      </div>
+
+      {/* ── HITL — Approve / Deny / Ban ── */}
       {hitlAction && (
-        <div className="w-full rounded-lg border border-cyber-red/40 bg-cyber-red/5 p-3 text-xs space-y-2">
-          <div className="flex items-center gap-1.5 text-cyber-red font-bold">
-            <ShieldAlert className="w-3.5 h-3.5" />
+        <div
+          className="card"
+          style={{
+            borderColor: "var(--danger)",
+            background: "var(--danger-soft)",
+            padding: "var(--sp-3)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              color: "var(--danger)",
+              fontWeight: 600,
+              fontSize: 12,
+              marginBottom: 8,
+            }}
+          >
+            <ShieldAlert size={13} />
             {t("validationRequired")}
           </div>
-          <p className="text-text-secondary leading-relaxed line-clamp-4">
+          <p
+            style={{
+              fontSize: 11,
+              color: "var(--text-secondary)",
+              lineHeight: 1.5,
+              margin: "0 0 8px",
+              maxHeight: 80,
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: 4,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
             {hitlAction.description}
           </p>
 
-          <div className="grid grid-cols-3 gap-1.5 pt-1">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
             <button
               onClick={() => resolveHitl("allow")}
               disabled={hitlPending !== null}
-              className="flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-cyber-cyan/10 hover:bg-cyber-cyan/20 border border-cyber-cyan/30 text-cyber-cyan disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="btn primary"
+              style={{ justifyContent: "center", padding: "5px 8px", fontSize: 11 }}
               title={t("hitlApprove")}
             >
-              <Check className="w-3 h-3" />
-              <span>{hitlPending === "allow" ? t("hitlSending") : t("hitlApprove")}</span>
+              <Check size={11} />
+              {hitlPending === "allow" ? t("hitlSending") : t("hitlApprove")}
             </button>
             <button
               onClick={() => resolveHitl("deny")}
               disabled={hitlPending !== null}
-              className="flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-bg-tertiary hover:bg-bg-secondary border border-border-dim text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="btn"
+              style={{ justifyContent: "center", padding: "5px 8px", fontSize: 11 }}
               title={t("hitlDeny")}
             >
-              <X className="w-3 h-3" />
-              <span>{hitlPending === "deny" ? t("hitlSending") : t("hitlDeny")}</span>
+              <X size={11} />
+              {hitlPending === "deny" ? t("hitlSending") : t("hitlDeny")}
             </button>
             <button
               onClick={() => resolveHitl("ban")}
               disabled={hitlPending !== null}
-              className="flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-cyber-red/10 hover:bg-cyber-red/20 border border-cyber-red/30 text-cyber-red disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="btn danger"
+              style={{ justifyContent: "center", padding: "5px 8px", fontSize: 11 }}
               title={t("hitlBan")}
             >
-              <Ban className="w-3 h-3" />
-              <span>{hitlPending === "ban" ? t("hitlSending") : t("hitlBan")}</span>
+              <Ban size={11} />
+              {hitlPending === "ban" ? t("hitlSending") : t("hitlBan")}
             </button>
           </div>
 
-          {hitlError ? (
-            <p className="text-cyber-red text-[10px]">{t("hitlFailed")} — {hitlError}</p>
-          ) : (
-            <p className="text-text-muted text-[10px]">{t("replyViaApp")}</p>
+          {hitlError && (
+            <p style={{ color: "var(--danger)", fontSize: 10, marginTop: 6 }}>
+              {t("hitlFailed")} — {hitlError}
+            </p>
           )}
         </div>
       )}
 
-      {/* TTS toggle */}
-      <button
-        onClick={() => setTtsEnabled((v) => !v)}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs border transition-all ${
-          ttsEnabled
-            ? "border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5"
-            : "border-border-dim text-text-muted hover:border-cyber-cyan/20"
-        }`}
-      >
-        {ttsEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
-        {ttsEnabled ? t("voiceActive") : t("voiceMuted")}
-      </button>
+      {/* ── Panneau SESSION ── */}
+      <div className="avatar-info">
+        <h4>SESSION</h4>
+        <div className="kv">
+          <span className="k">MODEL</span>
+          <span className="v" style={{ fontSize: 10, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {lastModel ? lastModel.replace(/^(llm|slm):/, "").split("+")[0].split("/").pop() : "—"}
+          </span>
+        </div>
+        <div className="kv">
+          <span className="k">LATENCY</span>
+          <span className="v">
+            {latencyMs !== undefined ? `${latencyMs}ms` : "—"}
+          </span>
+        </div>
+        <div className="kv">
+          <span className="k">TOKENS</span>
+          <span className="v">
+            {tokensUsed.input + tokensUsed.output > 0
+              ? `${formatTokens(tokensUsed.input + tokensUsed.output)}`
+              : "—"}
+          </span>
+        </div>
+        <div className="kv">
+          <span className="k">NEURAL</span>
+          <span className="v">
+            {neuralScore !== undefined ? neuralScore.toFixed(1) : "—"}
+          </span>
+        </div>
+        <div className="kv">
+          <span className="k">SYNC</span>
+          <span className="v">{syncPercent.toFixed(1)}%</span>
+        </div>
+      </div>
 
-      {/* State label */}
-      <div className="flex items-center gap-1.5">
-        <Shield className="w-3 h-3 text-cyber-cyan" />
-        <span className="text-[10px] text-text-muted uppercase tracking-widest">
-          {avatarState}
+      {/* ── Panneau CANAUX ACTIFS ── */}
+      <ChannelsPanel />
+    </div>
+  );
+}
+
+// ── Channels panel — état des bots configurés sur le backend ──
+//
+// Affiche pour chaque canal :
+//   ON   = configuré sur le backend (token présent ou bot tournant)
+//   LINK = configuré + ce user a lié son compte (Telegram /link, etc.)
+//   OFF  = pas configuré
+//
+// Refresh toutes les 60s pour suivre les hot-restart admin.
+interface ChannelStatus {
+  configured: boolean;
+  running: boolean;
+  linked: boolean;
+}
+interface ActiveChannelsResponse {
+  telegram: ChannelStatus;
+  discord: ChannelStatus;
+  slack: ChannelStatus;
+  whatsapp: ChannelStatus;
+  ely_android: ChannelStatus;
+  ntfy: ChannelStatus;
+}
+
+function ChannelsPanel() {
+  const [data, setData] = useState<ActiveChannelsResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchOnce = async () => {
+      try {
+        const r = await authFetch(`${API_BASE}/api/channels/active`);
+        if (!r.ok) return;
+        const json = await r.json();
+        if (!cancelled) setData(json);
+      } catch {
+        // silent
+      }
+    };
+    fetchOnce();
+    const interval = setInterval(fetchOnce, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const Row = ({ label, status }: { label: string; status: ChannelStatus | undefined }) => {
+    const on = !!status?.configured;
+    const linked = !!status?.linked;
+    let badge = "OFF";
+    let color = "var(--text-muted)";
+    if (on && linked) { badge = "LINK"; color = "var(--success)"; }
+    else if (on) { badge = "ON"; color = "var(--info)"; }
+    return (
+      <div className="kv">
+        <span className="k">{label}</span>
+        <span
+          className="v"
+          style={{ color, display: "flex", alignItems: "center", gap: 4 }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 999,
+              background: color,
+              boxShadow: on ? `0 0 6px ${color}` : "none",
+            }}
+          />
+          {badge}
         </span>
       </div>
+    );
+  };
+
+  return (
+    <div className="avatar-info">
+      <h4>CANAUX ACTIFS</h4>
+      <Row label="ANDROID"  status={data?.ely_android} />
+      <Row label="TELEGRAM" status={data?.telegram} />
+      <Row label="WHATSAPP" status={data?.whatsapp} />
+      <Row label="DISCORD"  status={data?.discord} />
+      <Row label="SLACK"    status={data?.slack} />
+      <Row label="NTFY"     status={data?.ntfy} />
     </div>
   );
 }

@@ -117,7 +117,8 @@
     "suggestions": {
       "hosts": "Quels hôtes sont configurés ?",
       "sysinfo": "Infos système",
-      "disk": "Utilisation du disque"
+      "disk": "Utilisation du disque",
+      "unreadEmails": "Résumé des emails non lus"
     },
     "welcome": "Votre agent IA est prêt. Demandez-lui d'exécuter des commandes, analyser des fichiers ou gérer vos systèmes.",
     "resize": "Redimensionner le panneau",
@@ -259,6 +260,9 @@
     "routingDescription": "Définissez quel modèle est utilisé selon la complexité détectée. Les modèles en tête de liste sont prioritaires ; le fallback tente le suivant en cas d'erreur. Vous pouvez utiliser des instances nommées (configurées dans l'onglet \"Modèles IA\") ou les providers génériques.",
     "routingNoInstances": "Aucune instance configurée. Allez dans l'onglet \"Modèles IA\" pour créer des instances, ou utilisez les providers génériques.",
     "noTierModels": "Aucun modèle configuré — le provider global sera utilisé.",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "remove": "Supprimer",
     "tierLabels": {
       "simple": "Niveau A — Simple",
       "medium": "Niveau B — Standard",
@@ -317,7 +321,7 @@
     "waStep3": "Scanne le QR affiché ici.",
     "waStep4": "Une fois lié, envoie-toi un message dans le chat <em>« Messagerie avec vous-même »</em> — ELY répondra uniquement dans ce chat-là.",
     "waUnofficialNote": "Méthode non-officielle (WhatsApp Web). Ton compte peut théoriquement être restreint par WhatsApp. Pour un usage professionnel à grande échelle, préférez Meta Cloud API.",
-    "tgIntro": "Crée un bot via <strong>@BotFather</strong> sur Telegram, colle son token ici, puis lie ton compte en envoyant <code>/link &lt;username&gt; &lt;motdepasse&gt;</code> au bot (en DM).",
+    "tgIntro": "Crée un bot via <strong>@BotFather</strong> sur Telegram, colle son token ici, puis lie ton compte en envoyant <code>/link [username] [motdepasse]</code> au bot (en DM).",
     "tgTokenPlaceholder": "Token BotFather — 8537xxxxxx:AAH...",
     "tgTokenPlaceholderConfigured": "••••••• (déjà configuré, écraser si besoin)",
     "tgPasteToken": "Colle le token BotFather",
@@ -334,7 +338,7 @@
     "tgHelpStep6": "Envoie <code>/link ton_username ton_motdepasse</code> (les identifiants ELY de cette interface).",
     "tgHelpStep7": "Ton compte est lié — tu peux discuter librement en DM avec ton bot.",
     "tgLatencyNote": "💡 <strong>Latence :</strong> actuellement en mode polling (~10 s de décalage). Pour passer en temps réel, il faut exposer <code>/webhook/*</code> via le tunnel Cloudflare.",
-    "dcIntro": "Crée un bot sur le <strong>Discord Developer Portal</strong>, active le <em>Message Content Intent</em>, copie son token, puis DM ton bot avec <code>!link &lt;username&gt; &lt;motdepasse&gt;</code>.",
+    "dcIntro": "Crée un bot sur le <strong>Discord Developer Portal</strong>, active le <em>Message Content Intent</em>, copie son token, puis DM ton bot avec <code>!link [username] [motdepasse]</code>.",
     "dcTokenPlaceholder": "Token du Discord Developer Portal",
     "dcTokenPlaceholderConfigured": "••••••• (déjà configuré, écraser si besoin)",
     "dcPasteToken": "Colle le token du Discord Developer Portal",

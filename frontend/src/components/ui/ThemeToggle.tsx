@@ -38,13 +38,9 @@ export function ThemeToggle() {
     <button
       onClick={handleToggle}
       title={theme === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}
-      className="w-7 h-7 rounded-md flex items-center justify-center border border-border-dim text-text-secondary hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/5 transition-all"
+      className="icon-btn"
     >
-      {theme === "dark" ? (
-        <Sun className="w-3.5 h-3.5" />
-      ) : (
-        <Moon className="w-3.5 h-3.5" />
-      )}
+      {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
     </button>
   );
 }

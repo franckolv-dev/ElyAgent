@@ -117,7 +117,8 @@
     "suggestions": {
       "hosts": "What hosts are configured?",
       "sysinfo": "System info",
-      "disk": "Disk usage"
+      "disk": "Disk usage",
+      "unreadEmails": "Summary of unread emails"
     },
     "welcome": "Your AI agent is ready. Ask it to run commands, analyse files or manage your systems.",
     "resize": "Resize panel",
@@ -259,6 +260,9 @@
     "routingDescription": "Pick which model is used based on the detected complexity. Models at the top of the list have priority; the fallback tries the next one on error. You can use named instances (configured under \"AI Models\") or generic providers.",
     "routingNoInstances": "No instance configured. Head to the \"AI Models\" tab to create instances, or use the generic providers.",
     "noTierModels": "No model configured — the global provider will be used.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
     "tierLabels": {
       "simple": "Tier A — Simple",
       "medium": "Tier B — Standard",
@@ -317,7 +321,7 @@
     "waStep3": "Scan the QR shown here.",
     "waStep4": "Once linked, send yourself a message in the <em>\"Message yourself\"</em> chat — ELY only replies in that chat.",
     "waUnofficialNote": "Unofficial method (WhatsApp Web). Your account could in theory be restricted by WhatsApp. For large-scale professional use, prefer the Meta Cloud API.",
-    "tgIntro": "Create a bot via <strong>@BotFather</strong> on Telegram, paste its token here, then link your account by sending <code>/link &lt;username&gt; &lt;password&gt;</code> to the bot (in DM).",
+    "tgIntro": "Create a bot via <strong>@BotFather</strong> on Telegram, paste its token here, then link your account by sending <code>/link [username] [password]</code> to the bot (in DM).",
     "tgTokenPlaceholder": "BotFather token — 8537xxxxxx:AAH...",
     "tgTokenPlaceholderConfigured": "••••••• (already configured, overwrite if needed)",
     "tgPasteToken": "Paste the BotFather token",
@@ -334,7 +338,7 @@
     "tgHelpStep6": "Send <code>/link your_username your_password</code> (your ELY credentials from this UI).",
     "tgHelpStep7": "Your account is linked — chat freely in DM with your bot.",
     "tgLatencyNote": "💡 <strong>Latency:</strong> currently in polling mode (~10s lag). For real-time, expose <code>/webhook/*</code> via the Cloudflare tunnel.",
-    "dcIntro": "Create a bot on the <strong>Discord Developer Portal</strong>, enable <em>Message Content Intent</em>, copy its token, then DM your bot with <code>!link &lt;username&gt; &lt;password&gt;</code>.",
+    "dcIntro": "Create a bot on the <strong>Discord Developer Portal</strong>, enable <em>Message Content Intent</em>, copy its token, then DM your bot with <code>!link [username] [password]</code>.",
     "dcTokenPlaceholder": "Token from Discord Developer Portal",
     "dcTokenPlaceholderConfigured": "••••••• (already configured, overwrite if needed)",
     "dcPasteToken": "Paste the Discord Developer Portal token",

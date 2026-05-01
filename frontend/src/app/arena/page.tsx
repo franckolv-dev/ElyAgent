@@ -102,12 +102,12 @@ export default function ArenaPage() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen bg-bg-primary text-text-primary">
-        <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Header />
+      <div className="flex flex-col h-screen overflow-hidden bg-bg-primary text-text-primary">
+        <Header />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
 
-          <main className="flex-1 overflow-y-auto p-6 space-y-6">
+          <main className="flex-1 overflow-y-auto p-6 space-y-6" style={{ background: "var(--bg-app)" }}>
             {/* Intro */}
             <div className="flex items-start gap-3">
               <Swords className="w-6 h-6 text-cyber-cyan shrink-0 mt-1" />

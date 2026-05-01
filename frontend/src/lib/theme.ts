@@ -29,6 +29,12 @@ export function applyTheme(theme: Theme) {
   const html = document.documentElement;
   html.classList.remove("dark", "light");
   html.classList.add(theme);
+  // Also set data-theme on <body> so the new design tokens (--bg-app etc.)
+  // resolve correctly. The CSS rules in globals.css honor BOTH selectors
+  // so legacy components (html.light) keep working during the refonte.
+  if (typeof document !== "undefined" && document.body) {
+    document.body.dataset.theme = theme;
+  }
   localStorage.setItem(KEY, theme);
 }
 
@@ -43,5 +49,10 @@ export const THEME_SCRIPT = `
 (function(){
   var t=localStorage.getItem('ely-theme')||'dark';
   document.documentElement.classList.add(t);
+  // data-theme on body for the new design tokens (refonte mai 2026)
+  document.addEventListener('DOMContentLoaded', function(){
+    if (document.body) document.body.dataset.theme = t;
+  });
+  if (document.body) document.body.dataset.theme = t;
 })();
 `.trim();

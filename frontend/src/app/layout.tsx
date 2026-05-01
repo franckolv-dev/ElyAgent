@@ -56,7 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="min-h-screen bg-bg-primary text-text-primary antialiased">
-        <div className="fixed inset-0 bg-grid scanline pointer-events-none z-0" />
+        {/* Background grid retiré (refonte mai 2026) — surfaces étagées */}
         <NextIntlClientProvider messages={messages}>
           <div className="relative z-10">{children}</div>
           <ServiceWorkerRegister />

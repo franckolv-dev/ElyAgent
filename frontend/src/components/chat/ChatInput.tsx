@@ -388,7 +388,10 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
   const hasUploading = useMemo(() => pendingFiles.some((p) => p.uploading), [pendingFiles]);
 
   return (
-    <div className="border-t border-border-dim bg-bg-secondary/80 backdrop-blur-sm p-4">
+    // Wrapper transparent : on veut que la zone sous le textarea ait la
+    // même couleur que la zone chat au-dessus, pas un bandeau distinct.
+    // Pas de border-top, pas de fond, juste un padding pour aérer.
+    <div style={{ padding: "0", background: "transparent" }}>
 
       {/* ── Screen capture preview chip ── */}
       {screenCapture && (
@@ -452,8 +455,8 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
         </div>
       )}
 
-      {/* ── Input row ── */}
-      <div className="flex items-end gap-3 bg-bg-primary border border-border-dim rounded-lg px-4 py-3 focus-within:border-cyber-cyan/30 focus-within:shadow-[0_0_12px_#00e5ff11] transition-all">
+      {/* ── Input dock — textarea above, icon row below (refonte mai 2026) ── */}
+      <div className="ely-input-dock">
         <textarea
           ref={textareaRef}
           value={value}
@@ -463,7 +466,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
           placeholder={t("placeholder")}
           rows={1}
           disabled={disabled}
-          className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted resize-none focus:outline-none max-h-[200px] min-h-[24px] leading-6"
+          className="ely-input-textarea"
         />
 
         {/* Hidden file input */}
@@ -477,90 +480,85 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
           disabled={disabled}
         />
 
-        {/* Paperclip button */}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          title={t("attachFile")}
-          className="w-8 h-8 rounded-md border border-border-dim flex items-center justify-center text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10 transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          {hasUploading ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        <div className="ely-input-actions">
+          <div className="ely-input-actions-left">
+            {/* Paperclip */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled}
+              title={t("attachFile")}
+              className="icon-btn"
+            >
+              {hasUploading ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
+            </button>
+
+            {/* Screen capture */}
+            <button
+              type="button"
+              onClick={captureScreen}
+              disabled={disabled}
+              title={t("shareScreen")}
+              className={`icon-btn ${screenCapture ? "active" : ""}`}
+            >
+              <Monitor size={15} />
+            </button>
+
+            {/* Voice mode */}
+            {onVoiceModeToggle && (
+              <button
+                type="button"
+                onClick={onVoiceModeToggle}
+                disabled={disabled}
+                title={isVoiceModeActive ? "Quitter le mode vocal" : "Mode vocal"}
+                className={`icon-btn ${isVoiceModeActive ? "active" : ""}`}
+              >
+                <Headphones size={15} />
+              </button>
+            )}
+
+            {/* Mic */}
+            <button
+              type="button"
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={disabled}
+              title={isRecording ? "Arrêter l'enregistrement" : "Dicter un message"}
+              className={`icon-btn ${isRecording ? "active" : ""}`}
+              style={isRecording ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+            >
+              {isRecording ? <MicOff size={15} /> : <Mic size={15} />}
+            </button>
+          </div>
+
+          {/* Send / Stop button */}
+          {isLoading ? (
+            <button
+              onClick={onStop}
+              title={t("stop")}
+              className="icon-btn"
+              style={{
+                background: "var(--danger-soft)",
+                color: "var(--danger)",
+                border: "1px solid var(--danger)",
+              }}
+            >
+              <Square size={14} className="fill-current" />
+            </button>
           ) : (
-            <Paperclip className="w-3.5 h-3.5" />
+            <button
+              onClick={handleSend}
+              disabled={!canSend}
+              className="icon-btn"
+              style={{
+                background: canSend ? "var(--accent-soft)" : "transparent",
+                color: canSend ? "var(--accent)" : "var(--text-muted)",
+                border: canSend ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+              }}
+            >
+              <Send size={15} />
+            </button>
           )}
-        </button>
-
-        {/* Screen capture button */}
-        <button
-          type="button"
-          onClick={captureScreen}
-          disabled={disabled}
-          title={t("shareScreen")}
-          className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
-            screenCapture
-              ? "bg-cyber-cyan/20 border-cyber-cyan/50 text-cyber-cyan"
-              : "border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10"
-          }`}
-        >
-          <Monitor className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Voice mode button */}
-        {onVoiceModeToggle && (
-          <button
-            type="button"
-            onClick={onVoiceModeToggle}
-            disabled={disabled}
-            title={isVoiceModeActive ? "Quitter le mode vocal" : "Mode vocal"}
-            className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
-              isVoiceModeActive
-                ? "bg-cyber-cyan/20 border-cyber-cyan/50 text-cyber-cyan shadow-[0_0_8px_rgba(0,229,255,0.3)]"
-                : "border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 hover:bg-cyber-cyan/10"
-            }`}
-          >
-            <Headphones className="w-3.5 h-3.5" />
-          </button>
-        )}
-
-        {/* Mic button */}
-        <button
-          type="button"
-          onClick={isRecording ? stopRecording : startRecording}
-          disabled={disabled}
-          title={isRecording ? "Arrêter l'enregistrement" : "Dicter un message"}
-          className={`w-8 h-8 rounded-md border flex items-center justify-center transition-all shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
-            isRecording
-              ? "bg-red-500/20 border-red-500/50 text-red-500 animate-pulse"
-              : "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20"
-          }`}
-        >
-          {isRecording ? (
-            <MicOff className="w-3.5 h-3.5" />
-          ) : (
-            <Mic className="w-3.5 h-3.5" />
-          )}
-        </button>
-
-        {/* Send / Stop button */}
-        {isLoading ? (
-          <button
-            onClick={onStop}
-            title={t("stop")}
-            className="w-8 h-8 rounded-md bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-all shrink-0"
-          >
-            <Square className="w-3.5 h-3.5 fill-current" />
-          </button>
-        ) : (
-          <button
-            onClick={handleSend}
-            disabled={!canSend}
-            className="w-8 h-8 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
-        )}
+        </div>
       </div>
 
       {/* ── Mic error panel ── */}

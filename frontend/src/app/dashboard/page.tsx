@@ -188,11 +188,11 @@ export default function DashboardPage() {
 
   return (
     <AdminGuard>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header />
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto p-6 space-y-6" style={{ background: "var(--bg-app)" }}>
 
             {/* Period selector */}
             <div className="flex items-center justify-between">
@@ -468,7 +468,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-          </div>
+          </main>
         </div>
       </div>
     </AdminGuard>

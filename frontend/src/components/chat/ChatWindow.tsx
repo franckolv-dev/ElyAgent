@@ -20,7 +20,7 @@
 import { useEffect, useRef } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
-import { Bot } from "lucide-react";
+import { Zap, Bot } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 // Maps backend tool names → human-readable French labels
@@ -78,6 +78,7 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
     t("suggestions.hosts"),
     t("suggestions.sysinfo"),
     t("suggestions.disk"),
+    t("suggestions.unreadEmails"),
   ];
 
   useEffect(() => {
@@ -86,24 +87,21 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-cyber-cyan/10 border border-cyber-cyan/20 flex items-center justify-center mb-4">
-          <Bot className="w-7 h-7 text-cyber-cyan" />
+      <div className="chat-empty">
+        <div className="chat-orb">
+          <Zap size={26} />
         </div>
-        <h2 className="text-lg font-bold text-cyber-cyan glow-cyan-text mb-2">
-          ELY ONLINE
-        </h2>
-        <p className="text-sm text-text-muted max-w-sm">
-          {t("welcome")}
-        </p>
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
-          {SUGGESTIONS.map((s) => (
+        <h2 className="chat-title">ELY ONLINE</h2>
+        <p className="chat-welcome">{t("welcome")}</p>
+        <div className="chat-suggestions">
+          {SUGGESTIONS.map((s, i) => (
             <button
               key={s}
               onClick={() => onSuggestion?.(s)}
-              className="text-left px-3 py-2 rounded-md text-xs text-text-secondary border border-border-dim hover:border-cyber-cyan/30 hover:text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
+              className="chat-suggestion"
             >
-              {s}
+              <span className="chat-suggestion-tag">SUGGESTION 0{i + 1}</span>
+              <span className="chat-suggestion-text">{s}</span>
             </button>
           ))}
         </div>

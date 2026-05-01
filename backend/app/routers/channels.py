@@ -333,3 +333,71 @@ async def ely_android_unlink(current_user: User = Depends(get_current_user)) -> 
             u.fcm_token = None
             await db.commit()
     return {"unlinked": True}
+
+
+# =============================================================================
+# Aggregated active-channels — accessible to ALL users (not admin-only)
+# =============================================================================
+# Used by the chat AvatarPanel "CANAUX ACTIFS" widget. Returns booleans only,
+# never tokens. Combines :
+#   - Bot-level status (telegram/discord/slack/whatsapp configured globally)
+#   - Per-user link state for ely_android (User.fcm_token present + Firebase
+#     credentials configured server-side)
+
+@router.get("/active")
+async def active_channels(current_user: User = Depends(get_current_user)) -> dict:
+    """Aggregated boolean view of which channels are alive on this backend.
+
+    Distinguishes :
+      - `configured` : credentials present (env or DB) → bot can run
+      - `running`    : bot module is currently alive in memory
+      - `linked`     : THE CALLING USER has linked their account (per-user)
+    """
+    # Bot-level (global)
+    tel_token = await _resolve_channel_token("telegram_bot_token", "TELEGRAM_BOT_TOKEN")
+    dis_token = await _resolve_channel_token("discord_bot_token", "DISCORD_BOT_TOKEN")
+    sl_bot = await _resolve_channel_token("slack_bot_token", "SLACK_BOT_TOKEN")
+    sl_app = await _resolve_channel_token("slack_app_token", "SLACK_APP_TOKEN")
+
+    # WhatsApp Web (per-user QR pairing) — check the session module
+    wa_running = await _is_running("_session", "app.channels.whatsapp_web")
+    # WhatsApp Cloud (Meta Business API) — env var only
+    wa_cloud_token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "") or ""
+
+    # Firebase / FCM (Android push)
+    from app.config import get_settings
+    fb_configured = bool(get_settings().firebase_credentials_path)
+    user_has_fcm = bool(getattr(current_user, "fcm_token", None))
+
+    return {
+        "telegram": {
+            "configured": bool(tel_token),
+            "running": await _is_running("_bot_app", "app.channels.telegram_bot"),
+            "linked": bool(getattr(current_user, "telegram_id", None)),
+        },
+        "discord": {
+            "configured": bool(dis_token),
+            "running": await _is_running("_discord_client", "app.channels.discord_bot"),
+            "linked": bool(getattr(current_user, "discord_id", None)),
+        },
+        "slack": {
+            "configured": bool(sl_bot and sl_app),
+            "running": await _is_running("_socket_client", "app.channels.slack_bot"),
+            "linked": bool(getattr(current_user, "slack_id", None)),
+        },
+        "whatsapp": {
+            "configured": bool(wa_running) or bool(wa_cloud_token),
+            "running": bool(wa_running),
+            "linked": bool(getattr(current_user, "whatsapp_phone", None)),
+        },
+        "ely_android": {
+            "configured": fb_configured,
+            "running": fb_configured,  # FCM is server-driven, no session
+            "linked": user_has_fcm,
+        },
+        "ntfy": {
+            "configured": bool(get_settings().ntfy_url),
+            "running": bool(get_settings().ntfy_url),
+            "linked": bool(get_settings().ntfy_url),
+        },
+    }

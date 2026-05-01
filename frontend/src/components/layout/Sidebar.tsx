@@ -2,19 +2,11 @@
 /**
  * @project    ELY — Exactly Like You
  * @file       frontend/src/components/layout/Sidebar.tsx
- * @brief      Sidebar — navigation menu and conversation history
+ * @brief      Sidebar — navigation menu and conversation history (refonte mai 2026)
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
- *             https://polyformproject.org/licenses/strict/1.0.0/
- * @version    1.1.0
- * @link       https://github.com/franckolv-dev/PhysicalAgent
- *
- * RÉSUMÉ DES CONDITIONS :
- *   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
- *   - INTERDIT : Toute utilisation commerciale sans accord préalable.
- *   - INTERDIT : Redistribution de versions modifiées de ce code.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -22,7 +14,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
-  Cpu, Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
+  Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
   Download, X, ChevronDown, Swords, BookOpen, Target,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
@@ -37,8 +29,6 @@ interface RecentConv {
 
 const PAGE_SIZE = 50;
 
-// Nav entries — `labelKey` is resolved at render time via t(labelKey) so
-// the sidebar follows the user's locale automatically.
 const BASE_NAV = [
   { href: "/chat",      labelKey: "navChat",        icon: MessageSquare },
   { href: "/missions",  labelKey: "navMissions",    icon: Target        },
@@ -64,100 +54,77 @@ export function Sidebar() {
   const [expanded, setExpanded]           = useState(false);
   const [searchQuery, setSearchQuery]     = useState("");
 
-  // Context menu
   const [menuConvId, setMenuConvId]   = useState<string | null>(null);
   const [menuPos, setMenuPos]         = useState({ x: 0, y: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Inline rename
   const [renamingId, setRenamingId]       = useState<string | null>(null);
   const [renameValue, setRenameValue]     = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const navItems = admin ? [...BASE_NAV, ...ADMIN_NAV] : BASE_NAV;
 
-  // -- Fetch conversations ---------------------------------------------------
-  const fetchConversations = useCallback(
-    async (opts?: { offset?: number; query?: string; append?: boolean }) => {
-      const offset = opts?.offset ?? 0;
-      const q = opts?.query ?? searchQuery;
-      try {
-        const data = await api.getConversations({ limit: PAGE_SIZE, offset, q: q || undefined });
-        const items: RecentConv[] = data.conversations ?? data;
-        if (opts?.append) {
-          setConversations((prev) => [...prev, ...items]);
-        } else {
-          setConversations(items);
-        }
-        setTotalCount(data.total_count ?? items.length);
-      } catch {
-        // silent
-      }
-    },
-    [searchQuery],
-  );
+  // ── Conversations fetching ──
+  const fetchConversations = useCallback(async (opts: { offset?: number; query?: string; reset?: boolean } = {}) => {
+    const offset = opts.offset ?? 0;
+    const query = opts.query ?? searchQuery;
+    try {
+      const data = (await api.getConversations({
+        limit: PAGE_SIZE, offset, q: query,
+      })) as { conversations: RecentConv[]; total_count: number };
+      const items = data.conversations || [];
+      setTotalCount(data.total_count || 0);
+      setConversations((prev) =>
+        opts.reset || offset === 0 ? items : [...prev, ...items]
+      );
+    } catch {
+      // silent — keep existing list
+    }
+  }, [searchQuery]);
 
-  // Reload on navigation
-  useEffect(() => {
-    fetchConversations({ query: searchQuery });
-  }, [pathname, fetchConversations, searchQuery]);
+  useEffect(() => { fetchConversations({ offset: 0, reset: true }); }, [fetchConversations]);
 
-  // -- Debounced search -------------------------------------------------------
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      fetchConversations({ query: value });
-    }, 300);
-  };
-
-  // -- Load more --------------------------------------------------------------
   const hasMore = conversations.length < totalCount;
-  const loadMore = () => {
-    fetchConversations({ offset: conversations.length, append: true });
+  const loadMore = () => fetchConversations({ offset: conversations.length });
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    fetchConversations({ offset: 0, query: val, reset: true });
   };
 
-  // -- Context menu handlers --------------------------------------------------
+  // ── Context menu ──
   const openMenu = (e: React.MouseEvent, convId: string) => {
     e.preventDefault();
-    e.stopPropagation();
     setMenuConvId(convId);
     setMenuPos({ x: e.clientX, y: e.clientY });
   };
 
-  // Close menu on outside click
   useEffect(() => {
-    if (!menuConvId) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuConvId(null);
-      }
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuConvId(null);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    if (menuConvId) document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, [menuConvId]);
 
-  // -- Rename -----------------------------------------------------------------
+  // ── Rename ──
   const startRename = (conv: RecentConv) => {
     setMenuConvId(null);
     setRenamingId(conv.id);
     setRenameValue(conv.title);
-    setTimeout(() => renameInputRef.current?.select(), 50);
+    setTimeout(() => renameInputRef.current?.focus(), 50);
   };
 
   const commitRename = async () => {
-    if (!renamingId || !renameValue.trim()) {
-      setRenamingId(null);
-      return;
-    }
+    if (!renamingId) return;
+    const newTitle = renameValue.trim();
+    if (!newTitle) { setRenamingId(null); return; }
     try {
-      await api.renameConversation(renamingId, renameValue.trim());
-      setConversations((prev) =>
-        prev.map((c) => (c.id === renamingId ? { ...c, title: renameValue.trim() } : c)),
+      await api.renameConversation(renamingId, newTitle);
+      setConversations((cs) =>
+        cs.map((c) => (c.id === renamingId ? { ...c, title: newTitle } : c))
       );
     } catch {
       // silent
@@ -165,7 +132,7 @@ export function Sidebar() {
     setRenamingId(null);
   };
 
-  // -- Delete -----------------------------------------------------------------
+  // ── Delete ──
   const startDelete = (convId: string) => {
     setMenuConvId(null);
     setDeletingId(convId);
@@ -175,27 +142,19 @@ export function Sidebar() {
     if (!deletingId) return;
     try {
       await api.deleteConversation(deletingId);
-      setConversations((prev) => prev.filter((c) => c.id !== deletingId));
-      setTotalCount((n) => n - 1);
-      // If viewing the deleted conversation, redirect
-      if (typeof window !== "undefined") {
-        const currentConvId = new URLSearchParams(window.location.search).get("c");
-        if (currentConvId === deletingId) {
-          router.push("/chat?new=" + Date.now());
-        }
-      }
+      setConversations((cs) => cs.filter((c) => c.id !== deletingId));
+      setTotalCount((n) => Math.max(0, n - 1));
     } catch {
       // silent
     }
     setDeletingId(null);
   };
 
-  // -- Export -----------------------------------------------------------------
+  // ── Export ──
   const handleExport = async (convId: string) => {
     setMenuConvId(null);
     try {
-      const data = await api.exportConversation(convId);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const blob = await api.exportConversation(convId);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -213,25 +172,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-16 lg:w-56 h-screen bg-bg-secondary border-r border-border-dim flex flex-col shrink-0 overflow-hidden">
-      {/* Logo */}
-      <div className="p-4 border-b border-border-dim shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
-            <Cpu className="w-4 h-4 text-cyber-cyan" />
-          </div>
-          <span className="hidden lg:block text-sm font-bold text-cyber-cyan glow-cyan-text tracking-wider">
-            ELY AGENT
-          </span>
-        </div>
-      </div>
-
-      {/* Main nav + new conversation */}
-      <nav className="p-2 space-y-1 shrink-0">
+    <aside className="sidebar">
+      {/* Main nav */}
+      <nav className="nav">
         {navItems.map(({ href, labelKey, icon: Icon }) => {
-          // Active when current path equals href OR is a sub-route (e.g.
-          // /missions/<id> should highlight the "Missions" entry).
-          // Use "/" as boundary to avoid /chat-foo matching /chat.
           const isActive =
             pathname === href ||
             pathname.startsWith(href + "/") ||
@@ -240,161 +184,195 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${
-                isActive
-                  ? "bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20"
-                  : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
-              }`}
+              className={`nav-item ${isActive ? "active" : ""}`}
             >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className="hidden lg:block">{t(labelKey)}</span>
+              <span className="nav-icon"><Icon size={15} /></span>
+              <span>{t(labelKey)}</span>
             </Link>
           );
         })}
-
-        {/* New conversation button */}
-        <button
-          onClick={() => router.push("/chat?new=" + Date.now())}
-          className="hidden lg:flex items-center gap-3 px-3 py-2 rounded-md text-xs text-text-muted hover:text-cyber-cyan hover:bg-cyber-cyan/5 border border-dashed border-border-dim hover:border-cyber-cyan/30 transition-all mt-1 w-full"
-        >
-          <Plus className="w-3.5 h-3.5 shrink-0" />
-          <span>{t("newConversation")}</span>
-        </button>
       </nav>
 
-      {/* Recent conversations */}
-      <div className="hidden lg:flex flex-col flex-1 min-h-0 mt-1">
+      {/* New conversation CTA */}
+      <button
+        onClick={() => router.push("/chat?new=" + Date.now())}
+        className="nav-cta"
+      >
+        <Plus size={14} />
+        <span>{t("newConversation")}</span>
+      </button>
+
+      {/* Recent conversations section */}
+      <div className="nav-section-label">
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-2 px-3 py-1.5 text-[10px] text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors shrink-0"
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", padding: 0, color: "inherit", font: "inherit", cursor: "pointer" }}
+          title={t("recent")}
         >
-          <Clock className="w-3 h-3" />
+          <Clock size={11} />
           <span>{t("recent")}</span>
-          <span className="ml-auto text-[9px]">{expanded ? "▲" : "▼"}</span>
         </button>
+        <span style={{ opacity: 0.6 }}>{totalCount}</span>
+      </div>
 
-        {expanded && (
-          <>
-            {/* Search bar */}
-            <div className="px-2 pb-1 shrink-0">
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-text-muted pointer-events-none" />
+      {/* Search bar (only when expanded) */}
+      {expanded && (
+        <div style={{ padding: "0 12px 8px" }}>
+          <div style={{ position: "relative" }}>
+            <Search size={11} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder={t("searchPlaceholder")}
+              style={{
+                width: "100%",
+                paddingLeft: 26,
+                paddingRight: 26,
+                paddingTop: 5,
+                paddingBottom: 5,
+                fontSize: 11,
+                background: "var(--bg-surface-2)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "var(--radius-sm)",
+                color: "var(--text-primary)",
+                outline: "none",
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => { setSearchQuery(""); fetchConversations({ query: "", reset: true }); }}
+                style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0 }}
+              >
+                <X size={11} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Recent conversation list */}
+      <div className="recent-list" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {conversations.length === 0 && expanded && (
+          <p style={{ fontSize: 10, color: "var(--text-muted)", padding: "12px", textAlign: "center" }}>
+            {t("noResults")}
+          </p>
+        )}
+
+        {conversations.slice(0, expanded ? conversations.length : 5).map((conv) => {
+          const isActive = pathname === `/chat` && typeof window !== "undefined" &&
+            new URLSearchParams(window.location.search).get("c") === conv.id;
+
+          if (renamingId === conv.id) {
+            return (
+              <div key={conv.id} style={{ padding: "2px 8px" }}>
                 <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  placeholder={t("searchPlaceholder")}
-                  className="w-full pl-7 pr-7 py-1 text-xs bg-bg-tertiary border border-border-dim rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/30 transition-colors"
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") setRenamingId(null);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    background: "var(--bg-surface-2)",
+                    border: "1px solid var(--accent)",
+                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                  }}
+                  autoFocus
                 />
-                {searchQuery && (
-                  <button
-                    onClick={() => { setSearchQuery(""); fetchConversations({ query: "" }); }}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
               </div>
+            );
+          }
+
+          return (
+            <div
+              key={conv.id}
+              className={`recent-item ${isActive ? "active" : ""}`}
+              onContextMenu={(e) => openMenu(e, conv.id)}
+              style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: 4 }}
+            >
+              <Link
+                href={`/chat?c=${conv.id}`}
+                style={{ flex: 1, color: "inherit", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis" }}
+                title={conv.title}
+              >
+                {conv.title}
+              </Link>
+              <button
+                onClick={(e) => openMenu(e, conv.id)}
+                className="icon-btn"
+                style={{ width: 22, height: 22, opacity: 0.5 }}
+                title={t("rename")}
+              >
+                <MoreHorizontal size={12} />
+              </button>
             </div>
+          );
+        })}
 
-            {/* Conversation list */}
-            <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0">
-              {conversations.length === 0 && (
-                <p className="text-[10px] text-text-muted px-2 py-3 text-center">{t("noResults")}</p>
-              )}
-
-              {conversations.map((conv) => {
-                const isActive = pathname === `/chat` && typeof window !== "undefined" &&
-                  new URLSearchParams(window.location.search).get("c") === conv.id;
-
-                // Inline rename mode
-                if (renamingId === conv.id) {
-                  return (
-                    <div key={conv.id} className="px-1 py-1">
-                      <input
-                        ref={renameInputRef}
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={commitRename}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitRename();
-                          if (e.key === "Escape") setRenamingId(null);
-                        }}
-                        className="w-full px-2 py-1 text-xs bg-bg-tertiary border border-cyber-cyan/30 rounded text-text-primary focus:outline-none"
-                        autoFocus
-                      />
-                    </div>
-                  );
-                }
-
-                return (
-                  <div
-                    key={conv.id}
-                    className={`group flex items-center gap-1 px-2 py-1.5 text-xs transition-all border-y ${
-                      isActive
-                        ? "bg-cyber-cyan/10 text-cyber-cyan border-cyber-cyan/20"
-                        : "text-text-muted border-transparent hover:text-cyber-cyan hover:bg-cyber-cyan/10 hover:border-cyber-cyan/20"
-                    }`}
-                    onContextMenu={(e) => openMenu(e, conv.id)}
-                  >
-                    <Link
-                      href={`/chat?c=${conv.id}`}
-                      className="flex-1 truncate"
-                      title={conv.title}
-                    >
-                      {conv.title}
-                    </Link>
-                    <button
-                      onClick={(e) => openMenu(e, conv.id)}
-                      className="shrink-0 opacity-0 group-hover:opacity-100 text-text-muted hover:text-text-secondary transition-opacity"
-                    >
-                      <MoreHorizontal className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-
-              {/* Load more */}
-              {hasMore && (
-                <button
-                  onClick={loadMore}
-                  className="flex items-center justify-center gap-1 w-full px-2 py-1.5 text-[10px] text-text-muted hover:text-cyber-cyan transition-colors"
-                >
-                  <ChevronDown className="w-3 h-3" />
-                  <span>{t("loadMore")}</span>
-                </button>
-              )}
-            </div>
-          </>
+        {expanded && hasMore && (
+          <button
+            onClick={loadMore}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              width: "100%",
+              padding: "6px 12px",
+              fontSize: 10,
+              color: "var(--text-muted)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            <ChevronDown size={11} />
+            <span>{t("loadMore")}</span>
+          </button>
         )}
       </div>
 
-      {/* Context menu (floating) */}
+      {/* Context menu */}
       {menuConvId && (
         <div
           ref={menuRef}
-          className="fixed z-50 bg-bg-secondary border border-border-dim rounded-md shadow-lg py-1 min-w-[140px]"
-          style={{ left: menuPos.x, top: menuPos.y }}
+          style={{
+            position: "fixed",
+            zIndex: 50,
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "var(--shadow-lg)",
+            padding: "4px 0",
+            minWidth: 140,
+            left: menuPos.x,
+            top: menuPos.y,
+          }}
         >
           <button
             onClick={() => startRename(conversations.find((c) => c.id === menuConvId)!)}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
+            style={ctxBtnStyle}
           >
-            <Pencil className="w-3 h-3" />
+            <Pencil size={12} />
             {t("rename")}
           </button>
-          <button
-            onClick={() => handleExport(menuConvId!)}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
-          >
-            <Download className="w-3 h-3" />
+          <button onClick={() => handleExport(menuConvId!)} style={ctxBtnStyle}>
+            <Download size={12} />
             {t("export")}
           </button>
           <button
             onClick={() => startDelete(menuConvId!)}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-cyber-red hover:bg-cyber-red/5 transition-colors"
+            style={{ ...ctxBtnStyle, color: "var(--danger)" }}
           >
-            <Trash2 className="w-3 h-3" />
+            <Trash2 size={12} />
             {t("delete")}
           </button>
         </div>
@@ -402,20 +380,31 @@ export function Sidebar() {
 
       {/* Delete confirmation modal */}
       {deletingId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 max-w-xs shadow-xl">
-            <p className="text-sm text-text-primary mb-4">{t("confirmDelete")}</p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setDeletingId(null)}
-                className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-tertiary rounded transition-colors"
-              >
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 50,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.5)",
+          }}
+        >
+          <div
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-lg)",
+              padding: 16,
+              maxWidth: 320,
+              boxShadow: "var(--shadow-lg)",
+            }}
+          >
+            <p style={{ fontSize: 13, color: "var(--text-primary)", margin: 0, marginBottom: 16 }}>
+              {t("confirmDelete")}
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setDeletingId(null)} className="btn ghost">
                 Annuler
               </button>
-              <button
-                onClick={confirmDelete}
-                className="px-3 py-1.5 text-xs text-white bg-cyber-red/80 hover:bg-cyber-red rounded transition-colors"
-              >
+              <button onClick={confirmDelete} className="btn danger">
                 {t("delete")}
               </button>
             </div>
@@ -423,16 +412,27 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Logout */}
-      <div className="p-2 border-t border-border-dim shrink-0 mt-auto">
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-text-secondary hover:text-cyber-red hover:bg-cyber-red/5 transition-all w-full"
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          <span className="hidden lg:block">{t("logout")}</span>
+      {/* Footer logout */}
+      <div className="sidebar-footer">
+        <button onClick={handleLogout} className="logout-btn">
+          <LogOut size={13} />
+          <span>{t("logout")}</span>
         </button>
       </div>
     </aside>
   );
 }
+
+const ctxBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  padding: "6px 12px",
+  fontSize: 12,
+  color: "var(--text-secondary)",
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  textAlign: "left",
+};

@@ -100,7 +100,15 @@ async def get_summary(user_id: str, days: int = 30) -> dict[str, Any]:
 
 
 async def get_daily_usage(user_id: str, days: int = 30) -> list[dict]:
-    """Get per-day token usage and cost for the last N days."""
+    """Get per-day token usage and cost for the last N days.
+
+    Backfille les jours sans activité avec des zéros pour que le dashboard
+    affiche une frise temporelle continue (sinon ``group_by(day)`` ne renvoyait
+    que les jours avec des entrées et la barre 'aujourd'hui' disparaissait
+    quand l'utilisateur n'avait encore rien fait).
+    """
+    today = datetime.now(timezone.utc).date()
+    start_day = today - timedelta(days=days - 1)
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
     async with async_session() as db:
@@ -117,15 +125,27 @@ async def get_daily_usage(user_id: str, days: int = 30) -> list[dict]:
         )
         rows = result.all()
 
-    return [
-        {
+    # Index par jour (str) — func.date() peut renvoyer date ou str selon le driver
+    by_day: dict[str, dict] = {
+        str(r.day): {
             "day": str(r.day),
             "requests": r.requests,
             "tokens": r.tokens,
             "cost": round(r.cost, 4),
         }
         for r in rows
-    ]
+    }
+
+    # Backfill : un point par jour sur toute la fenêtre
+    out: list[dict] = []
+    for i in range(days):
+        d = start_day + timedelta(days=i)
+        key = d.isoformat()
+        if key in by_day:
+            out.append(by_day[key])
+        else:
+            out.append({"day": key, "requests": 0, "tokens": 0, "cost": 0.0})
+    return out
 
 
 async def get_skill_usage(user_id: str, days: int = 30) -> list[dict]:

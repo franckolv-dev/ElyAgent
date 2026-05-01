@@ -32,7 +32,7 @@ import {
   Plug, Sparkles,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { setLocale } from "@/lib/locale";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -154,7 +154,7 @@ function checkPasswordStrength(pwd: string): PasswordStrength {
     { labelKey: "pwdStrengthWeak",      color: "text-orange-400", barColor: "bg-orange-500" },
     { labelKey: "pwdStrengthMedium",       color: "text-yellow-400", barColor: "bg-yellow-500" },
     { labelKey: "pwdStrengthGood",         color: "text-lime-400",   barColor: "bg-lime-500" },
-    { labelKey: "pwdStrengthStrong",        color: "text-emerald-400",barColor: "bg-emerald-500" },
+    { labelKey: "pwdStrengthStrong",        color: "text-cyber-cyan",barColor: "bg-emerald-500" },
     { labelKey: "pwdStrengthExcellent",   color: "text-cyber-cyan", barColor: "bg-cyber-cyan" },
   ];
   return { score, hintKeys, ...levels[score] };
@@ -198,8 +198,8 @@ interface RoutingItem {
 }
 
 const TIER_BADGE_COLORS: Record<string, string> = {
-  emerald: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
-  blue:    "bg-blue-500/10 border-blue-500/30 text-blue-400",
+  emerald: "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan",
+  blue:    "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan",
   violet:  "bg-violet-500/10 border-violet-500/30 text-violet-400",
   amber:   "bg-amber-500/10 border-amber-500/30 text-amber-400",
   slate:   "bg-slate-500/10 border-slate-500/30 text-slate-400",
@@ -234,6 +234,7 @@ function useToasts() {
 // ---------------------------------------------------------------------------
 export default function SettingsPage() {
   const t = useTranslations("settings");
+  const currentLocale = useLocale();
   const tc = useTranslations("common");
   // admin is read client-side only (localStorage unavailable during SSR)
   const [admin, setAdmin] = useState(false);
@@ -991,10 +992,11 @@ export default function SettingsPage() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header />
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex flex-col flex-1 overflow-hidden" style={{ background: "var(--bg-app)" }}>
 
           {/* Toast stack */}
           <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
@@ -1003,7 +1005,7 @@ export default function SettingsPage() {
                 key={toast.id}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-xs shadow-lg pointer-events-auto transition-all ${
                   toast.kind === "success"
-                    ? "bg-emerald-900/80 border-emerald-500/30 text-emerald-300"
+                    ? "bg-emerald-900/80 border-cyber-cyan/30 text-cyber-cyan"
                     : "bg-red-900/80 border-red-500/30 text-red-300"
                 }`}
               >
@@ -1016,28 +1018,49 @@ export default function SettingsPage() {
           </div>
 
           {/* ── Tab navigation bar ────────────────────────────────────── */}
-          <div className="shrink-0 border-b border-border-dim px-6">
-            <nav className="flex gap-1">
-              {TABS.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-all -mb-px ${
-                    activeTab === id
-                      ? "border-cyber-cyan text-cyber-cyan"
-                      : "border-transparent text-text-muted hover:text-text-secondary hover:border-border-dim"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </button>
-              ))}
+          <div className="shrink-0 px-6" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+            <nav style={{ display: "flex", gap: 4 }}>
+              {TABS.map(({ id, label, icon: Icon }) => {
+                const isActive = activeTab === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "12px 16px",
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: isActive ? "var(--text-primary)" : "var(--text-tertiary)",
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: `2px solid ${isActive ? "var(--accent)" : "transparent"}`,
+                      marginBottom: -1,
+                      transition: "all 0.15s var(--ease)",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.color = "var(--text-primary)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.color = "var(--text-tertiary)";
+                    }}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                );
+              })}
             </nav>
           </div>
 
           {/* ── Tab content ───────────────────────────────────────────── */}
           <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-3xl space-y-6">
+          {/* Pleine largeur disponible — le max-w-3xl original contraignait
+              les tableaux Routage et Modèles à ~768px. Demande Franck mai 2026. */}
+          <div className="space-y-6" style={{ width: "100%" }}>
 
             {/* ================================================================
                 TAB: Modèles IA — instance list
@@ -1055,14 +1078,14 @@ export default function SettingsPage() {
                   </div>
                   <button
                     onClick={openAddModal}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all"
+                    className="btn primary"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus size={14} />
                     {t("add")}
                   </button>
                 </div>
 
-                <p className="text-[11px] text-text-muted mb-3">
+                <p className="tab-intro">
                   {t("instanceDescription")}
                 </p>
 
@@ -1088,7 +1111,7 @@ export default function SettingsPage() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-medium text-text-primary">{inst.label}</span>
                                 {inst.has_key && (
-                                  <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-cyber-cyan/10 border border-cyber-cyan/20 text-cyber-cyan shrink-0">
                                     <Key className="w-2 h-2" />
                                     {t("keyBadge")}
                                   </span>
@@ -1127,13 +1150,14 @@ export default function SettingsPage() {
                   <button
                     onClick={handleSaveTiers}
                     disabled={savingTiers}
-                    className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-all disabled:opacity-50"
+                    className="btn primary"
                   >
+                    <Check size={14} />
                     {savingTiers ? "…" : t("save")}
                   </button>
                 </div>
 
-                <p className="text-[11px] text-text-muted mb-3">
+                <p className="tab-intro">
                   {t("routingDescription")}
                 </p>
 
@@ -1145,38 +1169,40 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {tierMeta.map((tier) => {
                     const entry: TierEntry = tierConfig[tier.id] ?? { providers: [], fallback_enabled: true };
                     const badgeCls = TIER_BADGE_COLORS[tier.color] ?? TIER_BADGE_COLORS.slate;
                     const availableToAdd = routingItems.filter((ri) => !entry.providers.includes(ri.id));
 
                     return (
-                      <div key={tier.id} className="bg-bg-secondary border border-border-dim rounded-lg p-4">
+                      <div key={tier.id} className="card" style={{ width: "100%" }}>
                         {/* Header */}
-                        <div className="flex items-start justify-between gap-2 mb-3">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeCls}`}>
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`text-[10px] font-bold px-2 py-1 rounded border shrink-0 ${badgeCls}`}>
                               {tier.badge}
                             </span>
-                            <span className="text-xs font-medium text-text-primary">{t.has(`tierLabels.${tier.id}`) ? t(`tierLabels.${tier.id}`) : tier.label}</span>
+                            <span className="text-sm font-medium text-text-primary">
+                              {t.has(`tierLabels.${tier.id}`) ? t(`tierLabels.${tier.id}`) : tier.label}
+                            </span>
                             <button
                               onClick={() => setTierTooltip(tierTooltip === tier.id ? null : tier.id)}
                               className="text-text-muted hover:text-text-secondary transition-colors shrink-0"
                               title={t("explanation")}
                             >
-                              <Info className="w-3 h-3" />
+                              <Info className="w-3.5 h-3.5" />
                             </button>
                           </div>
                           {/* Fallback toggle */}
                           <button
                             onClick={() => toggleTierFallback(tier.id)}
-                            className="flex items-center gap-1.5 text-[10px] shrink-0 transition-colors"
+                            className="flex items-center gap-1.5 text-[11px] shrink-0 transition-colors"
                             title={entry.fallback_enabled ? t("disableFallback") : t("enableFallback")}
                           >
                             {entry.fallback_enabled
-                              ? <ToggleRight className="w-4 h-4 text-cyber-cyan" />
-                              : <ToggleLeft className="w-4 h-4 text-text-muted" />}
+                              ? <ToggleRight className="w-5 h-5 text-cyber-cyan" />
+                              : <ToggleLeft className="w-5 h-5 text-text-muted" />}
                             <span className={entry.fallback_enabled ? "text-cyber-cyan" : "text-text-muted"}>
                               {entry.fallback_enabled ? t("fallbackEnabled") : t("fallbackDisabled")}
                             </span>
@@ -1191,48 +1217,75 @@ export default function SettingsPage() {
                         )}
 
                         {/* Ordered provider / instance list */}
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {entry.providers.length === 0 && (
                             <p className="text-[11px] text-text-muted italic">{t("noTierModels")}</p>
                           )}
                           {entry.providers.map((provId, idx) => {
                             const item = resolveRoutingItem(provId);
+                            const isFirst = idx === 0;
+                            const isLast  = idx === entry.providers.length - 1;
                             return (
-                              <div key={provId} className="flex items-center gap-2">
+                              <div
+                                key={provId}
+                                className="flex items-center gap-2"
+                                style={{
+                                  background: "var(--bg-surface-2)",
+                                  border: "1px solid var(--border-subtle)",
+                                  borderRadius: "var(--radius-md)",
+                                  padding: "8px 12px",
+                                  width: "100%",
+                                }}
+                              >
                                 {/* Priority number */}
-                                <span className="text-[9px] text-text-muted w-4 text-right shrink-0">{idx + 1}.</span>
-                                {/* Item pill */}
-                                <div className="flex-1 flex items-center gap-2 bg-bg-primary border border-border-dim rounded px-2 py-1 text-xs text-text-primary">
-                                  <span className="text-base leading-none">{item.flag}</span>
-                                  <span className="truncate">{item.label}</span>
-                                  {item.isInstance && (
-                                    <span className="ml-auto text-[8px] px-1 py-0.5 rounded bg-cyber-cyan/10 border border-cyber-cyan/20 text-cyber-cyan shrink-0">
-                                      {t("instanceBadge")}
-                                    </span>
-                                  )}
+                                <span className="text-[10px] text-text-muted w-5 text-right shrink-0 font-mono">
+                                  {idx + 1}.
+                                </span>
+                                {/* Flag + label, full width */}
+                                <span className="text-base leading-none shrink-0">{item.flag}</span>
+                                <span className="flex-1 truncate text-sm text-text-primary">{item.label}</span>
+
+                                {/* Right-side controls: arrows up/down stacked + delete */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 1,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <button
+                                    onClick={() => moveTierProvider(tier.id, idx, -1)}
+                                    disabled={isFirst}
+                                    className="icon-btn"
+                                    style={{ width: 22, height: 16 }}
+                                    title={t("moveUp")}
+                                  >
+                                    <ChevronUp size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => moveTierProvider(tier.id, idx, 1)}
+                                    disabled={isLast}
+                                    className="icon-btn"
+                                    style={{ width: 22, height: 16 }}
+                                    title={t("moveDown")}
+                                  >
+                                    <ChevronDown size={12} />
+                                  </button>
                                 </div>
-                                {/* Move up */}
-                                <button
-                                  onClick={() => moveTierProvider(tier.id, idx, -1)}
-                                  disabled={idx === 0}
-                                  className="text-text-muted hover:text-text-secondary disabled:opacity-30 transition-colors"
-                                >
-                                  <ChevronUp className="w-3.5 h-3.5" />
-                                </button>
-                                {/* Move down */}
-                                <button
-                                  onClick={() => moveTierProvider(tier.id, idx, 1)}
-                                  disabled={idx === entry.providers.length - 1}
-                                  className="text-text-muted hover:text-text-secondary disabled:opacity-30 transition-colors"
-                                >
-                                  <ChevronDown className="w-3.5 h-3.5" />
-                                </button>
-                                {/* Remove */}
+
+                                {/* Delete */}
                                 <button
                                   onClick={() => removeTierProvider(tier.id, provId)}
-                                  className="text-text-muted hover:text-cyber-red transition-colors"
+                                  className="icon-btn"
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    color: "var(--text-tertiary)",
+                                  }}
+                                  title={t("remove")}
                                 >
-                                  <Trash2 className="w-3 h-3" />
+                                  <Trash2 size={14} />
                                 </button>
                               </div>
                             );
@@ -1287,50 +1340,76 @@ export default function SettingsPage() {
                 TAB: Intégrations
             ================================================================ */}
             {activeTab === "integrations" && (
-            <section>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-4 h-4 text-cyber-cyan font-bold text-sm">G</div>
-                <h2 className="text-sm font-medium text-text-primary">{t("googleServices")}</h2>
-                {googleConnected === true && (
-                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                    <CheckCircle className="w-2.5 h-2.5" /> {tc("connected")}
-                  </span>
-                )}
-                {googleConnected === false && (
-                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
-                    <XCircle className="w-2.5 h-2.5" /> {tc("disconnected")}
-                  </span>
-                )}
-              </div>
+            <section className="vstack" style={{ gap: 16 }}>
+              {/* ── Services Google ── */}
+              <div className="section-block">
+                <div className="section-block-head">
+                  <h3>
+                    <ExternalLink size={16} style={{ color: "var(--accent)" }} />
+                    {t("googleServices")}
+                    {googleConnected === true && (
+                      <span className="badge accent">
+                        <CheckCircle className="w-2.5 h-2.5" /> {tc("connected")}
+                      </span>
+                    )}
+                    {googleConnected === false && (
+                      <span className="badge">
+                        <XCircle className="w-2.5 h-2.5" /> {tc("disconnected")}
+                      </span>
+                    )}
+                  </h3>
+                </div>
 
-              <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
-                <div className="space-y-2">
+                <div className="vstack" style={{ gap: 8 }}>
                   {GOOGLE_SERVICES.map(({ id, label, icon: Icon, scopeKey }) => (
-                    <div key={id} className="flex items-center gap-3">
-                      <div className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${
-                        googleConnected ? "bg-emerald-500/10 border border-emerald-500/20" : "bg-bg-primary border border-border-dim"
-                      }`}>
-                        <Icon className={`w-3.5 h-3.5 ${googleConnected ? "text-emerald-400" : "text-text-muted"}`} />
+                    <div
+                      key={id}
+                      className="hstack"
+                      style={{
+                        padding: "10px 12px",
+                        background: "var(--bg-surface-2)",
+                        borderRadius: "var(--radius-sm)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: "var(--radius-sm)",
+                          background: googleConnected ? "var(--success-soft)" : "var(--bg-surface)",
+                          border: `1px solid ${googleConnected ? "var(--success)" : "var(--border-subtle)"}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon size={14} style={{ color: googleConnected ? "var(--success)" : "var(--text-muted)" }} />
                       </div>
-                      <div>
-                        <div className="text-xs font-medium text-text-primary">{label}</div>
-                        <div className="text-[11px] text-text-muted">{t(scopeKey as never)}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{label}</div>
+                        <div className="muted mono" style={{ fontSize: 11 }}>{t(scopeKey as never)}</div>
                       </div>
+                      {googleConnected && (
+                        <span className="badge accent">
+                          <Check className="w-2.5 h-2.5" />
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
 
-                <p className="text-[11px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
-                  <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-emerald-400" />
-                  {t("googlePrivacyNote")}
-                </p>
+                <div className="callout">
+                  <ShieldCheck size={14} />
+                  <span>{t("googlePrivacyNote")}</span>
+                </div>
 
-                <div className="pt-1">
+                <div>
                   {googleConnected ? (
                     <button
                       onClick={handleGoogleDisconnect}
                       disabled={googleLoading}
-                      className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
+                      className="btn danger"
                     >
                       {googleLoading ? "..." : t("disconnectGoogle")}
                     </button>
@@ -1338,36 +1417,33 @@ export default function SettingsPage() {
                     <button
                       onClick={handleGoogleConnect}
                       disabled={googleLoading}
-                      className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-50"
+                      className="btn primary"
                     >
-                      <ExternalLink className="w-3 h-3" />
+                      <ExternalLink size={13} />
                       {googleLoading ? tc("redirecting") : t("connectGoogle")}
                     </button>
                   )}
                 </div>
 
-                {/* Multi-account section — Phase 3 of multi-Google.
-                    Lists every linked GoogleAccount (alias/email/default badge),
-                    lets the user add more, rename, set-default, remove. */}
                 {googleConnected && (
-                  <div className="pt-3 border-t border-border-dim">
+                  <>
+                    <div className="divider" />
                     <GoogleAccountsSection />
-                  </div>
+                  </>
                 )}
 
-                <details className="text-[11px] text-text-muted">
-                  <summary className="cursor-pointer hover:text-text-secondary">{t("howToConfigure")}</summary>
+                <details style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                  <summary style={{ cursor: "pointer" }}>{t("howToConfigure")}</summary>
                   <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                    <li>{t.rich("googleStep1", { link: (chunks) => <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">{chunks}</a> })}</li>
+                    <li>{t.rich("googleStep1", { link: (chunks) => <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>{chunks}</a> })}</li>
                     <li>{t("googleStep2")}</li>
                     <li>{t("googleStep3")}</li>
-                    <li>{t.rich("googleStep4", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
-                    <li>{t.rich("googleStep5", { link: (chunks) => <a href="/admin" className="text-cyber-cyan hover:underline">{chunks}</a> })}</li>
+                    <li>{t.rich("googleStep4", { code: (chunks) => <code style={{ color: "var(--accent)" }}>{chunks}</code> })}</li>
+                    <li>{t.rich("googleStep5", { link: (chunks) => <a href="/admin" style={{ color: "var(--accent)" }}>{chunks}</a> })}</li>
                     <li>{t("googleStep6")}</li>
                   </ol>
                 </details>
               </div>
-
             </section>
             )}
 
@@ -1378,8 +1454,8 @@ export default function SettingsPage() {
             {activeTab === "channels" && (
             <section className="space-y-8">
               <div>
-                <h2 className="text-sm font-medium text-text-primary mb-1">{t("channelsTitle")}</h2>
-                <p className="text-[11px] text-text-muted">
+                <h2 className="text-base font-medium text-text-primary mb-1">{t("channelsTitle")}</h2>
+                <p className="tab-intro">
                   {t("channelsIntro")}
                 </p>
               </div>
@@ -1387,26 +1463,26 @@ export default function SettingsPage() {
               {/* ── WhatsApp Web ───────────────────────────────────────── */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-4 h-4 text-emerald-400 font-bold text-sm">W</div>
-                  <h3 className="text-sm font-medium text-text-primary">WhatsApp</h3>
+                  <span className="brand-logo" style={{ width: 32, height: 32, fontSize: 13, fontWeight: 700 }}>W</span>
+                  <h3 className="text-base font-semibold text-text-primary">WhatsApp</h3>
                   {waWebStatus.status === "linked" && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <span className="badge accent">
                       <CheckCircle className="w-2.5 h-2.5" /> {waWebStatus.phone ? t("waLinkedPhone", { phone: waWebStatus.phone }) : t("waLinked")}
                     </span>
                   )}
                   {waWebStatus.status === "pending_qr" && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    <span className="badge warning">
                       {t("waWaitingScan")}
                     </span>
                   )}
                   {waWebStatus.status === "error" && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20 text-red-400">
+                    <span className="badge danger">
                       <XCircle className="w-2.5 h-2.5" /> {t("waErrorBadge")}
                     </span>
                   )}
                 </div>
 
-                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                <div className="section-block">
                   <p className="text-[11px] text-text-muted">
                     {t.rich("waIntro", { strong: (chunks) => <strong>{chunks}</strong> })}
                   </p>
@@ -1436,7 +1512,7 @@ export default function SettingsPage() {
                       <button
                         onClick={handleWaWebLogout}
                         disabled={waWebLoading}
-                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
+                        className="btn danger"
                       >
                         {waWebLoading ? "..." : t("waDisconnect")}
                       </button>
@@ -1444,7 +1520,7 @@ export default function SettingsPage() {
                       <button
                         onClick={handleWaWebStart}
                         disabled={waWebLoading || waWebStatus.status === "pending_qr"}
-                        className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50"
+                        className="btn primary"
                       >
                         {waWebLoading ? "..." : waWebStatus.status === "pending_qr" ? t("waScanInProgress") : t("waLinkMy")}
                       </button>
@@ -1470,20 +1546,20 @@ export default function SettingsPage() {
                             value={waPhoneInput}
                             onChange={(e) => setWaPhoneInput(e.target.value)}
                             placeholder="33612345678"
-                            className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-emerald-500/40"
+                            className="input"
                           />
                           <button
                             onClick={handleWaWebPairPhone}
                             disabled={waWebLoading || !waPhoneInput.trim()}
-                            className="text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                            className="btn primary"
                           >
                             {waWebLoading ? "..." : t("waGetCode")}
                           </button>
                         </div>
                         {waPairCode && (
-                          <div className="text-center py-3 bg-emerald-500/5 border border-emerald-500/20 rounded">
-                            <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">{t("waCodeLabel")}</div>
-                            <div className="text-2xl font-mono font-bold text-emerald-300 tracking-widest">{waPairCode}</div>
+                          <div className="text-center py-3 bg-cyber-cyan/5 border border-cyber-cyan/20 rounded">
+                            <div className="text-[10px] uppercase tracking-wider text-cyber-cyan/70 mb-1">{t("waCodeLabel")}</div>
+                            <div className="text-2xl font-mono font-bold text-cyber-cyan tracking-widest">{waPairCode}</div>
                             <div className="text-[10px] text-text-muted mt-1">{t("waCodeValidity")}</div>
                           </div>
                         )}
@@ -1511,26 +1587,26 @@ export default function SettingsPage() {
               {/* ── Telegram ──────────────────────────────────────────── */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-4 h-4 text-cyan-400 font-bold text-sm">T</div>
-                  <h3 className="text-sm font-medium text-text-primary">Telegram</h3>
+                  <span className="brand-logo" style={{ width: 32, height: 32, fontSize: 13, fontWeight: 700 }}>T</span>
+                  <h3 className="text-base font-semibold text-text-primary">Telegram</h3>
                   {tgStatus.configured && tgStatus.running && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <span className="badge accent">
                       <CheckCircle className="w-2.5 h-2.5" /> {tgStatus.bot_username ? t("activeNamed", { name: tgStatus.bot_username }) : t("active")}
                     </span>
                   )}
                   {tgStatus.configured && !tgStatus.running && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    <span className="badge warning">
                       {t("configuredButStopped")}
                     </span>
                   )}
                   {!tgStatus.configured && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
+                    <span className="badge">
                       {t("notConfiguredBadge")}
                     </span>
                   )}
                 </div>
 
-                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                <div className="section-block">
                   <p className="text-[11px] text-text-muted">
                     {t.rich("tgIntro", {
                       strong: (chunks) => <strong>{chunks}</strong>,
@@ -1538,18 +1614,20 @@ export default function SettingsPage() {
                     })}
                   </p>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
                     <input
                       type="password"
                       value={tgToken}
                       onChange={(e) => setTgToken(e.target.value)}
                       placeholder={tgStatus.configured ? t("tgTokenPlaceholderConfigured") : t("tgTokenPlaceholder")}
-                      className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyan-500/40 font-mono"
+                      className="input mono"
+                      style={{ maxWidth: 480 }}
                     />
                     <button
                       onClick={handleTgSave}
                       disabled={tgBusy || !tgToken.trim()}
-                      className="text-xs px-3 py-1.5 rounded border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                      className="btn primary"
+                      style={{ whiteSpace: "nowrap" }}
                     >
                       {tgBusy ? "..." : tgStatus.configured ? t("update") : t("enable")}
                     </button>
@@ -1557,7 +1635,8 @@ export default function SettingsPage() {
                       <button
                         onClick={handleTgDisable}
                         disabled={tgBusy}
-                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                        className="btn danger"
+                        style={{ whiteSpace: "nowrap" }}
                       >
                         {t("disable")}
                       </button>
@@ -1588,26 +1667,26 @@ export default function SettingsPage() {
               {/* ── Discord ──────────────────────────────────────────── */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-4 h-4 text-indigo-400 font-bold text-sm">D</div>
-                  <h3 className="text-sm font-medium text-text-primary">Discord</h3>
+                  <span className="brand-logo" style={{ width: 32, height: 32, fontSize: 13, fontWeight: 700 }}>D</span>
+                  <h3 className="text-base font-semibold text-text-primary">Discord</h3>
                   {dcStatus.configured && dcStatus.running && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <span className="badge accent">
                       <CheckCircle className="w-2.5 h-2.5" /> {t("active")}
                     </span>
                   )}
                   {dcStatus.configured && !dcStatus.running && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    <span className="badge warning">
                       {t("configuredButStopped")}
                     </span>
                   )}
                   {!dcStatus.configured && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
+                    <span className="badge">
                       {t("notConfiguredBadge")}
                     </span>
                   )}
                 </div>
 
-                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                <div className="section-block">
                   <p className="text-[11px] text-text-muted">
                     {t.rich("dcIntro", {
                       strong: (chunks) => <strong>{chunks}</strong>,
@@ -1616,18 +1695,20 @@ export default function SettingsPage() {
                     })}
                   </p>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
                     <input
                       type="password"
                       value={dcToken}
                       onChange={(e) => setDcToken(e.target.value)}
                       placeholder={dcStatus.configured ? t("dcTokenPlaceholderConfigured") : t("dcTokenPlaceholder")}
-                      className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-indigo-500/40 font-mono"
+                      className="input mono"
+                      style={{ maxWidth: 480 }}
                     />
                     <button
                       onClick={handleDcSave}
                       disabled={dcBusy || !dcToken.trim()}
-                      className="text-xs px-3 py-1.5 rounded border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                      className="btn primary"
+                      style={{ whiteSpace: "nowrap" }}
                     >
                       {dcBusy ? "..." : dcStatus.configured ? t("update") : t("enable")}
                     </button>
@@ -1635,7 +1716,8 @@ export default function SettingsPage() {
                       <button
                         onClick={handleDcDisable}
                         disabled={dcBusy}
-                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50 whitespace-nowrap"
+                        className="btn danger"
+                        style={{ whiteSpace: "nowrap" }}
                       >
                         {t("disable")}
                       </button>
@@ -1660,21 +1742,21 @@ export default function SettingsPage() {
               {/* ── Slack ────────────────────────────────────────────── */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-4 h-4 text-purple-400 font-bold text-sm">S</div>
-                  <h3 className="text-sm font-medium text-text-primary">Slack</h3>
+                  <span className="brand-logo" style={{ width: 32, height: 32, fontSize: 13, fontWeight: 700 }}>S</span>
+                  <h3 className="text-base font-semibold text-text-primary">Slack</h3>
                   {slStatus.configured && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <span className="badge accent">
                       <CheckCircle className="w-2.5 h-2.5" /> {t("configuredBadge")}
                     </span>
                   )}
                   {!slStatus.configured && (
-                    <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
+                    <span className="badge">
                       {t("notConfiguredBadge")}
                     </span>
                   )}
                 </div>
 
-                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                <div className="section-block">
                   <p className="text-[11px] text-text-muted">
                     {t.rich("slIntro", {
                       strong: (chunks) => <strong>{chunks}</strong>,
@@ -1687,21 +1769,21 @@ export default function SettingsPage() {
                     value={slBotToken}
                     onChange={(e) => setSlBotToken(e.target.value)}
                     placeholder={slStatus.has_bot_token ? t("slBotTokenPlaceholderConfigured") : t("slBotTokenPlaceholder")}
-                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-purple-500/40 font-mono"
+                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 font-mono"
                   />
                   <input
                     type="password"
                     value={slAppToken}
                     onChange={(e) => setSlAppToken(e.target.value)}
                     placeholder={slStatus.has_app_token ? t("slAppTokenPlaceholderConfigured") : t("slAppTokenPlaceholder")}
-                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-purple-500/40 font-mono"
+                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 font-mono"
                   />
 
                   <div className="flex gap-2">
                     <button
                       onClick={handleSlSave}
                       disabled={slBusy || !slBotToken.trim() || !slAppToken.trim()}
-                      className="text-xs px-3 py-1.5 rounded border border-purple-500/30 text-purple-400 hover:bg-purple-500/5 transition-all disabled:opacity-50"
+                      className="btn primary"
                     >
                       {slBusy ? "..." : slStatus.configured ? t("update") : t("enable")}
                     </button>
@@ -1709,7 +1791,7 @@ export default function SettingsPage() {
                       <button
                         onClick={handleSlDisable}
                         disabled={slBusy}
-                        className="text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 transition-all disabled:opacity-50"
+                        className="btn danger"
                       >
                         {t("disable")}
                       </button>
@@ -1753,18 +1835,18 @@ export default function SettingsPage() {
                 <Languages className="w-4 h-4 text-cyber-cyan" />
                 <h2 className="text-sm font-medium text-text-primary">{t("language")}</h2>
               </div>
-              <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+              <div className="section-block">
                 <p className="text-xs text-text-muted">{t("languageDescription")}</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setLocale("fr")}
-                    className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
+                    className={currentLocale === "fr" ? "btn primary" : "btn"}
                   >
                     {t("french")}
                   </button>
                   <button
                     onClick={() => setLocale("en")}
-                    className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
+                    className={currentLocale === "en" ? "btn primary" : "btn"}
                   >
                     {t("english")}
                   </button>
@@ -1777,16 +1859,28 @@ export default function SettingsPage() {
                 SSH Hosts — in "integrations" tab, admin only
             ---------------------------------------------------------------- */}
             {activeTab === "integrations" && admin && (
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <Server className="w-4 h-4 text-cyber-cyan" />
-                  <h2 className="text-sm font-medium text-text-primary">{t("sshHosts")}</h2>
-                </div>
-                <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
-                  <p className="text-xs text-text-muted">
-                    {t.rich("sshConfigDesc", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}
+              <section className="vstack" style={{ gap: 16, marginTop: 16 }}>
+                <div className="section-block">
+                  <div className="section-block-head">
+                    <h3>
+                      <Server size={16} />
+                      {t("sshHosts")}
+                    </h3>
+                  </div>
+                  <p>
+                    {t.rich("sshConfigDesc", { code: (chunks) => <code className="mono" style={{ color: "var(--accent)" }}>{chunks}</code> })}
                   </p>
-                  <pre className="mt-3 text-[11px] text-text-secondary bg-bg-primary border border-border-dim rounded p-3 overflow-x-auto">
+                  <pre style={{
+                    background: "var(--bg-surface-2)",
+                    padding: 12,
+                    borderRadius: "var(--radius-md)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: "var(--text-secondary)",
+                    margin: 0,
+                    border: "1px solid var(--border-subtle)",
+                    overflow: "auto",
+                  }}>
 {`hosts:
   my-server:
     hostname: 192.168.1.100
@@ -1805,25 +1899,28 @@ export default function SettingsPage() {
             {/* ----------------------------------------------------------------
                 ELY Desktop — in "integrations" tab
             ---------------------------------------------------------------- */}
-            {activeTab === "integrations" && (<section>
-              <div className="flex items-center gap-2 mb-4">
-                <Monitor className="w-4 h-4 text-cyber-cyan" />
-                <h2 className="text-sm font-medium text-text-primary">ELY Desktop</h2>
-                {desktopConnected === true && (
-                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                    <Wifi className="w-2.5 h-2.5" /> {t("connected")}
-                    {desktopPlatform && ` · ${desktopPlatform}`}
-                    {desktopVersion && ` v${desktopVersion}`}
-                  </span>
-                )}
-                {desktopConnected === false && (
-                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-text-muted/10 border border-border-dim text-text-muted">
-                    <WifiOff className="w-2.5 h-2.5" /> {t("notConnected")}
-                  </span>
-                )}
+            {activeTab === "integrations" && (<section style={{ marginTop: 16 }}>
+              <div className="section-block">
+              <div className="section-block-head">
+                <h3>
+                  <Monitor size={16} />
+                  ELY Desktop
+                  {desktopConnected === true && (
+                    <span className="badge accent">
+                      <Wifi className="w-2.5 h-2.5" /> {t("connected")}
+                      {desktopPlatform && ` · ${desktopPlatform}`}
+                      {desktopVersion && ` v${desktopVersion}`}
+                    </span>
+                  )}
+                  {desktopConnected === false && (
+                    <span className="badge warning">
+                      <WifiOff className="w-2.5 h-2.5" /> {t("notConnected")}
+                    </span>
+                  )}
+                </h3>
               </div>
 
-              <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
+              <div className="vstack" style={{ gap: 16 }}>
 
                 {/* Description */}
                 <p className="text-xs text-text-muted">
@@ -1860,64 +1957,69 @@ export default function SettingsPage() {
                     ))}
                   </div>
 
-                  {/* Add dir input */}
-                  <div className="flex gap-2">
+                  {/* Add dir input — fond surface-2, radius arrondi */}
+                  <div className="field-row">
                     <input
                       type="text"
                       value={sandboxInput}
                       onChange={(e) => setSandboxInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddSandboxDir()}
                       placeholder="/home/user/documents"
-                      className="flex-1 text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                      className="input mono"
                     />
                     <button
                       onClick={handleAddSandboxDir}
-                      className="text-xs px-3 py-2 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all shrink-0"
+                      className="btn"
+                      title={t("add")}
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus size={14} />
                     </button>
                   </div>
                 </div>
 
-                {/* Save button */}
+                {/* Save button — width égal au bouton « Télécharger ely-config.json »
+                    alignSelf:flex-start évite le stretch full-width imposé par .section-block (flex column). */}
                 <button
                   onClick={handleSaveDesktopConfig}
                   disabled={savingDesktop}
-                  className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-50"
+                  className="btn primary"
+                  style={{ minWidth: 280, justifyContent: "center", alignSelf: "flex-start" }}
                 >
+                  <Check size={14} />
                   {savingDesktop ? t("saving") : t("save")}
                 </button>
 
                 {/* Download config */}
-                <div className="pt-3 border-t border-border-dim space-y-2">
-                  <p className="text-[11px] text-text-muted">
+                <div className="pt-3 space-y-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                  <p className="tab-intro" style={{ marginBottom: 8 }}>
                     {t("desktopDownloadDesc")}
                   </p>
                   <button
                     onClick={handleDownloadConfig}
-                    className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all"
+                    className="btn primary"
+                    style={{ minWidth: 280, justifyContent: "center" }}
                   >
-                    <Download className="w-3 h-3" />
+                    <Download size={14} />
                     {t("downloadConfig")}
                   </button>
                 </div>
 
-                {/* Binaries */}
+                {/* Binaries — fond surface-2, radius arrondi, border accent au hover */}
                 {desktopBinaries.length > 0 && (
-                  <div className="pt-3 border-t border-border-dim space-y-2">
+                  <div className="pt-3 space-y-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                     <span className="text-xs text-text-muted uppercase tracking-wider">
                       {t("downloadDaemon")}
                     </span>
-                    <div className="space-y-1.5">
+                    <div className="vstack" style={{ gap: 6 }}>
                       {desktopBinaries.map((b) => (
                         <a
                           key={b.filename}
                           href={b.url}
                           download={b.filename}
-                          className="flex items-center gap-2 px-3 py-1.5 rounded bg-bg-primary border border-border-dim hover:border-cyber-cyan/30 transition-colors group"
+                          className="daemon-bin"
                         >
-                          <Download className="w-3 h-3 text-text-muted group-hover:text-cyber-cyan transition-colors shrink-0" />
-                          <span className="text-[11px] text-text-secondary group-hover:text-text-primary transition-colors truncate">
+                          <Download size={14} className="daemon-bin-icon" />
+                          <span className="mono daemon-bin-name">
                             {b.filename}
                           </span>
                           <span className="text-[10px] text-text-muted ml-auto shrink-0">
@@ -1945,6 +2047,7 @@ export default function SettingsPage() {
                 )}
 
               </div>
+              </div>
             </section>
             )}
 
@@ -1962,7 +2065,7 @@ export default function SettingsPage() {
                     <h2 className="text-sm font-medium text-text-primary">{t("myAccount")}</h2>
                   </div>
 
-                  <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-4">
+                  <div className="section-block">
                     <p className="text-xs text-text-muted">
                       {t("accountIntro")}
                     </p>
@@ -2064,14 +2167,15 @@ export default function SettingsPage() {
                     <button
                       onClick={handleChangePassword}
                       disabled={savingPwd || !currentPwd || !newPwd || !confirmPwd}
-                      className="w-full py-2 rounded-md text-xs font-medium bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="btn primary"
+                      style={{ width: "100%", justifyContent: "center" }}
                     >
                       {savingPwd ? t("pwdChanging") : t("changePassword")}
                     </button>
                   </div>
 
                   {/* ── Onboarding personnalisé ── */}
-                  <div className="mt-6 bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                  <div className="mt-6 section-block">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-cyber-cyan" />
                       <h3 className="text-sm font-medium text-text-primary">Onboarding personnalisé</h3>
@@ -2090,7 +2194,8 @@ export default function SettingsPage() {
                           console.error("Restart onboarding failed:", e);
                         }
                       }}
-                      className="w-full py-2 rounded-md text-xs font-medium bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors"
+                      className="btn primary"
+                      style={{ width: "100%", justifyContent: "center" }}
                     >
                       Refaire l'onboarding
                     </button>
@@ -2101,6 +2206,7 @@ export default function SettingsPage() {
 
           </div>{/* max-w-3xl */}
           </div>{/* overflow-y-auto tab content */}
+          </main>
         </div>
       </div>
 
@@ -2166,7 +2272,7 @@ export default function SettingsPage() {
                       value={modalModel}
                       onChange={(e) => setModalModel(e.target.value)}
                       placeholder={t("ollamaModelPlaceholder")}
-                      className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                      className="input"
                     />
                     <p className="text-[10px] text-text-muted">{t("ollamaUnreachable")}</p>
                   </div>
@@ -2177,7 +2283,7 @@ export default function SettingsPage() {
                   value={modalModel}
                   onChange={(e) => setModalModel(e.target.value)}
                   placeholder={selectedModalProvider?.defaultModel ?? t("modelNamePlaceholder")}
-                  className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                  className="input"
                 />
               )}
             </div>
@@ -2192,7 +2298,7 @@ export default function SettingsPage() {
                   onChange={(e) => setModalApiKey(e.target.value)}
                   placeholder="sk-••••••••"
                   autoComplete="new-password"
-                  className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                  className="input"
                 />
                 <p className="text-[10px] text-text-muted">
                   {t("apiKeyOptional")}
@@ -2208,7 +2314,7 @@ export default function SettingsPage() {
                 value={modalLabel}
                 onChange={(e) => setModalLabel(e.target.value)}
                 placeholder={t("namePlaceholder")}
-                className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40"
+                className="input"
               />
             </div>
 

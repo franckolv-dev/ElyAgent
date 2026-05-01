@@ -57,119 +57,75 @@ _ARENA_SYSTEM = (
 # Candidate pool
 # ---------------------------------------------------------------------------
 
-def _available_candidates() -> list[tuple[str, BaseChatModel]]:
-    """Return ``(label, llm)`` tuples for every provider with a usable key."""
-    from app.services.llm_provider import (
-        _make_anthropic, _make_openrouter, _make_glm, get_runtime_key,
-    )
-    settings = get_settings()
+def _local_provider_reachable(provider: str) -> bool:
+    """Quick TCP/HTTP ping to local providers (lm_studio / ollama).
 
-    def _key(prov: str, env_val: str) -> Optional[str]:
-        return get_runtime_key(prov) or env_val or None
+    Sans ce ping, l'arena tirait systématiquement le modèle local même quand
+    le daemon était down, et chaque match concerné renvoyait
+    ``[Erreur du modèle : All connection attempts failed]``.
+    """
+    settings = get_settings()
+    try:
+        import httpx
+        if provider == "ollama":
+            url = f"{settings.ollama_base_url.rstrip('/')}/api/tags"
+        elif provider == "lm_studio":
+            url = f"{settings.lm_studio_base_url.rstrip('/')}/models"
+        else:
+            return True  # cloud providers — pas besoin de ping
+        with httpx.Client(timeout=1.5) as client:
+            r = client.get(url)
+            r.raise_for_status()
+        return True
+    except Exception as exc:
+        logger.debug("Arena: %s unreachable, skipping: %s", provider, exc)
+        return False
+
+
+def _available_candidates() -> list[tuple[str, BaseChatModel]]:
+    """Return ``(label, llm)`` tuples built from the user's configured instances.
+
+    Branche l'Arena directement sur la table ``llm_instances`` (page « Modèles
+    IA » des paramètres). Le classement ELO reflète donc les modèles réellement
+    utilisables par cet utilisateur — Haiku 4.5, Gemini 3.1, Qwen, Ministral,
+    LM Studio local, etc. — au lieu d'une liste hardcodée.
+
+    Filtres appliqués :
+      * Cloud provider sans clé (instance ou env) → exclu
+      * Instance locale (lm_studio / ollama) avec daemon down → exclue
+      * Doublons exacts ``provider/model`` → première instance gagne
+    """
+    from app.services.llm_provider import _make_llm_for_instance, _instance_cache
 
     candidates: list[tuple[str, BaseChatModel]] = []
+    seen_labels: set[str] = set()
 
-    # Gemini
-    gemini_key = _key("gemini", settings.gemini_api_key)
-    if gemini_key:
+    # Snapshot du cache (peut être mis à jour en concurrent par les CRUD instances)
+    for instance_id, info in list(_instance_cache.items()):
+        provider = info.get("provider", "")
+        model = info.get("model", "")
+        label = f"{provider}/{model}"
+
+        # Évite les doublons (ex. plusieurs instances pour le même provider/model)
+        if label in seen_labels:
+            continue
+
+        # Skip locaux down
+        if provider in ("ollama", "lm_studio") and not _local_provider_reachable(provider):
+            continue
+
         try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            candidates.append((
-                "gemini/gemini-2.5-flash",
-                ChatGoogleGenerativeAI(
-                    model="gemini-2.5-flash",
-                    google_api_key=gemini_key,
-                    max_output_tokens=2048,
-                    temperature=0.7,
-                ),
-            ))
+            llm = _make_llm_for_instance(instance_id, max_tokens=2048, temperature=0.7)
         except Exception as exc:
-            logger.debug("Arena: gemini unavailable: %s", exc)
+            logger.debug("Arena: instance %s (%s) factory failed: %s", instance_id, label, exc)
+            continue
 
-    # Anthropic
-    anthropic_key = _key("anthropic", settings.anthropic_api_key)
-    if anthropic_key:
-        try:
-            candidates.append((
-                "anthropic/claude-sonnet-4-6",
-                _make_anthropic(model="claude-sonnet-4-6", api_key=anthropic_key),
-            ))
-        except Exception as exc:
-            logger.debug("Arena: anthropic unavailable: %s", exc)
+        if llm is None:
+            # _make_llm_for_instance renvoie None si la clé manque pour un cloud provider
+            continue
 
-    # Mistral
-    mistral_key = _key("mistral", settings.mistral_api_key)
-    if mistral_key:
-        try:
-            from langchain_mistralai import ChatMistralAI
-            candidates.append((
-                "mistral/mistral-large-latest",
-                ChatMistralAI(
-                    model="mistral-large-latest",
-                    api_key=mistral_key,
-                    max_tokens=2048,
-                    temperature=0.7,
-                ),
-            ))
-        except Exception as exc:
-            logger.debug("Arena: mistral unavailable: %s", exc)
-
-    # DeepSeek
-    deepseek_key = _key("deepseek", settings.deepseek_api_key)
-    if deepseek_key:
-        try:
-            from langchain_openai import ChatOpenAI
-            candidates.append((
-                "deepseek/deepseek-chat",
-                ChatOpenAI(
-                    model="deepseek-chat",
-                    api_key=deepseek_key,
-                    base_url="https://api.deepseek.com/v1",
-                    max_tokens=2048,
-                    temperature=0.7,
-                ),
-            ))
-        except Exception as exc:
-            logger.debug("Arena: deepseek unavailable: %s", exc)
-
-    # OpenRouter (free Llama)
-    openrouter_key = _key("openrouter", settings.openrouter_api_key)
-    if openrouter_key:
-        try:
-            candidates.append((
-                "openrouter/llama-3.3-70b",
-                _make_openrouter(
-                    model="meta-llama/llama-3.3-70b-instruct:free",
-                    api_key=openrouter_key,
-                ),
-            ))
-        except Exception as exc:
-            logger.debug("Arena: openrouter unavailable: %s", exc)
-
-    # Zhipu GLM
-    zhipu_key = _key("zhipu", settings.zhipu_api_key)
-    if zhipu_key:
-        try:
-            candidates.append((
-                "zhipu/glm-4-flash",
-                _make_glm(model="glm-4-flash", api_key=zhipu_key),
-            ))
-        except Exception as exc:
-            logger.debug("Arena: zhipu unavailable: %s", exc)
-
-    # Local Ollama (always attempt -- fails silently if daemon is down)
-    try:
-        from langchain_ollama import ChatOllama
-        candidates.append((
-            f"ollama/{settings.slm_model}",
-            ChatOllama(
-                model=settings.slm_model,
-                base_url=settings.ollama_base_url,
-                temperature=0.7,
-            ),
-        ))
-    except Exception as exc:
-        logger.debug("Arena: ollama unavailable: %s", exc)
+        candidates.append((label, llm))
+        seen_labels.add(label)
 
     return candidates
 
@@ -183,6 +139,32 @@ def list_available_models() -> list[str]:
 # Match execution
 # ---------------------------------------------------------------------------
 
+def _extract_text(content) -> str:
+    """Sérialise proprement le ``content`` d'un AIMessage LangChain.
+
+    Certains providers (Gemini en particulier, mais aussi Anthropic en mode
+    multi-block) renvoient une liste de blocks ``[{type:'text', text:'...'}]``
+    au lieu d'une string. ``str(...)`` donnait alors un repr Python illisible
+    affiché tel quel dans l'Arena.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for blk in content:
+            if isinstance(blk, str):
+                parts.append(blk)
+            elif isinstance(blk, dict):
+                # Anthropic / Gemini / OpenAI : {'type': 'text', 'text': '...'}
+                if "text" in blk and isinstance(blk["text"], str):
+                    parts.append(blk["text"])
+                elif blk.get("type") == "text" and "content" in blk:
+                    parts.append(str(blk["content"]))
+        if parts:
+            return "\n".join(p for p in parts if p)
+    return str(content)
+
+
 async def _invoke_one(llm: BaseChatModel, prompt: str) -> tuple[str, int]:
     """Invoke *llm* with *prompt* and return ``(text, latency_ms)``."""
     start = time.perf_counter()
@@ -192,8 +174,7 @@ async def _invoke_one(llm: BaseChatModel, prompt: str) -> tuple[str, int]:
             HumanMessage(content=prompt),
         ])
         latency = int((time.perf_counter() - start) * 1000)
-        content = msg.content if isinstance(msg.content, str) else str(msg.content)
-        return content, latency
+        return _extract_text(msg.content), latency
     except Exception as exc:
         latency = int((time.perf_counter() - start) * 1000)
         logger.warning("Arena: model invocation failed: %s", exc)

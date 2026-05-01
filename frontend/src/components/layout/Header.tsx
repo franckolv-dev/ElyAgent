@@ -2,23 +2,15 @@
 /**
  * @project    ELY — Exactly Like You
  * @file       frontend/src/components/layout/Header.tsx
- * @brief      Header — top navigation bar and status indicators
+ * @brief      Topbar — brand + status + lang/theme + user chip (refonte mai 2026)
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
  * @license    PolyForm Strict License 1.0.0
- *             https://polyformproject.org/licenses/strict/1.0.0/
- * @version    1.1.0
- * @link       https://github.com/franckolv-dev/PhysicalAgent
- *
- * RÉSUMÉ DES CONDITIONS :
- *   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
- *   - INTERDIT : Toute utilisation commerciale sans accord préalable.
- *   - INTERDIT : Redistribution de versions modifiées de ce code.
  */
 
 import { useEffect, useState } from "react";
-import { Circle, Wifi, WifiOff } from "lucide-react";
+import { Bell, Wifi, WifiOff, Zap } from "lucide-react";
 import type { User } from "@/lib/types";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -36,41 +28,61 @@ export function Header({ wsStatus, children }: HeaderProps) {
     api.getMe().then(setUser).catch(() => {});
   }, []);
 
-  const statusColors = {
-    connected:    "text-cyber-cyan",
-    disconnected: "text-cyber-red",
-    connecting:   "text-cyber-yellow",
-  };
-
-  const StatusIcon = wsStatus === "connected" ? Wifi : WifiOff;
-
   return (
-    <header className="h-12 bg-bg-secondary/80 backdrop-blur-sm border-b border-border-dim flex items-center justify-between px-4">
-      <div className="flex items-center gap-2">
-        {wsStatus && (
-          <>
-            <StatusIcon className={`w-3.5 h-3.5 ${statusColors[wsStatus]}`} />
-            <span className="text-xs text-text-muted uppercase tracking-wider">
-              {wsStatus}
-            </span>
-          </>
-        )}
+    <header className="topbar">
+      {/* Brand (left, 240px wide, matches sidebar width) */}
+      <div className="brand">
+        <div className="brand-logo">
+          <Zap size={16} />
+        </div>
+        <span className="brand-name">ELY AGENT</span>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Center: status pill (only when connected status is provided) */}
+      <div className="topbar-center">
+        {wsStatus === "connected" && (
+          <span className="status-pill">
+            <span className="status-dot" />
+            <Wifi size={11} /> CONNECTED
+          </span>
+        )}
+        {wsStatus === "disconnected" && (
+          <span className="status-pill" style={{ color: "var(--danger)" }}>
+            <span
+              className="status-dot"
+              style={{ background: "var(--danger)", boxShadow: "0 0 8px var(--danger)" }}
+            />
+            <WifiOff size={11} /> DISCONNECTED
+          </span>
+        )}
+        {wsStatus === "connecting" && (
+          <span className="status-pill" style={{ color: "var(--warning)" }}>
+            <span
+              className="status-dot"
+              style={{ background: "var(--warning)", boxShadow: "0 0 8px var(--warning)" }}
+            />
+            <Wifi size={11} /> CONNECTING…
+          </span>
+        )}
+        {/* Custom children (e.g. conversation title editor on /chat) */}
         {children}
+      </div>
+
+      {/* Right: notif / lang / theme / user chip */}
+      <div className="topbar-right">
+        <button className="icon-btn" title="Notifications">
+          <Bell size={15} />
+        </button>
         <LangSwitcher />
         <ThemeToggle />
 
         {user && (
-          <div className="flex items-center gap-2">
-            <Circle className="w-2 h-2 fill-cyber-cyan text-cyber-cyan" />
-            <span className="text-xs text-text-secondary">{user.username}</span>
-            {user.role === "admin" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyber-purple/10 text-cyber-purple border border-cyber-purple/20">
-                ADMIN
-              </span>
-            )}
+          <div className="user-chip">
+            <div className="user-avatar-chip">
+              {user.username?.[0]?.toUpperCase() || "?"}
+            </div>
+            <span className="user-name">{user.username}</span>
+            {user.role === "admin" && <span className="user-role">ADMIN</span>}
           </div>
         )}
       </div>
