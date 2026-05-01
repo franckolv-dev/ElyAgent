@@ -145,6 +145,7 @@ async def dispatch_tool(
     tool_args: dict,
     tool_call_id: str,
     user_id: str,
+    user_request: str = "",
 ) -> tuple[str, bool]:
     """Run a single tool call with HITL + vault + credential injection.
 
@@ -276,9 +277,24 @@ async def dispatch_tool(
             logger.debug("Mission self-mail check failed: %s", _exc)
 
     if needs_hitl:
+        # Replace the technical action_desc with a human-readable version
+        # that includes pre-count, the user's original request, and any
+        # detected mismatches (May 2026 fix #21 — Temu incident :
+        # validating a JSON blob without context = blind approval).
+        try:
+            from app.services.hitl_descriptions import build_human_hitl_description
+            humanized = await build_human_hitl_description(
+                tool_name=tool_name,
+                args=args,
+                user_request=user_request,
+                user_credentials_json=args.get("user_google_credentials_json", ""),
+            )
+        except Exception as _e:
+            humanized = action_desc  # fallback to technical
+            logger.debug("HITL humanizer failed: %s", _e)
         logger.info("Mission HITL required: %s", action_desc)
         hitl = get_hitl_manager()
-        decision, reason = await hitl.request_validation(description=action_desc, user_id=user_id)
+        decision, reason = await hitl.request_validation(description=humanized, user_id=user_id)
         if decision == "ban":
             rule = f"INTERDICTION PERMANENTE: {action_desc}"
             if reason:
@@ -838,7 +854,10 @@ async def act_node(state: MissionState) -> dict:
     tool_args = dict(call.get("args") or {})
     tool_id = call.get("id", "act-" + mission_id[:6])
 
-    output, ok = await dispatch_tool(tool_name, tool_args, tool_id, user_id)
+    output, ok = await dispatch_tool(
+        tool_name, tool_args, tool_id, user_id,
+        user_request=state.get("goal", ""),
+    )
 
     # Persist audit row
     await mission_service.add_step(

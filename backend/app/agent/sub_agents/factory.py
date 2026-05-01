@@ -687,6 +687,24 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             user_id = state.get("user_id", "")
             results = []
 
+            # Pull the last user message (HumanMessage) for HITL context.
+            # Used to humanize HITL prompts and detect arg/intent mismatches
+            # (May 2026 fix #21 — Temu incident).
+            from langchain_core.messages import HumanMessage as _HumanMsg
+            _last_user_request = ""
+            for _m in reversed(state["messages"]):
+                if isinstance(_m, _HumanMsg):
+                    _c = _m.content
+                    if isinstance(_c, str):
+                        _last_user_request = _c
+                    elif isinstance(_c, list):
+                        # Multi-block content (text + image) → join text parts
+                        _last_user_request = " ".join(
+                            (b.get("text", "") if isinstance(b, dict) else str(b))
+                            for b in _c
+                        )
+                    break
+
             # Only expose tools declared for this sub-agent
             tool_map = {
                 t.name: t
@@ -910,9 +928,23 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                         logger.debug("self-mail check failed: %s", _exc)
 
                 if needs_hitl:
+                    # Build a human-readable HITL message with pre-count,
+                    # the user's original request, and mismatch warnings.
+                    # Fix #21 (May 2026 Temu incident).
+                    try:
+                        from app.services.hitl_descriptions import build_human_hitl_description
+                        humanized = await build_human_hitl_description(
+                            tool_name=tool_name,
+                            args=args,
+                            user_request=_last_user_request,
+                            user_credentials_json=args.get("user_google_credentials_json", ""),
+                        )
+                    except Exception as _exc:
+                        humanized = action_desc
+                        logger.debug("HITL humanizer failed: %s", _exc)
                     logger.info("HITL required for action: %s", action_desc)
                     decision, reason = await hitl.request_validation(
-                        description=action_desc,
+                        description=humanized,
                         user_id=user_id,
                     )
                     if decision == "ban":
