@@ -604,8 +604,20 @@ async def plan_node(state: MissionState) -> dict:
     # Generate v1 plan
     t0 = time.monotonic()
     llm = _get_planner_llm()
+
+    # Inject the user's personal vocabulary (onboarding) so the planner
+    # uses the right canonical terms in the steps it generates.
+    sys_prompt = _PLAN_SYSTEM
+    try:
+        from app.services.onboarding import get_vocabulary_for_prompt
+        _vocab = await get_vocabulary_for_prompt(state["user_id"])
+        if _vocab:
+            sys_prompt = sys_prompt + "\n\n" + _vocab
+    except Exception as _exc:
+        logger.debug("Vocabulary injection (planner) failed: %s", _exc)
+
     messages: list[BaseMessage] = [
-        SystemMessage(content=_PLAN_SYSTEM),
+        SystemMessage(content=sys_prompt),
         HumanMessage(content=f"Goal de l'utilisateur :\n\n{goal}"),
     ]
     response = await llm.ainvoke(messages)

@@ -514,6 +514,17 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                             f"-> R: {p.get('assistant_message', '')[:80]}\n"
                         )
 
+                # Personal vocabulary (onboarding) — added BEFORE the
+                # date because it's stable per-user (cache-friendly).
+                # Empty string if user hasn't done onboarding yet.
+                try:
+                    from app.services.onboarding import get_vocabulary_for_prompt
+                    _vocab = await get_vocabulary_for_prompt(user_id)
+                    if _vocab:
+                        system += f"\n\n{_vocab}\n"
+                except Exception as _exc:
+                    logger.debug("Vocabulary injection failed: %s", _exc)
+
                 # Date en DERNIER — c'est la partie la plus volatile (change
                 # de minute). En la plaçant après le contenu stable, on limite
                 # l'invalidation du cache aux ~30 derniers tokens au lieu de

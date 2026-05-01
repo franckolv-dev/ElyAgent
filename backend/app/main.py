@@ -388,6 +388,8 @@ app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
 app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])
 from app.routers import hitl_prefs as _hitl_prefs_router
 app.include_router(_hitl_prefs_router.router, prefix="/api")
+from app.routers import onboarding as _onboarding_router
+app.include_router(_onboarding_router.router, prefix="/api")
 
 # ── Static files — ELY Desktop binaries ─────────────────────────────────────
 import os as _os

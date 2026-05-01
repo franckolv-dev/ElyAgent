@@ -18,7 +18,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Boolean, DateTime, Text
+from sqlalchemy import String, Boolean, DateTime, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -59,4 +59,23 @@ class User(Base):
     # because it must sync the chat UI in real time.
     hitl_preferred_channel: Mapped[str | None] = mapped_column(
         String(20), nullable=True, default=None
+    )
+    # Conversational onboarding — Éli initiates a guided chat at first
+    # login to learn the user's vocabulary, preferred names, Gmail labels,
+    # calendar names, routines, strict rules, etc. Stored as a series of
+    # facts in memory_manager + structured mappings in user_vocabulary.
+    # `completed_at` = user finished the flow (or did it later by clicking
+    #   "Refaire l'onboarding" in Settings).
+    # `skipped_at`   = user clicked "Plus tard". Re-prompt next login but
+    #   not nag every screen change.
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
+    onboarding_skipped_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
+    # Index of the next question to ask. Lets the user resume mid-flow
+    # if they close the tab. -1 = not started yet.
+    onboarding_step: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
     )
