@@ -91,6 +91,18 @@ L'objectif a été : ouvrir le repo sans honte ni faille. Catalogue final livré
 
 ---
 
+## Sprint 3.5 — Web Automation suite ⏳ *Juillet 2026*
+
+| # | Item | Type | Effort | Source |
+|---|---|---|---|---|
+| 3.5 | **Web Automation tools (Playwright)** — 10 tools high-level user-facing exposés à l'agent : `web_screenshot` (full-page ou viewport), `web_to_pdf`, `web_extract` (CSS/XPath ou auto-LLM), `web_visual_search` (web_search + screenshot N résultats), `web_compare` (diff visuel), `web_record_session` (vidéo MP4), `web_fill_form` (auto-fill + soumission HITL), `web_monitor` (combiné watchdog), `web_extract_to_sheet` (scraping → Google Sheets), `attachment_to_pdf` (.docx/.html/.xlsx → PDF). | 🔴 Unique to ELY | M-L | Playwright déjà en backend (services/browser_manager.py) — manque la surface d'exposition |
+
+**Pourquoi unique** : aucun agent IA grand public ne donne accès à un browser headless avec interface conversationnelle. Permet des cas d'usage agentiques massifs : *"Cherche les concurrents de mon produit, capture leurs homes, fais une analyse comparée dans un Doc"*, *"Tous les lundis envoie-moi par WhatsApp la météo capturée depuis ce site"*, *"Surveille les prix de 3 concurrents et alerte-moi sur tout changement"*.
+
+**Différentiation** vs ELY Trainer (déjà existant) : Trainer contrôle le desktop physique de l'user (visible, démos, apps natives). Web Automation tourne en headless backend (silencieux, scalable, batch). Les 2 sont complémentaires, exposés dans 2 catégories distinctes de l'UI.
+
+---
+
 ## Sprint 4 — MCP integration ⏳ *Juillet-Août 2026*
 
 | # | Item | Type | Effort | Source |
