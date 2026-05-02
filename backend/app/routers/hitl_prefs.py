@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -43,8 +43,12 @@ class HitlPrefOut(BaseModel):
 
 
 # Curated descriptions so the UI shows context next to each toggle.
+# Bilingual (mai 2026 — bug rapporté : en mode UI anglais, les descriptions
+# restaient en français parce qu'elles étaient hardcodées côté backend).
+# Sélection FR/EN pilotée par le header Accept-Language envoyé par le frontend
+# (next-intl le set automatiquement via le middleware locale).
 # Keys must match tool names; missing keys fall back to the tool name itself.
-_TOOL_DESCRIPTIONS: dict[str, str] = {
+_TOOL_DESCRIPTIONS_FR: dict[str, str] = {
     "gmail_send_email": "Envoyer un email via Gmail",
     "gmail_reply_email": "Répondre à un email via Gmail",
     "gmail_send_with_attachment": "Envoyer un email avec pièce jointe",
@@ -87,16 +91,79 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "vault_set_secret": "Stocker un secret dans le coffre-fort",
 }
 
+_TOOL_DESCRIPTIONS_EN: dict[str, str] = {
+    "gmail_send_email": "Send an email via Gmail",
+    "gmail_reply_email": "Reply to an email via Gmail",
+    "gmail_send_with_attachment": "Send an email with an attachment",
+    "gmail_create_draft": "Create a Gmail draft",
+    "gmail_batch_modify": "Batch-modify up to 1000 emails (label/archive/trash)",
+    "gmail_trash_emails": "Move emails to Trash",
+    "gmail_move_emails": "Move emails between labels",
+    "gmail_update_settings": "Update Gmail settings (signature, vacation, filters, forwarding)",
+    "calendar_create_event": "Create an event in Google Calendar",
+    "calendar_update_event": "Update a Calendar event",
+    "calendar_delete_event": "Delete a Calendar event",
+    "calendar_quick_add": "Create a Calendar event via natural language",
+    "calendar_create_meet_event": "Create a Meet event (video call + recurrence)",
+    "drive_create_folder": "Create a Google Drive folder",
+    "drive_create_file": "Create a Google Drive file",
+    "drive_update_file": "Update an existing Drive file",
+    "drive_delete_file": "Delete a Drive file",
+    "drive_move_file": "Move a Drive file",
+    "drive_share_file": "Share a Drive file (external permissions)",
+    "docs_create_document": "Create a Google Doc",
+    "docs_append_text": "Append text to a Google Doc",
+    "docs_replace_text": "Find & replace inside a Google Doc",
+    "docs_batch_update": "Batch updates on a Google Doc",
+    "sheets_create_spreadsheet": "Create a Google Sheets spreadsheet",
+    "sheets_update_cells": "Update cells in Sheets",
+    "sheets_delete_rows": "Delete rows in Sheets",
+    "sheets_batch_update": "Batch updates on Sheets (sort, format, validation)",
+    "tasks_create": "Create a Google Tasks task",
+    "tasks_complete": "Mark a task as completed",
+    "tasks_delete": "Delete a Google Tasks task",
+    "contacts_create": "Create a Google Contact",
+    "contacts_update": "Update a Google Contact",
+    "contacts_delete": "Delete a Google Contact",
+    "contacts_batch_operations": "Batch operations on contacts (up to 200)",
+    "ssh_execute": "Run an SSH command on a server",
+    "desktop_write_file": "Write a file to the local disk",
+    "desktop_delete_file": "Delete a file from the local disk",
+    "desktop_move_file": "Move a file on the local disk",
+    "vault_unlock": "Unlock the secrets vault",
+    "vault_set_secret": "Store a secret in the vault",
+}
+
+
+def _pick_lang(accept_language: str | None) -> dict[str, str]:
+    """Return the right description map based on the Accept-Language header.
+
+    Accept-Language est de la forme « fr-FR,fr;q=0.9,en;q=0.8 ». On fait
+    matching simple : si le tag commence par « en » → anglais, sinon FR par
+    défaut (notre langue principale historique).
+    """
+    if accept_language and accept_language.strip().lower().startswith("en"):
+        return _TOOL_DESCRIPTIONS_EN
+    return _TOOL_DESCRIPTIONS_FR
+
 
 @router.get("/preferences", response_model=list[HitlPrefOut])
-async def list_preferences(current_user: User = Depends(get_current_user)) -> list[HitlPrefOut]:
+async def list_preferences(
+    current_user: User = Depends(get_current_user),
+    accept_language: str | None = Header(default=None),
+) -> list[HitlPrefOut]:
     """Return one entry per tool in ALWAYS_CRITICAL_TOOLS with its HITL state.
 
     The default is "HITL on" — overrides come from ``hitl_preferences`` rows.
     Tools listed in ``LOCKED_HITL_TOOLS`` are always returned with
     ``requires_confirmation=true, locked=true`` regardless of the user
     override (defence-in-depth — the resolver also enforces this).
+
+    Descriptions sont localisées via le header ``Accept-Language`` (FR par
+    défaut, EN si commence par « en »).
     """
+    descriptions = _pick_lang(accept_language)
+
     async with async_session() as db:
         rows = await db.execute(
             select(HitlPreference.tool_name, HitlPreference.requires_confirmation)
@@ -116,7 +183,7 @@ async def list_preferences(current_user: User = Depends(get_current_user)) -> li
             tool_name=tool_name,
             requires_confirmation=requires,
             locked=is_locked,
-            description=_TOOL_DESCRIPTIONS.get(tool_name),
+            description=descriptions.get(tool_name),
         ))
     return out
 

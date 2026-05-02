@@ -123,6 +123,21 @@ export async function refreshAccessToken(): Promise<string | null> {
  *  2. On 401 → tries one token refresh then retries
  *  3. On second 401 → clears session and throws
  */
+/** Read the user's chosen UI locale from the NEXT_LOCALE cookie set by next-intl.
+ *  Used to forward the language to the backend so it can localise human-facing
+ *  strings (HITL tool descriptions, error messages, etc.). Falls back to the
+ *  browser navigator.language if the cookie isn't set yet. */
+function getActiveLocale(): string {
+  if (typeof document !== "undefined") {
+    const m = document.cookie.match(/(?:^|; )NEXT_LOCALE=([^;]+)/);
+    if (m && m[1]) return m[1];
+  }
+  if (typeof navigator !== "undefined" && navigator.language) {
+    return navigator.language;
+  }
+  return "fr";
+}
+
 export async function authFetch(
   input: RequestInfo,
   init: RequestInit = {},
@@ -130,6 +145,12 @@ export async function authFetch(
   const token = getAccessToken();
   const headers = new Headers(init.headers ?? {});
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  // Forward the user's chosen UI locale so the backend can localise
+  // human-facing strings (HITL tool descriptions, etc.). Don't override
+  // a caller-provided value.
+  if (!headers.has("Accept-Language")) {
+    headers.set("Accept-Language", getActiveLocale());
+  }
 
   const res = await fetch(input, { ...init, headers, credentials: "include" });
 
@@ -139,6 +160,9 @@ export async function authFetch(
 
     const retryHeaders = new Headers(init.headers ?? {});
     retryHeaders.set("Authorization", `Bearer ${newToken}`);
+    if (!retryHeaders.has("Accept-Language")) {
+      retryHeaders.set("Accept-Language", getActiveLocale());
+    }
     return fetch(input, { ...init, headers: retryHeaders, credentials: "include" });
   }
 
