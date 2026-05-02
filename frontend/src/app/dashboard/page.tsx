@@ -17,7 +17,7 @@
  *   - INTERDIT : Redistribution de versions modifiées de ce code.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -83,38 +83,52 @@ function formatCost(n: number): string {
 
 // ── SVG Bar Chart ─────────────────────────────────────────────────────────────
 
-function BarChart({ data, height = 120, noDataLabel }: { data: DailyUsage[]; height?: number; noDataLabel: string }) {
+function BarChart({ data, height = 140, noDataLabel }: { data: DailyUsage[]; height?: number; noDataLabel: string }) {
+  // Mesure le parent pour rendre le SVG responsive sans déformation.
+  // Bug fix mai 2026 : l'ancien code utilisait preserveAspectRatio="none"+
+  // w-full, ce qui étirait horizontalement le SVG (et donc bars + texte)
+  // dès que le container dépassait 500px de large. Désormais on rend le
+  // SVG à la largeur RÉELLE du parent, recalculée via ResizeObserver.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(800);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const w = Math.max(320, Math.floor(e.contentRect.width));
+        setContainerW(w);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (!data.length) return (
     <div className="flex items-center justify-center h-32 text-text-muted text-sm">
       {noDataLabel}
     </div>
   );
 
-  // Layout: les bars remplissent EXACTEMENT la largeur dispo (~500px),
-  // les labels X-axis sont positionnés AU CENTRE de leur bar via SVG <text>
-  // (et non plus via flex justify-between qui désalignait labels et bars
-  // — bug visible mai 2026 : utilisateur croyait que le graphe s'arrêtait
-  // avant la dernière date affichée à droite).
-  const SVG_W = 500;
   const PAD_RIGHT = 8;
-  const usable = SVG_W - PAD_RIGHT;
+  const usable = containerW - PAD_RIGHT;
   const maxTokens = Math.max(...data.map((d) => d.tokens), 1);
-  const slot = usable / data.length;            // largeur d'une "case" (bar + gap)
-  const barWidth = Math.max(2, slot * 0.8);     // 80% de la case = la bar, 20% = espace
-  const labelEvery = Math.max(1, Math.ceil(data.length / 6));  // max 6 labels visibles
+  const slot = usable / data.length;
+  const barWidth = Math.max(2, slot * 0.78);
+  // ~1 label tous les ceil(N/8) bars + toujours le dernier (= aujourd'hui)
+  const labelEvery = Math.max(1, Math.ceil(data.length / 8));
 
   return (
-    <div className="overflow-x-auto">
+    <div ref={containerRef} className="w-full">
       <svg
-        width={SVG_W}
+        width={containerW}
         height={height + 30}
-        viewBox={`0 0 ${SVG_W} ${height + 30}`}
-        className="text-cyber-cyan w-full"
-        preserveAspectRatio="none"
+        className="text-cyber-cyan block"
       >
         {data.map((d, i) => {
           const barH = Math.max(2, (d.tokens / maxTokens) * height);
-          const cx = i * slot + slot / 2;            // centre de la case
+          const cx = i * slot + slot / 2;
           const x = cx - barWidth / 2;
           const y = height - barH;
           const isRecent = i >= data.length - 7;
@@ -132,14 +146,10 @@ function BarChart({ data, height = 120, noDataLabel }: { data: DailyUsage[]; hei
             </rect>
           );
         })}
-        {/* X-axis line */}
         <line
           x1={0} y1={height} x2={usable} y2={height}
           stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
         />
-        {/* X-axis labels — positionnés au centre exact de leur bar.
-            On affiche ~1 label tous les `labelEvery` bars + toujours le dernier
-            (= aujourd'hui) pour qu'il soit lisible. */}
         {data.map((d, i) => {
           const showLabel = i % labelEvery === 0 || i === data.length - 1;
           if (!showLabel) return null;
@@ -150,9 +160,9 @@ function BarChart({ data, height = 120, noDataLabel }: { data: DailyUsage[]; hei
               x={cx}
               y={height + 18}
               textAnchor="middle"
-              fontSize="10"
+              fontSize="11"
               fill="currentColor"
-              fillOpacity={0.55}
+              fillOpacity={0.6}
             >
               {d.day.slice(5)}
             </text>

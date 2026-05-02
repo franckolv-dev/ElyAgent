@@ -1,0 +1,3 @@
+# Playwright auto-installed browsers + node_modules
+node_modules/
+out/

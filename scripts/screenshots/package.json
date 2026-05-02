@@ -1,0 +1,16 @@
+{
+  "name": "ely-screenshots",
+  "version": "1.0.0",
+  "description": "Automated screenshots of ELY UI for the agent-ely.fr website",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "shoot": "node take-screenshots.mjs",
+    "shoot:headed": "ELY_HEADED=1 node take-screenshots.mjs",
+    "shoot:remote": "ELY_BASE_URL=https://ely.catalogmaker.fr ELY_API_URL=https://ely.catalogmaker.fr node take-screenshots.mjs",
+    "install:browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
