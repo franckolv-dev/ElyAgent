@@ -1,3 +1,7 @@
 # Playwright auto-installed browsers + node_modules
 node_modules/
 out/
+
+# Local credentials — JAMAIS commiter (contient password admin en clair)
+.env.local
+.env.*.local

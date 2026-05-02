@@ -5,9 +5,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "shoot": "node take-screenshots.mjs",
-    "shoot:headed": "ELY_HEADED=1 node take-screenshots.mjs",
-    "shoot:remote": "ELY_BASE_URL=https://ely.catalogmaker.fr ELY_API_URL=https://ely.catalogmaker.fr node take-screenshots.mjs",
+    "shoot": "node --env-file-if-exists=.env.local take-screenshots.mjs",
+    "shoot:headed": "ELY_HEADED=1 node --env-file-if-exists=.env.local take-screenshots.mjs",
+    "shoot:remote": "ELY_BASE_URL=https://ely.catalogmaker.fr ELY_API_URL=https://ely.catalogmaker.fr node --env-file-if-exists=.env.local take-screenshots.mjs",
     "install:browser": "playwright install chromium"
   },
   "dependencies": {
