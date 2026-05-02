@@ -70,38 +70,39 @@ const LOCALES = ["fr", "en"];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** POST /auth/login → { access_token } */
-async function loginAndGetToken() {
-  const res = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: LOGIN, password: PASSWORD }),
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Login failed (${res.status}): ${txt.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`Login OK but no access_token in response`);
-  return data.access_token;
-}
-
-/** Inject locale cookie + theme + token in localStorage BEFORE the page loads. */
-async function preparePage(context, token, theme, locale) {
-  // Locale via cookie NEXT_LOCALE (next-intl pattern)
+/** Login via l'UI réelle (formulaire /login). Pose à la fois localStorage
+ *  ET le refresh-cookie HttpOnly comme un vrai user — bien plus robuste
+ *  que d'injecter le token via addInitScript (qui peut se faire bypass par
+ *  des checks asynchrones de Next.js au mount). */
+async function browserLogin(context, theme, locale) {
+  // 1. Locale via cookie NEXT_LOCALE — posé AVANT toute navigation
   await context.addCookies([{
     name: "NEXT_LOCALE",
     value: locale,
     url: BASE_URL,
     sameSite: "Lax",
   }]);
-  // Theme + token via localStorage — injectés AVANT navigation via init script
-  await context.addInitScript(({ tk, th }) => {
-    try {
-      window.localStorage.setItem("cyber_entity_token", tk);
-      window.localStorage.setItem("ely-theme", th);
-    } catch (e) { /* SecurityError on first navigation, ignored */ }
-  }, { tk: token, th: theme });
+  // 2. Theme via localStorage — injecté AVANT navigation
+  await context.addInitScript((th) => {
+    try { window.localStorage.setItem("ely-theme", th); } catch (e) {}
+  }, theme);
+
+  // 3. Login via le formulaire /login (bien plus robuste que injecter le
+  //    token : ça pose AUSSI le refresh-cookie HttpOnly, gère les redirects,
+  //    et nous met dans le même état qu'un vrai user qui se connecte)
+  const page = await context.newPage();
+  await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+
+  // Cible les inputs username + password (différentes variantes possibles
+  // selon la langue de l'UI, donc on prend par type/name plutôt que label)
+  await page.fill('input[name="username"], input[type="text"]:first-of-type, input[autocomplete="username"]', LOGIN);
+  await page.fill('input[type="password"]', PASSWORD);
+  await page.click('button[type="submit"], button:has-text("Connexion"), button:has-text("Login"), button:has-text("Se connecter")');
+
+  // Attend la redirection hors de /login (=  succès)
+  await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: 15_000 });
+  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  await page.close();
 }
 
 /** Wait for the page to be visually settled. */
@@ -125,10 +126,6 @@ async function run() {
 
   await mkdir(OUT_DIR, { recursive: true });
 
-  console.log(`▶ Authenticating as ${LOGIN}…`);
-  const token = await loginAndGetToken();
-  console.log(`  ✓ Token obtained (${token.length} chars)`);
-
   const browser = await chromium.launch({ headless: !HEADED });
   let count = 0;
   const total = PAGES.length * THEMES.length * LOCALES.length;
@@ -144,7 +141,16 @@ async function run() {
           // s'y appuient (au cas où data-theme ne suffirait pas)
           colorScheme: theme,
         });
-        await preparePage(context, token, theme, locale);
+        // Login UI réel — pose toutes les cookies + localStorage qu'un user normal aurait
+        process.stdout.write(`  ▶ login as ${LOGIN} (${locale}/${theme})…`);
+        try {
+          await browserLogin(context, theme, locale);
+          console.log(" ✓");
+        } catch (err) {
+          console.log(` ✗ ${err.message.split("\n")[0]}`);
+          await context.close();
+          continue;  // skip cette combo si le login a foiré
+        }
 
         for (const p of PAGES) {
           count++;
