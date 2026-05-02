@@ -29,7 +29,7 @@ import {
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
   Monitor, Download, Plus, Trash2, Wifi, WifiOff, Lock, Eye, EyeOff,
   GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight, User,
-  Plug, Sparkles,
+  Plug, Sparkles, Zap,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations, useLocale } from "next-intl";
@@ -120,6 +120,14 @@ const PROVIDERS = [
     needsKey: true,
     defaultModel: "gpt-4o-mini",
     docsUrl: "https://platform.openai.com/api-keys",
+  },
+  {
+    id: "moonshot",
+    label: "Moonshot — Kimi K2.x",
+    flag: "🌙",  // Endpoint default = international (.ai), drapeau neutre
+    needsKey: true,
+    defaultModel: "kimi-k2-0905-preview",
+    docsUrl: "https://platform.moonshot.ai/",
   },
 ];
 
@@ -271,6 +279,9 @@ export default function SettingsPage() {
   const [tierInstances, setTierInstances] = useState<Array<{id: string; label: string; provider: string; model: string; has_key: boolean}>>([]);
   const [savingTiers, setSavingTiers]     = useState(false);
   const [tierTooltip, setTierTooltip]     = useState<string | null>(null);
+  // Mono-agent mode toggle (mai 2026) — bypass router, force `general` everywhere
+  const [monoAgent, setMonoAgent]         = useState<boolean>(false);
+  const [monoAgentSaving, setMonoAgentSaving] = useState<boolean>(false);
 
   // Desktop state
   const [desktopConnected, setDesktopConnected] = useState<boolean | null>(null);
@@ -569,6 +580,46 @@ export default function SettingsPage() {
   useEffect(() => {
     loadTierConfig();
   }, [loadTierConfig]);
+
+  // Load mono-agent flag (admin only)
+  const loadMonoAgent = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/settings/llm/mono-agent`);
+      if (!res.ok) return;
+      const d = await res.json();
+      setMonoAgent(!!d.enabled);
+    } catch { /* silently ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (admin) loadMonoAgent();
+  }, [admin, loadMonoAgent]);
+
+  const handleToggleMonoAgent = async () => {
+    if (monoAgentSaving) return;
+    const next = !monoAgent;
+    setMonoAgentSaving(true);
+    setMonoAgent(next); // optimistic
+    try {
+      const res = await authFetch(`${API_URL}/api/settings/llm/mono-agent`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!res.ok) {
+        setMonoAgent(!next); // rollback
+        const err = await res.json().catch(() => ({}));
+        push("error", err.detail ?? `HTTP ${res.status}`);
+      } else {
+        push("success", next ? "Mode mono-agent activé" : "Mode mono-agent désactivé");
+      }
+    } catch {
+      setMonoAgent(!next);
+      push("error", t("serverUnreachable"));
+    } finally {
+      setMonoAgentSaving(false);
+    }
+  };
 
   // Check Google connection status
   useEffect(() => {
@@ -1160,6 +1211,76 @@ export default function SettingsPage() {
                 <p className="tab-intro">
                   {t("routingDescription")}
                 </p>
+
+                {/* ── Mono-agent mode toggle (mai 2026) ────────────────────
+                    Court-circuite tout le routeur (keyword + LLM + sticky)
+                    et envoie chaque requête sur le specialist `general` qui
+                    a accès à TOUS les tools. Idéal pour valider un nouveau
+                    modèle agentique long-contexte (Kimi K2.6 par ex.) sans
+                    subir les erreurs de classification. ─────────────────── */}
+                <div
+                  className="card"
+                  style={{
+                    width: "100%",
+                    marginBottom: 16,
+                    borderColor: monoAgent ? "var(--accent)" : "var(--border-subtle)",
+                    background: monoAgent ? "var(--accent-soft)" : "var(--bg-surface)",
+                    transition: "all 0.15s var(--ease)",
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-4" style={{ padding: 4 }}>
+                    <div style={{ flex: 1 }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Zap size={14} style={{ color: monoAgent ? "var(--accent)" : "var(--text-secondary)" }} />
+                        <h3 className="text-sm font-semibold" style={{ color: monoAgent ? "var(--accent)" : "var(--text-primary)" }}>
+                          Mode mono-agent {monoAgent && "— ACTIF"}
+                        </h3>
+                      </div>
+                      <p className="text-xs" style={{ color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                        Court-circuite le routeur de classification : chaque requête est envoyée
+                        au specialist <code style={{ color: "var(--accent)" }}>general</code> qui a
+                        accès à <strong>tous les tools</strong> (workspace, research, infra,
+                        memory, creative, desktop). Recommandé pour valider un modèle
+                        agentique long-contexte (Kimi K2.6, Claude Sonnet 4.6, GPT-5).
+                        L'inférence est plus longue (≈148 tools bindés vs ~40), mais aucune
+                        requête multi-domaine n'est ratée par erreur de routing.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleMonoAgent}
+                      disabled={monoAgentSaving}
+                      role="switch"
+                      aria-checked={monoAgent}
+                      title={monoAgent ? "Désactiver le mode mono-agent" : "Activer le mode mono-agent"}
+                      style={{
+                        position: "relative",
+                        width: 44,
+                        height: 24,
+                        borderRadius: 999,
+                        border: "1px solid " + (monoAgent ? "var(--accent)" : "var(--border-subtle)"),
+                        background: monoAgent ? "var(--accent)" : "var(--bg-surface-2)",
+                        cursor: monoAgentSaving ? "wait" : "pointer",
+                        transition: "all 0.15s var(--ease)",
+                        flexShrink: 0,
+                        marginTop: 4,
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 2,
+                          left: monoAgent ? 22 : 2,
+                          width: 18,
+                          height: 18,
+                          borderRadius: "50%",
+                          background: monoAgent ? "var(--text-on-accent)" : "var(--text-secondary)",
+                          transition: "left 0.15s var(--ease), background 0.15s var(--ease)",
+                        }}
+                      />
+                    </button>
+                  </div>
+                </div>
 
                 {routingItems.length === 0 && (
                   <div className="mb-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">

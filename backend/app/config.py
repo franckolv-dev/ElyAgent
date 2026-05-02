@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     lm_studio_base_url: str = "http://host.docker.internal:1234/v1"
     qwen_api_key: str = ""          # Alibaba Cloud DashScope (Qwen API)
     qwen_api_base_url: str = ""     # Region-scoped DashScope OpenAI-compatible endpoint
+    moonshot_api_key: str = ""      # Moonshot AI / Kimi K2.x — https://platform.moonshot.ai
+    moonshot_base_url: str = "https://api.moonshot.ai/v1"  # `.cn` for China region
     active_llm_provider: str = "anthropic"
     active_llm_model: str = "claude-haiku-4-5-20251001"
 

@@ -368,6 +368,7 @@ export default function DashboardPage() {
                       mistral:   "bg-orange-400",
                       deepseek:  "bg-purple-500",
                       ollama:    "bg-emerald-500",
+                      moonshot:  "bg-indigo-500",
                     };
                     const color = PROVIDER_COLORS[p.provider] ?? "bg-text-muted";
                     return (

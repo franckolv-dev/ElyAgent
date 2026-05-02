@@ -92,6 +92,10 @@ async def lifespan(app: FastAPI):
     from app.services.llm_provider import load_llm_settings_from_db
     await load_llm_settings_from_db()
 
+    # Load mono-agent toggle (admin: Paramètres → Routage)
+    from app.services.mono_agent import load_mono_agent_flag
+    await load_mono_agent_flag()
+
     await get_memory_manager().init_collections()
     await get_fts_store().init()
 

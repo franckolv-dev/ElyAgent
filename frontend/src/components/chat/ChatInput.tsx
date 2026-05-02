@@ -393,70 +393,74 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
     // Pas de border-top, pas de fond, juste un padding pour aérer.
     <div style={{ padding: "0", background: "transparent" }}>
 
-      {/* ── Screen capture preview chip ── */}
-      {screenCapture && (
-        <div className="flex items-center gap-2 mb-2">
-          <div className="relative inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-cyber-cyan/40 bg-cyber-cyan/10 text-[11px] text-cyber-cyan">
-            <Monitor className="w-3 h-3 shrink-0" />
-            <span>Capture d&apos;écran prête</span>
-            <button
-              type="button"
-              onClick={() => setScreenCapture(null)}
-              className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
-              title={t("removeCapture")}
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-          {/* Miniature */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`data:image/png;base64,${screenCapture}`}
-            alt={t("capturePreview")}
-            className="h-10 rounded border border-cyber-cyan/30 object-cover cursor-pointer"
-            title={t("screenshotPreview")}
-          />
-        </div>
-      )}
-
-      {/* ── Attachment chips ── */}
-      {pendingFiles.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {pendingFiles.map((pf) => (
-            <div
-              key={pf.localId}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] max-w-[200px] ${
-                pf.error
-                  ? "bg-red-500/10 border-red-500/30 text-red-300"
-                  : pf.uploading
-                  ? "bg-cyber-cyan/5 border-cyber-cyan/20 text-text-muted animate-pulse"
-                  : "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan"
-              }`}
-            >
-              {pf.uploading ? (
-                <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
-              ) : (
-                <FileIcon filename={pf.filename} />
-              )}
-              <span className="truncate flex-1">{pf.filename}</span>
-              <span className="text-text-muted shrink-0">{formatSize(pf.size)}</span>
-              {!pf.uploading && (
-                <button
-                  type="button"
-                  onClick={() => removeFile(pf.localId)}
-                  className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-                  title={t("removeFile")}
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Input dock — textarea above, icon row below (refonte mai 2026) ── */}
+      {/* ── Input dock — chips au-dessus du textarea, icon row dessous.
+            Les chips d'attachements et de capture d'écran sont placés DANS
+            le dock pour rester alignés avec la zone de saisie (même fond,
+            même padding, mêmes coins arrondis). Avant ils étaient au-dessus
+            du dock et flottaient bizarrement à gauche du conteneur. ── */}
       <div className="ely-input-dock">
+        {/* ── Screen capture preview chip ── */}
+        {screenCapture && (
+          <div className="flex items-center gap-2">
+            <div className="relative inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-cyber-cyan/40 bg-cyber-cyan/10 text-[11px] text-cyber-cyan">
+              <Monitor className="w-3 h-3 shrink-0" />
+              <span>Capture d&apos;écran prête</span>
+              <button
+                type="button"
+                onClick={() => setScreenCapture(null)}
+                className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
+                title={t("removeCapture")}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            {/* Miniature */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`data:image/png;base64,${screenCapture}`}
+              alt={t("capturePreview")}
+              className="h-10 rounded border border-cyber-cyan/30 object-cover cursor-pointer"
+              title={t("screenshotPreview")}
+            />
+          </div>
+        )}
+
+        {/* ── Attachment chips ── */}
+        {pendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {pendingFiles.map((pf) => (
+              <div
+                key={pf.localId}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] max-w-[200px] ${
+                  pf.error
+                    ? "bg-red-500/10 border-red-500/30 text-red-300"
+                    : pf.uploading
+                    ? "bg-cyber-cyan/5 border-cyber-cyan/20 text-text-muted animate-pulse"
+                    : "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan"
+                }`}
+              >
+                {pf.uploading ? (
+                  <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+                ) : (
+                  <FileIcon filename={pf.filename} />
+                )}
+                <span className="truncate flex-1">{pf.filename}</span>
+                <span className="text-text-muted shrink-0">{formatSize(pf.size)}</span>
+                {!pf.uploading && (
+                  <button
+                    type="button"
+                    onClick={() => removeFile(pf.localId)}
+                    className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                    title={t("removeFile")}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         <textarea
           ref={textareaRef}
           value={value}

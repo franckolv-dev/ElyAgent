@@ -548,9 +548,13 @@ def create_agent_node():
             # Bind tools only for COMPLEX queries OR when the query explicitly mentions
             # tool-related actions. SIMPLE/MEDIUM small-talk and quick facts skip binding.
             _tool_kw = re.compile(
+                # « rdv » / « rendez-vous » / « réunion » / « meeting » ajoutés
+                # (mai 2026) — sans eux, « Mes RDV cette semaine » échappait au
+                # bind_tools et le LLM hallucinait un agenda inventé.
                 r"\b(envoie|crée|liste|cherche|trouve|génère|exécute|lance|"
                 r"planifie|programme|note|enregistre|sauvegarde|"
-                r"mail|email|calendrier|drive|sheet|doc|tâche|rappel|note|"
+                r"mail|email|calendrier|agenda|rendez.?vous|rdvs?|réunions?|meetings?|"
+                r"drive|sheet|doc|tâche|rappel|note|"
                 r"fichier|capture|screenshot|météo|news|traduis)\b",
                 re.IGNORECASE,
             )

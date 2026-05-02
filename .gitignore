@@ -74,3 +74,14 @@ test-runner/run*.log
 test-runner/hitl*.log
 test-runner/smoke*.log
 test-runner/cleanup*.log
+
+# Local backups created by manual edits (jamais commiter — peuvent contenir
+# secrets ou versions intermédiaires)
+*.bak
+*.bak.*
+*.backup
+*~
+
+# Reports & ad-hoc analyses
+gemini-report.md
+*-report.md

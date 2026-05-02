@@ -202,6 +202,7 @@ async def load_llm_settings_from_db() -> None:
             "openrouter":  "api_key_openrouter",
             "qwen_api":    "api_key_qwen_api",
             "openai":      "api_key_openai",
+            "moonshot":    "api_key_moonshot",
         }
         for prov, cfg_key in key_map.items():
             val = await get_config(cfg_key, "")
@@ -362,6 +363,24 @@ def _make_openrouter(model: str, api_key: str, max_tokens: int = 4096, temperatu
     )
 
 
+def _make_moonshot(model: str, api_key: str, base_url: str = "", max_tokens: int = 4096, temperature: float = 0.7) -> BaseChatModel:
+    """Instantiate Kimi (Moonshot AI) via leur endpoint OpenAI-compatible.
+
+    Moonshot publie Kimi K1.5, K2, K2.6 — modèles taillés pour l'agentique
+    (long contexte, function calling natif solide). Endpoint international :
+    https://api.moonshot.ai/v1 — région CN : https://api.moonshot.cn/v1
+    Doc : https://platform.moonshot.ai/docs/api/chat
+    """
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url=base_url or "https://api.moonshot.ai/v1",
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+
 def _make_glm(model: str, api_key: str, max_tokens: int = 4096, temperature: float = 0.7) -> BaseChatModel:
     """Instantiate GLM-4.x via Zhipu AI's OpenAI-compatible endpoint.
 
@@ -459,6 +478,13 @@ def get_llm() -> BaseChatModel:
             base_url="https://api.deepseek.com/v1",
             max_tokens=4096,
             temperature=0.7,
+        )
+
+    elif provider == "moonshot":
+        return _make_moonshot(
+            model=model,
+            api_key=_key("moonshot", settings.moonshot_api_key),
+            base_url=settings.moonshot_base_url,
         )
 
     elif provider == "openrouter":
@@ -657,6 +683,14 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
             temperature=temperature,
         )
 
+    elif provider == "moonshot":
+        return _make_moonshot(
+            model=model,
+            api_key=_key("moonshot", settings.moonshot_api_key),
+            base_url=settings.moonshot_base_url,
+            temperature=temperature,
+        )
+
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
@@ -762,6 +796,21 @@ def _make_llm_for_provider(
             model="deepseek-chat",
             api_key=key,
             base_url="https://api.deepseek.com/v1",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+    if provider_id == "moonshot":
+        key = _key("moonshot", settings.moonshot_api_key)
+        if not key:
+            return None
+        # Default model when the tier picks "moonshot" without specifying one.
+        # Override per-instance via la table llm_instances depuis la page
+        # « Modèles IA » des paramètres.
+        return _make_moonshot(
+            model="kimi-k2-0905-preview",
+            api_key=key,
+            base_url=settings.moonshot_base_url,
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -891,6 +940,13 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
             return None
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=model, api_key=key, base_url="https://api.deepseek.com/v1", max_tokens=max_tokens, temperature=temperature)
+
+    if provider == "moonshot":
+        key = api_key or settings.moonshot_api_key
+        if not key:
+            return None
+        return _make_moonshot(model=model, api_key=key, base_url=settings.moonshot_base_url,
+                              max_tokens=max_tokens, temperature=temperature)
 
     if provider == "mistral":
         key = api_key or settings.mistral_api_key
@@ -1048,6 +1104,8 @@ def describe_llm(llm) -> tuple[str, str]:
             return "openrouter", model
         if "deepseek" in base_url:
             return "deepseek", model
+        if "moonshot" in base_url:
+            return "moonshot", model
         if "zhipu" in base_url or "bigmodel" in base_url:
             return "zhipu", model
         if "openai.com" in base_url or not base_url:

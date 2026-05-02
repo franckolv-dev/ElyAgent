@@ -144,6 +144,20 @@ PROVIDERS_META = [
             "qwen-vl-max-latest",
         ],
     },
+    {
+        "id": "moonshot",
+        "name": "Moonshot — Kimi K2.x",
+        "env_key": "MOONSHOT_API_KEY",
+        "config_key": "api_key_moonshot",
+        # Kimi K2.x — modèles agentiques long-contexte (128k → 256k)
+        # de Moonshot AI. La page peut évoluer rapidement, le user peut
+        # taper le nom exact si différent.
+        "models": [
+            "kimi-k2.6-preview", "kimi-k2-0905-preview", "kimi-k2-0711-preview",
+            "kimi-k1.5-preview", "kimi-latest",
+            "moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k",
+        ],
+    },
 ]
 
 _PROVIDER_IDS = {p["id"] for p in PROVIDERS_META}
@@ -292,9 +306,10 @@ async def update_llm_settings(
 
     # Validate model belongs to this provider.
     # OpenRouter is skipped (dynamic catalogue).
-    # Ollama, LM Studio and Qwen API are skipped: models are fetched/typed live.
+    # Ollama, LM Studio, Qwen API and Moonshot are skipped: models are fetched
+    # ou tapés librement (Moonshot publie de nouvelles versions Kimi régulièrement).
     meta = next(p for p in PROVIDERS_META if p["id"] == body.provider)
-    if body.provider not in ("openrouter", "ollama", "lm_studio", "qwen_api") and body.model not in meta["models"]:
+    if body.provider not in ("openrouter", "ollama", "lm_studio", "qwen_api", "moonshot") and body.model not in meta["models"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Model '{body.model}' not available for provider '{body.provider}'.",
@@ -746,3 +761,34 @@ async def update_tier_config_endpoint(
 
     logger.info("Tier routing config updated by admin %s", admin.id)
     return {"ok": True, "config": serializable}
+
+
+# ---------------------------------------------------------------------------
+# Mono-agent mode toggle (admin only)
+# ---------------------------------------------------------------------------
+
+class MonoAgentUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/mono-agent", status_code=status.HTTP_200_OK)
+async def get_mono_agent(admin: User = Depends(require_admin)) -> dict:
+    """Return the current mono-agent flag."""
+    from app.services.mono_agent import is_mono_agent_enabled
+    return {"enabled": is_mono_agent_enabled()}
+
+
+@router.put("/mono-agent", status_code=status.HTTP_200_OK)
+async def update_mono_agent(
+    body: MonoAgentUpdate,
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Persist + hot-reload the mono-agent flag.
+
+    Quand activé, toutes les requêtes utilisateur court-circuitent le router
+    et passent par le specialist `general` qui a accès à TOUS les tools.
+    """
+    from app.services.mono_agent import save_mono_agent_flag
+    await save_mono_agent_flag(body.enabled)
+    logger.info("Mono-agent mode set to %s by admin %s", body.enabled, admin.id)
+    return {"ok": True, "enabled": body.enabled}

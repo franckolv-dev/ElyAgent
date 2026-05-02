@@ -224,6 +224,23 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "Tu maîtrises Gmail, Google Calendar, Google Drive, Google Docs, Google "
         "Sheets, Google Tasks et Google Contacts. Tu aides l'utilisateur à gérer "
         "sa vie numérique Google de façon efficace. Toujours donner l'URL après chaque création.\n\n"
+        "ANTI-HALLUCINATION TOOLS — IMPÉRATIF :\n"
+        "Tes outils couvrent UNIQUEMENT Google Workspace. Si la demande nécessite "
+        "AUSSI de la recherche web, WhatsApp, SSH, météo, etc., NE PRÉTENDS JAMAIS "
+        "que ces outils n'existent — Éli les a, mais c'est un autre specialist qui "
+        "les manipule. Réponse correcte : « Cette demande mélange Google Workspace "
+        "et [recherche web / WhatsApp / autre] — je peux faire la partie Workspace, "
+        "redemande la suite dans un nouveau message pour que je passe la main au "
+        "bon specialist. » NE DIS JAMAIS « je ne peux pas chercher sur le web » "
+        "ou « je ne peux pas envoyer de WhatsApp ».\n\n"
+        "FILTRES DATE GMAIL — PIÈGE CONNU :\n"
+        "L'opérateur `after:` de Gmail Search Query Language ignore SILENCIEUSEMENT "
+        "la partie horaire. `after:2026/05/01 18:00` est interprété comme "
+        "`after:2026/05/01 00:00`. Pour un filtre précis à l'heure (« depuis hier "
+        "18h », « depuis ce matin 8h »), utilise un Unix timestamp en secondes : "
+        "`after:1746115200`. Calcule-le toi-même à partir de la date courante. "
+        "Pour les filtres en jours pleins, `after:YYYY/MM/DD` ou `newer_than:Nd` "
+        "restent corrects.\n\n"
         "RÈGLE ABSOLUE D'EXÉCUTION : Appelle TOUJOURS les outils directement et immédiatement "
         "sans annoncer en texte ce que tu vas faire. Ne dis JAMAIS 'je vais chercher', "
         "'je vais lancer', 'je vais effectuer' — appelle l'outil sans commentaire. "
@@ -438,6 +455,14 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "directive LANGUE/LANGUAGE en tête de ce prompt — respecte-la.\n\n"
         "Rappel outils clés : system_info (infos machine, RAM, CPU, OS, disque), "
         "weather_get (météo), news_get_headlines (actualités).\n\n"
+        "📋 RÈGLE STRUCTURE DE DOCUMENT (Doc / Sheet / note structurée) :\n"
+        "Quand tu produis un document avec plusieurs sections nommées par "
+        "l'utilisateur, ne laisse JAMAIS une section vide. Si tu n'as pas trouvé "
+        "de contenu pertinent pour une section donnée, écris explicitement "
+        "« Rien à signaler aujourd'hui » ou « Aucun élément retourné par les "
+        "outils — section laissée volontairement courte ». Une section avec "
+        "juste un titre suivi du vide est perçue comme une troncation par "
+        "l'utilisateur, alors que c'est juste un manque de données.\n\n"
         "🔍 RÈGLE ANTI-HALLUCINATION CRITIQUE — auto-introspection :\n"
         "Quand l'utilisateur te pose une question sur TOI-MÊME ou ton fonctionnement "
         "(modèle utilisé, providers LLM, logs, missions, tâches planifiées, canaux, "
@@ -542,10 +567,14 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
         # "messages" added — common French phrasing : « supprime les messages
         # dans le répertoire X » means Gmail label X, not a filesystem folder.
         # Also "labels?" and "étiquettes?" since Gmail-savvy users use these.
+        # « rdv » / « rdvs » added (mai 2026) — abréviation FR très utilisée :
+        # « Mes RDV cette semaine » tombait au LLM router et finissait sur le
+        # handler general SANS tools, causant une hallucination complète d'un
+        # agenda inventé. Désormais routé direct sur workspace.
         r"\b(gmail|emails?|mails?|messages?|courriels?|messagerie|inbox|boîte|courrier|"
         r"labels?|étiquettes?|"
         r"brouillons?|drafts?|répondre? (à|au)|"
-        r"calendar|calendrier|agenda|rendez.?vous|événements?|réunions?|meetings?|"
+        r"calendar|calendrier|agenda|rendez.?vous|rdvs?|événements?|réunions?|meetings?|"
         r"drive|dossiers?|fichiers?(?!.*local)|documents?(?!.*pdf)|google doc|gdoc|"
         r"sheets?|tableurs?|spreadsheets?|excel|"
         r"tasks?|tâches?|to.?do|todo|"
@@ -734,9 +763,24 @@ def _quick_route(msg: str) -> str | None:
     ):
         return "infra"
 
+    # Multi-domain detection (mai 2026) : avant de prendre le premier domain
+    # qui match, on regarde si la query croise plusieurs domaines distincts.
+    # Cas typique cassé avant ce fix :
+    #   « Cherche sur le web X, mets-le dans un Google Doc, envoie par WhatsApp »
+    # → matchait workspace en premier (à cause de « Google Doc »), routait sur
+    # le specialist workspace qui n'a NI web_search NI whatsapp, et le LLM
+    # hallucinait « ces outils n'existent pas ». Désormais on route sur
+    # « general » qui a TOUS les outils dispo.
+    matched_domains: list[str] = []
     for domain, pattern in _ROUTER_PATTERNS:
-        if pattern.search(msg):
-            return domain
+        if pattern.search(msg) and domain not in matched_domains:
+            matched_domains.append(domain)
+
+    if len(matched_domains) >= 2:
+        # Vraiment multi-domaine — bascule sur general
+        return "general"
+    if len(matched_domains) == 1:
+        return matched_domains[0]
     return None
 
 
@@ -750,6 +794,18 @@ async def router_node(state: AgentState) -> dict:
         if isinstance(m, HumanMessage):
             last_user_msg = m.content[:500]  # truncate for speed
             break
+
+    # ── Mono-agent mode (mai 2026) — admin toggle ─────────────────────────
+    # Quand activé dans Paramètres → Routage, on court-circuite TOUT le
+    # router (keyword + LLM + sticky) et on envoie chaque requête sur le
+    # specialist `general` qui a accès à TOUS les tools. Idéal pour valider
+    # un nouveau modèle agentique (Kimi K2.6 par ex.) sans subir les
+    # erreurs de classification.
+    from app.services.mono_agent import is_mono_agent_enabled
+    if is_mono_agent_enabled():
+        logger.warning("⏱ TIMING[router-mono] %.3fs → forced general (msg=%.60s)",
+                       _t.monotonic() - _start, last_user_msg)
+        return {"domain": "general"}
 
     # ── Early guard: skip empty/whitespace user messages ──────────────────
     # A WebSocket glitch or a cancelled stream can produce an empty "user"
@@ -813,7 +869,6 @@ async def router_node(state: AgentState) -> dict:
                             "⏱ TIMING[router-sticky-file] follow-up sur fichier workspace → workspace"
                         )
                         return {"domain": "workspace"}
-                        break
 
     # Fallback sticky: the previous turn's domain may have been overwritten
     # (e.g. by a ghost empty message). Scan the last few assistant messages
@@ -916,7 +971,15 @@ def create_specialist_node(domain: Domain):
 
         registry = get_skill_registry()
         memory = get_memory_manager()
-        llm = get_llm()
+        # Avant (mai 2026 fix) : `llm = get_llm()` → tous les specialists tapaient
+        # le LLM "actif global" (souvent un local LM Studio), ignorant la config
+        # tier de l'utilisateur. Désormais on utilise la chaîne tier-medium pour
+        # que la priorité Kimi/Haiku/Qwen définie dans Paramètres → Routage soit
+        # respectée. tier-complex est réservé au handler general qui doit
+        # planifier sur plusieurs tools.
+        from app.services.llm_provider import get_llm_for_tier as _get_llm_for_tier, ComplexityTier as _CT
+        _tier = _CT.COMPLEX if domain == "general" else _CT.MEDIUM
+        llm = _get_llm_for_tier(_tier)
 
         # Filter tools for this specialist (or use all for general)
         if tool_filter is not None:

@@ -34,6 +34,23 @@ ELY is **infra-agnostic by design** — same codebase, three deployment profiles
 
 ---
 
+## What's new — May 2, 2026
+
+Final polish before the public push. UI refresh, agentic robustness, and a new LLM provider :
+
+- **🎨 UI refonte (Claude.ai handoff)** — full design pass on every page : oklch color tokens, Inter + JetBrains Mono fonts, layered surfaces, full-width layouts, cyan accent (`#13bbc2`) unified across all CTAs. Sidebar, topbar, settings tabs, chat dock and avatar panel all revamped. Dark + light themes both supported.
+- **🌙 Moonshot — Kimi K2.x provider** — Kimi K1.5 / K2 / K2.6 (long-context agentic models from Moonshot AI) selectable in Settings → Modèles IA. International endpoint by default (`api.moonshot.ai/v1`), `.cn` region overridable via `MOONSHOT_BASE_URL`.
+- **⚡ Mode mono-agent** — admin toggle in Settings → Routage. When on, every query bypasses the LLM router and goes straight to the `general` specialist with all 148 tools bound. Best for benchmarking long-context agentic models (Kimi K2.6, Claude Sonnet 4.6, GPT-5) without classification errors. ~25s for an 8-tool brief on Kimi K2.6.
+- **🛣️ Multi-domain routing fix** — queries that touch 2+ domains (e.g. *"search web → put in Google Doc → send WhatsApp"*) now route to `general` instead of grabbing the first matching specialist. Specialists also got an anti-hallucination guard : *"if you need a tool from another domain, redirect — don't claim the tool doesn't exist"*.
+- **📅 RDV / abbreviations support** — French abbreviation `RDV` (and variants `rdvs`) added to the workspace router. *"Mes RDV cette semaine"* now properly invokes `calendar_list_events`.
+- **🏆 Arena reflects your real LLMs** — the head-to-head ELO board now picks 2 candidates from your configured `llm_instances` table (Kimi K2, Haiku 4.5, Gemini 3.1, Qwen 3.6, LM Studio locals…) instead of a hardcoded list. Local providers (Ollama, LM Studio) are pinged before being added — no more `[Erreur du modèle : All connection attempts failed]` matches.
+- **📈 Dashboard daily chart** — backfilled with empty days so today's bar shows even when the user hasn't yet generated traffic. Fixes the *"chart stuck on the 28th"* perception.
+- **🤖 Specialists honor tier config** — workspace / research / infra specialists now use `get_llm_for_tier(MEDIUM)` instead of the global active LLM, so the priority list defined in Settings → Routage is respected everywhere (not just in the `general` handler).
+- **📂 Channels endpoint** — `/api/channels/active` returns OFF / ON / LINK state for each channel (web / telegram / discord / slack / whatsapp / android / ntfy), feeding the avatar panel's *Canaux Actifs* widget.
+- **📝 Anti-hallucination guards** — workspace prompt now reminds the LLM that Gmail's `after:` operator silently ignores hours (use Unix timestamps). General prompt enforces *"never leave a section empty in a structured doc — write 'Rien à signaler' instead"*.
+
+---
+
 ## What's new — April 26, 2026
 
 This release was the final pre-public push before the GitHub repo opens and `agent-ely.fr` goes live. Highlights :
