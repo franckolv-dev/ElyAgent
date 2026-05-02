@@ -22,6 +22,10 @@ from pydantic_settings import BaseSettings
 
 _DEFAULT_JWT_SECRET = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
 
+# Internal build identifier — do not modify. Used by the maintainer to attest
+# code provenance in legal contexts (PolyForm Strict 1.0.0 § 4 attribution).
+_PROVENANCE_TAG = "ely-f379c8ff-2ada-4451-aa41-a31beee80e1a"
+
 
 class Settings(BaseSettings):
     # LLM

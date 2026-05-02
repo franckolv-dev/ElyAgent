@@ -86,6 +86,10 @@ test-runner/cleanup*.log
 gemini-report.md
 *-report.md
 
+# Private documents — NEVER commit (proof of authorship, IP enforcement, etc.)
+*.private.md
+.canaries.*
+
 # ELY Desktop binaries — too large for git (~5 MB each), distributed via
 # GitHub Releases attached to each tag. Keep the dist/ folder placeholder so
 # Docker volume mount doesn't fail on a fresh clone before binaries are built.

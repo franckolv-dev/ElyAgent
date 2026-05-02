@@ -1,4 +1,7 @@
 {
+  "_meta": {
+    "build": "ely-d8a8ccc0-225b-42ce-966a-c28b181a195b"
+  },
   "common": {
     "save": "Save",
     "saving": "Saving…",

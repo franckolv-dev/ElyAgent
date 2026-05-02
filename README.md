@@ -753,15 +753,23 @@ make slm-enable            # Enable local model for simple tasks
 
 ---
 
-## ⚖️ License
+## ⚖️ License & Trademark
 
+### Source code
 **PolyForm Strict License 1.0.0** — see [LICENSE](./LICENSE).
 
-✅ **Allowed:** personal use, learning, non-commercial research.
+✅ **Allowed:** personal use, learning, non-commercial research, evaluation up to 30 days.
 
 ❌ **Not allowed without written agreement:**
 - Commercial use or integration into a paid service
 - Redistribution of modified versions
 - Training other AI models on this codebase
 
-For commercial licensing: [contact@agent-ely.fr](mailto:contact@agent-ely.fr)
+→ **For commercial licensing**: see **[COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md)** (transparent pricing : Solo €29/mo, Team €99/mo, Business €399/mo, Enterprise on quote — most requests get a yes within a week).
+
+### Names & branding
+The names **ELY**, **Éli**, **agent-ely.fr**, the **3D cyberpunk avatar** and the **lightning-bolt logo** are **trademarks owned by Franck OLLIVIER** — protected separately from the code.
+
+→ See **[TRADEMARK.md](./TRADEMARK.md)** for what you can and can't do with the marks. **TL;DR:** fork freely, build derivatives — but pick your own name and your own logo.
+
+📧 **Contact**: [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.

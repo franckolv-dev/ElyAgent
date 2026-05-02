@@ -9,6 +9,7 @@
 #             https://polyformproject.org/licenses/strict/1.0.0/
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
+# @origin-id  c52b78b4-80c9-4ce6-862c-cb981f9f8362
 #
 # RÉSUMÉ DES CONDITIONS :
 #   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
