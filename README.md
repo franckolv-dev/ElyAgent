@@ -65,6 +65,42 @@ This release was the final pre-public push before the GitHub repo opens and `age
 
 ---
 
+## 🎨 The graphical UI — what nobody else gives you
+
+Most open-source AI agents are **terminal-first** : Hermes, OpenClaw, Aider, Claude Code, Codex CLI, even most ChatGPT clones. They're built by developers, for developers. You install them, you `cd`, you type — no avatar, no mobile app, no PWA, no visual missions, no theming, no installer.
+
+**ELY is the opposite.** From day one the bet was : *if your grandmother can't use it, it's not finished*. That means a real product surface :
+
+| Surface | What you get |
+|---|---|
+| **Web app (Next.js 16 + Tailwind 4)** | Chat with streaming markdown, missions board with live status, knowledge ingestion via drag-drop, blind LLM Arena with ELO ladder, security console, dashboard with token analytics — every page polished, dark + light theme, oklch tokens, Inter typography, fully responsive |
+| **3D cyberpunk avatar** | Real-time wireframe head with idle/talking/listening states, framed by a HUD showing latency / tokens / current model / active channels (Telegram / Discord / WhatsApp…) |
+| **Voice mode with wake-word "Éli"** | Always-on overlay, Web Speech API or Whisper fallback, voice-optimised system prompt (no markdown, shorter sentences) |
+| **Native iOS app (SwiftUI 17+)** | 22 files, real chat UI, push notifications, biometric unlock |
+| **Native Android app (Kotlin + Jetpack Compose)** | Material You, foreground service for HITL push, FCM |
+| **PWA install** | Manifest + service worker + offline page + 30-second deferred install prompt — works on iPhone home screen and Android |
+| **HITL via UI in every channel** | Telegram inline keyboard with Allow / Deny / Ban buttons, Slack Block Kit, Discord emoji reactions — never a raw text "do you confirm ?" prompt |
+| **i18n FR ↔ EN** | One-click toggle, the agent itself switches reply language too (sandwich directive injected per turn) |
+| **Bilingual setup wizard** | Conversational onboarding at first login — Éli asks 5 questions to learn your vocabulary (your Gmail labels, your shortcuts, your morning briefing time) |
+
+This matters because the product is now in a place where someone non-technical can use it daily. Compare with the competition :
+
+| Surface | ELY | Hermes | OpenClaw / Aider | ChatGPT app | Claude.ai |
+|---|---|---|---|---|---|
+| Rich graphical web UI | ✅ Next.js native | ⚠️ Vite dashboard around xterm.js | ❌ Terminal | ✅ Web | ✅ Web |
+| Native mobile apps (iOS + Android) | ✅ Both | ❌ Telegram only | ❌ | ✅ Both | ✅ Both |
+| 3D avatar / visual identity | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Voice wake-word | ✅ "Éli" | ⚠️ Voice mode, no wake-word | ❌ | ✅ "Hey ChatGPT" | ❌ |
+| PWA installable | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Self-hosted (your data, your hardware) | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Visual mission planner (Plan→Act→Eval→Replan) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Blind LLM Arena (ELO K=32) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| French native (UI + agent reply) | ✅ | ❌ EN only | ❌ | ⚠️ partial | ⚠️ partial |
+
+→ **ELY is the only self-hosted agent that ships with a product-grade UI on every surface**. The terminal crowd has Hermes (deeply technical, very mature). The cloud crowd has ChatGPT. ELY is the bridge : self-hosted privacy + grand-public ergonomics.
+
+---
+
 ## Why ELY, not another AI wrapper?
 
 | Feature | ELY | Typical AI chat |
@@ -584,7 +620,7 @@ Store API keys and passwords encrypted at rest (AES-256-GCM), injected into tool
 
 > 🍎 **Mac Studio is the reference dev/prod target** — Apple Silicon + LM Studio MLX gives the best local inference on consumer hardware (xLAM-2 8B 8-bit for tool calls, Gemma 4 E4B 4-bit for chat, Gemma REAP 21B for complex reasoning). Linux/Windows + Ollama works too but is less battle-tested as of April 2026.
 
-> 🌐 **UI language** — currently French only. **English UI** is on the immediate roadmap (next release) for the European launch on `agent-ely.fr`.
+> 🌐 **UI language** — bilingual FR ↔ EN out of the box, switchable from the header. The agent itself replies in the language you write to her in.
 
 ```bash
 # 1. Clone
@@ -624,7 +660,8 @@ Open **http://localhost:3000** and log in.
 **Settings → Modèles IA → + Ajouter**
 
 - **Ollama (free, local):** install [Ollama](https://ollama.com), pull a model (`ollama pull gemma4:26b`), select it in Settings — the list is auto-detected.
-- **Cloud providers:** enter your API key in Settings — no restart needed.
+- **LM Studio (free, local, recommended on Apple Silicon):** open LM Studio → Local Server → load any MLX model → just type the model name in Settings.
+- **Cloud providers:** Anthropic Claude, Google Gemini, OpenAI, Mistral, DeepSeek, OpenRouter, Zhipu GLM, Qwen API (Alibaba Cloud), **Moonshot Kimi K2.x** — enter your API key in Settings, no restart needed.
 
 Then **Settings → Routage** to assign models to complexity tiers.
 
