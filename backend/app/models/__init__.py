@@ -24,9 +24,10 @@ from app.models.google_account import GoogleAccount
 from app.models.watched_folder import WatchedFolder
 from app.models.hitl_preference import HitlPreference
 from app.models.user_vocabulary import UserVocabulary
+from app.models.learned_routing_keyword import LearnedRoutingKeyword
 
 __all__ = [
     "User", "Conversation", "Message", "AuditLog", "RevokedToken",
     "Mission", "MissionPlan", "MissionStep", "GoogleAccount", "WatchedFolder",
-    "HitlPreference", "UserVocabulary",
+    "HitlPreference", "UserVocabulary", "LearnedRoutingKeyword",
 ]

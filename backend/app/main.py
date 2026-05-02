@@ -58,6 +58,7 @@ from app.routers import vault as vault_router
 from app.routers import conversations as conversations_router
 from app.routers import knowledge as knowledge_router
 from app.routers import settings_llm as settings_llm_router
+from app.routers import settings_routing as settings_routing_router
 from app.routers import marketplace as marketplace_router
 from app.routers import setup as setup_router
 from app.routers import voice as voice_router
@@ -95,6 +96,10 @@ async def lifespan(app: FastAPI):
     # Load mono-agent toggle (admin: Paramètres → Routage)
     from app.services.mono_agent import load_mono_agent_flag
     await load_mono_agent_flag()
+
+    # Load learned routing keywords cache (self-improving router)
+    from app.services.routing_learning import reload_cache as _reload_routing_cache
+    await _reload_routing_cache()
 
     await get_memory_manager().init_collections()
     await get_fts_store().init()
@@ -385,6 +390,7 @@ app.include_router(conversations_router.router)
 app.include_router(knowledge_router.router, prefix="/api", tags=["knowledge"])
 app.include_router(marketplace_router.router, prefix="/api/marketplace", tags=["marketplace"])
 app.include_router(settings_llm_router.router)
+app.include_router(settings_routing_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
 app.include_router(voice_router.router, prefix="/ws", tags=["voice"])
 app.include_router(arena_router.router)

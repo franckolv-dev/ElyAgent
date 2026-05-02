@@ -144,6 +144,14 @@ Catégories disponibles :
 - desktop    : {desktop}
 - general    : {general}
 
+RÈGLE MULTI-DOMAINE — IMPORTANT :
+Si la demande croise PLUSIEURS catégories à la fois (ex : « cherche sur le web
+puis crée un Google Doc », « liste mes mails et planifie un RDV », « résume
+cette page et envoie-le par WhatsApp »), réponds OBLIGATOIREMENT « general ».
+Ne tente PAS de choisir le domaine « principal » : envoyer une telle requête
+sur un specialist mono-domaine le prive des outils des autres domaines et
+provoque une fausse réponse « je n'ai pas accès à cet outil ».
+
 Réponds UNIQUEMENT avec le nom de la catégorie en minuscules (research / workspace / infra / creative / data / memory / desktop / general).
 Aucune explication. Aucun autre texte.
 """.format(**_DOMAIN_DESCRIPTIONS)
@@ -606,10 +614,11 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
         r"toutes les semaines|hebdomadaire|quotidien|récurrent|briefings?)\b",
         _re.IGNORECASE)),
     ("research", _re.compile(
-        r"\b(météo|weather|news|actualités?|titres? du jour|"
+        r"\b(météo|weather|news|actualités?|actus?|titres? du jour|"
         r"cherche sur (le )?(web|internet|google)|recherche web|"
         r"traduis|translate|traductions?|"
-        r"va sur (https?:\/\/|www\.)|navigue|ouvre (le )?site|lis (la )?page)\b",
+        r"va sur (https?:\/\/|www\.)|navigue|ouvre (le )?site|lis (la )?page|"
+        r"infos? sur|informations? sur|que dis(-| )tu de|qu['eà].(en )?est.il)\b",
         _re.IGNORECASE)),
     ("creative", _re.compile(
         r"(génère? une image|crée une image|dessine|illustre|illustrations?|"
@@ -634,7 +643,7 @@ _ROUTER_PATTERNS: list[tuple[str, _re.Pattern]] = [
 ]
 
 
-def _quick_route(msg: str) -> str | None:
+def _quick_route(msg: str, user_id: str | None = None) -> str | None:
     """Fast keyword-based routing. Returns None if no high-confidence match."""
     msg_lower = msg.lower().strip()
     # Pure greetings / acknowledgments
@@ -776,6 +785,21 @@ def _quick_route(msg: str) -> str | None:
         if pattern.search(msg) and domain not in matched_domains:
             matched_domains.append(domain)
 
+    # Couche d'apprentissage : keywords stockés en DB (per-user + globaux),
+    # alimentés par les reformulations user via le job MAINTENANCE quotidien
+    # (services/routing_learning.py). Le user_id n'est pas dispo dans cette
+    # fonction (on est avant la résolution de l'AgentState complet), donc on
+    # tape uniquement les keywords globaux ici. Les per-user sont appliqués
+    # plus haut dans router_node après lecture de state['user_id'].
+    try:
+        from app.services.routing_learning import match_learned_keywords as _match_learned
+        # Per-user d'abord (vocabulaire propre à cet utilisateur), puis globaux
+        for d in _match_learned(msg, user_id=user_id):
+            if d not in matched_domains:
+                matched_domains.append(d)
+    except Exception:
+        pass  # routing_learning peut échouer au boot — pas bloquant
+
     if len(matched_domains) >= 2:
         # Vraiment multi-domaine — bascule sur general
         return "general"
@@ -906,7 +930,10 @@ async def router_node(state: AgentState) -> dict:
             return {"domain": "workspace"}
 
     # ── Pass 1: fast keyword router (zero LLM call) ──────────────────────
-    domain = _quick_route(last_user_msg)
+    # user_id transmis pour appliquer les keywords appris per-user
+    # (services/routing_learning.py → table learned_routing_keywords)
+    _uid = state.get("user_id") or None
+    domain = _quick_route(last_user_msg, user_id=_uid)
     if domain is not None:
         logger.warning("⏱ TIMING[router-fast] %.3fs → domain=%s (msg=%.60s)",
                        _t.monotonic() - _start, domain, last_user_msg)
