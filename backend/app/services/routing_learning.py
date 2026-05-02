@@ -294,3 +294,294 @@ def _row_to_dict(row) -> dict:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "rationale": row.rationale,
     }
+
+
+# ===========================================================================
+# Phase 2 — Auto-detection of user reformulations (background MAINTENANCE job)
+# ===========================================================================
+"""Detection des reformulations dans les conversations récentes.
+
+Heuristique :
+  - Paire de messages USER consécutifs dans la même conversation
+  - Délai entre les deux < REFORMULATION_TIME_WINDOW_MIN (10 min par défaut)
+  - Similarité (Jaccard sur tokens normalisés sans stop-words FR/EN) > 0.25
+    OU présence d'un marqueur explicite de reformulation (« non plutôt »,
+    « je voulais dire », « tu n'as pas compris », etc.)
+
+Pour chaque paire détectée :
+  - On re-route la query A et la query B via _quick_route
+  - Si A et B routent vers des domaines différents → c'est probablement une
+    correction utilisateur. On demande au LLM MAINTENANCE de proposer les
+    keywords de A qui auraient dû matcher le domaine de B.
+  - Chaque keyword extrait est inséré via propose_keyword() (auto-confirm
+    après 3 occurrences identiques).
+
+Le job est exécuté toutes les 6h (configurable via REFORMULATION_JOB_HOURS).
+Idempotent : un curseur de timestamp évite de retraiter les mêmes paires.
+"""
+
+# Tunables
+REFORMULATION_TIME_WINDOW_MIN = 10   # max gap between A and B for reformulation
+REFORMULATION_MIN_JACCARD = 0.25     # token overlap threshold
+REFORMULATION_LOOKBACK_HOURS = 24    # how far back to scan
+REFORMULATION_BATCH_SIZE = 10        # max pairs analyzed per LLM call
+
+_REFORM_MARKERS = (
+    "non plutôt", "non en fait", "je voulais dire", "tu n'as pas compris",
+    "ce n'est pas ce que", "reformule", "j'ai dit", "essaie plutôt",
+    "non c'était", "pardon je voulais",
+)
+
+# Stop words minimal FR + EN — drop them before computing Jaccard so we don't
+# inflate similarity on grammar tokens.
+_STOPWORDS = {
+    # FR
+    "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "à", "au",
+    "aux", "ce", "cet", "cette", "ces", "mon", "ma", "mes", "ton", "ta", "tes",
+    "son", "sa", "ses", "qui", "que", "quoi", "dont", "où", "est", "sont",
+    "avec", "pour", "par", "sur", "sous", "dans", "en", "y", "se", "me",
+    "moi", "te", "toi", "il", "elle", "ils", "elles", "on", "nous", "vous",
+    "n'", "s'", "l'", "d'", "j'", "t'", "qu'", "c'",
+    # EN
+    "the", "a", "an", "and", "or", "of", "in", "on", "at", "to", "for", "with",
+    "is", "are", "was", "were", "be", "been", "being", "do", "does", "did",
+    "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her",
+    "this", "that", "these", "those",
+}
+
+
+def _tokenize(s: str) -> set[str]:
+    """Lowercase + strip punctuation + drop stop words. Returns set of tokens."""
+    if not s:
+        return set()
+    cleaned = re.sub(r"[^\w\s'àâäéèêëïîôöùûüÿçñœæ-]", " ", s.lower(), flags=re.UNICODE)
+    tokens = {t for t in cleaned.split() if len(t) > 1 and t not in _STOPWORDS}
+    return tokens
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _is_reformulation(query_a: str, query_b: str) -> tuple[bool, str]:
+    """Decide if query_b is a reformulation of query_a.
+
+    Returns (is_reform, reason) where reason is 'marker', 'overlap', or ''.
+    """
+    if not query_a or not query_b:
+        return False, ""
+    b_lower = query_b.lower()
+    if any(m in b_lower for m in _REFORM_MARKERS):
+        return True, "marker"
+    sim = _jaccard(_tokenize(query_a), _tokenize(query_b))
+    if sim >= REFORMULATION_MIN_JACCARD:
+        return True, f"overlap({sim:.2f})"
+    return False, ""
+
+
+async def _find_reformulation_pairs(lookback_hours: int = REFORMULATION_LOOKBACK_HOURS) -> list[dict]:
+    """Scan recent conversations for query/reformulation pairs.
+
+    Returns a list of {conv_id, user_id, query_a, query_b, ts_a, ts_b, reason}
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.conversation import Message, Conversation
+
+    since = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+    pairs: list[dict] = []
+
+    async with async_session() as db:
+        # Group user messages by conversation, sorted by created_at
+        rows = (await db.execute(
+            select(Message, Conversation.user_id)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(Message.created_at >= since, Message.role == "user")
+            .order_by(Message.conversation_id, Message.created_at)
+        )).all()
+
+    by_conv: dict[str, list[tuple]] = {}
+    for msg, uid in rows:
+        by_conv.setdefault(msg.conversation_id, []).append((msg, uid))
+
+    window = timedelta(minutes=REFORMULATION_TIME_WINDOW_MIN)
+    for conv_id, items in by_conv.items():
+        for i in range(len(items) - 1):
+            msg_a, uid_a = items[i]
+            msg_b, uid_b = items[i + 1]
+            if (msg_b.created_at - msg_a.created_at) > window:
+                continue
+            is_ref, reason = _is_reformulation(msg_a.content or "", msg_b.content or "")
+            if not is_ref:
+                continue
+            pairs.append({
+                "conv_id": conv_id,
+                "user_id": uid_a,
+                "query_a": (msg_a.content or "")[:500],
+                "query_b": (msg_b.content or "")[:500],
+                "ts_a": msg_a.created_at,
+                "ts_b": msg_b.created_at,
+                "reason": reason,
+            })
+    return pairs
+
+
+# Cursor (timestamp of last processed pair) — kept in memory between runs.
+# Resets on backend restart, which means up to lookback_hours of duplicate
+# work after a reboot — acceptable since propose_keyword() is idempotent
+# (existing rows just get confidence++).
+_last_processed_ts: Optional[object] = None  # datetime
+
+
+async def analyze_reformulations_tick() -> dict:
+    """One iteration of the reformulation analysis job.
+
+    Steps :
+      1. Find candidate pairs in the last REFORMULATION_LOOKBACK_HOURS hours.
+      2. Filter to those where _quick_route(A) != _quick_route(B) — i.e. the
+         router really changed its mind, suggesting A was misrouted.
+      3. Ask the MAINTENANCE LLM to extract from A the keywords that should
+         have routed to the domain matched by B.
+      4. Insert each extracted keyword via propose_keyword() — auto-promoted
+         after AUTO_CONFIRM_THRESHOLD identical proposals.
+
+    Returns a small status dict for logs / monitoring.
+    """
+    global _last_processed_ts
+    started_at = datetime.now(timezone.utc)
+    pairs = await _find_reformulation_pairs()
+
+    # Skip pairs older than the cursor (already processed)
+    if _last_processed_ts is not None:
+        pairs = [p for p in pairs if p["ts_b"] > _last_processed_ts]
+
+    if not pairs:
+        return {"status": "ok", "pairs_found": 0, "keywords_proposed": 0}
+
+    # Step 2: filter by routing divergence (A→domA, B→domB, domA != domB)
+    from app.agent.supervisor import _quick_route
+    diverging: list[dict] = []
+    for p in pairs:
+        dom_a = _quick_route(p["query_a"], user_id=p["user_id"])
+        dom_b = _quick_route(p["query_b"], user_id=p["user_id"])
+        if dom_b and dom_a != dom_b:
+            p["dom_a"] = dom_a
+            p["dom_b"] = dom_b
+            diverging.append(p)
+
+    if not diverging:
+        _last_processed_ts = max(p["ts_b"] for p in pairs)
+        return {"status": "ok", "pairs_found": len(pairs), "diverging": 0, "keywords_proposed": 0}
+
+    # Step 3: batch-ask the MAINTENANCE LLM for keyword extractions
+    proposed = 0
+    for batch_start in range(0, len(diverging), REFORMULATION_BATCH_SIZE):
+        batch = diverging[batch_start:batch_start + REFORMULATION_BATCH_SIZE]
+        try:
+            extractions = await _llm_extract_keywords(batch)
+        except Exception as exc:
+            logger.warning("Routing learning: LLM extraction failed for batch: %s", exc)
+            continue
+        for ex in extractions:
+            try:
+                r = await propose_keyword(
+                    keyword=ex["keyword"],
+                    domain=ex["domain"],
+                    user_id=ex.get("user_id"),
+                    rationale=ex.get("rationale"),
+                )
+                if r:
+                    proposed += 1
+            except Exception as exc:
+                logger.debug("propose_keyword failed for %r: %s", ex, exc)
+
+    _last_processed_ts = max(p["ts_b"] for p in pairs)
+    elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+    logger.info(
+        "Routing learning tick: %d pairs, %d diverging, %d keywords proposed (%.1fs)",
+        len(pairs), len(diverging), proposed, elapsed,
+    )
+    return {
+        "status": "ok",
+        "pairs_found": len(pairs),
+        "diverging": len(diverging),
+        "keywords_proposed": proposed,
+        "elapsed_s": round(elapsed, 1),
+    }
+
+
+async def _llm_extract_keywords(pairs: list[dict]) -> list[dict]:
+    """Use the MAINTENANCE LLM to extract missing keywords from misrouted queries.
+
+    Input : list of {query_a, query_b, dom_a, dom_b, user_id}.
+    Output : list of {keyword, domain, user_id, rationale}.
+    """
+    import json
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from app.services.llm_provider import get_llm_for_tier, ComplexityTier
+
+    if not pairs:
+        return []
+
+    sys_prompt = (
+        "Tu es un analyseur de routage. Tu reçois des paires de messages user "
+        "où le second est une reformulation du premier (que le routeur n'a "
+        "pas compris du premier coup). Pour chaque paire, identifie 1-3 mots "
+        "ou expressions courtes (2-4 mots max) du PREMIER message qui auraient "
+        "dû déclencher le routage vers le domaine 'expected_domain' (= celui "
+        "où la reformulation est partie). Privilégie les abréviations, le "
+        "vocabulaire métier, les expressions familières. Évite les mots "
+        "génériques (« supprime », « envoie », « cherche »).\n\n"
+        "Réponse format JSON strict, sans markdown :\n"
+        '{"extractions": [{"pair_index": 0, "keyword": "...", "domain": "...", '
+        '"rationale": "..."}, ...]}\n\n'
+        "Si une paire n'apporte aucun keyword utile (ex : reformulation "
+        "trop similaire, simple typo), n'émets rien pour cette pair_index."
+    )
+
+    user_prompt_lines = []
+    for i, p in enumerate(pairs):
+        user_prompt_lines.append(
+            f"--- PAIR {i} ---\n"
+            f"query_misrouted (routée à tort sur '{p.get('dom_a') or 'general'}'): {p['query_a']!r}\n"
+            f"reformulation     (routée correctement sur '{p['dom_b']}'): {p['query_b']!r}\n"
+            f"expected_domain  : {p['dom_b']}"
+        )
+    user_prompt = "\n\n".join(user_prompt_lines)
+
+    llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
+    msg = await llm.ainvoke([
+        SystemMessage(content=sys_prompt),
+        HumanMessage(content=user_prompt),
+    ])
+    content = msg.content if isinstance(msg.content, str) else str(msg.content)
+
+    # Strip code fences if any LLM still emits them
+    content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.MULTILINE)
+
+    try:
+        data = json.loads(content)
+        extractions_raw = data.get("extractions", [])
+    except Exception as exc:
+        logger.warning("Routing learning: LLM returned non-JSON: %s — content[:200]=%s", exc, content[:200])
+        return []
+
+    out: list[dict] = []
+    for ex in extractions_raw:
+        idx = ex.get("pair_index")
+        if not isinstance(idx, int) or idx < 0 or idx >= len(pairs):
+            continue
+        kw = (ex.get("keyword") or "").strip()
+        dom = (ex.get("domain") or "").strip()
+        if not kw or dom not in _VALID_DOMAINS:
+            continue
+        out.append({
+            "keyword": kw,
+            "domain": dom,
+            "user_id": pairs[idx].get("user_id"),  # per-user (safer than global)
+            "rationale": ex.get("rationale") or f"auto-extracted from reformulation in conv {pairs[idx]['conv_id'][:8]}",
+        })
+    return out

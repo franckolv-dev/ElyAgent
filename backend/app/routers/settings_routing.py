@@ -103,3 +103,17 @@ async def reload_learned_cache(
     """Force reload the in-memory keyword cache from DB."""
     await reload_cache()
     return {"ok": True}
+
+
+@router.post("/learn/run-now", status_code=status.HTTP_200_OK)
+async def run_learning_tick_now(
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Manually trigger one iteration of the reformulation analysis job.
+
+    Normalement exécuté toutes les 6h via APScheduler. Cet endpoint permet
+    de forcer un run immédiat (utile pour debug ou pour rattraper après un
+    redémarrage).
+    """
+    from app.services.routing_learning import analyze_reformulations_tick
+    return await analyze_reformulations_tick()

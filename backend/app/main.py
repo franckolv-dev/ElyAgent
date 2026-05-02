@@ -310,6 +310,21 @@ async def lifespan(app: FastAPI):
     )
     _startup_logger.info("[missions] heartbeat scheduled every %ds", _hb_interval)
 
+    # Routing learning — auto-detection des reformulations user (Phase 2).
+    # Toutes les 6h. Premier run décalé de 5min (boot calme), coalesce pour
+    # éviter les exécutions en parallèle si le précédent tick traîne.
+    from app.services.routing_learning import analyze_reformulations_tick
+    _memory_scheduler.add_job(
+        analyze_reformulations_tick,
+        trigger="interval",
+        hours=6,
+        id="routing_learning_tick",
+        coalesce=True,
+        max_instances=1,
+        next_run_time=None,  # pas d'exécution immédiate au boot
+    )
+    _startup_logger.info("[routing] learning tick scheduled every 6h")
+
     _memory_scheduler.start()
 
     yield
