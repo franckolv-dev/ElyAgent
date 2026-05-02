@@ -35,8 +35,11 @@ token itself proves the caller received the legitimate push notification.
 import asyncio
 import hmac
 import hashlib
+import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 
 from app.auth.dependencies import get_current_user, get_optional_user
 from app.config import get_settings
@@ -99,6 +102,27 @@ async def _resolve(
         ))
     except Exception:
         pass
+
+    # Audit log permanent (mai 2026 — avant ce fix, AuditLog n'était écrit
+    # QUE depuis routers/admin.py, donc Admin → Logs UI restait vide à
+    # chaque chat/mission/HITL. Maintenant chaque décision HITL est
+    # tracée pour traçabilité conformité GDPR/SOC2-like).
+    try:
+        from app.database import async_session as _async_session
+        from app.models.audit import AuditLog as _AuditLog
+        async with _async_session() as _db:
+            _db.add(_AuditLog(
+                user_id=current_user.id if current_user else pending.user_id,
+                action=f"hitl_{decision}",  # hitl_allow / hitl_deny / hitl_ban
+                tool_used=getattr(pending, "tool_name", None),
+                command=(getattr(pending, "summary", None) or "")[:500],
+                channel=channel,
+                details=(reason or "")[:500] if reason else None,
+                result_code=0 if decision == "allow" else 1,
+            ))
+            await _db.commit()
+    except Exception as _exc:
+        logger.debug("HITL audit log write failed: %s", _exc)
 
     return {"status": "ok", "decision": decision}
 

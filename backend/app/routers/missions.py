@@ -198,6 +198,11 @@ async def start(mission_id: str, current_user: User = Depends(get_current_user))
     # forever for single-shot missions) before the first tick.
     from app.services.mission_heartbeat import schedule_first_tick
     await schedule_first_tick(mission_id)
+    # Audit trail (mai 2026 — Admin → Logs visibility)
+    from app.services.audit_log import audit
+    await audit(current_user.id, "mission_start",
+                details=(getattr(m, "title", None) or "")[:200],
+                command=mission_id, channel="web")
     return MissionOut.model_validate(m)
 
 
@@ -208,6 +213,10 @@ async def pause(mission_id: str, current_user: User = Depends(get_current_user))
         m = await mission_service.pause_mission(mission_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    from app.services.audit_log import audit
+    await audit(current_user.id, "mission_pause",
+                details=(getattr(m, "title", None) or "")[:200],
+                command=mission_id, channel="web")
     return MissionOut.model_validate(m)
 
 
@@ -222,6 +231,10 @@ async def abort(
         m = await mission_service.abort_mission(mission_id, body.reason)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    from app.services.audit_log import audit
+    await audit(current_user.id, "mission_abort",
+                details=(body.reason or "")[:200],
+                command=mission_id, channel="web")
     return MissionOut.model_validate(m)
 
 

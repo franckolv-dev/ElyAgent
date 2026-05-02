@@ -90,49 +90,75 @@ function BarChart({ data, height = 120, noDataLabel }: { data: DailyUsage[]; hei
     </div>
   );
 
+  // Layout: les bars remplissent EXACTEMENT la largeur dispo (~500px),
+  // les labels X-axis sont positionnés AU CENTRE de leur bar via SVG <text>
+  // (et non plus via flex justify-between qui désalignait labels et bars
+  // — bug visible mai 2026 : utilisateur croyait que le graphe s'arrêtait
+  // avant la dernière date affichée à droite).
+  const SVG_W = 500;
+  const PAD_RIGHT = 8;
+  const usable = SVG_W - PAD_RIGHT;
   const maxTokens = Math.max(...data.map((d) => d.tokens), 1);
-  const barWidth = Math.max(4, Math.floor(500 / data.length) - 2);
-  const gap = 2;
-  const totalWidth = data.length * (barWidth + gap);
+  const slot = usable / data.length;            // largeur d'une "case" (bar + gap)
+  const barWidth = Math.max(2, slot * 0.8);     // 80% de la case = la bar, 20% = espace
+  const labelEvery = Math.max(1, Math.ceil(data.length / 6));  // max 6 labels visibles
 
   return (
     <div className="overflow-x-auto">
       <svg
-        width={Math.max(totalWidth, 500)}
+        width={SVG_W}
         height={height + 30}
-        className="text-cyber-cyan"
+        viewBox={`0 0 ${SVG_W} ${height + 30}`}
+        className="text-cyber-cyan w-full"
+        preserveAspectRatio="none"
       >
         {data.map((d, i) => {
           const barH = Math.max(2, (d.tokens / maxTokens) * height);
-          const x = i * (barWidth + gap);
+          const cx = i * slot + slot / 2;            // centre de la case
+          const x = cx - barWidth / 2;
           const y = height - barH;
           const isRecent = i >= data.length - 7;
           return (
-            <g key={d.day}>
-              <rect
-                x={x}
-                y={y}
-                width={barWidth}
-                height={barH}
-                className={isRecent ? "fill-cyber-cyan" : "fill-cyber-cyan/40"}
-                rx={2}
-              >
-                <title>{`${d.day}: ${formatNumber(d.tokens)} tokens, ${d.requests} req, ${formatCost(d.cost)}`}</title>
-              </rect>
-            </g>
+            <rect
+              key={d.day}
+              x={x}
+              y={y}
+              width={barWidth}
+              height={barH}
+              className={isRecent ? "fill-cyber-cyan" : "fill-cyber-cyan/40"}
+              rx={2}
+            >
+              <title>{`${d.day}: ${formatNumber(d.tokens)} tokens, ${d.requests} req, ${formatCost(d.cost)}`}</title>
+            </rect>
           );
         })}
         {/* X-axis line */}
         <line
-          x1={0} y1={height} x2={totalWidth} y2={height}
+          x1={0} y1={height} x2={usable} y2={height}
           stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
         />
+        {/* X-axis labels — positionnés au centre exact de leur bar.
+            On affiche ~1 label tous les `labelEvery` bars + toujours le dernier
+            (= aujourd'hui) pour qu'il soit lisible. */}
+        {data.map((d, i) => {
+          const showLabel = i % labelEvery === 0 || i === data.length - 1;
+          if (!showLabel) return null;
+          const cx = i * slot + slot / 2;
+          return (
+            <text
+              key={`lbl-${d.day}`}
+              x={cx}
+              y={height + 18}
+              textAnchor="middle"
+              fontSize="10"
+              fill="currentColor"
+              fillOpacity={0.55}
+            >
+              {d.day.slice(5)}
+            </text>
+          );
+        })}
       </svg>
-      <div className="flex justify-between text-xs text-text-muted mt-1">
-        <span>{data[0]?.day?.slice(5)}</span>
-        <span>{data[Math.floor(data.length / 2)]?.day?.slice(5)}</span>
-        <span>{data[data.length - 1]?.day?.slice(5)}</span>
-      </div>
     </div>
   );
 }
