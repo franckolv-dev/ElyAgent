@@ -87,28 +87,48 @@ async function browserLogin(context, theme, locale) {
     try { window.localStorage.setItem("ely-theme", th); } catch (e) {}
   }, theme);
 
-  // 3. Login via le formulaire /login
+  // 3. Login via le formulaire /login (avec retry sur race React au cold-start)
   const page = await context.newPage();
   await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded", timeout: 30_000 });
 
-  // Le username utilise un component <Input> custom — le mieux est de cibler
-  // par autocomplete="username" qui est garanti par le code du form.
-  // Le password est un <input> direct avec autocomplete="current-password".
-  // Le submit est un <Button> custom mais reste un <button type="submit">.
-  await page.fill('input[autocomplete="username"]', LOGIN);
-  await page.fill('input[autocomplete="current-password"]', PASSWORD);
+  // Cible l'<Input> custom via autocomplete="username" (garanti par le code
+  // du form). Wait for selectors AVANT le fill : le tout premier login peut
+  // partir avant que React ait monté le component (race observée sur
+  // fr/dark uniquement, première combo donc browser/DNS cold).
+  await page.waitForSelector('input[autocomplete="username"]', { state: "visible", timeout: 15_000 });
+  await page.waitForSelector('input[autocomplete="current-password"]', { state: "visible", timeout: 15_000 });
+  // Petite pause pour que React finisse son hydration avant qu'on tape
+  await page.waitForTimeout(300);
 
-  // Au lieu d'attendre une nav (fragile : la SPA peut juste swap le state
-  // sans changer l'URL immédiatement), on attend la RÉPONSE RÉSEAU du POST
-  // /auth/login — c'est le signal le plus fiable.
-  const [resp] = await Promise.all([
-    page.waitForResponse(
-      r => r.url().includes("/auth/login") && r.request().method() === "POST",
-      { timeout: 15_000 },
-    ),
-    page.click('button[type="submit"]'),
-  ]);
+  // Helper : essaie le login, retry une fois si 401 (probablement un fill
+  // intercepté avant que React ne soit pleinement hydraté → password vide
+  // côté state).
+  const attemptLogin = async () => {
+    // Click + clear avant fill : force le focus et écrase tout state stale
+    await page.click('input[autocomplete="username"]');
+    await page.fill('input[autocomplete="username"]', "");
+    await page.fill('input[autocomplete="username"]', LOGIN);
+    await page.click('input[autocomplete="current-password"]');
+    await page.fill('input[autocomplete="current-password"]', "");
+    await page.fill('input[autocomplete="current-password"]', PASSWORD);
+    await page.waitForTimeout(150);  // laisse React commit le state
 
+    const [resp] = await Promise.all([
+      page.waitForResponse(
+        r => r.url().includes("/auth/login") && r.request().method() === "POST",
+        { timeout: 15_000 },
+      ),
+      page.click('button[type="submit"]'),
+    ]);
+    return resp;
+  };
+
+  let resp = await attemptLogin();
+  if (resp.status() === 401) {
+    // Retry une fois après un délai — souvent ça passe
+    await page.waitForTimeout(1000);
+    resp = await attemptLogin();
+  }
   if (!resp.ok()) {
     const body = await resp.text().catch(() => "");
     throw new Error(`POST /auth/login → ${resp.status()}: ${body.slice(0, 200)}`);
