@@ -18,6 +18,21 @@ ELY is a fully self-hosted AI agent that integrates with your entire digital lif
 
 ---
 
+## 🧭 New here ? Start with this
+
+**👉 [docs/START_HERE.md](./docs/START_HERE.md)** — single entry point that walks you through every setup scenario (local-only, LAN+mobile, public domain) with step-by-step guides for Docker install, AI provider keys (Anthropic / Gemini / Kimi / OpenAI / local Ollama / LM Studio), Google OAuth, and mobile push notifications.
+
+The documentation is written for **non-developers**. No prior knowledge of Docker, Google Cloud, or APIs assumed. Every external account creation is linked, every step screenshotted in spirit.
+
+| You're a… | Quick path |
+|---|---|
+| **Curious user, just wants to try** | [Scenario A](./docs/START_HERE.md#-scénario-a--je-veux-juste-essayer) — 30 min local install with a free Gemini key |
+| **Power user, wants Gmail + Calendar** | [Scenario B](./docs/START_HERE.md#-scénario-b--je-veux-quely-voie-mon-gmailcalendar) — adds Google OAuth |
+| **Mobile user, wants push notifications** | [Scenario C](./docs/START_HERE.md#-scénario-c--je-veux-des-notifs-sur-mon-mobile) — adds ntfy in 5 min |
+| **Self-hosting fanatic, full setup** | [Scenario D](./docs/START_HERE.md#-scénario-d--je-veux-y-accéder-depuis-nimporte-où) — full domain + Cloudflare Tunnel + all channels |
+
+---
+
 ## Where ELY runs (April 2026)
 
 ELY is **infra-agnostic by design** — same codebase, three deployment profiles:

@@ -315,43 +315,56 @@ async def desktop_binaries(
     request: Request,
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Return available binary download URLs."""
+    """Return available binary download URLs.
+
+    Filtre les binaires à ceux qui existent réellement sur disque (montés
+    depuis ./desktop/dist). Sans ce filtre, un self-hoster qui clone le
+    repo sans avoir buildé voyait 4 liens cliquables qui retournaient une
+    404 HTML — l'utilisateur téléchargeait alors un fichier `.html` au
+    lieu du binaire (ticket mai 2026).
+
+    Renvoie aussi un champ `build_help` quand AUCUN binaire n'est dispo,
+    pour que l'UI puisse afficher des instructions de build au lieu de
+    boutons cassés.
+    """
+    from pathlib import Path
     settings = get_settings()
     base = settings.backend_url or str(request.base_url).rstrip("/")
 
-    binaries = [
-        {
-            "os": "linux",
-            "arch": "amd64",
-            "filename": "ely-desktop-linux-amd64",
-            "url": f"{base}/static/desktop/ely-desktop-linux-amd64",
-            "installer": f"{base}/static/desktop/install.sh",
-            "installer_filename": "install.sh",
-        },
-        {
-            "os": "macos",
-            "arch": "amd64",
-            "filename": "ely-desktop-macos-amd64",
-            "url": f"{base}/static/desktop/ely-desktop-macos-amd64",
-            "installer": f"{base}/static/desktop/install.sh",
-            "installer_filename": "install.sh",
-        },
-        {
-            "os": "macos",
-            "arch": "arm64",
-            "filename": "ely-desktop-macos-arm64",
-            "url": f"{base}/static/desktop/ely-desktop-macos-arm64",
-            "installer": f"{base}/static/desktop/install.sh",
-            "installer_filename": "install.sh",
-        },
-        {
-            "os": "windows",
-            "arch": "amd64",
-            "filename": "ely-desktop-windows-amd64.exe",
-            "url": f"{base}/static/desktop/ely-desktop-windows-amd64.exe",
-            "installer": f"{base}/static/desktop/install.bat",
-            "installer_filename": "install.bat",
-        },
+    # Le mount FastAPI pointe sur backend/static/desktop côté container,
+    # qui est lui-même un volume monté sur ./desktop/dist côté host.
+    # Si le dossier n'existe pas (très early dev), on évite le crash.
+    static_dir = Path("/app/static/desktop")
+    if not static_dir.is_dir():
+        # Fallback dev local hors Docker
+        static_dir = Path(__file__).resolve().parents[3] / "desktop" / "dist"
+
+    catalog = [
+        {"os": "linux",   "arch": "amd64", "filename": "ely-desktop-linux-amd64",       "installer_filename": "install.sh"},
+        {"os": "macos",   "arch": "amd64", "filename": "ely-desktop-macos-amd64",       "installer_filename": "install.sh"},
+        {"os": "macos",   "arch": "arm64", "filename": "ely-desktop-macos-arm64",       "installer_filename": "install.sh"},
+        {"os": "windows", "arch": "amd64", "filename": "ely-desktop-windows-amd64.exe", "installer_filename": "install.bat"},
     ]
 
-    return {"binaries": binaries}
+    binaries = []
+    for entry in catalog:
+        bin_path = static_dir / entry["filename"]
+        if not bin_path.is_file():
+            continue  # build manquant — on n'expose pas un lien cassé
+        installer_path = static_dir / entry["installer_filename"]
+        binaries.append({
+            **entry,
+            "size_bytes": bin_path.stat().st_size,
+            "url": f"{base}/static/desktop/{entry['filename']}",
+            "installer": f"{base}/static/desktop/{entry['installer_filename']}" if installer_path.is_file() else None,
+        })
+
+    response: dict = {"binaries": binaries}
+    if not binaries:
+        # Message d'aide pour les self-hosters qui n'ont pas encore buildé
+        response["build_help"] = {
+            "message": "Aucun binaire ELY Desktop n'est buildé. Pour les construire, va à la racine du projet et lance: `bash desktop/build.sh` (Go requis) ou via Docker: `docker run --rm -v $(pwd)/desktop:/src -w /src golang:1.23-alpine sh -lc 'apk add --no-cache bash && bash build.sh'`",
+            "github_release": "https://github.com/franckolv-dev/PhysicalAgent/releases/latest",
+            "build_doc": "/docs/SETUP_DESKTOP.md",
+        }
+    return response

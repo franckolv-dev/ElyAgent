@@ -14,6 +14,25 @@ Trois options sont disponibles selon votre situation :
 
 ---
 
+## ⚠️ HTTPS est OBLIGATOIRE pour certaines fonctionnalités
+
+Avant de te lancer, sache que **les navigateurs modernes refusent certaines APIs en HTTP brut** (limitation appelée *« secure context requirement »*) :
+
+| Fonctionnalité | `http://localhost:3000` | `http://192.168.x.x:3000` (LAN brut) | `https://...` |
+|---|---|---|---|
+| Chat texte | ✅ | ✅ | ✅ |
+| Mode vocal "Éli" (micro) | ✅ exception localhost | ❌ **bloqué silencieusement** | ✅ |
+| Install PWA (icône bureau) | ✅ exception localhost | ❌ **bouton install masqué** | ✅ |
+| Service Worker / offline | ✅ exception localhost | ❌ | ✅ |
+| App mobile native (auth WebSocket) | — | ⚠️ token volatile | ✅ |
+| Push notifications mobile (ntfy) | ✅ | ✅ | ✅ |
+
+**👉 Si tu veux le voice mode ou la PWA hors localhost, tu DOIS choisir une des 3 options ci-dessous** (toutes apportent HTTPS automatiquement). C'est une limitation de Chrome/Firefox/Safari, pas d'ELY.
+
+L'option la plus rapide pour avoir HTTPS sans rien acheter : **Tailscale** (Option B) qui fournit un certificat Let's Encrypt sur `*.ts.net` en 1 commande.
+
+---
+
 ## Prérequis communs
 
 ELY doit être installé et fonctionnel en local via Docker avant de configurer l'accès externe.
