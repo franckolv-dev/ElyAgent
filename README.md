@@ -45,7 +45,7 @@ ELY is **infra-agnostic by design** — same codebase, three deployment profiles
 
 > 🌍 **Roadmap — agent-ely.fr (Q2 2026)** — landing page + hosted chat UI plugged on Qwen API, so anyone can try ELY in one click without setting up Docker. The on-prem version (this repo) remains the only way to get the full agent with your own data, your own LLM, and zero cloud round-trip.
 >
-> 🇪🇺 **Why this matters** — ELY is positioned as the only EU agent that combines: GDPR-compliant by architecture (PII never leaves your hardware), feature-complete vs ClawBot / Hermes, and unique capabilities the competition lacks (HITL, persistent missions, blind LLM Arena, mobile + desktop + 6 messaging channels, encrypted vault, on-device dedup).
+> 🇪🇺 **Why this matters** — ELY combines GDPR-compliant architecture (PII never leaves your hardware) with a product-grade UI on every surface (web, mobile native, PWA, voice) and unique capabilities most agents lack: HITL approval gate, persistent goal-driven missions, blind LLM Arena with ELO ranking, multi-channel messaging, encrypted vault, on-device dedup.
 
 ---
 
@@ -335,7 +335,7 @@ Instead, the developer typed in chat :
 
 The bug was a **silent `NameError`** — a missing import inside a try/except that swallowed the exception and returned the default. The next commit fixed it in 30 seconds. **Éli debugged her own bilingual layer in plain language, in three messages.**
 
-This is what *"Exactly Like You"* means — not just an assistant that does what you ask, but an agent that **diagnoses itself when you don't know what to ask**. Competing self-hosted agents (ClawBot, Hermes) treat the LLM as a chatbox over a closed runtime. ELY treats the runtime as **legible to the LLM**, with safe boundaries (read-only, secrets sanitised, per-user scoped).
+This is what *"Exactly Like You"* means — not just an assistant that does what you ask, but an agent that **diagnoses itself when you don't know what to ask**. Most self-hosted agents treat the LLM as a chatbox over a closed runtime. ELY treats the runtime as **legible to the LLM**, with safe boundaries (read-only, secrets sanitised, per-user scoped).
 
 Phase B will let the agent *act* on what she diagnoses — restart a stalled scheduler job, retry a failed mission with reflection, propose a config change for HITL approval. Phase A is the foundation : an agent that **knows herself**.
 

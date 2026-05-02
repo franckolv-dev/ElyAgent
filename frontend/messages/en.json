@@ -543,24 +543,7 @@
       "pkceDescription": "Google OAuth authentication with PKCE + state tokens (TTL 10 min). Protection against interception attacks.",
       "uploadTitle": "Upload validation",
       "uploadDescription": "Magic-byte verification, extension allowlist and 50 MB limit. No executable file is accepted."
-    },
-    "comparisonTitle": "Security comparison: ELY vs OpenClaw",
-    "colProtection": "Protection",
-    "colEly": "ELY",
-    "colOpenclaw": "OpenClaw",
-    "comparison": {
-      "hitl": "HITL validation",
-      "vault": "Encrypted vault (AES-256-GCM)",
-      "pii": "PII anonymization",
-      "docker": "Docker isolation",
-      "ssh": "SSH whitelist + fingerprints",
-      "jwt": "JWT + token rotation",
-      "rate": "Per-endpoint rate limiting",
-      "audit": "Full audit logging",
-      "pkce": "PKCE OAuth",
-      "upload": "Upload magic-byte validation"
-    },
-    "openclawNote": "OpenClaw: vulnerabilities documented by Cisco, CrowdStrike, Microsoft et al."
+    }
   },
   "arena": {
     "title": "Arena",

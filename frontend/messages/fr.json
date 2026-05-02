@@ -543,24 +543,7 @@
       "pkceDescription": "Authentification Google OAuth avec PKCE + state tokens (TTL 10 min). Protection contre les attaques d'interception.",
       "uploadTitle": "Validation des uploads",
       "uploadDescription": "Vérification des magic bytes, allowlist d'extensions et limite de 50 Mo. Aucun fichier exécutable n'est accepté."
-    },
-    "comparisonTitle": "Comparaison sécurité : ELY vs OpenClaw",
-    "colProtection": "Protection",
-    "colEly": "ELY",
-    "colOpenclaw": "OpenClaw",
-    "comparison": {
-      "hitl": "Validation HITL",
-      "vault": "Coffre-fort chiffré (AES-256-GCM)",
-      "pii": "Anonymisation PII",
-      "docker": "Isolation Docker",
-      "ssh": "SSH whitelist + fingerprints",
-      "jwt": "JWT + rotation de tokens",
-      "rate": "Rate limiting par endpoint",
-      "audit": "Audit logging complet",
-      "pkce": "PKCE OAuth",
-      "upload": "Validation magic bytes uploads"
-    },
-    "openclawNote": "OpenClaw : vulnérabilités documentées par Cisco, CrowdStrike, Microsoft et al."
+    }
   },
   "arena": {
     "title": "Arena",

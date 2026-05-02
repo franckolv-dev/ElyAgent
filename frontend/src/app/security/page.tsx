@@ -35,8 +35,6 @@ import {
   FileSearch,
   Upload,
   UserCheck,
-  Check,
-  X,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -67,21 +65,6 @@ const SECURITY_FEATURES: SecurityFeature[] = [
   { id: "audit",  titleKey: "features.auditTitle",  descriptionKey: "features.auditDescription",  icon: FileSearch },
   { id: "pkce",   titleKey: "features.pkceTitle",   descriptionKey: "features.pkceDescription",   icon: ShieldCheck },
   { id: "upload", titleKey: "features.uploadTitle", descriptionKey: "features.uploadDescription", icon: Upload },
-];
-
-// -- Comparison data ---------------------------------------------------------
-
-const COMPARISON_ROWS = [
-  { id: "hitl",   ely: true, openclaw: false },
-  { id: "vault",  ely: true, openclaw: false },
-  { id: "pii",    ely: true, openclaw: false },
-  { id: "docker", ely: true, openclaw: false },
-  { id: "ssh",    ely: true, openclaw: false },
-  { id: "jwt",    ely: true, openclaw: false },
-  { id: "rate",   ely: true, openclaw: false },
-  { id: "audit",  ely: true, openclaw: false },
-  { id: "pkce",   ely: true, openclaw: false },
-  { id: "upload", ely: true, openclaw: false },
 ];
 
 // -- Main page ---------------------------------------------------------------
@@ -218,64 +201,6 @@ export default function SecurityPage() {
               })}
             </div>
 
-            {/* Comparison section */}
-            <div className="mt-8">
-              <div className="flex items-center gap-2 mb-4">
-                <ShieldCheck className="w-4 h-4 text-cyber-cyan" />
-                <h2 className="text-xs text-text-muted uppercase tracking-wider">
-                  {t("comparisonTitle")}
-                </h2>
-              </div>
-              <div className="bg-bg-secondary border border-border-dim rounded-lg overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border-dim">
-                      <th className="text-left px-4 py-3 text-text-muted uppercase tracking-wider font-medium">
-                        {t("colProtection")}
-                      </th>
-                      <th className="text-center px-4 py-3 text-cyber-cyan uppercase tracking-wider font-medium w-28">
-                        {t("colEly")}
-                      </th>
-                      <th className="text-center px-4 py-3 text-text-muted uppercase tracking-wider font-medium w-28">
-                        {t("colOpenclaw")}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-dim">
-                    {COMPARISON_ROWS.map((row, i) => (
-                      <motion.tr
-                        key={row.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.4 + i * 0.03 }}
-                        className="hover:bg-bg-tertiary/50 transition-colors"
-                      >
-                        <td className="px-4 py-2.5 text-text-secondary">
-                          {t(`comparison.${row.id}`)}
-                        </td>
-                        <td className="text-center px-4 py-2.5">
-                          {row.ely ? (
-                            <Check className="w-4 h-4 text-emerald-400 inline-block" />
-                          ) : (
-                            <X className="w-4 h-4 text-cyber-red inline-block" />
-                          )}
-                        </td>
-                        <td className="text-center px-4 py-2.5">
-                          {row.openclaw ? (
-                            <Check className="w-4 h-4 text-emerald-400 inline-block" />
-                          ) : (
-                            <X className="w-4 h-4 text-cyber-red inline-block" />
-                          )}
-                        </td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-[10px] text-text-muted mt-2">
-                {t("openclawNote")}
-              </p>
-            </div>
           </main>
         </div>
       </div>
