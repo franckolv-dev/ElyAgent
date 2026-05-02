@@ -163,6 +163,56 @@ PROVIDERS_META = [
 _PROVIDER_IDS = {p["id"] for p in PROVIDERS_META}
 
 
+def _validate_api_key(raw: str | None) -> str | None:
+    """Sanity-check an API key before storage.
+
+    Catches the most frequent copy/paste accidents (mai 2026 — un user a collé
+    l'URL `https://platform.moonshot.ai/console/api-keys` au lieu de la clé,
+    et toutes les missions tombaient en 401 quelques heures plus tard).
+
+    Returns the trimmed key, or None if empty. Raises HTTPException 400 with
+    a helpful message if the value looks obviously wrong.
+    """
+    if raw is None:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    # Anyone pasting a URL has confused the key with the page where to find it
+    if s.lower().startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "La valeur ressemble à une URL, pas à une clé API. "
+                "Va sur la page de la console du provider, génère une clé "
+                "(elle commence généralement par `sk-`) et colle SEULEMENT "
+                "la clé — pas l'URL de la page."
+            ),
+        )
+    # Whitespace inside a key is always wrong (newlines, spaces from PDF copy)
+    if any(c.isspace() for c in s):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "La clé contient des espaces ou retours à la ligne — c'est "
+                "souvent une erreur de copier/coller. Recopie la clé d'un seul "
+                "trait depuis la console du provider."
+            ),
+        )
+    # A real key is always at least ~20 chars (Anthropic, OpenAI, Moonshot,
+    # Mistral, Gemini, DeepSeek… all use 30-100+ char keys).
+    if len(s) < 16:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"La clé est trop courte ({len(s)} caractères). Une vraie clé "
+                "API fait au moins 16 caractères — vérifie que tu as copié la "
+                "totalité du token."
+            ),
+        )
+    return s
+
+
 def _env_key_for(provider_id: str) -> str:
     """Return the env-var attribute name on Settings for this provider's API key."""
     mapping = {
@@ -447,7 +497,7 @@ async def create_llm_instance(
         label=body.label.strip(),
         provider=body.provider,
         model=body.model.strip(),
-        api_key=body.api_key.strip() if body.api_key and body.api_key.strip() else None,
+        api_key=_validate_api_key(body.api_key),
         created_at=datetime.now(timezone.utc),
     )
     async with async_session() as db:
@@ -491,7 +541,7 @@ async def update_llm_instance(
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="model must not be empty.")
             inst.model = body.model.strip()
         if body.api_key is not None:
-            inst.api_key = body.api_key.strip() if body.api_key.strip() else None
+            inst.api_key = _validate_api_key(body.api_key)
 
         await db.commit()
         await db.refresh(inst)

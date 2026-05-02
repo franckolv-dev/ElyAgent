@@ -370,8 +370,18 @@ def _make_moonshot(model: str, api_key: str, base_url: str = "", max_tokens: int
     (long contexte, function calling natif solide). Endpoint international :
     https://api.moonshot.ai/v1 — région CN : https://api.moonshot.cn/v1
     Doc : https://platform.moonshot.ai/docs/api/chat
+
+    Kimi K2.x sont des modèles **reasoning** : l'API renvoie une 400
+    « invalid temperature: only 1 is allowed for this model » si on essaie
+    d'envoyer autre chose que ``temperature=1``. On force donc 1 pour ces
+    modèles (la valeur ``temperature`` passée par le tier router est ignorée
+    de toute façon par le sampler côté Moonshot — pas de perte de qualité).
     """
     from langchain_openai import ChatOpenAI
+    # Kimi K2.x = reasoning model → temperature forcée à 1
+    _model_lower = (model or "").lower()
+    if "k2" in _model_lower or "k1.5" in _model_lower or "thinking" in _model_lower:
+        temperature = 1.0
     return ChatOpenAI(
         model=model,
         api_key=api_key,
