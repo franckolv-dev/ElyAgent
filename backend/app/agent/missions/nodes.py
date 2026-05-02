@@ -240,7 +240,7 @@ async def dispatch_tool(
     # Sending an email to the calling user's own address carries near-zero
     # risk (no data leak to oneself) but used to trigger HITL — impossible
     # to satisfy when the user is offline (e.g. scheduled task at 6 a.m.
-    # sends a daily AI digest to franck@gmail.com → HITL prompt nobody
+    # sends a daily AI digest to you@example.com → HITL prompt nobody
     # answers → email never sent).
     # Mirror of the same logic in app/agent/sub_agents/factory.py used by
     # chat-mode dispatch. April 2026 mission « météo + résumé mails » :

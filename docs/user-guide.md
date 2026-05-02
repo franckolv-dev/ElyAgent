@@ -580,7 +580,7 @@ You can directly tell ELY what to remember or forget:
 Souviens-toi que je préfère les réponses courtes
 ```
 ```
-Mon adresse email professionnelle est franck@entreprise.com
+Mon adresse email professionnelle est pro@example.com
 ```
 ```
 Oublie ce que tu sais sur mon ancien projet

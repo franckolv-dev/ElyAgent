@@ -900,7 +900,7 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 # carries near-zero risk (you can't 'leak' your own data to
                 # yourself) but used to trigger HITL — which is impossible
                 # to satisfy when the user is offline (e.g. scheduled task
-                # at 6 a.m. sends a daily AI digest to franck@gmail.com →
+                # at 6 a.m. sends a daily AI digest to you@example.com →
                 # HITL prompt nobody approves → email never sent).
                 if needs_hitl and tool_name in {
                     "gmail_send_email", "gmail_reply_email",
