@@ -611,7 +611,7 @@ export default function SettingsPage() {
         const err = await res.json().catch(() => ({}));
         push("error", err.detail ?? `HTTP ${res.status}`);
       } else {
-        push("success", next ? "Mode mono-agent activé" : "Mode mono-agent désactivé");
+        push("success", next ? t("monoAgentEnabledToast") : t("monoAgentDisabledToast"));
       }
     } catch {
       setMonoAgent(!next);
@@ -1233,17 +1233,14 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <Zap size={14} style={{ color: monoAgent ? "var(--accent)" : "var(--text-secondary)" }} />
                         <h3 className="text-sm font-semibold" style={{ color: monoAgent ? "var(--accent)" : "var(--text-primary)" }}>
-                          Mode mono-agent {monoAgent && "— ACTIF"}
+                          {t("monoAgentTitle")} {monoAgent && `— ${t("monoAgentActive")}`}
                         </h3>
                       </div>
                       <p className="text-xs" style={{ color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                        Court-circuite le routeur de classification : chaque requête est envoyée
-                        au specialist <code style={{ color: "var(--accent)" }}>general</code> qui a
-                        accès à <strong>tous les tools</strong> (workspace, research, infra,
-                        memory, creative, desktop). Recommandé pour valider un modèle
-                        agentique long-contexte (Kimi K2.6, Claude Sonnet 4.6, GPT-5).
-                        L'inférence est plus longue (≈148 tools bindés vs ~40), mais aucune
-                        requête multi-domaine n'est ratée par erreur de routing.
+                        {t.rich("monoAgentDescription", {
+                          code: (chunks) => <code style={{ color: "var(--accent)" }}>{chunks}</code>,
+                          strong: (chunks) => <strong>{chunks}</strong>,
+                        })}
                       </p>
                     </div>
                     <button
@@ -1252,7 +1249,7 @@ export default function SettingsPage() {
                       disabled={monoAgentSaving}
                       role="switch"
                       aria-checked={monoAgent}
-                      title={monoAgent ? "Désactiver le mode mono-agent" : "Activer le mode mono-agent"}
+                      title={monoAgent ? t("monoAgentDisable") : t("monoAgentEnable")}
                       style={{
                         position: "relative",
                         width: 44,
