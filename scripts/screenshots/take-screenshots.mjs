@@ -74,8 +74,8 @@ const LOCALES = ["fr", "en"];
 async function loginAndGetToken() {
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ username: LOGIN, password: PASSWORD }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: LOGIN, password: PASSWORD }),
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
