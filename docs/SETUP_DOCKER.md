@@ -87,8 +87,8 @@ Une fois Docker installé, dans ton terminal :
 git --version
 
 # 2. Clone le projet ELY
-git clone https://github.com/franckolv-dev/PhysicalAgent.git
-cd PhysicalAgent
+git clone https://github.com/franckolv-dev/ElyAgent.git
+cd ElyAgent
 
 # 3. Crée ton fichier de configuration
 cp .env.example .env
@@ -134,7 +134,7 @@ docker compose up -d
 
 ## 👤 Créer ton premier compte admin
 
-Dans le terminal (toujours dans le dossier `PhysicalAgent/`) :
+Dans le terminal (toujours dans le dossier `ElyAgent/`) :
 
 ```bash
 docker exec cyberentity-backend uv run python -c "
@@ -189,7 +189,7 @@ Connecte-toi avec `admin` / `<ton-mot-de-passe>`. Bienvenue dans ELY.
 Quand une nouvelle version sort :
 
 ```bash
-cd PhysicalAgent
+cd ElyAgent
 git pull
 make build
 make up
@@ -223,7 +223,7 @@ Vérifie que ton ordi ne se met pas en veille. Sur Mac : Préférences Système 
 ```bash
 make down                    # arrête les containers
 docker system prune -a       # supprime les images Docker
-rm -rf PhysicalAgent/data    # supprime tes données ELY
+rm -rf ElyAgent/data    # supprime tes données ELY
 # puis désinstalle Docker Desktop normalement
 ```
 

@@ -95,7 +95,7 @@ C'est une limitation des navigateurs (pas d'ELY) : `getUserMedia()` (le micro) r
 **Avant d'ouvrir une issue** :
 1. Lis la section **🆘 Troubleshooting** du fichier concerné (chacun des SETUP_*.md a sa section).
 2. Regarde les logs : `make logs s=backend` et `make logs s=frontend` dans le dossier ELY.
-3. Cherche dans les [issues GitHub fermées](https://github.com/franckolv-dev/PhysicalAgent/issues?q=is%3Aissue+is%3Aclosed) — il y a de fortes chances que ton problème ait déjà été résolu.
+3. Cherche dans les [issues GitHub fermées](https://github.com/franckolv-dev/ElyAgent/issues?q=is%3Aissue+is%3Aclosed) — il y a de fortes chances que ton problème ait déjà été résolu.
 4. Toujours bloqué ? **Ouvre une issue** avec :
    - Ton OS (Mac M1, Windows 11, Ubuntu 22.04…)
    - La commande exacte qui plante
@@ -115,8 +115,8 @@ Si tu veux juste **voir si ELY tourne** sur ton ordi sans configurer aucun servi
 # (https://www.docker.com/products/docker-desktop/)
 
 # 2. Clone et lance
-git clone https://github.com/franckolv-dev/PhysicalAgent.git
-cd PhysicalAgent
+git clone https://github.com/franckolv-dev/ElyAgent.git
+cd ElyAgent
 cp .env.example .env
 
 # 3. Génère un JWT secret et colle-le dans .env (ligne JWT_SECRET_KEY)

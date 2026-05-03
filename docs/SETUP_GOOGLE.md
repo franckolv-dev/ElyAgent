@@ -118,7 +118,7 @@ C'est l'écran que Google va afficher quand tu lieras ton compte à ELY pour la 
 Renomme le fichier téléchargé en `credentials.json` et place-le ici :
 
 ```
-PhysicalAgent/
+ElyAgent/
 └── backend/
     └── credentials.json    ← ICI
 ```

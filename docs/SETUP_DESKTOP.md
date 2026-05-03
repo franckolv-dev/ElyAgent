@@ -18,7 +18,7 @@ Si tu vois un message *« Aucun binaire disponible »*, c'est que la personne qu
 
 Pour la version v1.1+, les binaires officiels seront attachés à chaque GitHub Release :
 
-1. Va sur 👉 [github.com/franckolv-dev/PhysicalAgent/releases/latest](https://github.com/franckolv-dev/PhysicalAgent/releases/latest)
+1. Va sur 👉 [github.com/franckolv-dev/ElyAgent/releases/latest](https://github.com/franckolv-dev/ElyAgent/releases/latest)
 2. Télécharge le fichier qui correspond à ton OS :
    - `ely-desktop-macos-arm64` — Mac M1/M2/M3/M4
    - `ely-desktop-macos-amd64` — Mac Intel
@@ -44,7 +44,7 @@ Vérifie avec `go version` (>= 1.21 requis).
 ### Build des 4 binaires en une commande
 
 ```bash
-cd PhysicalAgent/desktop
+cd ElyAgent/desktop
 bash build.sh
 ```
 
@@ -55,7 +55,7 @@ bash build.sh
 Si tu as déjà Docker (tu l'as forcément, ELY tourne dedans) :
 
 ```bash
-cd PhysicalAgent/desktop
+cd ElyAgent/desktop
 docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine sh -c "
 mkdir -p dist &&
 CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags='-s -w' -o dist/ely-desktop-linux-amd64 . &&

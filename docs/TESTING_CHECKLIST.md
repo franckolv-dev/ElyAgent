@@ -167,7 +167,7 @@
 ## 🖼 13. Génération d'images & QR codes (4 outils)
 
 - [ ] **95.** "Génère une image d'un agent IA cyberpunk" → `generate_image`
-- [ ] **96.** "Génère un QR code pour https://github.com/franckolv-dev/PhysicalAgent" → `qrcode_generate`
+- [ ] **96.** "Génère un QR code pour https://github.com/franckolv-dev/ElyAgent" → `qrcode_generate`
 - [ ] **97.** "Crée un QR code WiFi pour le réseau MonWifi, mot de passe : Test1234" → `qrcode_generate_wifi`
 - [ ] **98.** "Crée un QR code vCard pour Franck Ollivier, email franck@test.com" → `qrcode_generate_vcard`
 

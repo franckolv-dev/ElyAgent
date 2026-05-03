@@ -39,8 +39,8 @@ This contribution guide focuses on what's *welcome* in PRs and how to set up a d
 
 ```bash
 # 1. Clone
-git clone https://github.com/franckolv-dev/PhysicalAgent.git
-cd PhysicalAgent
+git clone https://github.com/franckolv-dev/ElyAgent.git
+cd ElyAgent
 
 # 2. Copy env templates
 cp .env.example .env
@@ -119,6 +119,6 @@ By participating you agree to abide by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Questions?
 
-Open a [discussion](https://github.com/franckolv-dev/PhysicalAgent/discussions) (preferred) or an issue tagged `question`.
+Open a [discussion](https://github.com/franckolv-dev/ElyAgent/discussions) (preferred) or an issue tagged `question`.
 
 Happy hacking ! 🚀

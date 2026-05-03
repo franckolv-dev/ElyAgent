@@ -639,8 +639,8 @@ Store API keys and passwords encrypted at rest (AES-256-GCM), injected into tool
 
 ```bash
 # 1. Clone
-git clone https://github.com/franckolv-dev/PhysicalAgent.git
-cd PhysicalAgent
+git clone https://github.com/franckolv-dev/ElyAgent.git
+cd ElyAgent
 
 # 2. Configure
 cp .env.example .env

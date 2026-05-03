@@ -45,7 +45,7 @@ Forking is welcome — the project is open source for a reason. But your fork mu
 1. **Use a different name.** Examples acceptable: *"NeuroBot"*, *"MyAgent"*, *"FranckBot-Custom"*. Examples unacceptable: anything starting with *"Ely"* or containing *"agent-ely"*.
 2. **Replace the avatar and logo** with your own. The wireframe head and lightning bolt are off-limits.
 3. **Keep the LICENSE and a NOTICE** crediting the original ELY project (PolyForm Strict requires this anyway).
-4. **Make it clear it's a fork** — a line in your README like *"Fork of ELY by Franck OLLIVIER, see [original repo](https://github.com/franckolv-dev/PhysicalAgent)"* is sufficient.
+4. **Make it clear it's a fork** — a line in your README like *"Fork of ELY by Franck OLLIVIER, see [original repo](https://github.com/franckolv-dev/ElyAgent)"* is sufficient.
 
 We will not pursue forks that follow these rules — that's open source done well.
 

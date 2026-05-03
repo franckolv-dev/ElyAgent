@@ -57,8 +57,8 @@ ollama pull phi4-mini       # Ultra-léger (~2.5 Go)
 ### Étape 3 — Cloner le dépôt
 
 ```bash
-git clone https://github.com/franckolv-dev/PhysicalAgent.git
-cd PhysicalAgent
+git clone https://github.com/franckolv-dev/ElyAgent.git
+cd ElyAgent
 ```
 
 ### Étape 4 — Configurer l'environnement
@@ -96,8 +96,8 @@ ollama pull qwen2.5:7b
 ### Étape 3 — Cloner et configurer
 
 ```bash
-git clone https://github.com/franckolv-dev/PhysicalAgent.git
-cd PhysicalAgent
+git clone https://github.com/franckolv-dev/ElyAgent.git
+cd ElyAgent
 cp .env.example .env
 # Éditez .env
 ```
