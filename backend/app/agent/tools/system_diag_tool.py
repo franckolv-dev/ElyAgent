@@ -418,7 +418,11 @@ async def system_get_health() -> str:
     SQLite database file size, log buffer fill ratio, mission heartbeat
     interval. Use this as a "general checkup".
     """
-    import os, sys, time, httpx
+    import os
+    import sys
+    import time
+
+    import httpx
     out = ["État de santé du backend ELY :\n"]
 
     # Uptime via /proc (Linux container)
