@@ -1,20 +1,38 @@
-# ELY — Exactly Like You
+<div align="center">
 
-[![License](https://img.shields.io/badge/license-PolyForm%20Strict%201.0.0-blue)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-1.0-orange)](https://langchain-ai.github.io/langgraph/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docs.docker.com/compose/)
-[![Self-hosted](https://img.shields.io/badge/self--hosted-100%25-brightgreen)](#deployment)
+<img src=".github/assets/ely-logo.png" alt="ELY — AI Agent" width="320" />
 
-> **Your personal AI agent. Trained on your habits. Runs on your hardware. Never acts without your approval.**
+### Your personal AI agent. Trained on your habits. Runs on your hardware. Never acts without your approval.
 
-ELY is a fully self-hosted AI agent that integrates with your entire digital life — Google Workspace, servers, smart home, files, web — while keeping your sensitive data out of the LLM and pausing before every irreversible action.
+A self-hosted, GDPR-native AI agent for sovereign people and organisations.
+Multi-LLM · multi-channel · HITL on every irreversible action · native PII anonymisation.
 
-**Run it on your laptop, a Mac Studio, or a VPS. Access it from anywhere via Cloudflare Tunnel or Tailscale. No subscription. No data leaving your machine unless you choose it.**
+[**Website**](https://agent-ely.fr) ·
+[**Documentation**](./docs/START_HERE.md) ·
+[**Roadmap**](https://agent-ely.fr/roadmap.html) ·
+[**Pricing**](https://agent-ely.fr/pricing.html) ·
+[**Newsletter**](https://agent-ely.fr/newsletter.html) ·
+[**Discussions**](https://github.com/franckolv-dev/ElyAgent/discussions)
 
-> 💡 **Free for personal use.** Commercial use requires a separate license — see [§ License](#-license) at the bottom or contact [contact@agent-ely.fr](mailto:contact@agent-ely.fr).
+[![License](https://img.shields.io/badge/license-PolyForm%20Strict%201.0-13bbc2?style=flat-square)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/franckolv-dev/ElyAgent/ci.yml?style=flat-square&label=tests)](https://github.com/franckolv-dev/ElyAgent/actions)
+[![Discussions](https://img.shields.io/github/discussions/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/discussions)
+[![Stars](https://img.shields.io/github/stars/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/stargazers)
+
+[![Python](https://img.shields.io/badge/Python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.0-orange?style=flat-square)](https://langchain-ai.github.io/langgraph/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+
+</div>
+
+---
+
+> 💡 **Free for personal use, education and research.** Commercial deployment requires a [commercial licence](https://agent-ely.fr/pricing.html). See [§ License](#-license) at the bottom or email [contact@agent-ely.fr](mailto:contact@agent-ely.fr).
+
+---
 
 ---
 
