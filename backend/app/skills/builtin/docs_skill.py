@@ -15,7 +15,7 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.docs_tool import (
     docs_create_document,
@@ -37,6 +37,7 @@ get_skill_registry().register(Skill(
     ),
     icon="📝",
     scopes=["google_oauth"],
+    domains=[Domain.WORKSPACE],
     tools=[
         docs_create_document,
         docs_read_document,

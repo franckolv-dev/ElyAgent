@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """Maps / Itinéraires skill — geocoding, directions and POI search via OpenStreetMap."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.maps_tool import (
     maps_geocode,
@@ -34,6 +34,7 @@ get_skill_registry().register(Skill(
     ),
     icon="🗺️",
     scopes=["internet"],
+    domains=[Domain.RESEARCH, Domain.DATA],
     tools=[
         maps_geocode,
         maps_directions,

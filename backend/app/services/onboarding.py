@@ -133,6 +133,28 @@ QUESTIONS: list[OnboardingQuestion] = [
         domain="general",
     ),
     OnboardingQuestion(
+        id="location",
+        text=(
+            "**Où es-tu basé géographiquement ?** (ville, département ou région). "
+            "Ça me servira quand tu me demandes la météo, des restos, des "
+            "trajets ou n'importe quoi de localisé — sinon je tape par défaut "
+            "sur Paris et j'ai déjà fait l'erreur."
+        ),
+        placeholder="Bordeaux, Gironde, Nouvelle-Aquitaine, …",
+        domain="general",
+    ),
+    OnboardingQuestion(
+        id="profession",
+        text=(
+            "**Dans quel secteur d'activité travailles-tu ?** "
+            "(facultatif — ça m'aide à comprendre tes priorités, tes échéances "
+            "typiques, le vocabulaire que tu utilises sans m'expliquer). "
+            "Tu peux aussi décrire ton rôle si tu préfères."
+        ),
+        placeholder="Avocat, freelance dev, DSI, médecin, retraité, …",
+        domain="general",
+    ),
+    OnboardingQuestion(
         id="strict_rules",
         text=(
             "Dernière question : **y a-t-il des règles strictes à respecter ?** "

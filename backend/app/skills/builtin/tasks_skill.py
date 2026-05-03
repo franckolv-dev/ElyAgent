@@ -15,7 +15,7 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.tasks_tool import (
     tasks_list,
@@ -38,6 +38,7 @@ get_skill_registry().register(Skill(
     ),
     icon="✅",
     scopes=["google_oauth"],
+    domains=[Domain.WORKSPACE],
     tools=[
         tasks_list,
         tasks_create,

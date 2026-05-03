@@ -490,68 +490,52 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tool subsets per specialist
+# Tool subsets per specialist (Sprint 2 — derived from the SkillRegistry)
 # ──────────────────────────────────────────────────────────────────────────────
+#
+# These were hardcoded sets duplicated across supervisor.py + sub_agents/
+# config.py + each skill module — the "triple-registration trap" : a new
+# tool was invisible to the agent until it was registered in 4 places.
+#
+# Now the SOURCE OF TRUTH is each ``Skill.domains`` field. ``_skills_for_domain``
+# returns the tool names registered for a given domain (plus universal tools
+# like memory / RAG that are injected into every specialist).
+#
+# To add a new tool you ONLY need to :
+#   1. Implement the @tool callable.
+#   2. Register the parent Skill with the right ``domains=[Domain.X]`` list.
+# Routing tables update automatically on next process restart.
 
-# Tools available in every specialist domain — user preferences and constraints
-# must be saveable regardless of the current routing domain.
-_MEMORY_SKILLS = {
-    "save_user_preference", "save_constraint",
-    "knowledge_search", "knowledge_list",
-    "smart_knowledge_query",
-}
+def _skills_for_domain(domain: str) -> set[str]:
+    """Return the set of tool names available in *domain*.
 
-_RESEARCH_SKILLS = {
-    "web_search", "web_search_news",
-    "weather_get", "news_get_headlines", "translate_text",
-    "browser_navigate", "browser_search_web", "browser_get_text",
-    "browser_screenshot", "browser_click", "browser_fill", "browser_close",
-} | _MEMORY_SKILLS
+    Reads the SkillRegistry at call time so it always reflects the live
+    set (important for hot-reloaded MCP skills).
+    """
+    from app.skills import get_skill_registry
+    return get_skill_registry().tool_names_by_domain(domain)
 
-_WORKSPACE_SKILLS = {
-    # Gmail
-    "gmail_list_emails", "gmail_read_email", "gmail_send_email",
-    "gmail_reply_email", "gmail_send_with_attachment",
-    "gmail_mark_read", "gmail_mark_unread",
-    "gmail_create_draft", "gmail_list_drafts",
-    "gmail_list_labels", "gmail_create_label",
-    "gmail_move_emails", "gmail_trash_emails", "gmail_search_for_cleanup",
-    "gmail_trash_by_category", "gmail_trash_by_query",
-    "gmail_batch_modify", "gmail_update_settings", "gmail_raw_api_call",
-    # Calendar
-    "calendar_list_events", "calendar_create_event",
-    "calendar_get_event", "calendar_update_event", "calendar_delete_event",
-    "calendar_check_availability", "calendar_list_calendars",
-    "calendar_quick_add", "calendar_create_meet_event", "calendar_raw_api_call",
-    # Drive
-    "drive_list_files", "drive_read_file",
-    "drive_create_folder", "drive_create_file", "drive_update_file",
-    "drive_move_file", "drive_rename_file", "drive_delete_file",
-    "drive_share_file", "drive_copy_file", "drive_export_file", "drive_raw_api_call",
-    # Docs
-    "docs_create_document", "docs_read_document", "docs_append_text",
-    "docs_replace_text", "docs_insert_table",
-    "docs_batch_update", "docs_raw_api_call",
-    # Sheets
-    "sheets_create_spreadsheet", "sheets_read_spreadsheet", "sheets_append_rows",
-    "sheets_update_cells", "sheets_delete_rows", "sheets_add_sheet", "sheets_list_sheets",
-    "sheets_batch_update", "sheets_raw_api_call",
-    # Tasks
-    "tasks_list", "tasks_create", "tasks_complete",
-    "tasks_update", "tasks_delete", "tasks_list_tasklists", "tasks_create_tasklist",
-    "tasks_raw_api_call",
-    # Contacts
-    "contacts_search", "contacts_list", "contacts_create",
-    "contacts_get", "contacts_update", "contacts_delete",
-    "contacts_batch_operations", "contacts_raw_api_call",
-} | _MEMORY_SKILLS
 
-_INFRA_SKILLS = {
-    "ssh_execute", "system_info",
-    "scheduler_create_task", "scheduler_list_tasks", "scheduler_delete_task",
-    "briefing_generate",
-    "watchdog_add", "watchdog_list", "watchdog_remove",
-} | _MEMORY_SKILLS
+# Backwards-compat aliases — accessed via __getattr__ below so they stay
+# in sync with the registry even if it changes mid-process.
+def __getattr__(name: str):
+    """Lazy resolution of legacy module-level constants.
+
+    Old code used to read ``supervisor._WORKSPACE_SKILLS`` directly. We
+    keep that surface working but compute it on demand from the registry.
+    """
+    _legacy = {
+        "_MEMORY_SKILLS":    "_universal",
+        "_RESEARCH_SKILLS":  "research",
+        "_WORKSPACE_SKILLS": "workspace",
+        "_INFRA_SKILLS":     "infra",
+        "_CREATIVE_SKILLS":  "creative",
+        "_DATA_SKILLS":      "data",
+        "_DESKTOP_SKILLS":   "desktop",
+    }
+    if name in _legacy:
+        return _skills_for_domain(_legacy[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -979,12 +963,12 @@ def create_specialist_node(domain: Domain):
     from app.skills import get_skill_registry
     from app.services.memory_manager import get_memory_manager
 
-    tool_filter = {
-        "research": _RESEARCH_SKILLS,
-        "workspace": _WORKSPACE_SKILLS,
-        "infra": _INFRA_SKILLS,
-        "general": None,  # None = all tools
-    }[domain]
+    # Tool filter is derived live from the registry. ``None`` means "all
+    # tools" (used for the ``general`` fallback specialist).
+    if domain == "general":
+        tool_filter: set[str] | None = None
+    else:
+        tool_filter = _skills_for_domain(domain)
 
     specialist_prompt = _SPECIALIST_PROMPTS[domain]
 

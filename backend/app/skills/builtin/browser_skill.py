@@ -45,7 +45,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
@@ -429,6 +429,7 @@ get_skill_registry().register(Skill(
     ),
     icon="🌍",
     scopes=["internet"],
+    domains=[Domain.RESEARCH],
     tools=[
         browser_navigate,
         browser_search_web,

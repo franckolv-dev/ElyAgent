@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """WhatsApp skill — send messages via Meta WhatsApp Cloud API."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.whatsapp_tool import (
     whatsapp_send,
@@ -32,6 +32,7 @@ get_skill_registry().register(Skill(
     ),
     icon="💬",
     scopes=["internet"],
+    domains=[Domain.MEMORY],
     tools=[
         whatsapp_send,
         whatsapp_send_template,

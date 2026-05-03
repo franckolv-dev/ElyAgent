@@ -578,10 +578,42 @@ Réponds STRICTEMENT en JSON, sans texte autour, au format suivant :
 
 Règles :
 - Chaque "description" doit être ce que l'agent doit FAIRE à cette étape (pas ce qu'il doit savoir).
-- "tool_hint" peut être null si tu ne sais pas quel outil utiliser.
+- "tool_hint" DOIT être un nom EXACT du catalogue d'outils ci-dessous, ou null. Utilise UNIQUEMENT des noms qui apparaissent littéralement dans le catalogue. Si aucun outil ne convient, mets null — n'invente JAMAIS de nom d'outil.
 - Maximum 8 étapes. Si le goal demande plus, regroupe.
-- Les étapes seront exécutées en ORDRE séquentiel.
-- N'invente pas d'outils — si tu ne connais pas un outil, mets null."""
+- Les étapes seront exécutées en ORDRE séquentiel."""
+
+
+def _build_plan_system(date_str: str, tools_catalog: str, n_tools: int) -> str:
+    """Render ``_PLAN_SYSTEM`` augmented with the live date + tools catalog.
+
+    Injecting the catalog fixes a class of hallucinations where the planner
+    LLM (e.g. Qwen 3.6 Plus) invented tool names like ``date_get_current``
+    that don't exist — the executor then fell back to the closest phonetic
+    match (``news_get_headlines``) and looped on it.
+    """
+    return (
+        f"{_PLAN_SYSTEM}\n\n"
+        f"📅 Date du jour : {date_str} (Europe/Paris)\n\n"
+        f"🛠 Outils disponibles ({n_tools}) — n'utilise QUE des noms exacts "
+        f"de cette liste pour `tool_hint` :\n{tools_catalog}"
+    )
+
+
+def _current_date_paris_str() -> str:
+    """Format current Paris-time date in French (mirrors supervisor.py)."""
+    import zoneinfo
+    from datetime import datetime
+    _tz = zoneinfo.ZoneInfo("Europe/Paris")
+    now = datetime.now(_tz)
+    _days_fr = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+    _months_fr = [
+        "", "janvier", "février", "mars", "avril", "mai", "juin",
+        "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+    ]
+    return (
+        f"{_days_fr[now.weekday()]} {now.day} {_months_fr[now.month]} "
+        f"{now.year}, {now.strftime('%H:%M')}"
+    )
 
 
 async def plan_node(state: MissionState) -> dict:
@@ -605,9 +637,23 @@ async def plan_node(state: MissionState) -> dict:
     t0 = time.monotonic()
     llm = _get_planner_llm()
 
+    # Sprint 2 — inject the live tool catalog + current date into the
+    # system prompt so the planner cannot hallucinate tool names (root
+    # cause of the May 2026 "date_get_current" + "news_get_headlines"
+    # loop). The catalog is read live from the SkillRegistry so any new
+    # tool registered (incl. MCP hot-reload) is immediately visible.
+    from app.skills import get_skill_registry
+    _registry = get_skill_registry()
+    _catalog = _registry.tools_catalog(per_domain=True)
+    _n_tools = len(_registry.all_tool_names())
+    sys_prompt = _build_plan_system(
+        date_str=_current_date_paris_str(),
+        tools_catalog=_catalog,
+        n_tools=_n_tools,
+    )
+
     # Inject the user's personal vocabulary (onboarding) so the planner
     # uses the right canonical terms in the steps it generates.
-    sys_prompt = _PLAN_SYSTEM
     try:
         from app.services.onboarding import get_vocabulary_for_prompt
         _vocab = await get_vocabulary_for_prompt(state["user_id"])
@@ -1110,6 +1156,11 @@ Dernière tentative qui a échoué :
 - Sortie : {last_output}
 - Raison de l'échec : {last_reason}
 
+📅 Date du jour : {date_str} (Europe/Paris)
+
+🛠 Outils disponibles ({n_tools}) — n'utilise QUE des noms exacts de cette liste pour `tool_hint`, sinon mets null. N'invente JAMAIS un nom d'outil.
+{tools_catalog}
+
 Produis un NOUVEAU plan, différent du précédent, qui contourne ce blocage.
 Réponds STRICTEMENT en JSON :
 {{
@@ -1128,12 +1179,22 @@ async def replan_node(state: MissionState) -> dict:
 
     t0 = time.monotonic()
     llm = _get_planner_llm()
+    # Sprint 2 — same anti-hallucination injection as plan_node.
+    from app.skills import get_skill_registry
+    _registry = get_skill_registry()
+    # Escape braces in user-provided / dynamic text so str.format() does not
+    # crash on a stray `{` in a tool description or last_output payload.
+    def _esc(s: object) -> str:
+        return str(s).replace("{", "{{").replace("}", "}}")
     prompt = _REPLAN_SYSTEM.format(
-        goal=state.get("goal", "?"),
-        plan_text=state.get("plan_text", "(plan vide)"),
-        last_tool=state.get("last_tool_name", "(aucun)"),
-        last_output=(state.get("last_tool_output", "") or "")[:1000],
-        last_reason=state.get("last_eval_reason", "(non spécifié)"),
+        goal=_esc(state.get("goal", "?")),
+        plan_text=_esc(state.get("plan_text", "(plan vide)")),
+        last_tool=_esc(state.get("last_tool_name", "(aucun)")),
+        last_output=_esc((state.get("last_tool_output", "") or "")[:1000]),
+        last_reason=_esc(state.get("last_eval_reason", "(non spécifié)")),
+        date_str=_current_date_paris_str(),
+        tools_catalog=_esc(_registry.tools_catalog(per_domain=True)),
+        n_tools=len(_registry.all_tool_names()),
     )
     response = await llm.ainvoke([HumanMessage(content=prompt)])
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "replan", llm)

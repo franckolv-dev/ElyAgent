@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """Notes / Presse-papier skill — create and manage personal notes."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.notes_tool import (
     notes_create,
@@ -36,6 +36,7 @@ get_skill_registry().register(Skill(
     ),
     icon="📝",
     scopes=[],
+    domains=[Domain.MEMORY],
     tools=[
         notes_create,
         notes_list,

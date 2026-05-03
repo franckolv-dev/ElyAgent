@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """QR Code skill — generate QR codes for URLs, Wi-Fi, vCards, etc."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.qrcode_tool import (
     qrcode_generate,
@@ -33,6 +33,7 @@ get_skill_registry().register(Skill(
     ),
     icon="◼",
     scopes=[],
+    domains=[Domain.CREATIVE],
     tools=[
         qrcode_generate,
         qrcode_generate_wifi,

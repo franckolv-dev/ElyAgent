@@ -8,7 +8,7 @@
 Enables missions and scheduled tasks to push their results to the user's
 own Telegram chat (one recipient only — security via InjectedToolArg).
 """
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.telegram_tool import telegram_send_message
 
@@ -22,6 +22,7 @@ get_skill_registry().register(Skill(
     ),
     icon="✈️",
     scopes=["telegram"],
+    domains=[Domain.MEMORY],
     tools=[
         telegram_send_message,
     ],

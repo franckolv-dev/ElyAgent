@@ -15,7 +15,7 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.scheduler_tool import scheduler_list_tasks, scheduler_create_task, scheduler_delete_task
 
@@ -25,5 +25,6 @@ get_skill_registry().register(Skill(
     description="Créer des rappels et tâches récurrentes qui s'exécutent automatiquement (cron)",
     icon="⏰",
     scopes=[],
+    domains=[Domain.INFRA],
     tools=[scheduler_list_tasks, scheduler_create_task, scheduler_delete_task],
 ))

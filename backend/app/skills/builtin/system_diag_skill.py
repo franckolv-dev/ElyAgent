@@ -18,7 +18,7 @@ Lets ELY answer questions like :
 All tools are read-only. Self-modification (restart bot, change tier,
 edit DB) is reserved for a future Phase B with HITL gating.
 """
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.system_diag_tool import (
     system_get_logs,
@@ -43,6 +43,7 @@ get_skill_registry().register(Skill(
     icon="🔍",
     scopes=[],
     enabled_by_default=True,
+    domains=[Domain.DIAG],
     tools=[
         system_get_logs,
         system_list_scheduled_tasks,

@@ -44,7 +44,7 @@ import logging
 
 from langchain_core.tools import tool
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
@@ -270,6 +270,7 @@ get_skill_registry().register(Skill(
     ),
     icon="🖥️",
     scopes=["local"],
+    domains=[Domain.DESKTOP],
     tools=[
         os_screenshot,
         os_mouse_move,

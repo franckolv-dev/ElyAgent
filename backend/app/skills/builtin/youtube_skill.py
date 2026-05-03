@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """YouTube skill — search videos and retrieve transcripts."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.youtube_tool import (
     youtube_search,
@@ -33,6 +33,7 @@ get_skill_registry().register(Skill(
     ),
     icon="▶️",
     scopes=["internet"],
+    domains=[Domain.CREATIVE],
     tools=[
         youtube_search,
         youtube_transcript,

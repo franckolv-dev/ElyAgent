@@ -59,7 +59,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
@@ -369,6 +369,7 @@ get_skill_registry().register(Skill(
     ),
     icon="⚡",
     scopes=["local"],
+    domains=[Domain.CREATIVE],
     tools=[
         mcp_generate_server,
         mcp_validate_and_deploy,

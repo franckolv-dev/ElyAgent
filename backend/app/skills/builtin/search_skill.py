@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """Web Search skill — reliable search via Tavily or DuckDuckGo library (no Playwright scraping)."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.search_tool import web_search, web_search_news
 
@@ -29,5 +29,6 @@ get_skill_registry().register(Skill(
     ),
     icon="🔎",
     scopes=["internet"],
+    domains=[Domain.RESEARCH],
     tools=[web_search, web_search_news],
 ))

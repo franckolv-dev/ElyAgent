@@ -31,7 +31,7 @@ from io import BytesIO
 
 from langchain_core.tools import tool
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
@@ -96,5 +96,6 @@ get_skill_registry().register(Skill(
     description="Génère des images à partir d'une description textuelle via Gemini Imagen 3",
     icon="🎨",
     scopes=["internet"],
+    domains=[Domain.CREATIVE],
     tools=[generate_image],
 ))

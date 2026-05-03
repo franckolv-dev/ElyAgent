@@ -30,7 +30,7 @@ import logging
 
 from langchain_core.tools import tool
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
@@ -113,5 +113,6 @@ get_skill_registry().register(Skill(
     description="Traduire du texte dans plus de 50 langues via MyMemory (sans clé API, 5 000 car/jour gratuits)",
     icon="🌐",
     scopes=["internet"],
+    domains=[Domain.RESEARCH],
     tools=[translate_text],
 ))

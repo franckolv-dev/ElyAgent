@@ -31,7 +31,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 
@@ -309,6 +309,7 @@ def register_desktop_skill() -> None:
         ),
         icon="💻",
         scopes=[],
+        domains=[Domain.DESKTOP],
         tools=[
             desktop_list_dir,
             desktop_read_file,

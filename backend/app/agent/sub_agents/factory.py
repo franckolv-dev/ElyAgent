@@ -109,8 +109,9 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             # tool schemas d'un turn à l'autre. Sans ce tri, l'ordre dépend de
             # l'enregistrement des skills (peut varier sur restart) et casse
             # le cache même quand les memories sont stables.
+            _allowed_tool_names = cfg.resolve_tool_names()
             agent_tools = sorted(
-                [t for t in registry.all_tools if t.name in cfg.tool_names],
+                [t for t in registry.all_tools if t.name in _allowed_tool_names],
                 key=lambda t: t.name,
             )
 
@@ -717,10 +718,11 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                     break
 
             # Only expose tools declared for this sub-agent
+            _allowed_tool_names = cfg.resolve_tool_names()
             tool_map = {
                 t.name: t
                 for t in get_skill_registry().all_tools
-                if t.name in cfg.tool_names
+                if t.name in _allowed_tool_names
             }
             sf = SecurityFilter()
             hitl = get_hitl_manager()

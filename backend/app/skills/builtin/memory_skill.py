@@ -15,7 +15,7 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.memory_tool import save_user_preference, save_constraint
 from app.agent.tools.memgpt_tool import (
@@ -28,6 +28,7 @@ get_skill_registry().register(Skill(
     description="Sauvegarder les préférences de communication et les contraintes permanentes de l'utilisateur",
     icon="🧠",
     scopes=[],
+    domains=[Domain.UNIVERSAL],
     tools=[save_user_preference, save_constraint],
     enabled_by_default=True,
 ))
@@ -47,6 +48,7 @@ get_skill_registry().register(Skill(
     ),
     icon="🗄️",
     scopes=[],
+    domains=[Domain.MEMORY],
     tools=[memory_archive, memory_search, memory_recent],
     enabled_by_default=True,
 ))

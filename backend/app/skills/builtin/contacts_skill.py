@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """Google Contacts skill."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.contacts_tool import (
     contacts_search,
@@ -39,6 +39,7 @@ get_skill_registry().register(Skill(
     ),
     icon="👤",
     scopes=["google_oauth"],
+    domains=[Domain.WORKSPACE],
     tools=[
         contacts_search,
         contacts_list,

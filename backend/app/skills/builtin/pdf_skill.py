@@ -16,7 +16,7 @@
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
 """PDF reading skill."""
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.pdf_tool import pdf_read, pdf_info
 
@@ -26,5 +26,6 @@ get_skill_registry().register(Skill(
     description="Lire, extraire le texte et les métadonnées de fichiers PDF (chemin local ou URL)",
     icon="📄",
     scopes=[],
+    domains=[Domain.CREATIVE],
     tools=[pdf_read, pdf_info],
 ))

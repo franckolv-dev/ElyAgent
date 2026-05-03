@@ -26,7 +26,7 @@ import logging
 
 from langchain_core.tools import tool
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 logger = logging.getLogger(__name__)
@@ -96,5 +96,6 @@ get_skill_registry().register(Skill(
     description="Météo actuelle et prévisions pour n'importe quelle ville (via wttr.in, sans clé API)",
     icon="🌤️",
     scopes=["internet"],
+    domains=[Domain.RESEARCH],
     tools=[weather_get],
 ))

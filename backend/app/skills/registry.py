@@ -39,7 +39,7 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,130 @@ class SkillRegistry:
             names = ", ".join(t.name for t in s.tools)
             lines.append(f"{s.icon} {s.display_name} : {s.description} [{names}]")
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------ #
+    # Domain-driven helpers (Sprint 2 — eliminates the triple-registration trap) #
+    # ------------------------------------------------------------------ #
+
+    def _skills_for_domain(self, domain: str) -> list[Skill]:
+        """Return all skills whose ``domains`` list includes *domain* OR
+        ``Domain.UNIVERSAL`` (the latter are always-on across every domain)."""
+        result: list[Skill] = []
+        for skill in self._skills.values():
+            if Domain.UNIVERSAL in skill.domains or domain in skill.domains:
+                result.append(skill)
+        return result
+
+    def tools_by_domain(self, domain: str) -> list:
+        """Return all LangChain tools whose parent skill includes *domain*.
+
+        Used by ``supervisor.create_specialist_node`` and
+        ``sub_agents.factory`` to filter the global tool list down to the
+        subset relevant for a given specialist agent.
+        """
+        tools: list = []
+        for skill in self._skills_for_domain(domain):
+            tools.extend(skill.tools)
+        return tools
+
+    def tool_names_by_domain(self, domain: str) -> set[str]:
+        """Set of tool ``.name`` for every tool of every skill in *domain*."""
+        return {t.name for t in self.tools_by_domain(domain)}
+
+    def all_tool_names(self) -> set[str]:
+        """Set of every tool name registered, across all skills."""
+        return {t.name for t in self.all_tools}
+
+    def tools_catalog(self, per_domain: bool = True) -> str:
+        """Return a formatted catalog of every tool, suitable for injection
+        into a planner / supervisor prompt.
+
+        Format (one line per tool) :
+            ``- tool_name : first sentence of the tool description``
+
+        When ``per_domain=True`` the catalog is grouped by domain header
+        (``## research``, ``## workspace`` …). Universal tools appear under
+        ``## universal``.
+
+        Output is capped to ~150 lines worth of content — descriptions are
+        truncated to their first sentence (or 120 chars max) to keep the
+        prompt tight.
+        """
+        def _first_sentence(text: str | None) -> str:
+            if not text:
+                return ""
+            text = " ".join(text.split())  # collapse whitespace
+            # First sentence = up to first '.', '!', '?', or 120 chars
+            for sep in (". ", "! ", "? ", ".\n"):
+                idx = text.find(sep)
+                if 0 < idx < 120:
+                    return text[:idx].strip()
+            return (text[:117] + "…") if len(text) > 120 else text
+
+        def _tool_line(tool) -> str:
+            desc = getattr(tool, "description", "") or ""
+            return f"- {tool.name} : {_first_sentence(desc)}"
+
+        if not per_domain:
+            seen: set[str] = set()
+            lines: list[str] = []
+            for tool in self.all_tools:
+                if tool.name in seen:
+                    continue
+                seen.add(tool.name)
+                lines.append(_tool_line(tool))
+            return "\n".join(lines)
+
+        # Grouped by domain — order matches Domain class declaration
+        ordered_domains = [
+            Domain.UNIVERSAL,
+            Domain.RESEARCH,
+            Domain.WORKSPACE,
+            Domain.INFRA,
+            Domain.CREATIVE,
+            Domain.DATA,
+            Domain.MEMORY,
+            Domain.DESKTOP,
+            Domain.SYSTEM,
+            Domain.DIAG,
+        ]
+        seen: set[str] = set()
+        chunks: list[str] = []
+        for d in ordered_domains:
+            if d == Domain.UNIVERSAL:
+                skills = [s for s in self._skills.values() if Domain.UNIVERSAL in s.domains]
+                header_label = "universal (toujours disponible)"
+            else:
+                skills = [s for s in self._skills.values()
+                          if d in s.domains and Domain.UNIVERSAL not in s.domains]
+                header_label = d
+            if not skills:
+                continue
+            block_lines: list[str] = [f"## {header_label}"]
+            for skill in skills:
+                for tool in skill.tools:
+                    if tool.name in seen:
+                        continue
+                    seen.add(tool.name)
+                    block_lines.append(_tool_line(tool))
+            chunks.append("\n".join(block_lines))
+
+        # Catch any tool whose skill has no declared domain — append under
+        # an "## (no-domain)" header so they're still visible to the planner
+        # but the gap is obvious.
+        orphans: list[str] = []
+        for skill in self._skills.values():
+            if skill.domains:
+                continue
+            for tool in skill.tools:
+                if tool.name in seen:
+                    continue
+                seen.add(tool.name)
+                orphans.append(_tool_line(tool))
+        if orphans:
+            chunks.append("## (skills sans domaine déclaré)\n" + "\n".join(orphans))
+
+        return "\n\n".join(chunks)
 
 
 @lru_cache(maxsize=1)

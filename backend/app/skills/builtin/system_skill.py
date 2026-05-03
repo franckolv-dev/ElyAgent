@@ -15,7 +15,7 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.ssh_tool import ssh_execute
 from app.agent.tools.file_tool import analyze_file
@@ -27,5 +27,6 @@ get_skill_registry().register(Skill(
     description="Exécuter des commandes SSH sur des serveurs distants, analyser des fichiers, obtenir des infos système",
     icon="🖥️",
     scopes=["ssh"],
+    domains=[Domain.INFRA],
     tools=[ssh_execute, analyze_file, system_info],
 ))

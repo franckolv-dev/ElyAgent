@@ -28,11 +28,27 @@ class SubAgentConfig:
     domain: str
     display_name: str
     system_prompt: str
-    tool_names: set[str]
+    # Sprint 2 : ``tool_names`` is now optional and defaults to ``None`` —
+    # when ``None``, the factory derives the set live from the SkillRegistry
+    # via ``Skill.domains``. Existing configs that pre-declare a set still
+    # win (used for the ``system`` agent which has no user-facing tools).
+    tool_names: set[str] | None = None
     llm_provider: str | None = None   # None = utiliser le LLM global
     llm_model: str | None = None      # None = utiliser le modèle global
     llm_temperature: float = 0.7
     max_iterations: int = 10
+
+    def resolve_tool_names(self) -> set[str]:
+        """Return the live set of tool names for this agent.
+
+        If ``tool_names`` was explicitly set at config time we honour it
+        (useful for agents like ``system`` that need an empty set). Otherwise
+        we derive the set from the registry by domain.
+        """
+        if self.tool_names is not None:
+            return set(self.tool_names)
+        from app.skills import get_skill_registry
+        return get_skill_registry().tool_names_by_domain(self.domain)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -134,24 +150,7 @@ RESEARCH_AGENT = SubAgentConfig(
         "maps_geocode, maps_directions, maps_nearby, maps_reverse_geocode."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        "web_search",
-        "web_search_news",
-        "weather_get",
-        "news_get_headlines",
-        "translate_text",
-        "browser_navigate",
-        "browser_search_web",
-        "browser_get_text",
-        "browser_screenshot",
-        "browser_click",
-        "browser_fill",
-        "browser_close",
-        "maps_geocode",
-        "maps_directions",
-        "maps_nearby",
-        "maps_reverse_geocode",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     llm_provider=None,
     llm_model=None,
 )
@@ -226,93 +225,7 @@ WORKSPACE_AGENT = SubAgentConfig(
         "contacts_raw_api_call (groupes, annuaire, HITL)."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        # Gmail
-        "gmail_list_emails",
-        "gmail_read_email",
-        "gmail_send_email",
-        "gmail_reply_email",
-        "gmail_send_with_attachment",
-        "gmail_mark_read",
-        "gmail_mark_unread",
-        "gmail_create_draft",
-        "gmail_list_drafts",
-        "gmail_list_labels",
-        "gmail_create_label",
-        "gmail_move_emails",
-        "gmail_trash_emails",
-        "gmail_search_for_cleanup",
-        "gmail_trash_by_category",
-        "gmail_trash_by_query",
-        "gmail_batch_modify",
-        "gmail_update_settings",
-        "gmail_raw_api_call",
-        # Calendar
-        "calendar_list_events",
-        "calendar_create_event",
-        "calendar_get_event",
-        "calendar_update_event",
-        "calendar_delete_event",
-        "calendar_check_availability",
-        "calendar_list_calendars",
-        "calendar_quick_add",
-        "calendar_create_meet_event",
-        "calendar_raw_api_call",
-        # Drive
-        "drive_list_files",
-        "drive_read_file",
-        "drive_create_folder",
-        "drive_create_file",
-        "drive_update_file",
-        "drive_move_file",
-        "drive_rename_file",
-        "drive_delete_file",
-        "drive_share_file",
-        "drive_copy_file",
-        "drive_export_file",
-        "drive_raw_api_call",
-        # Docs
-        "docs_create_document",
-        "docs_read_document",
-        "docs_append_text",
-        "docs_replace_text",
-        "docs_insert_table",
-        "docs_batch_update",
-        "docs_raw_api_call",
-        # Sheets
-        "sheets_create_spreadsheet",
-        "sheets_read_spreadsheet",
-        "sheets_append_rows",
-        "sheets_update_cells",
-        "sheets_delete_rows",
-        "sheets_add_sheet",
-        "sheets_list_sheets",
-        "sheets_batch_update",
-        "sheets_raw_api_call",
-        # Tasks
-        "tasks_list",
-        "tasks_create",
-        "tasks_complete",
-        "tasks_update",
-        "tasks_delete",
-        "tasks_list_tasklists",
-        "tasks_create_tasklist",
-        "tasks_raw_api_call",
-        # Contacts
-        "contacts_search",
-        "contacts_list",
-        "contacts_create",
-        "contacts_get",
-        "contacts_update",
-        "contacts_delete",
-        "contacts_batch_operations",
-        "contacts_raw_api_call",
-        # Vision tool — fallback safety net so the workspace agent can also
-        # analyze attached images if the supervisor misroutes (May 2026
-        # incident : "analyse cette photo" not matched by the creative regex
-        # → routed to workspace which had no vision tool → hallucination).
-        "vision_analyze_image",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     llm_provider=None,
     llm_model=None,
 )
@@ -337,17 +250,7 @@ INFRA_AGENT = SubAgentConfig(
         "briefing_generate, watchdog_add, watchdog_list, watchdog_remove."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        "ssh_execute",
-        "system_info",
-        "scheduler_create_task",
-        "scheduler_list_tasks",
-        "scheduler_delete_task",
-        "briefing_generate",
-        "watchdog_add",
-        "watchdog_list",
-        "watchdog_remove",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     llm_provider=None,
     llm_model=None,
 )
@@ -386,23 +289,7 @@ CREATIVE_AGENT = SubAgentConfig(
         "mcp_list_library, mcp_generate_server, mcp_validate_and_deploy."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        "generate_image",
-        "python_execute",
-        "pdf_read",
-        "pdf_info",
-        "pdf_analyze_with_vision",
-        "vision_analyze_image",
-        "youtube_search",
-        "youtube_transcript",
-        "youtube_video_info",
-        "qrcode_generate",
-        "qrcode_generate_wifi",
-        "qrcode_generate_vcard",
-        "mcp_list_library",
-        "mcp_generate_server",
-        "mcp_validate_and_deploy",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     llm_provider=None,
     llm_model=None,
 )
@@ -426,17 +313,7 @@ DATA_AGENT = SubAgentConfig(
         "file_delete, maps_directions, maps_geocode, maps_nearby, maps_reverse_geocode."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        "python_execute",
-        "file_read",
-        "file_write",
-        "file_list",
-        "file_delete",
-        "maps_directions",
-        "maps_geocode",
-        "maps_nearby",
-        "maps_reverse_geocode",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     llm_provider=None,
     llm_model=None,
 )
@@ -474,18 +351,7 @@ MEMORY_AGENT = SubAgentConfig(
         "knowledge_search, knowledge_list."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        "notes_create",
-        "notes_list",
-        "notes_read",
-        "notes_update",
-        "notes_delete",
-        "notes_search",
-        "whatsapp_send",
-        "telegram_send_message",
-        "knowledge_search",
-        "knowledge_list",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     llm_provider=None,
     llm_model=None,
 )
@@ -524,26 +390,7 @@ DESKTOP_AGENT = SubAgentConfig(
         "desktop_stat_file, desktop_hash_file, desktop_search_files."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        # Trainer tools
-        "trainer_start",
-        "trainer_screenshot",
-        "trainer_click",
-        "trainer_move",
-        "trainer_type",
-        "trainer_hotkey",
-        "trainer_get_screen_size",
-        # Filesystem tools
-        "desktop_list_dir",
-        "desktop_read_file",
-        "desktop_write_file",
-        "desktop_move_file",
-        "desktop_delete_file",
-        "desktop_create_dir",
-        "desktop_stat_file",
-        "desktop_hash_file",
-        "desktop_search_files",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     llm_provider=None,
     llm_model=None,
 )
@@ -608,14 +455,7 @@ DIAG_AGENT = SubAgentConfig(
         "Do not retry in a loop."
         + _COMMON_FORMAT
     ),
-    tool_names={
-        "system_get_logs",
-        "system_list_scheduled_tasks",
-        "system_list_missions",
-        "system_check_channels",
-        "system_check_llm_providers",
-        "system_get_health",
-    } | MEMORY_SKILLS,
+    tool_names=None,  # Sprint 2 — derived from Skill.domains via resolve_tool_names()
     # LLM choice for diag : NONE hardcoded.
     # The agent uses the user's tier_routing_config from Settings → Routage,
     # exactly like every other sub-agent — no surprise model behind the user's

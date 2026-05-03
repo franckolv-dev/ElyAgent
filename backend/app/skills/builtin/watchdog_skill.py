@@ -19,7 +19,7 @@
 from typing import Annotated
 from langchain_core.tools import tool
 from langchain_core.tools import InjectedToolArg
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 
@@ -139,6 +139,7 @@ _watchdog_skill = Skill(
     display_name="Veille & surveillance",
     description="Surveille des URLs et requêtes de recherche pour détecter les changements",
     icon="🔍",
+    domains=[Domain.INFRA],
     tools=[watchdog_add, watchdog_list, watchdog_remove],
     scopes=[],
     enabled_by_default=True,

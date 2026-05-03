@@ -17,7 +17,7 @@
 # =============================================================================
 """🌅 Morning Briefing skill — aggregates calendar + email + weather in one call."""
 from langchain_core.tools import tool
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
 
@@ -81,6 +81,7 @@ _briefing_skill = Skill(
     display_name="Briefing matinal",
     description="Génère un résumé matinal complet : météo, agenda du jour, emails non lus, tâches",
     icon="🌅",
+    domains=[Domain.INFRA],
     tools=[briefing_generate],
     scopes=[],
     enabled_by_default=True,

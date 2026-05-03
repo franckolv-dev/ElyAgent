@@ -15,7 +15,7 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
-from app.skills.base import Skill
+from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.knowledge_tool import knowledge_search, knowledge_list
 
@@ -25,6 +25,7 @@ get_skill_registry().register(Skill(
     description="Rechercher et consulter les documents personnels indexes",
     icon="📚",
     scopes=[],
+    domains=[Domain.UNIVERSAL],
     tools=[knowledge_search, knowledge_list],
     enabled_by_default=True,
 ))
