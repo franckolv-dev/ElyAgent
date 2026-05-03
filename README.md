@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/assets/ely-logo.png" alt="ELY — AI Agent" width="320" />
+<img src="https://agent-ely.fr/ely-logo.jpeg" alt="ELY — AI Agent" width="320" />
 
 ### Your personal AI agent. Trained on your habits. Runs on your hardware. Never acts without your approval.
 
@@ -31,8 +31,6 @@ Multi-LLM · multi-channel · HITL on every irreversible action · native PII an
 ---
 
 > 💡 **Free for personal use, education and research.** Commercial deployment requires a [commercial licence](https://agent-ely.fr/pricing.html). See [§ License](#-license) at the bottom or email [contact@agent-ely.fr](mailto:contact@agent-ely.fr).
-
----
 
 ---
 
