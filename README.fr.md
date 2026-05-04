@@ -248,7 +248,7 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 
 ## Roadmap
 
-**Sprint 0** ✅ *Mai 2026* — Ouverture du dépôt public. Refonte UI, routage multi-domaines, bascule mono-agent, Moonshot Kimi K2.x, garde-fous anti-hallucination, 92/92 tests verts.
+**Sprint 0** ✅ *Mai 2026* — Ouverture du dépôt public. Refonte UI, routage multi-domaines, bascule mono-agent, garde-fous anti-hallucination, 92/92 tests verts.
 
 **Sprint 1** *Juin 2026* — Mémoire transversale entre conversations (FTS5 + résumé LLM à la demande). Le sprint avec le meilleur ratio valeur perçue / effort de l'année.
 
@@ -270,7 +270,7 @@ ELY est source-available. Les contributions sont bienvenues dans le cadre de la 
 
 ✅ Corrections de bugs · documentation · traductions · adaptateurs de canaux · améliorations de performance · couverture de tests
 ⚠️ Changements architecturaux — ouvrez d'abord une issue
-❌ Forks à but commercial sans accord préalable · suppression des en-têtes de licence · code désactivant HITL par défaut
+❌ Les forks sans accord préalable, les suppression des en-têtes de licence et le code désactivant HITL par défaut ne sont pas autorisés
 
 [Guide de contribution complet →](./CONTRIBUTING.md) · [Code de conduite →](./CODE_OF_CONDUCT.md) · [Politique de sécurité →](./SECURITY.md) (merci de signaler les vulnérabilités par e-mail, pas en issue publique)
 
@@ -294,7 +294,7 @@ Tarification annuelle transparente, par organisation, sans coût par utilisateur
 
 → [FAQ complète sur la licence + contrat type →](https://agent-ely.fr/pricing.html)
 
-**Marques.** Les noms **ELY**, **Éli**, **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. Forkez librement — choisissez votre propre nom et votre propre logo. [Politique de marques →](./TRADEMARK.md)
+**Marques.** Les noms **ELY**, **Éli**, **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. [Politique de marques →](./TRADEMARK.md)
 
 📩 **Contact :** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — réponse sous 48 h, toujours.
 
@@ -302,7 +302,7 @@ Tarification annuelle transparente, par organisation, sans coût par utilisateur
 
 <div align="center">
 
-**Construit en Nouvelle-Aquitaine, France 🇫🇷** par [Franck Ollivier](https://github.com/franckolv-dev)
+**Construit en Nouvelle-Aquitaine, France 🇫🇷**
 
 [Site web](https://agent-ely.fr) · [Documentation](./docs/START_HERE.md) · [Newsletter](https://agent-ely.fr/newsletter.html)
 
