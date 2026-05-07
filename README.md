@@ -293,7 +293,7 @@ We offer **transparent annual pricing**, by organisation, no per-user or per-LLM
 
 → [Full licensing FAQ + sample contract →](https://agent-ely.fr/pricing.html)
 
-**Trademark.** The names **ELY**, **Ély**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. [Trademark policy →](./TRADEMARK.md)
+**Trademark.** The name **Ely** (acronym for *"Exactly Like You"*, pronounced "Éli"), **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. [Trademark policy →](./TRADEMARK.md)
 
 📩 **Contact:** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.
 

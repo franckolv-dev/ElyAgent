@@ -293,7 +293,7 @@ Tarification annuelle transparente, par organisation, sans coût par utilisateur
 
 → [FAQ complète sur la licence + contrat type →](https://agent-ely.fr/pricing.html)
 
-**Marques.** Les noms **ELY**, **Éli**, **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. [Politique de marques →](./TRADEMARK.md)
+**Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. [Politique de marques →](./TRADEMARK.md)
 
 📩 **Contact :** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — réponse sous 48 h, toujours.
 
