@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_admin
 from app.config import get_settings
 from app.database import get_db, async_session
 from app.models.google_account import GoogleAccount
@@ -90,9 +90,10 @@ async def _set_default_account(db: AsyncSession, user_id: str, account_id: str) 
         u = await db.get(User, user_id)
         if u is not None:
             u.google_credentials = target_creds
-            # Refresh the in-process credential store
+            # Refresh the in-process credential store. str() so the cache
+            # key matches what the WebSocket session uses (JWT sub).
             from app.services.credential_store import get_credential_store
-            get_credential_store().set(user_id, target_creds)
+            get_credential_store().set(str(user_id), target_creds)
 
 
 def _account_to_dict(acc: GoogleAccount) -> dict:
@@ -200,6 +201,23 @@ async def oauth_callback(code: str, state: str):
             existing_acc.alias = alias  # allow user to rename via re-link
             await db.commit()
             await _set_default_account(db, user_id, existing_acc.id) if existing_acc.is_default else None
+            # FIX 2026-05-07 : on re-consent, ALSO refresh the legacy
+            # User.google_credentials column AND the in-process credential
+            # store. Without this, the WebSocket session keeps reading the
+            # stale token (cached for up to 5 min) and tools fail with
+            # « Google account disconnected » even though the user just
+            # reconnected. Original code only updated User.* on FIRST
+            # account creation (line ~237 below).
+            if existing_acc.is_default:
+                u = await db.get(User, user_id)
+                if u is not None:
+                    u.google_credentials = creds_json
+                from app.services.credential_store import get_credential_store
+                # Use str() so the cache key matches what the WebSocket
+                # session uses (JWT sub is always a string, while
+                # current_user.id is a UUID object — same value, different
+                # dict-key identity).
+                get_credential_store().set(str(user_id), creds_json)
             await db.commit()
             redirect_target = "?google=updated"
         else:
@@ -240,7 +258,8 @@ async def oauth_callback(code: str, state: str):
                 if u is not None:
                     u.google_credentials = creds_json
                     from app.services.credential_store import get_credential_store
-                    get_credential_store().set(user_id, creds_json)
+                    # str() to match the WebSocket session's key (JWT sub).
+                    get_credential_store().set(str(user_id), creds_json)
             await db.commit()
             redirect_target = "?google=connected" if is_first else "?google=added"
 
@@ -347,7 +366,7 @@ async def delete_account(
             # No accounts left — clear the legacy column too
             current_user.google_credentials = None
             from app.services.credential_store import get_credential_store
-            get_credential_store().clear(current_user.id)
+            get_credential_store().clear(str(current_user.id))
     await db.commit()
     return {"message": "Account removed"}
 
@@ -413,3 +432,34 @@ async def app_config_status():
     has_id     = bool(await gc("google_client_id",     fallback=s.google_client_id))
     has_secret = bool(await gc("google_client_secret", fallback=s.google_client_secret))
     return {"configured": has_id and has_secret}
+
+
+# ── Setup wizard — save credentials from the UI ──────────────────────────────
+
+
+class SaveAppConfigRequest(BaseModel):
+    client_id: str = Field(..., min_length=1, description="OAuth Client ID from Google Cloud Console")
+    client_secret: str = Field(..., min_length=1, description="OAuth Client Secret from Google Cloud Console")
+
+
+@router.post("/app-config")
+async def save_app_config(
+    body: SaveAppConfigRequest,
+    admin: User = Depends(require_admin),
+):
+    """Persist the Google OAuth client credentials so users can authenticate.
+
+    Used by the in-app Setup Wizard. Admin only — these credentials are
+    shared by the whole ELY install (every user OAuth flow uses them).
+    Stored in the ``system_config`` table via ``set_config`` (encrypted
+    at rest for the secret).
+    """
+    from app.services.system_config import set_config
+    cid = body.client_id.strip()
+    sec = body.client_secret.strip()
+    if not cid or not sec:
+        raise HTTPException(status_code=400, detail="client_id et client_secret requis")
+    await set_config("google_client_id", cid, description="Google OAuth client ID (set via wizard)")
+    await set_config("google_client_secret", sec, is_secret=True, description="Google OAuth client secret (set via wizard)")
+    logger.info("Google OAuth app credentials updated by admin %s", admin.username)
+    return {"configured": True}

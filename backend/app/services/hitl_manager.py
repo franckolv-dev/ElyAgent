@@ -169,6 +169,31 @@ class HITLManager:
         pending.event.set()
         return True
 
+    def list_pending(self, user_id: str) -> list[dict]:
+        """Return all pending HITL actions for a given user.
+
+        Used by the web UI bell component to display unresolved approval
+        requests when the WebSocket was not connected at the moment the
+        action was created (e.g. user is on a page other than /chat).
+
+        Expired or resolved actions are filtered out — only actually
+        actionable items are returned.
+        """
+        out: list[dict] = []
+        for p in self._pending.values():
+            if p.user_id != user_id:
+                continue
+            if p.expired() or p.event.is_set():
+                continue
+            out.append({
+                "action_id": p.action_id,
+                "description": p.description,
+                "created_at": p.created_at.isoformat(),
+            })
+        # Newest first
+        out.sort(key=lambda d: d["created_at"], reverse=True)
+        return out
+
     # ------------------------------------------------------------------ #
     # Private helpers                                                      #
     # ------------------------------------------------------------------ #

@@ -115,126 +115,27 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 key=lambda t: t.name,
             )
 
-            # ── Dynamic tool sub-filtering ────────────────────────────────────
-            # Even within a sub-agent, binding 70+ tools (workspace) makes the
-            # prompt explode (~15-20k tokens of schemas) and slows inference to
-            # 60+ seconds. We further filter based on keywords in the user query
-            # so the LLM only sees the tools it actually needs.
-            import re as _re_filter
+            # ── Dynamic tool sub-filtering (FIX 2026-05-06 audit H-5) ─────────
+            # Délégué au module partagé `app.agent.tool_filter` pour avoir
+            # une seule source de vérité avec le general agent_node.
             _last_user = ""
             for _m in reversed(messages):
                 if hasattr(_m, "content") and getattr(_m, "type", None) == "human":
-                    # HumanMessage.content peut être str OU list[dict] (multi-bloc
-                    # texte+image). On extrait le texte dans les 2 cas sinon
-                    # .lower() / .search() crashent avec TypeError.
                     _raw = _m.content or ""
                     if isinstance(_raw, list):
                         _raw = " ".join(
                             (b.get("text", "") if isinstance(b, dict) else str(b))
                             for b in _raw
                         )
-                    _last_user = str(_raw).lower()
+                    _last_user = str(_raw)
                     break
-            # Keyword → tool prefix mapping (only used when sub-agent has many tools)
-            if len(agent_tools) > 20:
-                _kw_filters: list[tuple[_re_filter.Pattern, tuple[str, ...]]] = [
-                    # Gmail implies possible need for contacts_search to resolve
-                    # "prepare a mail for <name>" → need to look up <name>'s email
-                    # "mai" = common STT transcription glitch of "mail"; we also
-                    # catch "courriel[s]" and "message" (when combined with "prépare"/"envoyer").
-                    (_re_filter.compile(r"\b(mails?|mai|emails?|e.?mail|courriels?|inbox|gmail|courrier|messagerie|boîte (mail|courrier)|brouillons?|drafts?)\b"),
-                     ("gmail_", "contacts_")),
-                    # "rappel dans l'agenda/planning/calendrier" → calendar (événement ponctuel)
-                    # "rappel + tous les jours/chaque matin/hebdo" → scheduler (cron récurrent)
-                    # "rappel" seul → les deux (laisse le LLM décider)
-                    (_re_filter.compile(r"\b(calendar|calendrier|agenda|planning|événements?|réunions?|meetings?|rendez.?vous)\b"),
-                     ("calendar_",)),
-                    (_re_filter.compile(r"\b(drive|fichiers?(?!.*local)|dossiers?(?!.*local))\b"),
-                     ("drive_",)),
-                    (_re_filter.compile(r"\b(docs?|documents?|google doc|gdoc)\b"),
-                     ("docs_",)),
-                    (_re_filter.compile(r"\b(sheets?|tableurs?|spreadsheets?|excel)\b"),
-                     ("sheets_",)),
-                    (_re_filter.compile(r"\b(tâches?|taches?|to.?do|todo)\b"),
-                     ("tasks_",)),
-                    (_re_filter.compile(r"\b(contacts?|annuaires?|carnet d'adresse)\b"),
-                     ("contacts_",)),
-                    # Recurring reminder → scheduler (cron)
-                    (_re_filter.compile(r"\b(cron|tâche planifiée|planifie|programme|hebdo|quotidien|récurrent|toutes les|tous les|chaque (jour|matin|soir|semaine|mois))\b"),
-                     ("scheduler_",)),
-                    # "rappel" sans contexte récurrent = plutôt calendar (événement ponctuel)
-                    # On inclut les deux pour laisser le LLM choisir
-                    (_re_filter.compile(r"\brappels?\b"),
-                     ("calendar_", "scheduler_")),
-                    (_re_filter.compile(r"\b(ssh|serveurs?|servers?)\b"),
-                     ("ssh_",)),
-                    (_re_filter.compile(r"\b(watchdog|surveille|veilles?|monitoring)\b"),
-                     ("watchdog_",)),
-                    (_re_filter.compile(r"\b(briefings?|matin|résumé|debrief)\b"),
-                     ("briefing_",)),
-                    # Weather — was missing, caused 21 tools binding for "météo"
-                    # queries → xLAM-2 8B 8-bit hit GRAPH_RECURSION_LIMIT.
-                    (_re_filter.compile(r"\b(météo|meteo|weather|temps|climat|temp[ée]rature|pluie|soleil|neige)\b"),
-                     ("weather_",)),
-                    # News — same issue
-                    (_re_filter.compile(r"\b(news|actualit[ée]s?|infos?|articles?|presse|titres?|headlines?)\b"),
-                     ("news_",)),
-                    # Web search / browse
-                    (_re_filter.compile(r"\b(web|internet|cherche|recherche|googl|sites?|urls?|pages?|navig|browse)\b"),
-                     ("web_",)),
-                    # Translation
-                    (_re_filter.compile(r"\b(traduis|traduit|traduction|translate|translator)\b"),
-                     ("translate_",)),
-                    # Image / vision
-                    (_re_filter.compile(r"\b(images?|photos?|pictures?|screenshots?|captur)\b"),
-                     ("image_", "vision_")),
-                    # System self-diagnostic — when user asks why
-                    # something didn't work, what state services are in,
-                    # "tu te portes bien ?", "quel modèle tu utilises",
-                    # etc. Liste large : on préfère trop binder qu'oublier
-                    # un trigger légitime (le LLM ignorera les tools non
-                    # pertinents, mais ne pourra pas appeler ce qui n'est
-                    # pas binded).
-                    (_re_filter.compile(
-                        r"\b("
-                        r"logs?|journal|debug|diagnostic|"
-                        r"santé|sante|health|status|statut|"
-                        r"état|etat|tâches?|taches?|scheduled|missions?|"
-                        r"canaux|channels?|"
-                        r"fonctionne|marche|tourne|"
-                        r"pourquoi.*pas|pourquoi.*marche|"
-                        r"llm|llms|modèles?|modeles?|model|models|"
-                        r"provider|providers|fournisseur|"
-                        r"utilises?|utilise[sz]|"
-                        r"configur|réglag|reglag|setting|"
-                        r"actif|actifs|active|inactive|connecté|connecte|"
-                        r"version|uptime|"
-                        r"mémoire(?!\s+(de|long|cou))|memoire(?!\s+(de|long|cou))|"
-                        r"ram|disk|disque|"
-                        r"porte[sz]|vas[\s-]?tu|comment.*va|"
-                        r"échou|echou|échec|echec|erreur|crashé|cassé|panne|bug"
-                        r")\b"
-                    ),
-                     ("system_",)),
-                ]
-                _matched_prefixes: set[str] = set()
-                for _pattern, _prefixes in _kw_filters:
-                    if _pattern.search(_last_user):
-                        _matched_prefixes.update(_prefixes)
-                # Always keep memory/preference tools so the agent can save context
-                _ALWAYS_KEEP = ("save_user_preference", "save_constraint", "knowledge_search",
-                                "knowledge_list", "smart_knowledge_query")
-                if _matched_prefixes:
-                    _filtered = [
-                        t for t in agent_tools
-                        if any(t.name.startswith(p) for p in _matched_prefixes)
-                        or t.name in _ALWAYS_KEEP
-                    ]
-                    if _filtered:  # safety: don't end up with zero tools
-                        logger.warning("⏱ TIMING[%s.subfilter] %d → %d tools (kw=%s)",
-                                       cfg.name, len(agent_tools), len(_filtered),
-                                       sorted(_matched_prefixes))
-                        agent_tools = _filtered
+            from app.agent.tool_filter import filter_tools_by_query
+            agent_tools = filter_tools_by_query(
+                agent_tools,
+                _last_user,
+                threshold=20,
+                debug_label=f"sub.{cfg.name}",
+            )
 
             # Complexity routing: classify last user message and select LLM accordingly.
             # If the sub-agent has a fixed provider, use it; otherwise route by complexity.
@@ -551,6 +452,25 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 response = await llm_with_tools.ainvoke(_invoke_msgs)
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
+
+                # FIX 2026-05-06 (Option A): recover tool calls emitted as
+                # TEXT (e.g. Kimi K2 outputs `<tool_call>...</tool_call>`,
+                # Qwen 3.6 Flash outputs raw JSON) and fix hallucinated
+                # names (e.g. `send_email` → `gmail_send_email`) before
+                # the graph sees `tool_calls=[]` and stalls.
+                from app.agent.tool_call_recovery import recover_tool_calls_into_response
+                from app.skills.registry import get_skill_registry as _gsr
+                _registry = _gsr()
+                _recovered_n = recover_tool_calls_into_response(
+                    response,
+                    real_tool_names={t.name for t in _registry.all_tools},
+                )
+                if _recovered_n:
+                    logger.warning(
+                        "[recovery:%s] recovered %d tool_call(s) from text content",
+                        cfg.name, _recovered_n,
+                    )
+
                 _n_tc = len(getattr(response, 'tool_calls', []) or [])
                 logger.warning("⏱ TIMING[%s.infer] %.2fs — tool_calls=%d", cfg.name, _t.monotonic() - _infer_start, _n_tc)
 

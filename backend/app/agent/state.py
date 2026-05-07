@@ -31,3 +31,11 @@ class AgentState(TypedDict):
     domain: str        # routing field: "research" | "workspace" | "infra" | "general"
     model_used: str    # "slm:<model>" or "llm:<model>" — set by agent_node for feedback
     routing_score: int # IntentRouter score 0-100 — stored for Phase 2 training
+    # Hermes-style sticky toolset profile (Chantier 1, 2026-05-07).
+    # Set once per conversation by the chat router (auto-detect on first
+    # message or `/profile <name>` slash command). agent_node reads this
+    # to bind the same ~30-tool catalog every turn — no per-turn keyword
+    # filtering. Empty string ("") = fall back to the legacy keyword
+    # filter (graceful migration: existing conversations created before
+    # this column have NULL → "" → legacy behaviour).
+    toolset_profile: str

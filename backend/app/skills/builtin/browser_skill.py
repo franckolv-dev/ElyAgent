@@ -212,9 +212,45 @@ async def browser_get_text(
 async def browser_screenshot(
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Take a screenshot of the current browser page and display it inline in the chat.
+    """Capture la page web courante. **N'envoie PAS le fichier** — chaîne avec un autre outil.
 
-    Useful to inspect the visual state of a page after navigation or interaction.
+    Retourne un JSON contenant ``local_path`` (fichier PNG sur disque) et
+    ``attachment_id``. **Tu DOIS ensuite appeler l'un des outils suivants
+    selon l'intention de l'utilisateur** — ne te contente jamais d'écrire
+    « j'envoie… » ou « je sauvegarde… » en prose, ce sont des promesses
+    sans effet :
+
+    📤 ÉTAPES SUIVANTES OBLIGATOIRES :
+
+    • **Afficher la capture dans le chat** : ajoute la ligne
+      ``MEDIA:<local_path>`` dans ta réponse texte (le backend extrait
+      cette ligne et affiche l'image au user, même si tu n'appelles
+      aucun autre outil). Exemple : ``MEDIA:/tmp/ely-attachments/screenshot-abc123.png``.
+
+    • **Envoyer par mail** : appelle
+      ``gmail_send_with_local_attachment(to=..., subject=..., body=...,
+      local_path=<local_path>)``.
+
+    • **Sauvegarder sur Google Drive** : appelle
+      ``drive_create_file(name=..., local_path=<local_path>)`` (ou la
+      version raw_api si non disponible).
+
+    • **Sauvegarder sur le poste local** : si l'utilisateur fournit un
+      chemin précis, appelle ``desktop_copy_file(src=<local_path>,
+      dst=<chemin user>)``. Le fichier ``local_path`` retourné par cet
+      outil vit dans ``/tmp/ely-attachments/`` côté serveur — le user
+      ne le voit pas tant que tu ne déclenches pas une livraison.
+
+    ❌ INTERDICTIONS strictes :
+    • Ne PROMETS jamais une livraison sans appeler l'outil correspondant.
+    • Ne dis jamais « En cours : téléchargement… » sans tool call actif.
+    • Ne hallucine pas un chemin Drive — si tu n'appelles pas
+      ``drive_create_file``, le fichier n'est PAS sur le Drive.
+
+    Returns
+    -------
+    JSON string avec keys: ``local_path``, ``attachment_id``, ``prompt``,
+    ``data`` (base64), ``mime``.
     """
     import base64
     import json
@@ -228,11 +264,56 @@ async def browser_screenshot(
         png_bytes = await page.screenshot(full_page=False)
         b64 = base64.b64encode(png_bytes).decode("utf-8")
 
+        # FIX 2026-05-06: aussi sauvegarder sur disque pour que d'autres
+        # tools (gmail_send_with_local_attachment, etc.) puissent chaîner
+        # sur ce fichier sans repasser par Drive. Sans cette sauvegarde,
+        # impossible d'envoyer une capture par mail (architectural gap).
+        # Le fichier vit dans /tmp (éphémère, purgé au reboot du container).
+        import os
+        import uuid as _uuid
+        attach_dir = "/tmp/ely-attachments"
+        try:
+            os.makedirs(attach_dir, mode=0o700, exist_ok=True)
+            attachment_id = _uuid.uuid4().hex[:12]
+            local_path = f"{attach_dir}/screenshot-{attachment_id}.png"
+            with open(local_path, "wb") as f:
+                f.write(png_bytes)
+        except Exception as _save_exc:
+            logger.warning("browser_screenshot: failed to save to disk (%s) — base64-only mode", _save_exc)
+            local_path = ""
+            attachment_id = ""
+
+        # FIX 2026-05-06 (Hermes-style): inclure le mode d'emploi des
+        # next-steps dans le retour JSON. Les modèles faibles (Ministral,
+        # Qwen 8B, etc.) ne respectent pas toujours la docstring mais
+        # lisent le tool result. Y mettre les instructions explicites
+        # divise par 5 le taux d'hallucination « j'envoie sur Drive » sans
+        # appel d'outil réel.
+        next_steps = (
+            f"Capture sauvegardée. Pour livrer le fichier au user, "
+            f"applique l'UNE des actions suivantes :\n"
+            f"  • Afficher dans le chat → ajoute la ligne 'MEDIA:{local_path}' "
+            f"à ta prochaine réponse texte.\n"
+            f"  • Envoyer par mail → appelle gmail_send_with_local_attachment("
+            f"local_path='{local_path}', to=..., subject=..., body=...).\n"
+            f"  • Uploader sur Drive → appelle drive_create_file("
+            f"local_path='{local_path}', name=...).\n"
+            f"  • Copier sur le poste user → desktop_copy_file("
+            f"src='{local_path}', dst=<chemin demandé>).\n"
+            f"NE DIS JAMAIS 'téléchargement en cours' / 'envoi en cours' "
+            f"sans avoir appelé l'un de ces outils."
+        ) if local_path else "Capture en mémoire seulement (échec sauvegarde disque)."
+
         return json.dumps({
             "type": "image",
             "data": b64,
             "mime": "image/png",
             "prompt": f"Capture d'écran — {title} ({page.url})",
+            # Pour chaîner avec gmail_send_with_local_attachment, etc.
+            "local_path": local_path,
+            "attachment_id": attachment_id,
+            # Instructions explicites lues par le LLM
+            "next_steps": next_steps,
         })
 
     except Exception as exc:

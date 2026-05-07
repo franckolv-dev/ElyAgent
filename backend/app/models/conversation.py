@@ -36,6 +36,14 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String(255), default="New conversation")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    # Hermes-style sticky toolset profile (Chantier 1, audit 2026-05-07).
+    # NULL means « not yet decided » — at the next agent turn the chat
+    # router will auto-detect it from the first user message and persist
+    # the result. Once set, the same profile applies for every turn of
+    # the conversation regardless of the message content. Allows the
+    # model to learn a stable ~30-tool catalog rather than a shifting
+    # filter that breaks the prompt cache.
+    toolset_profile: Mapped[str | None] = mapped_column(String(40), nullable=True, default=None)
 
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
 

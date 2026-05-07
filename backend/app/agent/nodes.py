@@ -20,7 +20,7 @@ import json
 import logging
 import re
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agent.state import AgentState
 from app.services.hitl_manager import get_hitl_manager
@@ -38,21 +38,56 @@ async def _no_interactions() -> list[dict]:
 
 
 def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Fix Mistral-specific constraint: AIMessage content must not be None.
+    """Fix Mistral-specific chat-template constraints.
 
-    Mistral rejects any assistant message where content is None, whether or not
-    tool_calls are present (HTTP 400, error code 3240):
-      - {"role":"assistant","content":null,"tool_calls":[...]}  → rejected
-      - {"role":"assistant","content":null}                     → rejected
+    Mistral's jinja chat template enforces:
+      1. AIMessage content must NOT be None (HTTP 400 error code 3240).
+         Other providers (Anthropic, Gemini, OpenAI) accept null/None.
+      2. After the (single) system message, conversation roles must
+         **alternate user → assistant → user → assistant**. Tool calls
+         and tool results count as part of the assistant turn but the
+         next user-or-tool-followed-by-assistant block must respect
+         alternation. Two consecutive HumanMessages or two consecutive
+         AIMessages crash with « roles must alternate ».
+         (Audit 2026-05-07 — observed on ministral-3-8b-instruct.)
 
-    Other providers (Anthropic, Gemini, OpenAI) accept null/None content.
+    This function is intentionally tolerant: it never drops information,
+    it merges consecutive same-role messages by concatenating content
+    with a blank-line separator.
     """
-    sanitized = []
+    # Pass 1 — fix None content
+    pass1: list[BaseMessage] = []
     for msg in messages:
         if isinstance(msg, AIMessage) and msg.content is None:
             msg = msg.model_copy(update={"content": ""})
-        sanitized.append(msg)
-    return sanitized
+        pass1.append(msg)
+
+    # Pass 2 — merge consecutive same-role messages (only Human/AI pairs;
+    # ToolMessage and SystemMessage have their own placement rules)
+    if len(pass1) <= 1:
+        return pass1
+    merged: list[BaseMessage] = [pass1[0]]
+    for msg in pass1[1:]:
+        prev = merged[-1]
+        same_human = isinstance(prev, HumanMessage) and isinstance(msg, HumanMessage)
+        same_ai = (
+            isinstance(prev, AIMessage)
+            and isinstance(msg, AIMessage)
+            # Don't merge if either side carries tool_calls — that would
+            # blur structured tool-use payloads with prose.
+            and not getattr(prev, "tool_calls", None)
+            and not getattr(msg, "tool_calls", None)
+        )
+        if same_human or same_ai:
+            merged_content = (
+                str(prev.content or "").rstrip()
+                + "\n\n"
+                + str(msg.content or "").lstrip()
+            ).strip()
+            merged[-1] = prev.model_copy(update={"content": merged_content})
+        else:
+            merged.append(msg)
+    return merged
 
 # ------------------------------------------------------------------ #
 # System prompt                                                        #
@@ -92,6 +127,21 @@ Intégrité des actions — IMPÉRATIF ABSOLU :
 - Pour un rappel déclenché par l'application ELY (notification push) : scheduler_create_task avec channel="app".
 - Si un outil échoue, dis-le clairement avec le code d'erreur plutôt que d'inventer un succès.
 - Quand l'utilisateur te dit "oui" pour confirmer, regarde le tour précédent : si tu as proposé une action, APPELLE L'OUTIL IMMÉDIATEMENT sans repasser par une phrase d'annonce. N'attends pas.
+
+Anti-auto-dialogue — RÈGLE ABSOLUE :
+- Tu n'écris QUE ton propre tour de réponse. JAMAIS la suite supposée du dialogue.
+- N'écris JAMAIS à la fois une question puis sa réponse (pattern « C'est ça ? \n Oui, exactement. »).
+- N'invente JAMAIS de message utilisateur après ton tour. Tu ne sais pas ce que l'utilisateur va dire.
+- NE simule JAMAIS un échange « Toi… / Moi… » avec ton propre récap pour le « valider » ensuite.
+- Pose UNE question si tu as besoin d'info, puis ARRÊTE-TOI. Ne devine pas la réponse.
+- Phrases INTERDITES qui trahissent un auto-dialogue : « Oui, tu as bien compris », « C'est ça ? Oui exactement », « D'accord, donc tu veux que… ? Oui voilà », tout récap à voix double.
+
+Adresses email fournies par l'utilisateur — RÈGLE ABSOLUE :
+- Quand l'utilisateur écrit une adresse email au format ``nom@domaine.tld`` dans sa requête ou un tour précédent (« envoie à truc@bidule.com », « follivier@datasolution.fr »…), utilise cette adresse DIRECTEMENT comme paramètre ``to`` de gmail_send_email / gmail_send_with_local_attachment.
+- NE CHERCHE PAS l'adresse dans ``contacts_search`` / ``contacts_list``. Tu n'as PAS besoin que l'adresse soit « enregistrée dans tes contacts » pour pouvoir envoyer un mail. Gmail accepte n'importe quelle adresse externe.
+- ``contacts_search`` ne sert QUE quand l'utilisateur fournit un PRÉNOM ou un NOM sans adresse (ex: « envoie à Alice », « contact de Marc Dupont »).
+- NE redemande JAMAIS une adresse que l'utilisateur a déjà donnée dans le tour ou les tours précédents — relis le contexte.
+- Phrases INTERDITES : « Je n'ai pas accès à cet email dans mes contacts », « Tu dois me le fournir explicitement » alors que l'utilisateur l'a déjà fourni, « Je vérifie si l'adresse email est enregistrée ».
 
 Interprétations par défaut — NE PAS DEMANDER, agir directement :
 - "mail/email/courriel" → Gmail (gmail_*)
@@ -234,9 +284,15 @@ def create_agent_node():
             logger.warning("SLM init failed: %s — all requests will use LLM", exc)
 
     # Tier-based LLM cache: { tier_value → llm_with_tools }
-    # Invalidated when the tool registry version changes (new skill installed).
+    # Invalidated on EITHER:
+    #   - tool registry version bump (new skill installed/upgraded)
+    #   - tier config version bump (user changed routing in Settings → Routage)
+    # Without the second check, switching a model in the UI had no runtime
+    # effect — the cached client (e.g. Devstral) kept being served on every
+    # agent_node call. (Audit C-4, fixed 2026-05-06.)
     _tier_llm_cache: dict = {}
-    _tier_cache_version = [-1]  # list so inner fn can mutate without nonlocal
+    _tier_cache_version = [-1]   # tracks registry.tools_version
+    _tier_cfg_version = [-1]     # tracks llm_provider.get_tier_config_version()
 
     async def agent_node(state: AgentState) -> dict:
         import time as _t
@@ -263,12 +319,19 @@ def create_agent_node():
                 for b in _c
             ) if isinstance(_c, list) else (_c or "")
 
-        # Hot-reload: clear tier cache when tool registry changes (new skill installed)
+        # Hot-reload: clear tier cache when tool registry OR tier routing config changes
+        from app.services.llm_provider import get_tier_config_version
         current_version = registry.tools_version
-        if current_version != _tier_cache_version[0]:
+        current_cfg_version = get_tier_config_version()
+        if (current_version != _tier_cache_version[0]
+                or current_cfg_version != _tier_cfg_version[0]):
             _tier_llm_cache.clear()
             _tier_cache_version[0] = current_version
-            logger.info("Tier LLM cache invalidated (tools_v=%d)", current_version)
+            _tier_cfg_version[0] = current_cfg_version
+            logger.info(
+                "Tier LLM cache invalidated (tools_v=%d, tier_cfg_v=%d)",
+                current_version, current_cfg_version,
+            )
 
         if _slm_with_tools is not None and current_version != _slm_version:
             try:
@@ -468,6 +531,54 @@ def create_agent_node():
 
         _sanitized = _sanitize_messages_for_mistral(messages)
 
+        # ── Extract user-provided emails / placeholders (audit 2026-05-07) ──
+        # Weak models (Ministral 3 8B observed) keep asking for an email
+        # already given in the conversation. We pre-scan the message stream
+        # and inject a sticky « EMAILS DÉJÀ FOURNIS » block in the system
+        # prompt. The PII filter has already replaced raw addresses with
+        # ``[EMAIL_N]`` placeholders, so we look for both shapes:
+        #   • bare address (rare — leak from filter or quoted text)
+        #   • ``[EMAIL_0]`` / ``[EMAIL_1]`` placeholders
+        try:
+            import re as _email_re
+            _email_pat = _email_re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+            _placeholder_pat = _email_re.compile(r"\[EMAIL_\d+\]")
+            _seen_addrs: list[str] = []
+            _seen_placeholders: list[str] = []
+            for _m in _sanitized[-12:]:  # last 12 messages is enough
+                _content = getattr(_m, "content", None)
+                if _content is None and isinstance(_m, dict):
+                    _content = _m.get("content")
+                if not isinstance(_content, str):
+                    continue
+                for _addr in _email_pat.findall(_content):
+                    if _addr not in _seen_addrs:
+                        _seen_addrs.append(_addr)
+                for _ph in _placeholder_pat.findall(_content):
+                    if _ph not in _seen_placeholders:
+                        _seen_placeholders.append(_ph)
+            if _seen_addrs or _seen_placeholders:
+                system += "\n\n📧 ADRESSES EMAIL DÉJÀ FOURNIES PAR L'UTILISATEUR :\n"
+                if _seen_addrs:
+                    system += "\n".join(f"- {a}" for a in _seen_addrs[:10]) + "\n"
+                if _seen_placeholders:
+                    system += (
+                        "Placeholders (anonymisation PII active) : "
+                        + ", ".join(_seen_placeholders[:10])
+                        + "\n"
+                        "→ Ces placeholders représentent de VRAIES adresses fournies par "
+                        "l'utilisateur. Utilise-les TELS QUELS comme paramètre ``to`` des "
+                        "outils gmail (ex: ``gmail_send_email(to='[EMAIL_0]', ...)``). "
+                        "Le backend remplace automatiquement le placeholder par la vraie "
+                        "adresse au moment de l'appel.\n"
+                    )
+                system += (
+                    "→ NE redemande PAS l'adresse à l'utilisateur, NE la cherche PAS dans "
+                    "contacts_search — elle est déjà fournie."
+                )
+        except Exception as _ext_exc:
+            logger.debug("email extraction skipped: %s", _ext_exc)
+
         # ── Inference ──────────────────────────────────────────────────────
         if use_slm:
             try:
@@ -558,31 +669,75 @@ def create_agent_node():
                 r"fichier|capture|screenshot|météo|news|traduis)\b",
                 re.IGNORECASE,
             )
+            # When a sticky toolset profile is defined for the conversation,
+            # ALWAYS bind that profile's tools — even for chitchat. The
+            # model needs to see the same catalog every turn to learn it
+            # (Hermes pattern, Chantier 1). The cost is ~3-5K tokens of
+            # tool schemas per call, which is the price for stability.
+            _has_profile = bool(state.get("toolset_profile") or "")
             _bind_tools_flag = (
+                _has_profile or
                 _tier == ComplexityTier.COMPLEX or
                 bool(_tool_kw.search(user_query))
             )
             _tier_key = _tier.value
             # Cache key differentiates with/without tools bound
-            _cache_key = f"{_tier_key}:{'tools' if _bind_tools_flag else 'notools'}"
-            # Keep a reference to the UNBOUND base LLM — needed later to
-            # detect whether it's a Qwen variant (for /no_think injection).
-            # When the cache is already warm, the cached entry may be the
-            # tool-bound wrapper, which can hide the underlying provider;
-            # we therefore cache _base_llm under a second key to always
-            # have it on hand.
+            # FIX 2026-05-06 (audit H-5): apply keyword-based tool filtering
+            # to avoid binding all 160 tools at every turn. Sub-agents had
+            # this filter; the general agent_node did not — resulting in
+            # ~15 000 tokens of tool definitions per request (99 % of the
+            # prompt) and 5+ minutes of prompt processing on local LLMs.
+            #
+            # We cache the BASE (unbound) LLM only. Tool binding is cheap
+            # and runs per-call with the filtered list — the cache key now
+            # encodes only the tier identity.
             _base_cache_key = f"{_tier_key}:base"
-            if _cache_key not in _tier_llm_cache:
+            if _base_cache_key not in _tier_llm_cache:
                 _bind_start = _t.monotonic()
                 _base_llm = get_llm_for_tier(_tier)
                 _tier_llm_cache[_base_cache_key] = _base_llm
-                _tier_llm_cache[_cache_key] = (
-                    _base_llm.bind_tools(registry.all_tools) if _bind_tools_flag else _base_llm
-                )
-                logger.warning("⏱ TIMING[general.bind] %.2fs — tier=%s, bind_tools=%s (tools_v=%d)",
-                    _t.monotonic() - _bind_start, _tier_key, _bind_tools_flag, current_version)
-            _base_llm = _tier_llm_cache.get(_base_cache_key) or _tier_llm_cache[_cache_key]
-            _llm_with_tools_req = _tier_llm_cache[_cache_key]
+                logger.warning("⏱ TIMING[general.bind_base] %.2fs — tier=%s (tools_v=%d, cfg_v=%d)",
+                    _t.monotonic() - _bind_start, _tier_key, current_version, current_cfg_version)
+            _base_llm = _tier_llm_cache[_base_cache_key]
+
+            if _bind_tools_flag:
+                # FIX 2026-05-07 (Hermes Chantier 1): prefer the sticky
+                # toolset profile from state if defined. This binds the
+                # SAME ~30-tool catalog every turn for the conversation,
+                # so the model can learn it as muscle memory and the
+                # prompt cache prefix stays intact. Empty profile = fall
+                # back to the legacy keyword filter (graceful migration).
+                _profile = state.get("toolset_profile") or ""
+                if _profile:
+                    from app.agent.toolset_profiles import resolve_profile_tools
+                    _filtered_tools = resolve_profile_tools(
+                        _profile, registry.all_tools,
+                    )
+                    logger.warning(
+                        "[diag.bind] tier=%s profile=%r tools(%d)=%s",
+                        _tier_key, _profile, len(_filtered_tools),
+                        sorted(t.name for t in _filtered_tools),
+                    )
+                else:
+                    # Legacy path — no profile set (e.g. external API caller
+                    # or pre-Chantier-1 conversation row).
+                    from app.agent.tool_filter import filter_tools_by_query
+                    _filtered_tools = filter_tools_by_query(
+                        registry.all_tools,
+                        user_query,
+                        threshold=20,
+                        debug_label=f"general.{_tier_key}",
+                    )
+                    logger.warning(
+                        "[diag.bind] tier=%s query=%r tools(%d)=%s [LEGACY]",
+                        _tier_key,
+                        user_query[:80] if user_query else "",
+                        len(_filtered_tools),
+                        sorted(t.name for t in _filtered_tools),
+                    )
+                _llm_with_tools_req = _base_llm.bind_tools(_filtered_tools)
+            else:
+                _llm_with_tools_req = _base_llm
             # Resolve the actual provider+model behind the tier so analytics
             # shows "lm_studio/llama-xlam-2-8b-fc-r-mlx" instead of "tier-medium".
             # Falls back gracefully to the tier label if introspection fails.
@@ -611,12 +766,147 @@ def create_agent_node():
                 # Only Qwen understands /no_think; other models would echo it.
                 if is_qwen_llm(_base_llm):
                     _invoke_msgs = inject_no_think(_invoke_msgs)
+                # FIX 2026-05-06 (P1 OpenClaw-style): if a recent ToolMessage
+                # carries a base64 screenshot AND the model supports vision,
+                # inject the image as a HumanMessage so the model can SEE it
+                # rather than just read the JSON metadata.
+                try:
+                    from app.agent.vision_injection import maybe_inject_screenshot
+                    _invoke_msgs = maybe_inject_screenshot(_invoke_msgs, _base_llm)
+                except Exception as _vis_exc:
+                    logger.debug("vision_injection skipped: %s", _vis_exc)
                 response = await _llm_with_tools_req.ainvoke(_invoke_msgs)
                 # Strip any <think> block that slipped through
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
+
+                # FIX 2026-05-06 (Option A): some cloud models (Kimi K2.x,
+                # Qwen 3.6 Flash via DashScope, occasionally DeepSeek) emit
+                # tool calls as TEXT inside content instead of populating
+                # the structured `tool_calls` field. Without recovery, the
+                # graph receives `tool_calls=[]` and stalls. Also handles
+                # hallucinated tool names like `send_email` →
+                # `gmail_send_email` via fuzzy matching.
+                from app.agent.tool_call_recovery import (
+                    recover_tool_calls_into_response,
+                    detect_empty_promise,
+                )
+                # DIAG 2026-05-06: log raw response shape BEFORE recovery
+                _raw_tc = getattr(response, "tool_calls", None) or []
+                _raw_content = getattr(response, "content", "") or ""
+                _raw_content_str = _raw_content if isinstance(_raw_content, str) else str(_raw_content)
+                logger.warning(
+                    "[diag.resp] tier=%s raw_tool_calls=%d content_len=%d content_head=%r",
+                    _tier_key, len(_raw_tc), len(_raw_content_str), _raw_content_str[:200],
+                )
+                _recovered = recover_tool_calls_into_response(
+                    response,
+                    real_tool_names={t.name for t in registry.all_tools},
+                )
+                if _recovered:
+                    logger.warning(
+                        "[recovery] tier=%s — recovered %d tool_call(s) from text content",
+                        _tier_key, _recovered,
+                    )
+
+                # FIX 2026-05-06 (P4): empty-promise guard — if the model
+                # claims delivery ("je télécharge sur ton Drive…", "sending
+                # the file now…") but produced ZERO tool_calls, re-invoke
+                # with a corrective system message. Limited to ONE retry
+                # per turn to avoid infinite loops if the model is stubborn.
+                _post_tc = getattr(response, "tool_calls", None) or []
+                _post_content = getattr(response, "content", "") or ""
+                _post_content_str = _post_content if isinstance(_post_content, str) else str(_post_content)
+                if not _post_tc and detect_empty_promise(_post_content_str):
+                    logger.warning(
+                        "[empty_promise] tier=%s — model promised delivery without "
+                        "calling a tool. Content head: %r. Re-prompting once.",
+                        _tier_key, _post_content_str[:200],
+                    )
+                    _correction_msg = {
+                        "role": "system",
+                        "content": (
+                            "⚠️ Tu viens d'écrire que tu télécharges/envoies/sauvegardes "
+                            "le fichier MAIS tu n'as appelé AUCUN outil dans ton dernier "
+                            "message. Cette promesse est vide — l'utilisateur ne reçoit rien.\n\n"
+                            "DEUX OPTIONS :\n"
+                            "1. Si tu DOIS livrer le fichier maintenant, réémets ta "
+                            "réponse en appelant explicitement l'outil approprié "
+                            "(gmail_send_with_local_attachment, drive_create_file, "
+                            "desktop_copy_file, etc.) avec les bons paramètres.\n"
+                            "2. Si tu ne peux pas (paramètre manquant), dis-le clairement "
+                            "à l'utilisateur et demande-lui le paramètre manquant — sans "
+                            "prétendre qu'une livraison est en cours.\n\n"
+                            "NE répète PAS la phrase « en cours de téléchargement » sans "
+                            "appel d'outil cette fois-ci."
+                        ),
+                    }
+                    try:
+                        _retry_msgs = list(_invoke_msgs) + [
+                            {"role": "assistant", "content": _post_content_str},
+                            _correction_msg,
+                        ]
+                        _retry_response = await _llm_with_tools_req.ainvoke(_retry_msgs)
+                        _retry_tc = getattr(_retry_response, "tool_calls", None) or []
+                        _retry_content = getattr(_retry_response, "content", "") or ""
+                        if _retry_tc:
+                            logger.warning(
+                                "[empty_promise] retry produced %d tool_call(s) — "
+                                "replacing original response", len(_retry_tc),
+                            )
+                            response = _retry_response
+                        elif isinstance(_retry_content, str) and _retry_content.strip():
+                            # No tool but a clearer prose without false promise — use it
+                            if not detect_empty_promise(_retry_content):
+                                logger.warning("[empty_promise] retry returned honest prose — using it")
+                                response = _retry_response
+                            else:
+                                logger.warning("[empty_promise] retry STILL promises without tool — keeping original")
+                    except Exception as _retry_exc:
+                        logger.warning("[empty_promise] retry failed (%s)", _retry_exc)
+
                 logger.warning("⏱ TIMING[general.infer] %.2fs — tier=%s, tool_calls=%d",
                     _t.monotonic() - _infer_t, _tier_key, len(getattr(response, 'tool_calls', []) or []))
+
+                # ── Audit H-1 fix (2026-05-06): garde anti-hallucination ──
+                # Modèles locaux 7-14B (Qwen, Mistral, Llama small) ont
+                # tendance à émettre du TEXTE en plain "je vais faire X"
+                # au lieu d'un tool_call JSON, surtout sur des verbes
+                # d'action explicites ("envoie", "supprime", "crée").
+                # Symptôme observé en prod : Qwen 3 VL 8B refuse "envoie
+                # par mail" au lieu d'appeler gmail_send_with_attachment.
+                # Garde : si modèle LOCAL + 0 tool_calls + user query
+                # contient un verbe d'action → fallback cloud immédiat.
+                _has_tool_calls = bool(getattr(response, 'tool_calls', None))
+                from app.services.qwen_no_think import is_local_openai_llm as _is_local_oa
+                _is_local = _is_local_oa(_base_llm)
+                _action_verbs = (
+                    "envoie", "envoy", "supprime", "delete", "send",
+                    "crée", "creer", "create", "écris", "ecris", "write",
+                    "lance", "exécute", "execute", "run", "schedule",
+                    "rappel", "remind", "ferme", "close", "ouvre", "open",
+                    "télécharge", "download", "achète", "buy", "réserve",
+                    "book", "réponds", "reply", "transfère", "transfer",
+                    "capture", "screenshot", "photographie",
+                )
+                _query_has_action = any(v in user_query.lower() for v in _action_verbs)
+                if (
+                    _is_local
+                    and not _has_tool_calls
+                    and _query_has_action
+                    and _bind_tools_flag
+                ):
+                    logger.warning(
+                        "[H-1] Local LLM (tier=%s) returned PLAIN TEXT instead of "
+                        "tool_call despite action verb in user query — falling "
+                        "back to cloud LLM. Response preview: %r",
+                        _tier_key, (response.content or "")[:120],
+                    )
+                    # Force-trigger the fallback path below by raising a
+                    # synthetic "recoverable" exception. The existing fallback
+                    # loop will iterate through get_fallback_llms() and pick
+                    # the first cloud model with a working API key.
+                    raise RuntimeError("h1_fallback: local LLM hallucinated plain text")
             except Exception as primary_exc:
                 # Detect recoverable API errors: quota exhausted, rate limit,
                 # authentication failure, service unavailable.
@@ -626,6 +916,7 @@ def create_agent_node():
                     "not_found", "not found", "overloaded", "503", "unavailable",
                     "deprecated", "no longer available",
                     "invalid_argument", "bad request", "400",
+                    "h1_fallback",  # synthetic exception from H-1 anti-hallucination guard
                 ))
                 if not _recoverable:
                     raise
@@ -685,16 +976,71 @@ async def tool_node(state: AgentState) -> dict:
     hitl = get_hitl_manager()
     memory = get_memory_manager()
 
+    # ── PII deanonymization for tool args (audit 2026-05-07) ──────────────
+    # The user's PII (emails, phones, IBANs) is replaced with placeholders
+    # like ``[EMAIL_0]`` BEFORE messages reach the LLM. When the LLM emits a
+    # tool call, it uses those placeholders verbatim ("to": "[EMAIL_0]").
+    # Without restoring real values here, downstream APIs (Gmail, etc.)
+    # receive the placeholder string and reject it as invalid input.
+    # We pull the per-conversation SecurityFilter from the shared registry
+    # so we get the SAME vault used by chat.py for anonymization.
+    _conv_id = state.get("conversation_id") or ""
+    _vault_sf = None
+    if _conv_id:
+        try:
+            from app.services.conversation_filters import get_filter as _get_conv_filter
+            _vault_sf = _get_conv_filter(_conv_id)
+        except Exception as _vault_exc:
+            logger.debug("conversation filter lookup failed: %s", _vault_exc)
+
+    def _deanonymize_value(v):
+        """Recursively restore PII placeholders in a tool-arg value."""
+        if _vault_sf is None:
+            return v
+        if isinstance(v, str):
+            return _vault_sf.deanonymize(v)
+        if isinstance(v, dict):
+            return {k: _deanonymize_value(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [_deanonymize_value(x) for x in v]
+        return v
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
-        args = dict(tool_call["args"])
+        # Deanonymize tool args BEFORE any other processing so HITL preview,
+        # logs, and the actual API call all see the real values.
+        args = _deanonymize_value(dict(tool_call["args"]))
 
         # Inject hidden arguments — credentials are fetched from the server-side
         # store (never stored in graph state) to prevent exposure in logs/events.
         if tool_name in GOOGLE_TOOLS:
             from app.services.credential_store import get_credential_store
             _uid = state.get("user_id") or ""
-            args["user_google_credentials_json"] = get_credential_store().get(_uid) or ""
+            _store = get_credential_store()
+            _creds = _store.get(_uid) or ""
+            # Fallback (audit 2026-05-07): if the in-process cache is empty
+            # — happens after a backend restart while the WebSocket is
+            # still alive but the 5-min refresh hasn't ticked yet, or after
+            # an OAuth re-consent that didn't propagate to the cache —
+            # refresh straight from the DB. Better to pay one query per
+            # tool call than to lie « Google non connecté » when the user
+            # is in fact connected.
+            if not _creds and _uid:
+                try:
+                    from app.database import async_session as _async_session
+                    from app.models.user import User as _U
+                    async with _async_session() as _db:
+                        _u = await _db.get(_U, _uid)
+                        if _u and _u.google_credentials:
+                            _creds = _u.google_credentials
+                            _store.set(_uid, _creds)
+                            logger.warning(
+                                "[creds] cache miss for user=%s — refreshed from DB",
+                                _uid,
+                            )
+                except Exception as _creds_exc:
+                    logger.warning("[creds] DB fallback failed: %s", _creds_exc)
+            args["user_google_credentials_json"] = _creds
         if tool_name in USER_ID_TOOLS:
             args["user_id"] = state.get("user_id") or ""
 

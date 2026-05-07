@@ -44,29 +44,37 @@ class _CredentialStore:
         self._data: dict[str, tuple[str, float]] = {}
 
     def set(self, user_id: str, credentials_json: str | None) -> None:
-        """Store or update credentials for user_id."""
+        """Store or update credentials for user_id.
+
+        ``user_id`` is normalized to ``str`` so callers passing a UUID object
+        (SQLAlchemy column) and callers passing a string (JWT ``sub``) hit
+        the same cache entry. Bug discovered 2026-05-07.
+        """
+        key = str(user_id)
         with self._lock:
             if credentials_json:
-                self._data[user_id] = (credentials_json, time.monotonic())
+                self._data[key] = (credentials_json, time.monotonic())
             else:
-                self._data.pop(user_id, None)
+                self._data.pop(key, None)
 
     def get(self, user_id: str) -> Optional[str]:
         """Return credentials_json for user_id, or None if absent/expired."""
+        key = str(user_id)
         with self._lock:
-            entry = self._data.get(user_id)
+            entry = self._data.get(key)
             if not entry:
                 return None
             creds, ts = entry
             if time.monotonic() - ts > self._TTL:
-                del self._data[user_id]
+                del self._data[key]
                 return None
             return creds
 
     def clear(self, user_id: str) -> None:
         """Remove credentials for user_id (logout / revoke)."""
+        key = str(user_id)
         with self._lock:
-            self._data.pop(user_id, None)
+            self._data.pop(key, None)
 
     def evict_expired(self) -> int:
         """Remove all expired entries. Returns count removed."""

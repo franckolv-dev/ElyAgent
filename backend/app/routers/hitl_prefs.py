@@ -25,10 +25,32 @@ from app.auth.dependencies import get_current_user
 from app.database import async_session
 from app.models.hitl_preference import HitlPreference
 from app.models.user import User
+from app.services.hitl_manager import get_hitl_manager
 from app.services.hitl_preferences import LOCKED_HITL_TOOLS
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS
 
 router = APIRouter(prefix="/hitl", tags=["hitl"])
+
+
+class HitlPendingOut(BaseModel):
+    action_id: str
+    description: str
+    created_at: str
+
+
+@router.get("/pending", response_model=list[HitlPendingOut])
+async def list_pending(
+    current_user: User = Depends(get_current_user),
+) -> list[HitlPendingOut]:
+    """Return every still-actionable HITL request for the current user.
+
+    Used by the web UI bell component so the user can see pending
+    approval requests even when the WebSocket /ws/chat was not active
+    at the moment the request was created (e.g. they are browsing
+    Missions or Settings instead of Chat).
+    """
+    items = get_hitl_manager().list_pending(current_user.id)
+    return [HitlPendingOut(**i) for i in items]
 
 
 class HitlPrefOut(BaseModel):

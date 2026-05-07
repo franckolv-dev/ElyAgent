@@ -47,6 +47,7 @@ from app.routers import whatsapp_web as whatsapp_web_router
 from app.routers import channels as channels_router
 from app.routers import missions as missions_router
 from app.routers import upload as upload_router
+from app.routers import attachments as attachments_router
 from app.routers import watchdog as watchdog_router
 from app.routers import analytics as analytics_router
 from app.routers import audit as audit_router
@@ -386,6 +387,8 @@ app.include_router(scheduler_router.router, prefix="/scheduler", tags=["schedule
 app.include_router(skills_router.router, prefix="/skills", tags=["skills"])
 app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])
 app.include_router(upload_router.router, prefix="/api", tags=["upload"])
+# Attachments (MEDIA: sentinel files served back to the chat UI)
+app.include_router(attachments_router.router)
 app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
 # WhatsApp Web bridge (unofficial, QR-paired) — prefix already baked into the router
 app.include_router(whatsapp_web_router.router)
@@ -415,6 +418,9 @@ from app.routers import hitl_prefs as _hitl_prefs_router
 app.include_router(_hitl_prefs_router.router, prefix="/api")
 from app.routers import onboarding as _onboarding_router
 app.include_router(_onboarding_router.router, prefix="/api")
+# Tier-aware licence enforcement (Phase 1) — router carries its own /api/licence prefix.
+from app.routers import licence as _licence_router
+app.include_router(_licence_router.router)
 
 # ── Static files — ELY Desktop binaries ─────────────────────────────────────
 import os as _os

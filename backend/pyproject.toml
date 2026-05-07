@@ -69,6 +69,7 @@ dependencies = [
     # Proper fix (TODO): migrate 3 files from google-generativeai to
     # the new google-genai SDK which supports protobuf 6.
     "neonize>=0.3.0",
+    "pillow>=11.3.0",
 ]
 
 [tool.hatch.build.targets.wheel]

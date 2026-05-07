@@ -41,6 +41,7 @@ GOOGLE_TOOLS: frozenset[str] = frozenset({
     # Gmail
     "gmail_list_emails", "gmail_read_email", "gmail_send_email",
     "gmail_reply_email", "gmail_send_with_attachment",
+    "gmail_send_with_local_attachment",   # FIX 2026-05-07 — oubli initial
     "gmail_mark_read", "gmail_mark_unread",
     "gmail_create_draft", "gmail_list_drafts",
     "gmail_list_labels", "gmail_create_label",

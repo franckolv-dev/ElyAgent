@@ -233,6 +233,18 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "Tu maîtrises Gmail, Google Calendar, Google Drive, Google Docs, Google "
         "Sheets, Google Tasks et Google Contacts. Tu aides l'utilisateur à gérer "
         "sa vie numérique Google de façon efficace. Toujours donner l'URL après chaque création.\n\n"
+        "ADRESSES EMAIL FOURNIES PAR L'UTILISATEUR — RÈGLE ABSOLUE :\n"
+        "Quand l'utilisateur écrit une adresse au format ``nom@domaine.tld`` "
+        "(ex: « envoie à follivier@datasolution.fr »), utilise-la DIRECTEMENT "
+        "comme paramètre ``to`` de gmail_send_email. Tu n'as PAS besoin que "
+        "l'adresse soit dans Google Contacts pour pouvoir l'utiliser. NE "
+        "lance PAS contacts_search sur une adresse explicite. ``contacts_search`` "
+        "ne sert QUE quand l'utilisateur fournit un PRÉNOM ou NOM sans email "
+        "(ex: « envoie à Alice »). Phrases INTERDITES : « Je n'ai pas accès à "
+        "cet email dans mes contacts », « Tu dois me le fournir explicitement » "
+        "(alors qu'il est déjà dans le tour), « Je vérifie si l'adresse est "
+        "enregistrée ». Si l'adresse a été donnée plus tôt dans la conversation, "
+        "relis l'historique avant de redemander.\n\n"
         "ANTI-HALLUCINATION TOOLS — IMPÉRATIF :\n"
         "Tes outils couvrent UNIQUEMENT Google Workspace. Si la demande nécessite "
         "AUSSI de la recherche web, WhatsApp, SSH, météo, etc., NE PRÉTENDS JAMAIS "
@@ -660,8 +672,14 @@ def _quick_route(msg: str, user_id: str | None = None) -> str | None:
     # phrases like « liste les fichiers dans /Users/franck/Documents » or
     # « supprime test.txt sur le bureau » started matching workspace.
     # The cleanest disambiguator is whether the phrase carries a literal
-    # filesystem path or a "machine-local" marker. If so → desktop, period.
-    if _re.search(
+    # filesystem path or a "machine-local" marker. If so → desktop.
+    #
+    # FIX 2026-05-06 : if the query ALSO mentions a website/URL/email, it's
+    # multi-domain (e.g. "capture catalogmaker.fr + enregistre dans /Users/...")
+    # — desktop sub-agent has only `os_screenshot` (full screen) and would
+    # miss `browser_screenshot` (research domain) needed for site capture.
+    # Fall through to multi-domain detection (returns "general" → all tools).
+    _has_local_path = _re.search(
         r"(\B|^|\s)(?:~/|/users/|/home/|/var/|/etc/|/tmp/|/opt/|c:\\|d:\\)",
         msg_lower,
     ) or _re.search(
@@ -669,7 +687,23 @@ def _quick_route(msg: str, user_id: str | None = None) -> str | None:
         r"localement|sur ma machine|fichier local|fichiers locaux|"
         r"\.txt\b|\.py\b|\.sh\b|\.log\b|\.app\b|\.dmg\b)\b",
         msg_lower,
-    ):
+    )
+    if _has_local_path:
+        # Cross-domain markers — if any present, don't lock to desktop.
+        _has_cross_domain = _re.search(
+            r"\b(?:"
+            r"https?://|www\.|"                          # explicit URL
+            r"\.(?:com|fr|org|net|io|dev|app|co)\b|"     # TLD anywhere
+            r"capture\s+(?:du\s+|de\s+la\s+|le\s+|la\s+)?(?:site|page|web|url)|"
+            r"capture\s+web|screenshot\s+(?:du\s+|of\s+)?(?:site|web|page)|"
+            r"site\s+web|page\s+web|"
+            r"envoie?[srz]?\s+(?:par\s+)?(?:mail|email|courriel)|"
+            r"\benvoie?[srz]?\s+.*?\b@\w+\."             # send to email
+            r")\b",
+            msg_lower,
+        )
+        if _has_cross_domain:
+            return "general"
         return "desktop"
 
     # PRIORITY 0: self-introspection — questions about ELY herself MUST go
@@ -803,6 +837,22 @@ async def router_node(state: AgentState) -> dict:
         if isinstance(m, HumanMessage):
             last_user_msg = m.content[:500]  # truncate for speed
             break
+
+    # ── Toolset profile bypass (Hermes Chantier 1, 2026-05-07) ───────────
+    # When the conversation has a sticky toolset_profile assigned, the
+    # whole supervisor routing logic is bypassed. The general agent_node
+    # already has the right ~30 tools bound from the profile — no domain
+    # routing needed (the model picks the right tool itself). Mirrors
+    # Hermes' "no classifier, monolithic agent loop" pattern.
+    if (state.get("toolset_profile") or "").strip():
+        logger.warning(
+            "⏱ TIMING[router-profile] %.3fs → forced general "
+            "(profile=%s, msg=%.60s)",
+            _t.monotonic() - _start,
+            state.get("toolset_profile"),
+            last_user_msg,
+        )
+        return {"domain": "general"}
 
     # ── Mono-agent mode (mai 2026) — admin toggle ─────────────────────────
     # Quand activé dans Paramètres → Routage, on court-circuite TOUT le
@@ -1122,13 +1172,29 @@ def _make_dispatch_node(domain: str):
             )
             # Return only the messages produced by the sub-agent
             new_messages = result["messages"][len(state["messages"]):]
-            # ── Image pass-through (QR code, Imagen, etc.) ────────────────
-            # If a ToolMessage contains {"type":"image",...} JSON and the
-            # final AIMessage doesn't already include it, prepend the JSON so
-            # the frontend can render the image (parseImageBlock in MessageBubble).
+            # ── Image pass-through (QR code, Imagen, browser_screenshot…) ─
+            # Tool returns a JSON envelope `{"type":"image","data":<base64>,
+            # "mime":"image/png","prompt":"..."}`. We need to do TWO things:
+            #
+            #  1. Pass the base64 *forward* to the frontend by prepending it
+            #     into the final AIMessage content (so MessageBubble can
+            #     render it inline — parseImageBlock).
+            #  2. **Strip the base64 out of the ToolMessage** so that the
+            #     next ACT/EVAL turn does NOT re-feed 30-50k tokens of
+            #     base64 back to the LLM. Without this stripping, every
+            #     follow-up step (e.g. "now send it by email") was paying
+            #     7+ minutes of prompt processing on local models — the
+            #     LLM was reading the entire image as text.
+            #
+            # We keep a *human-readable summary* in the ToolMessage so the
+            # LLM understands what happened ("screenshot taken — title X,
+            # url Y") and can reason about next steps without seeing pixels.
+            # If the LLM genuinely needs to *analyse* the image, it must
+            # call an explicit vision tool that routes to the IMG tier.
             import json as _json
-            _image_jsons: list[str] = []
             from langchain_core.messages import ToolMessage as _TM
+            _image_jsons: list[str] = []
+            _stripped_messages: list = []
             for _m in new_messages:
                 if isinstance(_m, _TM):
                     _c = _m.content or ""
@@ -1136,9 +1202,28 @@ def _make_dispatch_node(domain: str):
                         try:
                             _obj = _json.loads(_c)
                             if isinstance(_obj, dict) and _obj.get("type") == "image":
+                                # Keep the full JSON for frontend rendering
                                 _image_jsons.append(_c)
+                                # Replace the ToolMessage content with a compact
+                                # textual summary so the LLM sees ~50 tokens
+                                # instead of ~30 000 tokens of base64.
+                                _prompt = _obj.get("prompt") or "Image générée"
+                                _mime = _obj.get("mime", "image/png")
+                                _b64_size = len(_obj.get("data") or "")
+                                _summary = (
+                                    f"[image générée — {_prompt} · {_mime} · "
+                                    f"{_b64_size} octets base64 · transmise à "
+                                    f"l'utilisateur via l'interface, NE PAS "
+                                    f"essayer de la re-décrire]"
+                                )
+                                _stripped = _m.model_copy(update={"content": _summary})
+                                _stripped_messages.append(_stripped)
+                                continue
                         except Exception:
                             pass
+                _stripped_messages.append(_m)
+            new_messages = _stripped_messages
+
             if _image_jsons:
                 _last = new_messages[-1] if new_messages else None
                 _last_content = (_last.content or "") if _last else ""

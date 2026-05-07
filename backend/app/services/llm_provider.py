@@ -138,17 +138,42 @@ DEFAULT_TIER_CONFIG: dict[str, dict] = {
 
 _tier_config: dict[str, dict] = {}   # empty = use DEFAULT_TIER_CONFIG
 
+# Bumped every time `set_tier_config()` runs. Downstream caches (notably
+# `_tier_llm_cache` in `app/agent/nodes.py` and any per-tier client cache
+# in sub-agent factories) MUST check this version and invalidate when it
+# changes. Without this, swapping a model in Settings → Routing has no
+# runtime effect — the previous client object stays in cache and continues
+# to be served on every agent_node call. (Audit C-4, fixed 2026-05-06.)
+_tier_config_version: int = 0
+
 
 def set_tier_config(config: dict) -> None:
-    """Replace the in-memory tier routing config (called on startup + after PUT /tiers)."""
-    global _tier_config
+    """Replace the in-memory tier routing config (called on startup + after PUT /tiers).
+
+    Also bumps `_tier_config_version` so that any downstream LLM cache
+    keyed on tier identity will rebuild its clients on next use.
+    """
+    global _tier_config, _tier_config_version
     _tier_config = config
-    logger.info("Tier config updated: %s", list(config.keys()))
+    _tier_config_version += 1
+    logger.info(
+        "Tier config updated (v=%d): %s",
+        _tier_config_version, list(config.keys()),
+    )
 
 
 def get_tier_config() -> dict[str, dict]:
     """Return the active tier routing config (DB override or defaults)."""
     return _tier_config if _tier_config else DEFAULT_TIER_CONFIG
+
+
+def get_tier_config_version() -> int:
+    """Monotonic version counter — bumped on every `set_tier_config()`.
+
+    Caches downstream (see `app/agent/nodes.py:_tier_llm_cache`) check this
+    to know when to invalidate their precomputed `bind_tools()` clients.
+    """
+    return _tier_config_version
 
 
 def set_runtime_llm(provider: str, model: str) -> None:
@@ -297,14 +322,47 @@ def _make_lm_studio(model: str, base_url: str, max_tokens: int = 4096, temperatu
     #   - Gemma / Mistral / Llama served via LM Studio : ignored → harmless
     # If a user genuinely wants thinking on for a reasoning model, they can
     # override via the LM Studio UI (system prompt).
-    return ChatOpenAI(
-        model=model,
-        api_key="lm-studio",       # LM Studio ignores the key — required by LangChain
-        base_url=base_url,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-    )
+    # Stop tokens — anti-self-dialogue (audit 2026-05-07).
+    # Small models (Ministral 3 8B, Mistral 7B…) often "continue" the
+    # conversation by hallucinating both sides of the dialogue
+    # ("C'est ça ? \n Oui exactement. Toi… / Moi…"). Adding model-family
+    # stop tokens forces the inference to halt at the natural turn boundary.
+    # We only add stops that NEVER appear in legitimate tool calls or
+    # markdown output to avoid cutting valid responses.
+    _model_lc = (model or "").lower()
+    _stops: list[str] = []
+    if "mistral" in _model_lc or "ministral" in _model_lc:
+        # Mistral instruct format: next-turn opens with [INST]
+        _stops.extend(["[INST]", "</s>"])
+    if "qwen" in _model_lc or "llama" in _model_lc:
+        # ChatML format used by many Qwen/Llama variants
+        _stops.extend(["<|im_end|>", "<|im_start|>user"])
+    if "gemma" in _model_lc:
+        _stops.append("<end_of_turn>")
+    if "gpt-oss" in _model_lc or "gpt_oss" in _model_lc or _model_lc.startswith("openai/gpt-oss"):
+        # OpenAI gpt-oss uses the « Harmony » response format with these
+        # control tokens. Without them the model can run past its turn
+        # boundary and emit malformed continuations.
+        _stops.extend(["<|return|>", "<|endoftext|>"])
+
+    _kwargs = {
+        "model": model,
+        "api_key": "lm-studio",       # LM Studio ignores the key — required by LangChain
+        "base_url": base_url,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        # FIX 2026-05-06: timeout explicite à 15 min. Sans ça, le client httpx
+        # tombait sur ~300s (défaut openai SDK) → "Client disconnected" alors
+        # que LM Studio finissait son prompt processing 30s plus tard sur du
+        # local lent (gros prompt + Mac Studio sous charge). 900s couvre les
+        # pires cas pratiques tout en évitant les leaks de connexion en cas
+        # de bug LM Studio. Voir audit H-4.
+        "timeout": 900.0,
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+    if _stops:
+        _kwargs["model_kwargs"] = {"stop": _stops}
+    return ChatOpenAI(**_kwargs)
 
 
 def _make_qwen_api(
@@ -508,13 +566,17 @@ def get_llm() -> BaseChatModel:
         # Native function-calling, vision support, exceptional instruction
         # following — strong fit for tier MEDIUM/COMPLEX and the diag agent.
         # `openai_base_url` lets users target Azure OpenAI or a private proxy.
+        # FIX 2026-05-06 (audit C-1): use hardcoded defaults consistent with
+        # the other branches in get_llm() — previously referenced
+        # `max_tokens` / `temperature` from an outer scope that does not
+        # exist here, causing NameError on first call.
         from langchain_openai import ChatOpenAI
         _base = _runtime.get("openai_base_url") or settings.openai_base_url or None
         kw = {
             "model": model,
             "api_key": _key("openai", settings.openai_api_key),
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            "max_tokens": 4096,
+            "temperature": 0.7,
         }
         if _base:
             kw["base_url"] = _base
@@ -1123,3 +1185,53 @@ def describe_llm(llm) -> tuple[str, str]:
         return "openai-compat", model
 
     return cls.lower().replace("chat", "").replace("model", "") or "unknown", model
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Vision capability detection (for multimodal tool results, audit P1 2026-05-06)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Substrings that, if present in the model name (lowercased), indicate
+# the model accepts image inputs in the chat completion API. Conservative
+# allowlist — when in doubt we return False so the agent falls back to
+# text-only tool results (always safe).
+_VISION_MODEL_PATTERNS: tuple[str, ...] = (
+    # Anthropic — all Claude 3+ models accept images
+    "claude-3", "claude-4", "claude-opus", "claude-sonnet", "claude-haiku",
+    # Google
+    "gemini-1.5", "gemini-2", "gemini-pro-vision", "gemini-flash",
+    # OpenAI
+    "gpt-4o", "gpt-4-vision", "gpt-4-turbo", "gpt-5",
+    # Qwen vision — many naming variants
+    "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen-3-vl", "qwen3-vl",
+    "qwen-vl-max", "qwen-vl-plus",
+    # Mistral
+    "pixtral",
+    # Moonshot Kimi vision
+    "moonshot-v1-vision", "kimi-vl", "kimi-thinking-preview",
+    # Meta vision (via OpenRouter)
+    "llama-3.2-vision", "llama-3.2-90b-vision",
+)
+
+# Provider-level allowlists. If the provider always supports vision (rare),
+# the lookup short-circuits without checking the model name.
+_VISION_PROVIDER_ALLOWLIST: frozenset[str] = frozenset()
+
+
+def supports_vision(llm) -> bool:
+    """Best-effort check: does this LLM accept image_url content blocks?
+
+    Used to decide whether tool results carrying base64 image data should
+    be re-injected to the model as a multimodal HumanMessage at the next
+    turn. Falls back to ``False`` on any uncertainty — text-only is safe.
+    """
+    if llm is None:
+        return False
+    try:
+        provider, model = describe_llm(llm)
+    except Exception:
+        return False
+    if provider in _VISION_PROVIDER_ALLOWLIST:
+        return True
+    model_lc = (model or "").lower()
+    return any(pat in model_lc for pat in _VISION_MODEL_PATTERNS)

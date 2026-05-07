@@ -328,19 +328,40 @@ def fit_messages_to_context(
         estimate_messages_tokens(kept),
     )
 
-    # Build a lightweight summary of what was dropped and inject it as
-    # a system message at the top of the kept list.
+    # Build a lightweight summary of what was dropped. It used to be
+    # injected as a SystemMessage but Mistral's chat template forbids
+    # consecutive system messages AND requires user→assistant alternation
+    # right after the (single) system block. We therefore inject it as
+    # a HumanMessage. If the kept list already starts with a HumanMessage,
+    # we PREPEND the summary into that message's content instead of
+    # creating a new one — same protection, no alternation violation.
+    # (Audit 2026-05-07 — bug observed on ministral-3-8b-instruct.)
     summary_text = _summarise_dropped(dropped)
     if summary_text:
         summary_cost = estimate_tokens(summary_text) + 4
         if running + summary_cost <= available:
-            summary_msg: BaseMessage | dict
-            # Use LangChain SystemMessage when the rest are BaseMessage objects
-            if kept and isinstance(kept[0], BaseMessage):
-                summary_msg = SystemMessage(content=summary_text)
+            from langchain_core.messages import HumanMessage as _HM
+            preface = (
+                "[Contexte résumé du début de conversation, à prendre en compte "
+                "pour ta réponse]\n" + summary_text + "\n\n[Fin du résumé]\n\n"
+            )
+            if kept and isinstance(kept[0], _HM):
+                # Merge into the first user message to keep alternation tight.
+                merged_content = preface + str(kept[0].content or "")
+                kept[0] = kept[0].model_copy(update={"content": merged_content})
+            elif kept and isinstance(kept[0], dict) and kept[0].get("role") == "user":
+                merged = preface + str(kept[0].get("content") or "")
+                kept[0] = {**kept[0], "content": merged}
             else:
-                summary_msg = {"role": "system", "content": summary_text}
-            kept = [summary_msg] + kept
+                # Otherwise insert a synthetic HumanMessage before whatever
+                # role kept[0] has (assistant / tool / etc.). This satisfies
+                # Mistral's "after system, must be user" rule.
+                summary_msg: BaseMessage | dict
+                if kept and isinstance(kept[0], BaseMessage):
+                    summary_msg = _HM(content=preface)
+                else:
+                    summary_msg = {"role": "user", "content": preface}
+                kept = [summary_msg] + kept
         else:
             logger.debug(
                 "Summary (%d tokens) doesn't fit — skipping.", summary_cost,

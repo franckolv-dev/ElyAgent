@@ -58,18 +58,29 @@ _agent_graph = None
 from collections import OrderedDict
 
 
-class _BoundedDict(OrderedDict):
-    def __init__(self, maxsize: int = 1000):
-        super().__init__()
-        self._maxsize = maxsize
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        if len(self) > self._maxsize:
-            self.popitem(last=False)
+# Per-conversation SecurityFilter registry — moved to a shared services
+# module so tool_node (nodes.py) can deanonymize tool args using the same
+# vault as the user-input anonymization. See services/conversation_filters.py.
+from app.services.conversation_filters import (
+    discard_filter as _discard_filter,
+    get_filter as _get_filter,
+)
 
 
-_filters: _BoundedDict = _BoundedDict(maxsize=1000)
+class _FiltersProxy:
+    """Tiny shim so legacy ``_filters.setdefault(...)`` and
+    ``_filters.pop(...)`` calls keep working while we migrate to the
+    dedicated registry module."""
+
+    def setdefault(self, conversation_id: str, _default=None):
+        return _get_filter(conversation_id)
+
+    def pop(self, conversation_id: str, default=None):
+        _discard_filter(conversation_id)
+        return default
+
+
+_filters = _FiltersProxy()
 
 
 def get_agent():
@@ -201,6 +212,69 @@ async def websocket_chat(websocket: WebSocket):
                         _cred_store.set(user_id, _fresh.google_credentials)
                 _google_creds_ts = now
 
+            # ── Slash command handler (must run BEFORE persisting + agent) ──
+            # Currently only `/profile [name]` (Hermes Chantier 1). Returns
+            # immediately with a system-style assistant message and skips
+            # the agent run.
+            _stripped = (user_content or "").strip()
+            if _stripped.startswith("/profile"):
+                _parts = _stripped.split(maxsplit=1)
+                from app.agent.toolset_profiles import (
+                    list_profiles, is_valid_profile, DEFAULT_PROFILE,
+                )
+                _reply: str
+                if len(_parts) == 1:
+                    # Show current + available
+                    _current = "(non défini)"
+                    if conversation_id:
+                        async with async_session() as _pdb:
+                            _conv = await _pdb.get(Conversation, conversation_id)
+                            if _conv and _conv.toolset_profile:
+                                _current = _conv.toolset_profile
+                    _reply = (
+                        f"Profil actuel : **{_current}**\n"
+                        f"Profils disponibles : {', '.join(list_profiles())}\n"
+                        f"Pour changer : `/profile <nom>`"
+                    )
+                else:
+                    _new = _parts[1].strip()
+                    if not is_valid_profile(_new):
+                        _reply = (
+                            f"❌ Profil inconnu : `{_new}`. "
+                            f"Disponibles : {', '.join(list_profiles())}"
+                        )
+                    else:
+                        if not conversation_id:
+                            # Need a conversation row first — create empty
+                            async with async_session() as _pdb:
+                                _conv = Conversation(
+                                    user_id=user_id,
+                                    title=f"/profile {_new}",
+                                    toolset_profile=_new,
+                                )
+                                _pdb.add(_conv)
+                                await _pdb.flush()
+                                conversation_id = str(_conv.id)
+                                await _pdb.commit()
+                        else:
+                            async with async_session() as _pdb:
+                                _conv = await _pdb.get(Conversation, conversation_id)
+                                if _conv:
+                                    _conv.toolset_profile = _new
+                                    await _pdb.commit()
+                        _reply = f"✅ Profil de cette conversation : **{_new}**"
+                # Echo back to the user as an assistant message (no DB persist
+                # needed — slash commands don't need to live in history)
+                from datetime import datetime as _dt2, timezone as _tz2
+                await websocket.send_text(_dumps({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": _reply,
+                    "conversation_id": conversation_id,
+                    "created_at": _dt2.now(_tz2.utc).isoformat(),
+                }))
+                continue
+
             async with async_session() as db:
                 if not conversation_id:
                     conv = Conversation(user_id=user_id, title=user_content[:50])
@@ -214,6 +288,30 @@ async def websocket_chat(websocket: WebSocket):
                 )
                 db.add(user_msg)
                 await db.commit()
+
+            # ── Toolset profile resolution (Hermes Chantier 1) ─────────────
+            # If the conversation has no profile yet (NULL), auto-detect from
+            # the current user message and persist. Subsequent turns reuse
+            # the same profile — the catalog stays stable for the model.
+            _toolset_profile: str = ""
+            try:
+                from app.agent.toolset_profiles import (
+                    auto_detect_profile, DEFAULT_PROFILE,
+                )
+                async with async_session() as _pdb:
+                    _conv = await _pdb.get(Conversation, conversation_id)
+                    if _conv:
+                        if not _conv.toolset_profile:
+                            _conv.toolset_profile = auto_detect_profile(user_content or "")
+                            await _pdb.commit()
+                            logger.info(
+                                "[toolset_profile] auto-detected '%s' for conv=%s",
+                                _conv.toolset_profile, conversation_id,
+                            )
+                        _toolset_profile = _conv.toolset_profile or DEFAULT_PROFILE
+            except Exception as _tsp_exc:
+                logger.warning("toolset_profile resolve failed: %s", _tsp_exc)
+                _toolset_profile = ""  # legacy keyword filter path
 
             # Anonymize input through per-conversation filter
             sf = _filters.setdefault(conversation_id, SecurityFilter())
@@ -278,6 +376,7 @@ async def websocket_chat(websocket: WebSocket):
                     "messages": history_msgs,
                     "user_id": user_id,
                     "conversation_id": conversation_id,
+                    "toolset_profile": _toolset_profile,
                     # google_credentials intentionally omitted — stored server-side
                     # in credential_store, looked up by user_id at tool exec (SEC-1)
                 },
@@ -402,6 +501,42 @@ async def websocket_chat(websocket: WebSocket):
             except Exception as _filter_exc:
                 logger.debug("Response filter skipped: %s", _filter_exc)
 
+            # ── Anti self-dialogue (audit 2026-05-07) ──────────────────────
+            # Ministral 3 8B and other small instruct LLMs sometimes continue
+            # the conversation past their own turn ("C'est ça ? \n Oui exactement.
+            # \n Toi… / Moi…"). Stop tokens at the LLM provider level catch most
+            # cases but a few slip through. Trim them as the last response-text
+            # post-processor before media_router and DB persistence.
+            try:
+                from app.services.anti_self_dialogue import trim_self_dialogue
+                ai_content, _trimmed = trim_self_dialogue(ai_content)
+                if _trimmed:
+                    logger.warning(
+                        "anti_self_dialogue: trimmed self-dialogue from response (user=%s)",
+                        user_id,
+                    )
+            except Exception as _asd_exc:
+                logger.debug("anti_self_dialogue skipped: %s", _asd_exc)
+
+            # ── Media router (Hermes-style sentinel parser, audit 2026-05-06) ──
+            # Extract MEDIA:<path> sentinels and bare references to whitelisted
+            # attachment dirs. This catches the case where the LLM mentioned
+            # a screenshot file but forgot to call gmail_send_with_local_attachment
+            # or drive_create_file — at least the user gets the file inline.
+            _extracted_attachments: list[dict] = []
+            try:
+                from app.services.media_router import extract_media
+                _media_result = extract_media(ai_content)
+                ai_content = _media_result.cleaned_text
+                _extracted_attachments = _media_result.attachments
+                if _extracted_attachments:
+                    logger.warning(
+                        "media_router: extracted %d attachment(s) from response (user=%s)",
+                        len(_extracted_attachments), user_id,
+                    )
+            except Exception as _media_exc:
+                logger.warning("media_router skipped: %s", _media_exc)
+
             # If interrupted but partial content exists, send it as a normal message
             if stop_event.is_set() and ai_content:
                 ai_content = ai_content.rstrip() + " …"
@@ -438,6 +573,11 @@ async def websocket_chat(websocket: WebSocket):
                 payload["model_used"] = model_used_out
             if routing_score_out is not None:
                 payload["routing_score"] = routing_score_out
+            # Inline attachments extracted from MEDIA:<path> sentinels — let
+            # the frontend render them next to the assistant message even when
+            # the LLM forgot to trigger a delivery tool.
+            if _extracted_attachments:
+                payload["attachments"] = _extracted_attachments
             await websocket.send_text(_dumps(payload))
 
             # ── Log usage for analytics ─────────────────────────────────────────
@@ -541,8 +681,16 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
             for m in msgs[-30:]
         )
 
-        from app.services.llm_provider import get_llm
-        llm = get_llm()
+        # FIX 2026-05-06 (audit H-2): summarisation et extraction de faits
+        # sont des tâches MAINTENANCE — elles doivent respecter le tier
+        # configuré par l'utilisateur dans Settings → Routage, pas piocher
+        # dans `get_llm()` qui retombe sur la conf globale env/settings.
+        # Avant ce fix, le summarizer chargeait silencieusement le modèle
+        # actif (potentiellement Devstral / Ministral selon historique
+        # `_runtime`), causant des cascades de chargements LM Studio
+        # quand l'utilisateur attendait que son tier B fasse son boulot.
+        from app.services.llm_provider import get_llm_for_tier, ComplexityTier
+        llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
 
         summary_prompt = (
             "Résume en 3 à 6 phrases les informations importantes apprises sur l'utilisateur "

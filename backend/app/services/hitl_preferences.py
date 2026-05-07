@@ -58,6 +58,13 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     "contacts_batch_operations",
     # Tasks bulk delete via raw
     "tasks_delete",
+    # Memory — persisting permanent constraints affects ALL future
+    # conversations. A model that hallucinates "I can't do X" and saves it
+    # as a constraint will poison every subsequent chat for every model.
+    # Force HITL so the user must approve any permanent rule.
+    # (Discovered 2026-05-06 — Ministral 3 8B + Kimi K2.6 + Qwen 3.6 Flash
+    # all refused screenshot/email workflow because of self-saved constraints.)
+    "save_constraint",
 })
 
 

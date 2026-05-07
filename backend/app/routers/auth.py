@@ -32,6 +32,7 @@ from app.auth.passwords import hash_password, verify_password
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.auth.dependencies import get_current_user, get_optional_user, require_admin
 from app.config import get_settings
+from app.services.licence_service import check_user_creation_allowed
 
 router = APIRouter()
 
@@ -78,6 +79,12 @@ async def register(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="La création de compte est réservée aux administrateurs.",
             )
+
+        # Tier enforcement — block if the active licence's max_users is reached.
+        # The bootstrap admin (is_first) bypasses this check by construction.
+        allowed, err = await check_user_creation_allowed(db)
+        if not allowed:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=err)
 
     existing = await db.execute(
         select(User).where((User.username == req.username) | (User.email == req.email))
