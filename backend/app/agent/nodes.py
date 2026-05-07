@@ -674,6 +674,17 @@ def create_agent_node():
                 _chain = list(_tier_cfg_for_fb.get("providers", []) or [])
                 if _chain:
                     _fb_state = _fb.get_or_create(_conv_id_fb, _tier.value, _chain)
+                    logger.info(
+                        "[chantier4] conv=%s tier=%s chain=%s active_idx=%d (provider=%r)",
+                        _conv_id_fb[:8], _tier.value, _chain,
+                        _fb_state.current_index, _fb_state.current_provider,
+                    )
+                else:
+                    logger.info(
+                        "[chantier4] conv=%s tier=%s — empty chain in tier_config, "
+                        "fallback manager INACTIVE (legacy path)",
+                        _conv_id_fb[:8], _tier.value,
+                    )
             # Bind tools only for COMPLEX queries OR when the query explicitly mentions
             # tool-related actions. SIMPLE/MEDIUM small-talk and quick facts skip binding.
             _tool_kw = re.compile(
@@ -976,7 +987,7 @@ def create_agent_node():
                         _new_provider_id = _fb.try_activate(_conv_id_fb, _reason)
                         if not _new_provider_id:
                             logger.warning(
-                                "[fallback] chain exhausted for conv=%s — re-raising",
+                                "[fallback] chain exhausted for conv=%s",
                                 _conv_id_fb,
                             )
                             break
@@ -1020,12 +1031,19 @@ def create_agent_node():
                             )
                             _reason = _next_reason
                             continue
-                else:
-                    # No conversation_id (rare: API caller without conv) —
-                    # fall back to the legacy global helper, which re-binds
-                    # all tools. Acceptable for this corner case.
+
+                # SAFETY NET (Chantier 4 V1.1) — if the per-tier chain didn't
+                # produce a working response (single-provider tier, all
+                # providers exhausted, instances unbuildable…), DO NOT raise
+                # yet. Try the legacy global fallback list first (Gemini,
+                # Anthropic, OpenRouter, Ollama installed system-wide). This
+                # restores the pre-Chantier-4 robustness for users whose tier
+                # config is minimal — better to silently bind 145 tools on a
+                # cloud frontier than to surface "Erreur interne" to the user.
+                if response is None:
                     logger.info(
-                        "[fallback] no conv_id, using legacy global fallback chain"
+                        "[fallback] tier-chain exhausted/unavailable, "
+                        "trying legacy global helpers"
                     )
                     for fallback_label, fallback_llm in get_fallback_llms():
                         try:
@@ -1035,11 +1053,19 @@ def create_agent_node():
                                 else fallback_llm
                             )
                             response = await _legacy_with_tools.ainvoke(_fallback_msgs)
-                            logger.info("Fallback succeeded with %s", fallback_label)
+                            logger.info(
+                                "[fallback] legacy succeeded with %s", fallback_label,
+                            )
+                            try:
+                                from app.services.llm_provider import describe_llm
+                                _p, _m = describe_llm(fallback_llm)
+                                model_used = f"llm:{_p}/{_m}+tools[legacy_fallback]"
+                            except Exception:
+                                model_used = f"llm:{fallback_label}+tools[legacy_fallback]"
                             break
                         except Exception as fallback_exc:
                             logger.warning(
-                                "Fallback %s also failed: %s",
+                                "[fallback] legacy %s also failed: %s",
                                 fallback_label, fallback_exc,
                             )
 
