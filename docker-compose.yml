@@ -80,6 +80,14 @@ services:
         condition: service_healthy
     networks:
       - cyberentity-net
+    # FIX 2026-05-06: limite mémoire 1.5 GB. Sans cap, Next.js standalone
+    # accumule de la RAM (memory leak connu sur de longues sessions),
+    # peut atteindre 10+ GB sur des Mac Studio modestes (32 GB) et
+    # provoquer du swap qui ralentit drastiquement LM Studio.
+    # Avec la limite, Node force un GC agressif quand il s'approche
+    # du seuil. 1.5 GB est confortable pour une instance Next.js prod.
+    mem_limit: 1.5g
+    mem_reservation: 512m
 
   # ── nginx reverse proxy — single entry point on port 80 ──────────────
   nginx:

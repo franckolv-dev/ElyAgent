@@ -19,6 +19,7 @@
 
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { LicenceBanner } from "./LicenceBanner";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -31,6 +32,9 @@ export function AppShell({ children, wsStatus, headerCenter }: AppShellProps) {
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <Header wsStatus={wsStatus}>{headerCenter}</Header>
+      {/* Licence enforcement banner (Phase 1) — sits below the topbar so it's
+          visible from every page that uses AppShell. */}
+      <LicenceBanner />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto" style={{ background: "var(--bg-app)" }}>

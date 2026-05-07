@@ -18,18 +18,21 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
+import { LicenceBanner } from "@/components/layout/LicenceBanner";
 import { GoogleAccountsSection } from "@/components/settings/GoogleAccountsSection";
 import { HitlPreferencesSection } from "@/components/settings/HitlPreferencesSection";
+import { LicenceSection } from "@/components/settings/LicenceSection";
 import { api } from "@/lib/api";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
   Monitor, Download, Plus, Trash2, Wifi, WifiOff, Lock, Eye, EyeOff,
   GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight, User,
-  Plug, Sparkles, Zap,
+  Plug, Sparkles, Zap, KeyRound,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations, useLocale } from "next-intl";
@@ -534,12 +537,25 @@ export default function SettingsPage() {
     } finally { setSlBusy(false); }
   }, [refreshChannelsStatus, t, push]);
 
-  // Initialise admin role and default tab once mounted (client-side only)
+  // Initialise admin role and default tab once mounted (client-side only).
+  // Honour ?tab=<id> in the URL so the LicenceBanner CTA can deep-link straight
+  // to the Licence panel — and react to subsequent URL changes (e.g. clicking
+  // the banner while already on /settings just updates ?tab without remounting,
+  // so we must re-sync activeTab when the search params change).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    setAdmin(isAdmin());
+  }, []);
   useEffect(() => {
     const a = isAdmin();
-    setAdmin(a);
-    setActiveTab(a ? "modeles" : "integrations");
-  }, []);
+    let nextTab: string = a ? "modeles" : "integrations";
+    const allowed = ["modeles", "routage", "integrations", "channels", "hitl", "licence", "compte"];
+    const requested = searchParams?.get("tab");
+    if (requested && allowed.includes(requested)) {
+      nextTab = requested;
+    }
+    setActiveTab(nextTab);
+  }, [searchParams]);
 
   // ---------------------------------------------------------------------------
   // Load LLM instances from API
@@ -1038,6 +1054,7 @@ export default function SettingsPage() {
     { id: "integrations", label: t("tabIntegrations"),  icon: Plug       },
     { id: "channels",     label: t("tabChannels"),       icon: Mail       },
     { id: "hitl",         label: t("tabHitl"),           icon: ShieldCheck },
+    { id: "licence",      label: "Licence",              icon: KeyRound   },
     { id: "compte",       label: t("tabAccount"),        icon: User       },
   ];
 
@@ -1045,6 +1062,7 @@ export default function SettingsPage() {
     <AuthGuard>
       <div className="flex flex-col h-screen overflow-hidden">
         <Header />
+        <LicenceBanner />
         <div className="flex flex-1 overflow-hidden">
           <Sidebar />
           <main className="flex flex-col flex-1 overflow-hidden" style={{ background: "var(--bg-app)" }}>
@@ -1942,6 +1960,13 @@ export default function SettingsPage() {
             ================================================================ */}
             {activeTab === "hitl" && (
               <HitlPreferencesSection />
+            )}
+
+            {/* ================================================================
+                TAB: Licence — tier-aware enforcement (Phase 1)
+            ================================================================ */}
+            {activeTab === "licence" && (
+              <LicenceSection />
             )}
 
             {/* ================================================================

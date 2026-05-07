@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Question / Help
+    url: https://github.com/franckolv-dev/ElyAgent/discussions/categories/q-a
+    about: Got a question? Open it in Q&A — not as an issue.
+  - name: 💡 Idea (not yet a feature request)
+    url: https://github.com/franckolv-dev/ElyAgent/discussions/categories/ideas
+    about: Brainstorm or pre-RFC ideas live in Discussions → Ideas.
+  - name: 🔒 Security disclosure
+    url: https://github.com/franckolv-dev/ElyAgent/blob/master/SECURITY.md
+    about: Vulnerabilities — never as a public issue. Email contact@agent-ely.fr.
+  - name: 📩 Commercial licence / sales
+    url: mailto:contact@agent-ely.fr
+    about: Pricing, demos, custom deployment — direct contact.

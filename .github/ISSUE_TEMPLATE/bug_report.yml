@@ -1,0 +1,136 @@
+name: 🐛 Bug report
+description: Something is broken in ELY. Help us reproduce it.
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. **Please fill in every field below.** Reports without reproduction steps or environment details will be closed.
+
+        ⚠️ **Security issue?** Do **not** open a public issue. See [SECURITY.md](https://github.com/franckolv-dev/ElyAgent/blob/master/SECURITY.md) and email `contact@agent-ely.fr`.
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Prerequisites
+      description: Please confirm before submitting.
+      options:
+        - label: I have read the [installation guide](https://github.com/franckolv-dev/ElyAgent/blob/master/docs/installation.md) and the relevant `docs/SETUP_*.md`.
+          required: true
+        - label: I have searched [open](https://github.com/franckolv-dev/ElyAgent/issues) and [closed](https://github.com/franckolv-dev/ElyAgent/issues?q=is%3Aissue+is%3Aclosed) issues for duplicates.
+          required: true
+        - label: I am running the latest released version (or `master`).
+          required: true
+        - label: I am willing to share logs and a minimal reproduction.
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+      placeholder: "When I do X, ELY responds with Y instead of Z."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a fresh state. The clearer, the faster the fix.
+      placeholder: |
+        1. `make up`
+        2. Open `http://localhost:3000`, log in
+        3. Send the message: "Send an email to alice@example.com"
+        4. Click "Allow once" on the HITL dialog
+        5. Observe: nothing happens / error toast / etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      placeholder: "ELY should send the email and show a confirmation."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      placeholder: "Nothing happens, or error message X appears."
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ELY version
+      description: Output of `git rev-parse --short HEAD` or release tag.
+      placeholder: "v1.1.0 / commit a1b2c3d"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux (Ubuntu/Debian)
+        - Linux (other)
+        - Windows (WSL2)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation method
+      options:
+        - Docker Compose (`make up`)
+        - Manual (Python venv + pnpm)
+        - VPS (rsync + Docker)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: llm
+    attributes:
+      label: LLM provider involved (if relevant)
+      options:
+        - Not relevant
+        - Anthropic (Claude)
+        - OpenAI / Azure OpenAI
+        - Google (Gemini)
+        - Mistral
+        - DeepSeek
+        - Qwen / Moonshot Kimi
+        - Zhipu GLM
+        - OpenRouter
+        - Ollama (local)
+        - LM Studio (local)
+        - Multiple providers
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste the last 50 lines from `make logs s=backend` (or the affected service). **Redact API keys, tokens, e-mails and personal data** before pasting.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Screenshots, screen recordings, related issues, anything else helpful.

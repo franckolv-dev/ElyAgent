@@ -87,7 +87,6 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 | Interface française complète | ✅ | ⚠️ Souvent EN only | ⚠️ Partielle |
 | Licence | Source-available | Variable | Propriétaire |
 | Licence commerciale disponible | ✅ | Variable | N/A |
-| Maintenu par | Solo (FR 🇫🇷) | Variable | Big Tech |
 
 > **Notre lecture honnête.** D'autres agents auto-hébergés ont des communautés plus larges et plus d'adaptateurs de canaux. **Si vous traitez des données que vous ne pouvez pas vous permettre de fuiter — les vôtres, celles de votre famille, celles de vos clients — le pipeline d'anonymisation et le HITL structurel d'ELY sont les raisons qui vous le feront choisir face aux alternatives.**
 

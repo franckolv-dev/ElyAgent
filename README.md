@@ -87,7 +87,6 @@ We respect what other projects do well. We're explicit about where we draw the l
 | Native French interface | ✅ | ⚠️ Often EN-only | ⚠️ Partial |
 | License | Source-available | Varies | Proprietary |
 | Commercial licence available | ✅ | Varies | N/A |
-| Maintained by | Solo (FR 🇫🇷) | Varies | Big Tech |
 
 > **Honest take.** Other self-hosted agents have larger communities and more channel adapters. **If you handle data you can't afford to leak — yours, your family's, your clients' — ELY's anonymisation pipeline and structural HITL are why you'd pick it over the alternatives.**
 
@@ -294,7 +293,7 @@ We offer **transparent annual pricing**, by organisation, no per-user or per-LLM
 
 → [Full licensing FAQ + sample contract →](https://agent-ely.fr/pricing.html)
 
-**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. Fork freely — pick your own name and your own logo. [Trademark policy →](./TRADEMARK.md)
+**Trademark.** The names **ELY**, **Ély**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. [Trademark policy →](./TRADEMARK.md)
 
 📩 **Contact:** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.
 
@@ -302,7 +301,7 @@ We offer **transparent annual pricing**, by organisation, no per-user or per-LLM
 
 <div align="center">
 
-**Built in Nouvelle-Aquitaine, France 🇫🇷** by [Franck Ollivier](https://github.com/franckolv-dev)
+**Built in Nouvelle-Aquitaine, France 🇫🇷**
 
 [Website](https://agent-ely.fr) · [Documentation](./docs/START_HERE.md) · [Newsletter](https://agent-ely.fr/newsletter.html)
 

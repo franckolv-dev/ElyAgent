@@ -1,0 +1,85 @@
+name: 💡 Feature request
+description: Suggest a new capability or improvement for ELY.
+title: "[Feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an idea. ELY is opinionated — we keep the surface small on purpose. **Describe the problem first**, then the proposed solution. Requests without a clear problem statement will be moved to [Discussions → Ideas](https://github.com/franckolv-dev/ElyAgent/discussions/categories/ideas).
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have searched existing [issues](https://github.com/franckolv-dev/ElyAgent/issues) and [discussions](https://github.com/franckolv-dev/ElyAgent/discussions) for similar requests.
+          required: true
+        - label: I have read the [public roadmap](https://agent-ely.fr/roadmap.html) and confirmed this is not already planned.
+          required: true
+        - label: I understand ELY's principles (sovereign, HITL on irreversible actions, no SaaS lock-in) and my request respects them.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem you're trying to solve
+      description: What concrete situation triggered this request? Who is affected?
+      placeholder: |
+        "When I receive a long PDF report, I want ELY to summarise it and post the summary in my Slack channel. Today I have to ask twice: first 'summarise this PDF', then copy/paste into Slack."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the experience look like? Be concrete (UI, command, prompt example).
+      placeholder: |
+        A new tool `pdf_summarise_and_post` that takes a file URL and a Slack channel ID. ELY would chain the two existing tools internally and present a single HITL approval before posting.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds did you try? Why are they insufficient?
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who else benefits?
+      multiple: true
+      options:
+        - Personal users (free, self-hosted)
+        - SMEs / mid-market companies
+        - Healthcare / regulated data (HDS / GDPR-S)
+        - Law firms / regulated professions
+        - DevOps / IT integrators
+        - LLM/MCP ecosystem developers
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - New tool (e.g. workspace, automation, RAG)
+        - New channel (mail, messaging, voice)
+        - LLM provider integration
+        - HITL / security improvement
+        - UI / UX improvement
+        - Performance / cost optimisation
+        - Documentation / onboarding
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, links to similar implementations elsewhere, RFCs, anything that helps.

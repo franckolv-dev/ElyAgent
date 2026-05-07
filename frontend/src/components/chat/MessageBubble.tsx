@@ -300,6 +300,48 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
           </div>
         )}
 
+        {/* Attachments extracted from MEDIA: sentinels in the assistant
+            response (Hermes-style fallback when the LLM forgot to call a
+            delivery tool). Images render inline; other types as chips. */}
+        {!isUser && message.attachments && message.attachments.length > 0 && (
+          <div className="flex flex-col gap-2 mt-2">
+            {message.attachments.map((att: Attachment) => {
+              const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+              // Signed URL: path + exp + sig (assistant attachments only;
+              // user uploads keep their own retrieval mechanism via file_id).
+              const params = new URLSearchParams({
+                path: att.path,
+                ...(att.exp ? { exp: String(att.exp) } : {}),
+                ...(att.sig ? { sig: att.sig } : {}),
+              });
+              const url = `${apiBase}/api/attachments/?${params.toString()}`;
+              const isImage = att.mime_type?.startsWith("image/");
+              return isImage ? (
+                <img
+                  key={att.path}
+                  src={url}
+                  alt={att.filename}
+                  className="rounded-md max-w-full border border-cyber-cyan/20"
+                  style={{ maxHeight: "400px", objectFit: "contain" }}
+                />
+              ) : (
+                <a
+                  key={att.path}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/20 text-[11px] text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors max-w-[240px]"
+                  title={att.filename}
+                >
+                  <AttachmentFileIcon filename={att.filename} />
+                  <span className="truncate">{att.filename}</span>
+                  <span className="shrink-0 opacity-60">{formatSize(att.size)}</span>
+                </a>
+              );
+            })}
+          </div>
+        )}
+
         {/* Feedback + model badge — assistant messages only, not while streaming */}
         {!isUser && !isStreaming && (
           <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border-dim/40">

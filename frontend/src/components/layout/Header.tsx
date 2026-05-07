@@ -10,7 +10,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { Bell, Wifi, WifiOff, Zap } from "lucide-react";
+import { Wifi, WifiOff, Zap } from "lucide-react";
+import HitlBell from "./HitlBell";
 import type { User } from "@/lib/types";
 import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -70,9 +71,7 @@ export function Header({ wsStatus, children }: HeaderProps) {
 
       {/* Right: notif / lang / theme / user chip */}
       <div className="topbar-right">
-        <button className="icon-btn" title="Notifications">
-          <Bell size={15} />
-        </button>
+        <HitlBell />
         <LangSwitcher />
         <ThemeToggle />
 

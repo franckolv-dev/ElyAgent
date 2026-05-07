@@ -14,8 +14,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Plus, Star, Trash2, Pencil, Check, X, Loader2 } from "lucide-react";
+import { Plus, Star, Trash2, Pencil, Check, X, Loader2, Wand2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { GoogleSetupWizard } from "./GoogleSetupWizard";
 
 interface GoogleAccount {
   id: string;
@@ -41,6 +42,10 @@ export function GoogleAccountsSection() {
   // Inline rename
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Setup wizard
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const wizardT = useTranslations("settings.googleWizard");
 
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -122,20 +127,37 @@ export function GoogleAccountsSection() {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">{t("title")}</h3>
           <p className="text-xs text-text-muted">{t("subtitle")}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => { setShowAdd(true); setNewAlias(""); }}
-          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>{t("addAccount")}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setWizardOpen(true)}
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-border-strong text-text-secondary hover:text-cyber-cyan hover:border-cyber-cyan transition-colors"
+            title={wizardT("wizardBtn")}
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>{wizardT("wizardBtn")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowAdd(true); setNewAlias(""); }}
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{t("addAccount")}</span>
+          </button>
+        </div>
       </div>
+
+      <GoogleSetupWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onComplete={() => refresh()}
+      />
 
       {error && (
         <div className="text-xs text-cyber-red border border-cyber-red/30 bg-cyber-red/5 rounded px-3 py-2">

@@ -71,6 +71,17 @@ export const api = {
       accounts: Array<{ id: string; alias: string; email: string; is_default: boolean; created_at: string | null }>;
     }>,
 
+  /** Whether the global Google OAuth app credentials are configured (no auth). */
+  getGoogleAppConfigStatus: () =>
+    fetchAPI("/api/google/app-config-status") as Promise<{ configured: boolean }>,
+
+  /** Admin only — save the Google OAuth app credentials (used by the wizard). */
+  saveGoogleAppConfig: (client_id: string, client_secret: string) =>
+    fetchAPI("/api/google/app-config", {
+      method: "POST",
+      body: JSON.stringify({ client_id, client_secret }),
+    }) as Promise<{ configured: boolean }>,
+
   /** Open the Google OAuth consent flow for a NEW account with the given alias. */
   getGoogleAuthUrl: (alias: string) =>
     fetchAPI(`/api/google/auth-url?alias=${encodeURIComponent(alias)}`) as Promise<{ url: string }>,
@@ -281,4 +292,46 @@ export const api = {
   arenaLeaderboard: () => fetchAPI("/api/arena/leaderboard"),
 
   arenaHistory: (limit = 20) => fetchAPI(`/api/arena/history?limit=${limit}`),
+
+  // HITL — pending approval requests for the bell component
+  hitlPending: () =>
+    fetchAPI("/api/hitl/pending") as Promise<
+      Array<{ action_id: string; description: string; created_at: string }>
+    >,
+
+  hitlResolve: (actionId: string, decision: "allow" | "deny" | "ban", reason?: string) =>
+    fetchAPI(`/api/validation/${actionId}/${decision}`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? null }),
+    }),
+
+  // ── Licence enforcement (Phase 1) ────────────────────────────────────────
+  /** Current licence state — drives the LicenceSection panel and global banner. */
+  licenceStatus: () =>
+    fetchAPI("/api/licence/status") as Promise<{
+      tier: "free" | "pro" | "business" | "enterprise" | null;
+      max_users: number | null;
+      current_users: number;
+      customer_label: string | null;
+      valid_until: string | null;
+      days_remaining: number | null;
+      is_demo_expired: boolean;
+      is_provisioned: boolean;
+      consent_personal_use: boolean;
+      activated_at: string | null;
+    }>,
+
+  /** Admin only — provision the free tier (max 4 users). Requires consent=true. */
+  activateFree: (consent: boolean) =>
+    fetchAPI("/api/licence/activate-free", {
+      method: "POST",
+      body: JSON.stringify({ consent }),
+    }),
+
+  /** Admin only — activate a paid tier with a licence key (raw string in Phase 1). */
+  activatePaid: (tier: "pro" | "business" | "enterprise", licence_key: string, customer_label: string) =>
+    fetchAPI("/api/licence/activate-paid", {
+      method: "POST",
+      body: JSON.stringify({ tier, licence_key, customer_label }),
+    }),
 };

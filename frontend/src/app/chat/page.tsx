@@ -224,6 +224,8 @@ function ChatPageInner() {
           // fallback to now() for backward compat if server hasn't been updated yet.
           created_at: msg.created_at ?? new Date().toISOString(),
           ...(imgs.length > 0 ? { toolImages: imgs } : {}),
+          // Attachments from MEDIA: sentinels parsed by media_router.py
+          ...(msg.attachments ? { attachments: msg.attachments } : {}),
         }]);
         setStreamingContent("");
         setActiveTool(null);

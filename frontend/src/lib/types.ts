@@ -31,11 +31,19 @@ export interface TokenResponse {
 }
 
 export interface Attachment {
-  file_id: string;
+  /** User-uploaded attachments have a file_id from the upload endpoint;
+   *  assistant attachments (extracted from MEDIA: sentinels) don't — use
+   *  ``path`` as a stable identifier instead. */
+  file_id?: string;
   filename: string;
   path: string;
   size: number;
   mime_type: string;
+  /** Signed-URL expiry (Unix seconds) — only set on assistant attachments
+   *  produced by media_router.py. */
+  exp?: number;
+  /** HMAC signature over path|exp — required to fetch the file. */
+  sig?: string;
 }
 
 export interface ToolImage {
@@ -87,6 +95,8 @@ export interface WSMessage {
   data?: string;   // base64 PNG screenshot
   url?: string;
   title?: string;
+  // Attachments extracted from MEDIA: sentinels by backend media_router
+  attachments?: Attachment[];
 }
 
 export interface BrowserFrame {
