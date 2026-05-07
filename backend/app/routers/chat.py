@@ -262,6 +262,18 @@ async def websocket_chat(websocket: WebSocket):
                                 if _conv:
                                     _conv.toolset_profile = _new
                                     await _pdb.commit()
+                        # Hermes Chantier 2 — toolset profile changed.
+                        # Invalidate the system prompt cache so the next turn
+                        # rebuilds with the new profile in mind. (Today the
+                        # cacheable text doesn't depend on the profile, but
+                        # this guards against future profile-specific text.)
+                        try:
+                            from app.services.system_prompt_cache import (
+                                invalidate as _spc_invalidate,
+                            )
+                            _spc_invalidate(conversation_id)
+                        except Exception:
+                            pass
                         _reply = f"✅ Profil de cette conversation : **{_new}**"
                 # Echo back to the user as an assistant message (no DB persist
                 # needed — slash commands don't need to live in history)
@@ -663,10 +675,17 @@ async def websocket_chat(websocket: WebSocket):
         # Hermes Chantier 4 — drop fallback state on disconnect so the next
         # session for this user starts on the primary again. (Stickiness is
         # PER conversation, not per user.)
+        # Hermes Chantier 2 — drop frozen memory snapshot + system prompt
+        # cache so the next session reads fresh memory (mid-session writes
+        # like memory_archive will surface in the new snapshot).
         if conversation_id:
             try:
                 from app.services.fallback_manager import discard as _fb_discard
+                from app.services.system_prompt_cache import discard as _spc_discard
+                from app.services.frozen_memory import discard as _fm_discard
                 _fb_discard(conversation_id)
+                _spc_discard(conversation_id)
+                _fm_discard(conversation_id)
             except Exception:
                 pass
 

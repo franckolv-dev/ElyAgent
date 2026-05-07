@@ -27,6 +27,8 @@ from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_llm, get_fallback_llms
 from app.services import fallback_manager as _fb
+from app.services import system_prompt_cache as _spc
+from app.services import frozen_memory as _frozen_mem
 from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
@@ -259,6 +261,57 @@ Règles :
 
 
 # ------------------------------------------------------------------ #
+# Memory block formatter (Hermes Chantier 2 — frozen snapshot)        #
+# ------------------------------------------------------------------ #
+
+
+def _format_memory_block(
+    user_profile: str,
+    preferences: list,
+    constraints: list,
+    memories: list,
+    past_interactions: list,
+) -> str:
+    """Build the user-memory section of the system prompt as a single string.
+
+    This is the **cacheable, frozen-for-the-session** part of the prompt.
+    The output is byte-stable for given inputs, so wrapping the inputs
+    themselves with frozen_memory + this formatter gives an immutable
+    block that the prompt cache prefix can latch on.
+
+    Order is intentional: user_profile FIRST (most important to anchor
+    the model on the user's identity), preferences as RULES, constraints
+    as REFUSAL HISTORY, memories as CONTEXT, past_interactions LAST
+    (least important, longest tail).
+    """
+    parts: list[str] = []
+    if user_profile:
+        parts.append(f"\n\n🧠 {user_profile}\n")
+    if preferences:
+        parts.append(
+            "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
+            "⚠️ Ces règles ont la même priorité que les règles absolues ci-dessus.\n"
+            "Elles s'appliquent à CHAQUE réponse, sans exception, même si tu penses\n"
+            "qu'une réponse plus longue serait plus utile. Respecte-les strictement.\n"
+        )
+        parts.append("\n".join(f"- {p}" for p in preferences))
+    if constraints:
+        parts.append("\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n")
+        parts.append("\n".join(f"- {c}" for c in constraints))
+    if memories:
+        parts.append("\n\n💾 CONTEXTE MÉMORISÉ :\n")
+        parts.append("\n".join(f"- {m}" for m in memories))
+    if past_interactions:
+        parts.append("\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n")
+        for p in past_interactions:
+            parts.append(
+                f"- Q: {p.get('user_message', '')[:120]} "
+                f"→ R: {p.get('assistant_message', '')[:120]}\n"
+            )
+    return "".join(parts)
+
+
+# ------------------------------------------------------------------ #
 # Agent node                                                           #
 # ------------------------------------------------------------------ #
 
@@ -303,6 +356,12 @@ def create_agent_node():
         # _tier_llm_cache / _tier_cache_version are dicts/lists mutated in-place — no nonlocal needed
         messages = state["messages"]
         user_id = state.get("user_id", "")
+        # Hermes Chantier 2 / 4 — conversation id needs to be available BEFORE
+        # the system prompt is built (cache key) and before the fallback state
+        # is created (down in the LLM path). Hoisting it here means both
+        # chantiers see the same value. Empty string disables both caches
+        # for this turn — acceptable for non-conversation API callers.
+        _conv_id_fb = state.get("conversation_id", "") or ""
         # Defensive: LangGraph may pass messages as dicts (serialized form)
         # when a node receives state that was built outside the graph runner.
         _last = messages[-1] if messages else None
@@ -397,77 +456,129 @@ def create_agent_node():
             (user_id[:8] + "…") if user_id else "(none)",
         )
 
+        # Date string segment — ALWAYS dynamic, never goes into the cacheable
+        # part. Provider prompt cache prefix matches up to the date and stops
+        # there. Same with the trailing emails block (added later).
+        _date_segment = (
+            f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
+            "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
+        )
+
         if use_slm:
             # ── Lightweight path: minimal prompt, no memory queries ────────
-            # Fetching Qdrant memory adds ~150-300ms and is useless for simple tasks
+            # Fetching Qdrant memory adds ~150-300ms and is useless for simple tasks.
+            # SLM path is short enough that caching is not worthwhile.
             system = _SYSTEM_PROMPT_SLM.format(date_str=date_str)
+            _use_compact = False  # ensure variable is defined for downstream branches
         else:
             # ── Full path: complete prompt + memory context ────────────────
-            from app.services.memory_service import get_user_context
-            # PERF: skip get_relevant_interactions for the very first turn of a
-            # conversation — nothing to find yet, and the Qdrant search +
-            # FTS + embedding costs ~100-200ms. Only fetch when we have history.
-            # We fetch history starting from the 2nd user turn (conversation has
-            # at least one prior user+assistant pair).
-            _history_msgs_count = sum(
-                1 for m in messages if getattr(m, 'type', None) in ('human', 'ai')
-            )
-            _needs_interactions = _history_msgs_count > 1
-            _past_interactions_task = (
-                memory.get_relevant_interactions(user_query, user_id, limit=3)
-                if _needs_interactions
-                else _no_interactions()
-            )
-            constraints, memories, past_interactions, preferences, user_profile = await asyncio.gather(
-                memory.get_relevant_constraints(user_query, user_id),
-                memory.get_relevant_memories(user_query, user_id),
-                _past_interactions_task,
-                memory.get_user_preferences(user_id),
-                get_user_context(user_id),
-            )
-
-            # ── Compact prompt mode for local LLMs ─────────────────────────
-            # For small local models (LM Studio, llama.cpp on localhost),
-            # replace the full ELY prompt with a ~300-token compact one
-            # that puts tool-calling priority first. Cloud frontier models
-            # keep the full prompt.
+            # Decide compact-vs-full once based on the active LLM family.
+            # Compact path is used for small local LLMs (LM Studio, llama.cpp
+            # on localhost) and stays uncached because it's already short
+            # (~300 tokens) — the cache benefit is marginal there.
             from app.services.qwen_no_think import is_local_openai_llm
             from app.agent.compact_prompt import build_compact_system_prompt
 
-            # Safe detection: try to instantiate the currently active LLM.
-            # Wrapped in try/except because get_llm() can raise if no
-            # provider is configured yet (first-boot scenarios).
             try:
                 _llm_for_detect = get_llm()
             except Exception:
                 _llm_for_detect = None
-            if _llm_for_detect is not None and is_local_openai_llm(_llm_for_detect):
+            _use_compact = (
+                _llm_for_detect is not None
+                and is_local_openai_llm(_llm_for_detect)
+            )
+
+            # Memory snapshot — cacheable per-conversation via frozen_memory.
+            # On the first turn, we run the 5-way Qdrant + SQL gather; on
+            # subsequent turns, the snapshot is returned from cache in O(1)
+            # without re-querying Qdrant. New facts archived mid-session
+            # appear in the snapshot of the NEXT conversation, not this one.
+            from app.services.memory_service import get_user_context
+
+            async def _build_memory_snapshot() -> str:
+                # PERF: skip get_relevant_interactions on the very first turn —
+                # there's nothing to find yet and Qdrant + FTS + embeddings
+                # cost ~100-200ms. Only fetch when we have prior history.
+                _history_msgs_count = sum(
+                    1 for m in messages if getattr(m, "type", None) in ("human", "ai")
+                )
+                _needs_interactions = _history_msgs_count > 1
+                _past_interactions_task = (
+                    memory.get_relevant_interactions(user_query, user_id, limit=3)
+                    if _needs_interactions
+                    else _no_interactions()
+                )
+                constraints, memories_, past_interactions, preferences, user_profile = (
+                    await asyncio.gather(
+                        memory.get_relevant_constraints(user_query, user_id),
+                        memory.get_relevant_memories(user_query, user_id),
+                        _past_interactions_task,
+                        memory.get_user_preferences(user_id),
+                        get_user_context(user_id),
+                    )
+                )
+                if _use_compact:
+                    # Compact path needs structured pieces, not a single block.
+                    # We stash them in a closure variable so the compact builder
+                    # downstream can reuse them. Yes, this is a hack inside an
+                    # async closure; the alternative is to query memory twice.
+                    nonlocal _compact_pieces
+                    _compact_pieces = {
+                        "user_profile": user_profile or "",
+                        "memories": memories_,
+                        "constraints": constraints,
+                    }
+                return _format_memory_block(
+                    user_profile or "",
+                    preferences or [],
+                    constraints or [],
+                    memories_ or [],
+                    past_interactions or [],
+                )
+
+            # Stash for compact-path reuse (set by _build_memory_snapshot
+            # if compact mode is active).
+            _compact_pieces: dict | None = None
+            memory_snapshot = await _frozen_mem.get_or_build(
+                _conv_id_fb, user_id, _build_memory_snapshot,
+            )
+
+            if _use_compact:
+                # Local LLMs get a compact prompt — uncached, builds from the
+                # snapshot pieces we just gathered.
+                if _compact_pieces is None:
+                    # Cache hit on frozen_memory means _build_memory_snapshot
+                    # didn't run this turn, so _compact_pieces is empty. Re-fetch
+                    # the minimal trio synchronously (this is rare — only on
+                    # cache hit + compact mode together).
+                    constraints_c, memories_c, _, _, user_profile_c = await asyncio.gather(
+                        memory.get_relevant_constraints(user_query, user_id),
+                        memory.get_relevant_memories(user_query, user_id),
+                        _no_interactions(),
+                        memory.get_user_preferences(user_id),
+                        get_user_context(user_id),
+                    )
+                    _compact_pieces = {
+                        "user_profile": user_profile_c or "",
+                        "memories": memories_c or [],
+                        "constraints": constraints_c or [],
+                    }
                 system = build_compact_system_prompt(
                     agent_name="general",
                     date_str=date_str,
-                    user_ctx=user_profile or "",
-                    memories=memories,
-                    constraints=constraints,
+                    user_ctx=_compact_pieces["user_profile"],
+                    memories=_compact_pieces["memories"],
+                    constraints=_compact_pieces["constraints"],
                 )
-                logger.info("[general] compact prompt mode active (%d chars)", len(system))
-                # Skip the rest of the verbose injection — jump directly to the
-                # inference block. We still need to go through context_manager
-                # below, so we just let `system` stay as the compact string.
-                _use_compact = True
+                logger.info(
+                    "[general] compact prompt mode active (%d chars)", len(system),
+                )
             else:
-                _use_compact = False
-
-            if not _use_compact:
-                system = _SYSTEM_PROMPT_BASE
-
-                # ── Active LLM info ─────────────────────────────────────────
-                # IMPORTANT : do NOT inject "Model IA actif: X" as a hardcoded
-                # text answer — historically the LLM repeated this verbatim
-                # ("J'utilise gemma4:26b sur ollama") instead of calling
-                # `system_check_llm_providers`. Now we just remind the model
-                # to USE THE TOOL when asked. The active model name is
-                # resolved at tool-call time, factually, in either language.
-                system += (
+                # Full path — Hermes Chantier 2 caching active.
+                # Cacheable segment = lang_directive + base + IMPORTANT + snapshot.
+                # Concatenated in this order so the provider's prompt cache
+                # prefix can match every byte up to the dynamic date.
+                _llm_introspection_note = (
                     "\n\nIMPORTANT : if the user asks which LLM/model/provider "
                     "you are using, you MUST call `system_check_llm_providers` "
                     "before answering. Never answer from your training memory.\n"
@@ -476,53 +587,34 @@ def create_agent_node():
                     "avant de répondre. Ne réponds jamais depuis ta mémoire.\n"
                 )
 
-            # NOTE: skills_summary() was injected here historically but produced a
-            # ~20k-char block (148 tool names + descriptions) that was redundant with
-            # bind_tools() and drastically slowed qwen3:4b / small models. Removed —
-            # the LLM sees tool schemas via bind_tools when needed.
-
-            if not _use_compact:
-                system += (
-                    f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-                    "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
-                )
-
-                # ── Inject the consolidated user profile FIRST (most important) ──
-                # These are facts Éli has learned about the user from past conversations,
-                # consolidated nightly into user_profiles table. Without this block, the
-                # agent would answer "je n'ai aucun moyen de me souvenir…" even though
-                # 5+ profile facts exist in SQL.
-                if user_profile:
-                    system += f"\n\n🧠 {user_profile}\n"
-
-                if preferences:
-                    system += (
-                        "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
-                        "⚠️ Ces règles ont la même priorité que les règles absolues ci-dessus.\n"
-                        "Elles s'appliquent à CHAQUE réponse, sans exception, même si tu penses\n"
-                        "qu'une réponse plus longue serait plus utile. Respecte-les strictement.\n"
+                def _build_cacheable_prompt() -> str:
+                    return (
+                        _lang_directive
+                        + _SYSTEM_PROMPT_BASE
+                        + _llm_introspection_note
+                        + memory_snapshot
                     )
-                    system += "\n".join(f"- {p}" for p in preferences)
-                if constraints:
-                    system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n"
-                    system += "\n".join(f"- {c}" for c in constraints)
-                if memories:
-                    system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
-                    system += "\n".join(f"- {m}" for m in memories)
-                if past_interactions:
-                    system += "\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n"
-                    for p in past_interactions:
-                        system += (
-                            f"- Q: {p.get('user_message', '')[:120]} "
-                            f"→ R: {p.get('assistant_message', '')[:120]}\n"
-                        )
 
-        # ── Sandwich the system prompt with the language directive ────────
-        # Front-load (primacy) + tail-load (recency) so even when the body
-        # of the prompt drifts in the other language, the LLM honours
-        # the user's UI language preference. Identical to the strategy
-        # used in app/agent/sub_agents/factory.py.
-        system = _lang_directive + system + _lang_reminder
+                cacheable_system = _spc.get_or_build(
+                    _conv_id_fb, _build_cacheable_prompt,
+                )
+                # Final assembly: cacheable + dynamic date + lang reminder.
+                # Email block + lang reminder are appended further down.
+                system = cacheable_system + _date_segment
+
+        # ── Sandwich tail: language reminder ──────────────────────────────
+        # Front-load (primacy) was already applied INSIDE the cacheable
+        # segment (full path) or via _SYSTEM_PROMPT_SLM/compact (other paths).
+        # Tail-load (recency) goes here so the model honours the language
+        # request even when the body drifts in the other language.
+        if use_slm or _use_compact:
+            # SLM/compact paths haven't applied the lang directive yet at the
+            # head — apply both ends now for symmetry.
+            system = _lang_directive + system + _lang_reminder
+        else:
+            # Full path already has the lang directive at the head (inside
+            # the cacheable segment). Just append the reminder.
+            system = system + _lang_reminder
 
         # ── Context fitting (prevent overflow) ────────────────────────────
         # NOTE: get_active_model is imported at create_agent_node() scope (line ~167).
@@ -615,37 +707,55 @@ def create_agent_node():
         if response is None:
             # LLM path (or SLM fallback) — needs full system prompt if not built yet
             if use_slm:
-                # SLM failed: rebuild full system prompt for LLM fallback
+                # SLM failed: rebuild full system prompt for LLM fallback. We
+                # reuse the Chantier 2 cache machinery so the rebuilt prompt
+                # follows the same cacheable/dynamic split as the primary
+                # full path. This gives the SLM-fallback flow the same prompt
+                # cache hit benefit on subsequent turns.
                 from app.services.memory_service import get_user_context as _guc
-                constraints, memories, past_interactions, preferences, user_profile = await asyncio.gather(
-                    memory.get_relevant_constraints(user_query, user_id),
-                    memory.get_relevant_memories(user_query, user_id),
-                    memory.get_relevant_interactions(user_query, user_id, limit=3),
-                    memory.get_user_preferences(user_id),
-                    _guc(user_id),
-                )
-                system = _SYSTEM_PROMPT_BASE
-                skills_list = registry.skills_summary()
-                if skills_list:
-                    system += f"\n\nCapacités disponibles :\n{skills_list}\n"
-                system += (
-                    f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-                    "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
-                )
-                if user_profile:
-                    system += f"\n\n🧠 {user_profile}\n"
-                if preferences:
-                    system += (
-                        "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
-                        "⚠️ Ces règles s'appliquent à CHAQUE réponse, sans exception.\n"
+
+                async def _fb_build_snapshot() -> str:
+                    constraints, memories_, past_interactions, preferences, user_profile = (
+                        await asyncio.gather(
+                            memory.get_relevant_constraints(user_query, user_id),
+                            memory.get_relevant_memories(user_query, user_id),
+                            memory.get_relevant_interactions(user_query, user_id, limit=3),
+                            memory.get_user_preferences(user_id),
+                            _guc(user_id),
+                        )
                     )
-                    system += "\n".join(f"- {p}" for p in preferences)
-                if constraints:
-                    system += "\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES :\n"
-                    system += "\n".join(f"- {c}" for c in constraints)
-                if memories:
-                    system += "\n\n💾 CONTEXTE MÉMORISÉ :\n"
-                    system += "\n".join(f"- {m}" for m in memories)
+                    return _format_memory_block(
+                        user_profile or "",
+                        preferences or [],
+                        constraints or [],
+                        memories_ or [],
+                        past_interactions or [],
+                    )
+
+                _fb_snapshot = await _frozen_mem.get_or_build(
+                    _conv_id_fb, user_id, _fb_build_snapshot,
+                )
+                _fb_intro = (
+                    "\n\nIMPORTANT : if the user asks which LLM/model/provider "
+                    "you are using, you MUST call `system_check_llm_providers` "
+                    "before answering. Never answer from your training memory.\n"
+                )
+
+                def _fb_build_cacheable() -> str:
+                    return (
+                        _lang_directive
+                        + _SYSTEM_PROMPT_BASE
+                        + _fb_intro
+                        + _fb_snapshot
+                    )
+
+                _fb_cacheable = _spc.get_or_build(_conv_id_fb, _fb_build_cacheable)
+                system = (
+                    _fb_cacheable
+                    + f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
+                    + "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
+                    + _lang_reminder
+                )
 
             # Tier routing: pick the right local/cloud model based on complexity.
             # CRITICAL PERF: the "general" node has access to ALL ~148 tools, which
@@ -667,7 +777,7 @@ def create_agent_node():
             # in one place (Settings → Routage). If a previous turn already
             # switched to a fallback provider, ``_fb_state`` carries that
             # choice into this turn (sticky for the conversation).
-            _conv_id_fb = state.get("conversation_id", "") or ""
+            # _conv_id_fb is hoisted to the top of agent_node (used by Chantier 2 too).
             _fb_state = None
             if _conv_id_fb:
                 _tier_cfg_for_fb = get_tier_config().get(_tier.value, {})
