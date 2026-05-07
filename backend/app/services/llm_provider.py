@@ -1055,6 +1055,56 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
     return None
 
 
+def build_llm_for_provider(
+    provider_id: str,
+    tier: Optional[ComplexityTier] = None,
+) -> Optional[BaseChatModel]:
+    """Public wrapper around ``_make_llm_for_provider`` for the fallback manager.
+
+    Used by the Hermes Chantier 4 fallback chain (services/fallback_manager.py)
+    to materialise a specific provider mid-conversation when the primary
+    plants. Applies the same per-tier hyperparameters as ``get_llm_for_tier``
+    so the fallback runs with the right token budget and temperature.
+
+    Returns None (does NOT raise) when the provider has no key configured —
+    callers should detect this and ask the manager to advance to the next
+    provider in the chain.
+
+    Parameters
+    ----------
+    provider_id
+        Provider name ("anthropic", "qwen_api", …) OR an LLMInstance UUID
+        present in ``_instance_cache`` (named-instance routing).
+    tier
+        Tier to derive max_tokens / temperature from. Defaults to MEDIUM
+        which is a safe agentic baseline.
+    """
+    settings = get_settings()
+    _tier = tier or ComplexityTier.MEDIUM
+    if _tier == ComplexityTier.IMAGE:
+        temperature, max_tokens = 0.7, 4096
+    elif _tier == ComplexityTier.SIMPLE:
+        temperature, max_tokens = 0.1, 4096
+    else:
+        temperature, max_tokens = 0.1, 8192
+
+    try:
+        if _is_instance_id(provider_id):
+            return _make_llm_for_instance(
+                provider_id, max_tokens=max_tokens, temperature=temperature,
+            )
+        return _make_llm_for_provider(
+            provider_id, settings,
+            max_tokens=max_tokens, temperature=temperature,
+        )
+    except Exception as exc:
+        logger.warning(
+            "build_llm_for_provider(%r): instantiation failed (%s)",
+            provider_id, exc,
+        )
+        return None
+
+
 def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     """Return the appropriate LLM for a given complexity tier.
 

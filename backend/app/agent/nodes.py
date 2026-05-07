@@ -26,6 +26,7 @@ from app.agent.state import AgentState
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_llm, get_fallback_llms
+from app.services import fallback_manager as _fb
 from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
@@ -654,8 +655,25 @@ def create_agent_node():
             # mostly used for chitchat and quick facts that don't need tools. We only
             # bind tools when the query likely needs one (COMPLEX tier, or detected
             # tool keywords).
-            from app.services.llm_provider import classify_complexity, get_llm_for_tier, ComplexityTier
+            from app.services.llm_provider import (
+                classify_complexity, get_llm_for_tier, ComplexityTier,
+                build_llm_for_provider, get_tier_config,
+            )
             _tier = classify_complexity(user_query)
+
+            # ── Hermes Chantier 4 — fallback chain bootstrap ─────────────
+            # Capture (or recreate) the per-conversation FallbackState. The
+            # chain comes from tier_config so the user only manages providers
+            # in one place (Settings → Routage). If a previous turn already
+            # switched to a fallback provider, ``_fb_state`` carries that
+            # choice into this turn (sticky for the conversation).
+            _conv_id_fb = state.get("conversation_id", "") or ""
+            _fb_state = None
+            if _conv_id_fb:
+                _tier_cfg_for_fb = get_tier_config().get(_tier.value, {})
+                _chain = list(_tier_cfg_for_fb.get("providers", []) or [])
+                if _chain:
+                    _fb_state = _fb.get_or_create(_conv_id_fb, _tier.value, _chain)
             # Bind tools only for COMPLEX queries OR when the query explicitly mentions
             # tool-related actions. SIMPLE/MEDIUM small-talk and quick facts skip binding.
             _tool_kw = re.compile(
@@ -691,14 +709,38 @@ def create_agent_node():
             # We cache the BASE (unbound) LLM only. Tool binding is cheap
             # and runs per-call with the filtered list — the cache key now
             # encodes only the tier identity.
-            _base_cache_key = f"{_tier_key}:base"
-            if _base_cache_key not in _tier_llm_cache:
+            # Hermes Chantier 4 — if a fallback is already active for this
+            # conversation, build the LLM from the explicit provider rather
+            # than re-running the tier cascade (which would land on the
+            # primary again). Skip cache because fallback state is per-
+            # conversation, not per-tier.
+            if _fb_state is not None and _fb_state.is_active_fallback:
                 _bind_start = _t.monotonic()
-                _base_llm = get_llm_for_tier(_tier)
-                _tier_llm_cache[_base_cache_key] = _base_llm
-                logger.warning("⏱ TIMING[general.bind_base] %.2fs — tier=%s (tools_v=%d, cfg_v=%d)",
-                    _t.monotonic() - _bind_start, _tier_key, current_version, current_cfg_version)
-            _base_llm = _tier_llm_cache[_base_cache_key]
+                _base_llm = build_llm_for_provider(_fb_state.current_provider, _tier)
+                if _base_llm is None:
+                    # Provider can't be instantiated (no key, etc.) — fall
+                    # back to the standard tier resolution. We do NOT advance
+                    # the chain here ; that's the job of the exception handler.
+                    logger.warning(
+                        "[fallback] conv=%s active provider %r unbuildable, "
+                        "using tier resolution as last resort",
+                        _conv_id_fb, _fb_state.current_provider,
+                    )
+                    _base_llm = get_llm_for_tier(_tier)
+                logger.warning(
+                    "⏱ TIMING[general.bind_base] %.2fs — tier=%s [FALLBACK active=%r]",
+                    _t.monotonic() - _bind_start, _tier_key,
+                    _fb_state.current_provider,
+                )
+            else:
+                _base_cache_key = f"{_tier_key}:base"
+                if _base_cache_key not in _tier_llm_cache:
+                    _bind_start = _t.monotonic()
+                    _base_llm = get_llm_for_tier(_tier)
+                    _tier_llm_cache[_base_cache_key] = _base_llm
+                    logger.warning("⏱ TIMING[general.bind_base] %.2fs — tier=%s (tools_v=%d, cfg_v=%d)",
+                        _t.monotonic() - _bind_start, _tier_key, current_version, current_cfg_version)
+                _base_llm = _tier_llm_cache[_base_cache_key]
 
             if _bind_tools_flag:
                 # FIX 2026-05-07 (Hermes Chantier 1): prefer the sticky
@@ -908,40 +950,118 @@ def create_agent_node():
                     # the first cloud model with a working API key.
                     raise RuntimeError("h1_fallback: local LLM hallucinated plain text")
             except Exception as primary_exc:
-                # Detect recoverable API errors: quota exhausted, rate limit,
-                # authentication failure, service unavailable.
-                _exc_str = str(primary_exc).lower()
-                _recoverable = any(k in _exc_str for k in (
-                    "429", "rate", "quota", "insuffi", "401", "403", "404",
-                    "not_found", "not found", "overloaded", "503", "unavailable",
-                    "deprecated", "no longer available",
-                    "invalid_argument", "bad request", "400",
-                    "h1_fallback",  # synthetic exception from H-1 anti-hallucination guard
-                ))
-                if not _recoverable:
+                # Hermes Chantier 4 — classify the exception and ask the
+                # FallbackManager to advance to the next provider in the
+                # conversation's chain. If the exception is unrecognised
+                # (genuine programmer bug), we re-raise so it surfaces.
+                _reason = _fb.classify_exception(primary_exc)
+                if _reason is None:
                     raise
 
                 logger.warning(
-                    "Primary LLM failed (%s): %s — trying fallbacks",
-                    type(primary_exc).__name__, primary_exc,
+                    "[fallback] primary LLM failed (%s/%s): %s",
+                    type(primary_exc).__name__, _reason.value, primary_exc,
                 )
                 response = None
-                # Fallback models (Claude, Gemini, Mistral…) are NOT Qwen; strip
-                # any /no_think marker that was injected for the primary call.
+                # Strip any /no_think marker (Qwen-only) before trying a
+                # different provider that doesn't understand it.
                 _fallback_msgs = strip_no_think(_invoke_msgs)
-                for fallback_label, fallback_llm in get_fallback_llms():
-                    try:
-                        fallback_with_tools = fallback_llm.bind_tools(registry.all_tools)
-                        response = await fallback_with_tools.ainvoke(_fallback_msgs)
-                        logger.info("Fallback succeeded with %s", fallback_label)
-                        break
-                    except Exception as fallback_exc:
-                        logger.warning(
-                            "Fallback %s also failed: %s", fallback_label, fallback_exc
-                        )
+
+                # Walk forward through the chain until a provider answers or
+                # the chain is exhausted. Each provider is given ONE attempt;
+                # subsequent failures advance again. This loop is bounded by
+                # len(chain) so it can never spin.
+                if _conv_id_fb and _fb_state is not None:
+                    while True:
+                        _new_provider_id = _fb.try_activate(_conv_id_fb, _reason)
+                        if not _new_provider_id:
+                            logger.warning(
+                                "[fallback] chain exhausted for conv=%s — re-raising",
+                                _conv_id_fb,
+                            )
+                            break
+                        _new_llm = build_llm_for_provider(_new_provider_id, _tier)
+                        if _new_llm is None:
+                            logger.warning(
+                                "[fallback] provider %r unbuildable, advancing",
+                                _new_provider_id,
+                            )
+                            continue  # ask manager for the next one
+                        try:
+                            # PRESERVE the toolset profile — the cardinal sin
+                            # of the old fallback loop was rebinding all 145
+                            # tools, breaking the Chantier 1 contract. Here
+                            # we re-bind exactly the same _filtered_tools the
+                            # primary saw.
+                            if _bind_tools_flag:
+                                _new_with_tools = _new_llm.bind_tools(_filtered_tools)
+                            else:
+                                _new_with_tools = _new_llm
+                            response = await _new_with_tools.ainvoke(_fallback_msgs)
+                            logger.warning(
+                                "[fallback] succeeded with %r", _new_provider_id,
+                            )
+                            # Keep model_used in sync with the active provider.
+                            try:
+                                from app.services.llm_provider import describe_llm
+                                _p, _m = describe_llm(_new_llm)
+                                model_used = f"llm:{_p}/{_m}+tools[fallback]"
+                            except Exception:
+                                model_used = f"llm:{_new_provider_id}+tools[fallback]"
+                            break
+                        except Exception as _next_exc:
+                            _next_reason = _fb.classify_exception(_next_exc)
+                            if _next_reason is None:
+                                # Real bug in the new provider — re-raise.
+                                raise
+                            logger.warning(
+                                "[fallback] %r also failed (%s): %s — advancing",
+                                _new_provider_id, _next_reason.value, _next_exc,
+                            )
+                            _reason = _next_reason
+                            continue
+                else:
+                    # No conversation_id (rare: API caller without conv) —
+                    # fall back to the legacy global helper, which re-binds
+                    # all tools. Acceptable for this corner case.
+                    logger.info(
+                        "[fallback] no conv_id, using legacy global fallback chain"
+                    )
+                    for fallback_label, fallback_llm in get_fallback_llms():
+                        try:
+                            _legacy_with_tools = (
+                                fallback_llm.bind_tools(_filtered_tools)
+                                if _bind_tools_flag
+                                else fallback_llm
+                            )
+                            response = await _legacy_with_tools.ainvoke(_fallback_msgs)
+                            logger.info("Fallback succeeded with %s", fallback_label)
+                            break
+                        except Exception as fallback_exc:
+                            logger.warning(
+                                "Fallback %s also failed: %s",
+                                fallback_label, fallback_exc,
+                            )
 
                 if response is None:
                     raise primary_exc
+
+        # Hermes Chantier 4 — track this turn's response so the manager can
+        # detect empty-streaks (≥3 empties → auto-fallback on the next turn).
+        # We pass the current response's content + tool_calls flag.
+        if _conv_id_fb and _fb_state is not None and response is not None:
+            _resp_content = getattr(response, "content", "") or ""
+            if isinstance(_resp_content, list):
+                # Multi-block content — concatenate text chunks.
+                _resp_content = " ".join(
+                    b.get("text", "") if isinstance(b, dict) else str(b)
+                    for b in _resp_content
+                )
+            _has_tc = bool(getattr(response, "tool_calls", None))
+            try:
+                _fb.record_response(_conv_id_fb, str(_resp_content), _has_tc)
+            except Exception as _rec_exc:
+                logger.debug("fallback.record_response failed: %s", _rec_exc)
 
         # Fire-and-forget: extract facts from this exchange for user memory
         if user_id:

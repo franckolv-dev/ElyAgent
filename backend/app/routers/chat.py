@@ -478,6 +478,19 @@ async def websocket_chat(websocket: WebSocket):
                 except asyncio.CancelledError:
                     pass
 
+            # Hermes Chantier 4 — drain provider.switched events emitted by
+            # the FallbackManager during this turn and forward them to the
+            # frontend (it can show a discreet toast). We do this AFTER the
+            # streaming loop so events fire AFTER the assistant's response
+            # text is on screen — the toast lands in context, not before.
+            try:
+                from app.services.fallback_manager import drain_events as _fb_drain
+                if conversation_id:
+                    for _ev in _fb_drain(conversation_id):
+                        await websocket.send_text(_dumps(_ev))
+            except Exception as _fb_exc:
+                logger.debug("fallback.drain_events skipped: %s", _fb_exc)
+
             was_stopped = stop_event.is_set() and not ai_content
 
             # If interrupted with no content, notify client and skip saving
@@ -647,6 +660,15 @@ async def websocket_chat(websocket: WebSocket):
                 _summarize_conversation(conversation_id, user_id)
             )
         _filters.pop(conversation_id, None) if conversation_id else None
+        # Hermes Chantier 4 — drop fallback state on disconnect so the next
+        # session for this user starts on the primary again. (Stickiness is
+        # PER conversation, not per user.)
+        if conversation_id:
+            try:
+                from app.services.fallback_manager import discard as _fb_discard
+                _fb_discard(conversation_id)
+            except Exception:
+                pass
 
 
 async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
