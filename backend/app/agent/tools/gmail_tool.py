@@ -452,14 +452,21 @@ async def gmail_trash_emails(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Move emails to Trash. REQUIRES explicit user confirmation before executing.
+    """Move a specific list of emails (by ID) to Trash.
 
-    ⚠️ IMPORTANT: ALWAYS present the list of emails to be trashed to the user
-    and wait for explicit confirmation (yes/oui/confirme) before calling this tool.
-    Never call this tool without prior user approval in the current conversation.
+    👉 PREFERRED ROUTE for « supprime les mails de <SENDER> »:
+        1) gmail_list_emails(query="from:<sender>")  → returns IDs
+        2) gmail_trash_emails(ids=[...])             → trashes those exact IDs
+    This is the only safe way to target a sender, brand, domain, or any
+    free-form Gmail query — gmail_trash_by_category is for whole-CATEGORY
+    purges only and will either miss the sender or over-purge.
+
+    HITL is forced (this is a destructive operation). The HITL card will
+    show how many IDs are about to be trashed.
 
     Args:
-        email_ids: List of email IDs to trash (from gmail_list_emails)
+        email_ids: List of email IDs to trash, typically obtained from
+            gmail_list_emails or gmail_search_for_cleanup. Never invent IDs.
     """
     service = await _get_gmail_service(user_google_credentials_json)
     if not service:
@@ -602,36 +609,56 @@ async def gmail_trash_by_category(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Search emails by category AND move them to trash in ONE atomic call.
+    """Bulk-trash a whole Gmail CATEGORY in one atomic call.
 
-    PREFER this tool whenever the goal is to delete, empty, or clean up
-    a Gmail folder or category. Combines search + trash so the LLM never
-    has to manipulate individual email IDs (which it tends to hallucinate).
+    🛑 DO NOT USE THIS TOOL when the user names a specific SENDER, brand,
+    domain, or person (e.g. « tous les mails AliExpress », « les mails
+    de Temu », « courriers de @amazon.fr »). For that case use:
+        1) gmail_list_emails(query="from:<sender>")  → get IDs
+        2) gmail_trash_emails(ids=[...])             → trash by ID list
+    Sticking to a category here would either (a) miss the sender entirely
+    if Gmail didn't auto-categorise them, or (b) purge the whole
+    category indiscriminately. Both are wrong (May 2026 incident:
+    « supprime les achats Temu » without from_sender purged 100+
+    legitimate non-Temu purchase emails).
+
+    USE this tool ONLY when the user asks to clean a whole Gmail FOLDER
+    or CATEGORY: « vide les promotions », « supprime mes spams »,
+    « nettoie l'onglet Forums ».
 
     The tool DOES NOT take IDs — just pass the category name.
     HITL is forced (this is a destructive batch operation).
 
-    OPTIONAL FILTERS — combine with the category to narrow down :
-      - from_sender       : restrict to a sender (matches `from:<sender>`)
+    OPTIONAL FILTERS — narrow the category. ALL filters are AND-ed with
+    the category query, so they only RESTRICT, never EXTEND :
+      - from_sender       : restrict to a sender (`from:<sender>`)
       - subject_contains  : restrict to subjects containing this text
-      - after_date        : YYYY/MM/DD lower bound (matches `after:`)
-      - before_date       : YYYY/MM/DD upper bound (matches `before:`)
-    ⚠️ If the user request mentions a SENDER, a SUBJECT KEYWORD, or a DATE
-    RANGE, you MUST pass these filters — otherwise the tool will purge
-    the WHOLE category indiscriminately, which is dangerous (May 2026
-    incident : « supprime les achats Temu » without from_sender purged
-    100+ legitimate non-Temu purchase emails).
+      - after_date        : YYYY/MM/DD lower bound (`after:`)
+      - before_date       : YYYY/MM/DD upper bound (`before:`)
 
     Args:
-        category: Category to purge. Many natural-language aliases accepted
-          (singular/plural, FR/EN). Canonical values :
-          'spam' (alias: spams, indesirables, junk), 'trash' (corbeille,
-          poubelle), 'newsletters' (mailing, mailings, infolettre, abonnements),
-          'promotions' (promo, soldes, offres), 'social' (reseaux sociaux,
-          facebook, linkedin), 'forums' (discussions, groupes), 'updates'
-          (notifications, alertes), 'purchases' (achats, commandes, factures),
-          'demarchage' (pubs, prospection), 'all_cleanup' (tout),
-          'all_categories' (toutes catégories).
+        category: Folder/category to purge. TWO KINDS, do not confuse them:
+
+          ── REAL Gmail tabs (reliable, language-agnostic) ──
+          'promotions'   → category:promotions tab
+          'social'       → category:social tab
+          'forums'       → category:forums tab
+          'updates'      → category:updates tab
+          'purchases'    → category:purchases tab (« Achats »)
+          'spam'         → in:spam folder
+          'trash'        → in:trash folder
+
+          ── FRENCH-ONLY HEURISTIC searches (keyword-based, FR mailbox only) ──
+          'newsletters'  → updates + unsubscribe heuristic
+          'demarchage'   → French keywords (démarchage, prospection, soldes…)
+                           ⚠️ Matches almost nothing in non-FR inboxes.
+                           NOT a real Gmail category — a search heuristic.
+          'all_cleanup'  → promotions + updates + purchases + unsubscribe
+          'all_categories' → all 5 tabs at once
+
+          Aliases accepted (FR/EN, singular/plural): « spams », « indesirables »,
+          « corbeille », « mailing », « promos », « réseaux sociaux »,
+          « facebook », « notifications », « achats », « factures », « pubs »…
         max_results: Max number of emails to trash in one call (default 100,
           max 500). If the folder has more, call this tool again until empty.
         from_sender: Optional. Restrict to emails from this sender (name or
