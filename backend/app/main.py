@@ -15,6 +15,30 @@
 #   - INTERDIT : Toute utilisation commerciale sans accord préalable.
 #   - INTERDIT : Redistribution de versions modifiées de ce code.
 # =============================================================================
+
+# ── Logging configuration (FIRST, before any app import) ────────────────────
+# Reason : without this, our `logger = logging.getLogger(__name__)` calls
+# in app modules don't propagate to stdout/stderr of the container — only
+# uvicorn's own logger writes there. Result : every `logger.warning(...)` /
+# `logger.error(...)` from our code is invisible in `docker logs`, which
+# made every silent crash impossible to diagnose during 2026-05-08.
+#
+# ``force=True`` overrides any previous logging.basicConfig call (uvicorn
+# sets one of its own when it starts). The root logger is then wired with
+# a StreamHandler writing to stderr, so child loggers propagate up by
+# default. Format includes timestamp, level, logger name, message — enough
+# to grep ``ERROR`` / ``Traceback`` later.
+import logging as _logging
+_logging.basicConfig(
+    level=_logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    force=True,
+)
+# Bump our own loggers to INFO explicitly (defensive — basicConfig already
+# sets the root, but a third-party library may have lowered our package).
+_logging.getLogger("app").setLevel(_logging.INFO)
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
