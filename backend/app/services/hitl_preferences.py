@@ -33,6 +33,11 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     "gmail_batch_modify",
     "gmail_trash_emails",
     "gmail_move_emails",
+    # Account-level Gmail settings (filters, signature, vacation,
+    # forwarding). A filter rule persists and silently affects every
+    # future incoming mail — far more impactful than trashing 10 mails.
+    # Forwarding can leak the inbox to a 3rd-party address. Always lock.
+    "gmail_update_settings",
     # Filesystem destructive
     "desktop_delete_file",
     "desktop_write_file",   # overwrites existing files

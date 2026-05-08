@@ -89,6 +89,12 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "gmail_search_for_cleanup",
     "gmail_trash_by_category",
     "gmail_trash_emails",
+    # Gmail — settings (filters, signature, vacation, forwarding).
+    # Added 2026-05-08 after observing Qwen 3.6 Flash spontaneously
+    # propose « je vais créer des filtres » during a mail audit, then
+    # confabulate a success message because the tool wasn't exposed.
+    # LOCKED_HITL so user always confirms — these settings persist.
+    "gmail_update_settings",
     # Calendar — create + list (single events; recurring goes via scheduler)
     "calendar_create_event",
     "calendar_list_events",

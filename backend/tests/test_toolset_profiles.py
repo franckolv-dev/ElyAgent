@@ -87,6 +87,19 @@ def test_default_profile_covers_mail_cleanup_workflow():
     assert not missing, f"Mail cleanup tools missing from default profile: {missing}"
 
 
+def test_default_profile_exposes_gmail_settings():
+    """Mail-audit workflows often end with the LLM proposing « je vais
+    créer des filtres pour bloquer ce bruit ». If `gmail_update_settings`
+    isn't in the profile, the LLM confabulates a success without ever
+    calling the tool (observed 2026-05-08 with Qwen 3.6 Flash). Lock the
+    tool into the default profile so the proposal can actually execute."""
+    tools = set(get_profile_tool_names("default"))
+    assert "gmail_update_settings" in tools, (
+        "gmail_update_settings missing — the LLM will confabulate filter "
+        "creation success messages with no tool call ever happening"
+    )
+
+
 # ── resolve_profile_tools ────────────────────────────────────────────────────
 
 
