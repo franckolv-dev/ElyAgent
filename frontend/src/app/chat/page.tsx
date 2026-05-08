@@ -135,6 +135,16 @@ function ChatPageInner() {
   const wsRef = useRef<AgentWebSocket | null>(null);
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
+  // Hermes Chantier 4 — discreet toast triggered by `provider.switched`
+  // events emitted by the backend FallbackManager when it bascules from
+  // the configured primary to a fallback (rate limit, h1_hallucination,
+  // billing, etc.). Visible 6 seconds then auto-dismissed.
+  const [providerToast, setProviderToast] = useState<{
+    from: string;
+    to: string;
+    reason: string;
+  } | null>(null);
+  const providerToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── First-launch redirect: if no LLM is configured, redirect to setup ──
   useEffect(() => {
@@ -265,6 +275,18 @@ function ChatPageInner() {
         disarmWatchdog();
       } else if (msg.type === "browser_frame" && msg.data) {
         setBrowserFrame({ data: msg.data, url: msg.url ?? "", title: msg.title ?? "" });
+      } else if (msg.type === "provider.switched") {
+        // Backend swapped LLM provider mid-conversation. Show a discreet
+        // toast so the user understands why latency / wording may shift.
+        if (providerToastTimer.current) clearTimeout(providerToastTimer.current);
+        setProviderToast({
+          from: msg.from ?? "?",
+          to: msg.to ?? "?",
+          reason: msg.reason ?? "fallback",
+        });
+        providerToastTimer.current = setTimeout(() => {
+          setProviderToast(null);
+        }, 6000);
       }
     });
 
@@ -272,6 +294,10 @@ function ChatPageInner() {
 
     return () => {
       disarmWatchdog();
+      if (providerToastTimer.current) {
+        clearTimeout(providerToastTimer.current);
+        providerToastTimer.current = null;
+      }
       ws.disconnect();
     };
   }, []); // WebSocket lifecycle: mount once, disconnect on unmount
@@ -361,6 +387,37 @@ function ChatPageInner() {
     <AuthGuard>
       {/* Layout refonte : header full-width au-dessus de la sidebar + main + avatar */}
       <div className="flex flex-col h-screen overflow-hidden">
+        {/* Provider switch toast — Hermes Chantier 4. Discreet badge in
+            top-right that fades after 6s. Lets the user know when ELY
+            silently bascules from the configured primary LLM to a
+            fallback (rate limit, hallucination, billing…). */}
+        {providerToast && (
+          <div
+            className="fixed top-3 right-3 z-50 max-w-sm rounded-md border border-yellow-500/40 bg-bg-secondary/95 backdrop-blur px-3 py-2 shadow-lg text-xs text-text-primary animate-in fade-in slide-in-from-top-2"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-start gap-2">
+              <span aria-hidden="true" className="text-yellow-400 text-sm leading-none">⚡</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">Bascule de modèle</div>
+                <div className="text-text-dim mt-0.5 break-words">
+                  <span className="text-text-primary/80">{providerToast.from}</span>
+                  {" → "}
+                  <span className="text-text-primary">{providerToast.to}</span>
+                </div>
+                <div className="text-text-dim text-[10px] mt-1">Raison : {providerToast.reason}</div>
+              </div>
+              <button
+                onClick={() => setProviderToast(null)}
+                aria-label="Fermer"
+                className="text-text-dim hover:text-text-primary leading-none"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
         <Header wsStatus={wsStatus}>
           <button
             onClick={handleToggleVoiceMode}

@@ -75,7 +75,15 @@ export interface Conversation {
 }
 
 export interface WSMessage {
-  type: "start" | "message" | "error" | "stream" | "token" | "hitl_pending" | "hitl_resolved" | "browser_frame" | "tool_start" | "tool_end" | "stopped";
+  type:
+    | "start" | "message" | "error" | "stream" | "token"
+    | "hitl_pending" | "hitl_resolved"
+    | "browser_frame" | "tool_start" | "tool_end" | "stopped"
+    // Hermes Chantier 4 — fired when fallback_manager swaps providers
+    // mid-conversation (rate limit, h1_hallucination, billing, …) so
+    // the user sees a discreet toast instead of being confused by a
+    // sudden change in latency or wording.
+    | "provider.switched";
   tool?: string;
   image?: ToolImage;   // present on tool_end when tool produced an image
   content?: string;
@@ -97,6 +105,10 @@ export interface WSMessage {
   title?: string;
   // Attachments extracted from MEDIA: sentinels by backend media_router
   attachments?: Attachment[];
+  // provider.switched fields (typed strings as emitted by fallback_manager)
+  from?: string;
+  to?: string;
+  ts?: number;
 }
 
 export interface BrowserFrame {
