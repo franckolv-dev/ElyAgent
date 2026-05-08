@@ -1363,6 +1363,12 @@ def build_supervisor_graph():
     graph.add_node("general", create_agent_node())
     graph.add_node("tools", tool_node)
 
+    # Hermes Chantier 9 — terminal node reached when the iteration budget
+    # is exhausted (~80 tool calls). Forces a final API call without tools
+    # and always returns a textual summary to the user.
+    from app.agent.nodes import force_summary_node
+    graph.add_node("force_summary", force_summary_node)
+
     # ── Entry point ──
     graph.set_entry_point("router")
 
@@ -1375,15 +1381,22 @@ def build_supervisor_graph():
     for _domain in _SUB_AGENT_DOMAINS:
         graph.add_edge(_domain, END)
 
-    # ── General agent → tools or end ──
+    # ── General agent → tools, force_summary or end (Chantier 9) ──
     from app.agent.nodes import should_continue
     graph.add_conditional_edges(
         "general",
         should_continue,
-        {"tools": "tools", "end": END},
+        {
+            "tools": "tools",
+            "force_summary": "force_summary",
+            "end": END,
+        },
     )
 
     # ── Tools → back to general (general is the only node using tool_node) ──
     graph.add_edge("tools", "general")
+
+    # ── Force-summary node → END (terminal, no further routing) ──
+    graph.add_edge("force_summary", END)
 
     return graph.compile()

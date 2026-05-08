@@ -29,20 +29,42 @@ own graph instance and may want the simpler version.
 from langgraph.graph import StateGraph, END
 
 from app.agent.state import AgentState
-from app.agent.nodes import create_agent_node, tool_node, should_continue
+from app.agent.nodes import (
+    create_agent_node,
+    force_summary_node,
+    should_continue,
+    tool_node,
+)
 
 
 def build_simple_agent_graph() -> StateGraph:
     """Single-agent graph (original architecture).
 
     Useful for unit tests or when the supervisor overhead is not desired.
+
+    Hermes Chantier 9 — adds the ``force_summary`` terminal node : when the
+    iteration counter crosses ``MAX_AGENT_ITERATIONS``, ``should_continue``
+    routes here instead of ``tools``. The agent makes one final API call
+    without bound tools and returns a textual summary, then ends. This
+    guarantees the user always receives output even on tasks that would
+    otherwise hit LangGraph's recursion limit.
     """
     graph = StateGraph(AgentState)
     graph.add_node("agent", create_agent_node())
     graph.add_node("tools", tool_node)
+    graph.add_node("force_summary", force_summary_node)
     graph.set_entry_point("agent")
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
+    graph.add_conditional_edges(
+        "agent",
+        should_continue,
+        {
+            "tools": "tools",
+            "force_summary": "force_summary",
+            "end": END,
+        },
+    )
     graph.add_edge("tools", "agent")
+    graph.add_edge("force_summary", END)
     return graph.compile()
 
 

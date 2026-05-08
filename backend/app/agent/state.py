@@ -39,3 +39,12 @@ class AgentState(TypedDict):
     # filter (graceful migration: existing conversations created before
     # this column have NULL → "" → legacy behaviour).
     toolset_profile: str
+    # Hermes Chantier 9 — iteration budget guard.
+    # Incremented by ``agent_node`` each time it returns a response carrying
+    # tool_calls (i.e. the loop will go back through ``tool_node`` and
+    # bounce here for another inference). When the count crosses
+    # ``MAX_AGENT_ITERATIONS`` (~80, defined in nodes.py), ``should_continue``
+    # routes to ``force_summary`` instead of ``tools`` — the agent makes
+    # ONE final API call WITHOUT tools and produces a textual summary so
+    # the user always gets something even on tasks that exhaust the budget.
+    iteration_count: int
