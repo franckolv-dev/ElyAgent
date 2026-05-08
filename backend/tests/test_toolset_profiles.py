@@ -71,6 +71,22 @@ def test_default_profile_covers_capture_mail_drive_workflow():
     assert not missing, f"Capture+mail+drive workflow tools missing: {missing}"
 
 
+def test_default_profile_covers_mail_cleanup_workflow():
+    """« Supprime tous les mails de X » is a daily-driver chat workflow.
+    Without these tools exposed in the sticky profile, the LLM hallucinates
+    `gmail_delete_email` (which doesn't exist) and the loop dies on
+    « tool not available ». Mission nodes work because they bind by
+    keyword booster — chat does NOT, so the profile must carry them."""
+    tools = set(get_profile_tool_names("default"))
+    must_have = {
+        "gmail_search_for_cleanup",
+        "gmail_trash_by_category",
+        "gmail_trash_emails",
+    }
+    missing = must_have - tools
+    assert not missing, f"Mail cleanup tools missing from default profile: {missing}"
+
+
 # ── resolve_profile_tools ────────────────────────────────────────────────────
 
 

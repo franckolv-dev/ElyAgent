@@ -80,6 +80,15 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "gmail_send_with_local_attachment",
     "gmail_reply_email",
     "gmail_create_draft",
+    # Gmail — cleanup / triage (HITL forced inside each tool)
+    # Without these, the LLM hallucinates `gmail_delete_email` when the
+    # user asks « supprime les mails AliExpress » and the loop dies on
+    # « tool not available ». The matching mission node already binds
+    # them via the keyword booster (missions/nodes.py:_KEYWORD_BOOST),
+    # which is why scheduled missions worked but interactive chat did not.
+    "gmail_search_for_cleanup",
+    "gmail_trash_by_category",
+    "gmail_trash_emails",
     # Calendar — create + list (single events; recurring goes via scheduler)
     "calendar_create_event",
     "calendar_list_events",
