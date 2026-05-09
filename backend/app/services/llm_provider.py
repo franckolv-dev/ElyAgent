@@ -30,6 +30,46 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# DeepSeek thinking-mode workaround
+# ---------------------------------------------------------------------------
+# The newer DeepSeek API model identifiers (`deepseek-v4-flash`,
+# `deepseek-v4-pro`) ship with thinking mode ENABLED by default. The API
+# returns a `reasoning_content` field that must be re-sent at every
+# subsequent turn — LangChain doesn't preserve it, so multi-turn
+# tool_calls break with HTTP 400 « reasoning_content must be passed back ».
+# Until langchain_openai supports the round-trip, we transparently swap
+# v4-* identifiers to `deepseek-chat` (DeepSeek's own documented alias
+# for « v4-flash in non-thinking mode »). Same underlying model, same
+# quality, no 400. `deepseek-reasoner` is left untouched: a user picking
+# that name explicitly opts in to the thinking mode and accepts the
+# limitations.
+_DEEPSEEK_THINKING_MODELS = frozenset({
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+})
+
+
+def _deepseek_safe_model(model: str) -> str:
+    """Return a DeepSeek model identifier safe for multi-turn tool_calls.
+
+    Swaps thinking-mode aliases to their non-thinking equivalent and logs
+    the substitution once, so the operator can correlate it with the
+    settings UI. Other identifiers (deepseek-chat, deepseek-reasoner,
+    custom) pass through unchanged.
+    """
+    if model in _DEEPSEEK_THINKING_MODELS:
+        logger.info(
+            "deepseek: requested model '%s' has thinking mode on by "
+            "default — swapping to 'deepseek-chat' so multi-turn "
+            "tool_calls don't break with HTTP 400. Use "
+            "'deepseek-reasoner' if you actually want thinking.",
+            model,
+        )
+        return "deepseek-chat"
+    return model
+
+
+# ---------------------------------------------------------------------------
 # Complexity tier enum
 # ---------------------------------------------------------------------------
 
@@ -864,12 +904,11 @@ def _make_llm_for_provider(
         if not key:
             return None
         from langchain_openai import ChatOpenAI
-        # Default to v4-flash — the modern entry-level model (1M context,
-        # tool calling). `deepseek-chat` still works as an alias but is
-        # marked for deprecation by DeepSeek. Override per-instance via
-        # the model_name field on LlmInstance for v4-pro / reasoner / etc.
+        # Default uses the non-thinking alias (`deepseek-chat`) so multi-turn
+        # tool_calls work out of the box. See the long comment in the
+        # per-instance constructor below for the gory details on why.
         return ChatOpenAI(
-            model="deepseek-v4-flash",
+            model="deepseek-chat",
             api_key=key,
             base_url="https://api.deepseek.com/v1",
             max_tokens=max_tokens,
@@ -1015,7 +1054,29 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
         if not key:
             return None
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model=model, api_key=key, base_url="https://api.deepseek.com/v1", max_tokens=max_tokens, temperature=temperature)
+        # DeepSeek v4-flash and v4-pro ship with « thinking mode » enabled
+        # by default. The API returns a `reasoning_content` field that
+        # MUST be re-sent in subsequent requests, else turn 2+ fails with
+        #   400 « The reasoning_content in the thinking mode must be
+        #         passed back to the API »
+        # LangChain doesn't preserve `reasoning_content` across turns, so
+        # any multi-turn workflow with tool_calls breaks at turn 2 — the
+        # exact bug Franck observed 2026-05-09 (DeepSeek 200 OK at turn 1,
+        # 400 BadRequest at turn 2 → fallback to Ministral 14B for the
+        # rest of the conversation).
+        # Workaround until langchain_openai supports DeepSeek reasoning
+        # state: auto-swap to `deepseek-chat`, which DeepSeek itself
+        # documents as « v4-flash in non-thinking mode ». Same underlying
+        # model, same quality, no 400. Only `deepseek-reasoner` keeps
+        # thinking because the user explicitly asked for it.
+        effective_model = _deepseek_safe_model(model)
+        return ChatOpenAI(
+            model=effective_model,
+            api_key=key,
+            base_url="https://api.deepseek.com/v1",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
     if provider == "moonshot":
         key = api_key or settings.moonshot_api_key
