@@ -94,7 +94,19 @@ PROVIDERS_META = [
         "name": "DeepSeek",
         "env_key": "DEEPSEEK_API_KEY",
         "config_key": "api_key_deepseek",
-        "models": ["deepseek-chat", "deepseek-reasoner"],
+        # Order matters — first item is the default candidate when a user
+        # picks "DeepSeek" without specifying a model.
+        # `deepseek-v4-flash` and `deepseek-v4-pro` are the current names
+        # (1M context, tool calling). `deepseek-chat` and `deepseek-reasoner`
+        # are kept for backward compatibility — DeepSeek announced their
+        # deprecation in favour of v4-flash (non-thinking) / v4-flash with
+        # reasoning mode (replaces v4-reasoner).
+        "models": [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-chat",
+            "deepseek-reasoner",
+        ],
     },
     {
         "id": "mistral",

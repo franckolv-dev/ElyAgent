@@ -47,7 +47,13 @@ _PRICING: dict[str, tuple[float, float]] = {
     "mistral-small-latest": (0.2, 0.6),
     "mistral-medium-latest": (2.7, 8.1),
     "mistral-large-latest": (8.0, 24.0),
-    # DeepSeek
+    # DeepSeek (USD per 1M tokens, non-cached input)
+    # v4 family — 1M context, tool calling supported, current generation.
+    # Pricing as of mai 2026 — DeepSeek runs frequent promo discounts so
+    # actual billed cost may be lower (cf. their dashboard).
+    "deepseek-v4-flash": (0.14, 0.28),
+    "deepseek-v4-pro": (0.435, 0.87),
+    # Legacy aliases (deprecation announced — kept until DeepSeek removes them)
     "deepseek-chat": (0.014, 0.028),
     "deepseek-reasoner": (0.55, 2.19),
     # Gemini (tarifs au million de tokens, tier payant)

@@ -864,8 +864,12 @@ def _make_llm_for_provider(
         if not key:
             return None
         from langchain_openai import ChatOpenAI
+        # Default to v4-flash — the modern entry-level model (1M context,
+        # tool calling). `deepseek-chat` still works as an alias but is
+        # marked for deprecation by DeepSeek. Override per-instance via
+        # the model_name field on LlmInstance for v4-pro / reasoner / etc.
         return ChatOpenAI(
-            model="deepseek-chat",
+            model="deepseek-v4-flash",
             api_key=key,
             base_url="https://api.deepseek.com/v1",
             max_tokens=max_tokens,
