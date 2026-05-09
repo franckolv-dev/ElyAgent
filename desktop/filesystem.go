@@ -39,14 +39,48 @@ type FSHandler struct {
 	sandboxDirs []string
 }
 
+// expandHome replaces a leading « ~ » or « ~/ » in a path with the
+// current user's home directory. Returns the path unchanged if it
+// doesn't start with ~ or if the home dir cannot be resolved.
+//
+// Why a daemon-side expand rather than asking the frontend / backend
+// to resolve it? The Settings UI may have been edited by an admin from
+// a different machine entirely (e.g. configuring a colleague's daemon),
+// so the path semantics « ~ = my home » must be evaluated at the
+// machine where the daemon actually runs, not at the configuration
+// time. Same rationale for $HOME and other env vars — kept simple here,
+// only ~ is supported.
+func expandHome(path string) string {
+	if path == "" || path[0] != '~' {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+		return filepath.Join(home, path[2:])
+	}
+	// « ~someuser » is not supported — POSIX-only and rarely used.
+	// Returning unchanged surfaces the misconfiguration to the user.
+	return path
+}
+
 // NewFSHandler creates a new FSHandler with the provided sandbox directories.
 func NewFSHandler(sandboxDirs []string) *FSHandler {
 	// Resolve symlinks so sandbox checks are reliable.
 	resolved := make([]string, 0, len(sandboxDirs))
 	for _, d := range sandboxDirs {
-		r, err := filepath.EvalSymlinks(d)
+		// Expand a leading ~ so the user can type « ~/Downloads » in
+		// the frontend without us forcing them to know their absolute
+		// home path.
+		expanded := expandHome(d)
+		r, err := filepath.EvalSymlinks(expanded)
 		if err != nil {
-			r = d // use as-is if resolution fails (dir may not exist yet)
+			r = expanded // use as-is if resolution fails (dir may not exist yet)
 		}
 		resolved = append(resolved, filepath.Clean(r))
 	}
@@ -59,6 +93,11 @@ func (h *FSHandler) validatePath(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("path must not be empty")
 	}
+
+	// Expand a leading ~ first so callers (and the LLM) can use the
+	// natural « ~/Documents/foo » form. Same expansion as for sandbox
+	// dirs at boot — keeps semantics symmetrical.
+	path = expandHome(path)
 
 	// Resolve symlinks on the longest existing prefix to catch traversal attempts
 	// even when the full path doesn't exist yet (e.g. a file being written).

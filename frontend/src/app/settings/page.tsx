@@ -2168,7 +2168,7 @@ export default function SettingsPage() {
                       value={sandboxInput}
                       onChange={(e) => setSandboxInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddSandboxDir()}
-                      placeholder="/home/user/documents"
+                      placeholder="~/Documents ou /Users/franck/Documents"
                       className="input mono"
                     />
                     <button
@@ -2178,6 +2178,33 @@ export default function SettingsPage() {
                     >
                       <Plus size={14} />
                     </button>
+                  </div>
+
+                  {/* Quick shortcuts — browsers can't pop a native folder
+                      picker that returns an absolute path (security model
+                      forbids it). Clicking a chip prefills the input with
+                      the ~-prefixed equivalent; the daemon expands ~ at
+                      runtime to the actual home directory. User can edit
+                      then validate with + or Enter. */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-text-muted uppercase tracking-wider mr-1">
+                      {t("dirShortcuts")}
+                    </span>
+                    {[
+                      "~/Documents",
+                      "~/Downloads",
+                      "~/Desktop",
+                      "~/Pictures",
+                    ].map((shortcut) => (
+                      <button
+                        key={shortcut}
+                        onClick={() => setSandboxInput(shortcut)}
+                        className="text-[10px] px-2 py-0.5 rounded border border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/40 transition-colors mono"
+                        title={t("dirShortcutTooltip", { path: shortcut })}
+                      >
+                        {shortcut}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

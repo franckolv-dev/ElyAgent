@@ -386,6 +386,8 @@
     "desktopDescription": "ELY Desktop est un daemon léger qui tourne sur votre machine et donne à ELY un accès contrôlé à votre système de fichiers local. Seuls les répertoires listés ci-dessous sont accessibles.",
     "allowedDirs": "Répertoires autorisés",
     "noDirsConfigured": "Aucun répertoire configuré — ajoutez-en un ci-dessous.",
+    "dirShortcuts": "Raccourcis",
+    "dirShortcutTooltip": "Pré-remplir le champ avec {path} (le daemon résoudra ~ au démarrage)",
     "desktopDownloadDesc": "Téléchargez le fichier de configuration et placez-le dans le même répertoire que le daemon ELY Desktop. Il contient un token d'authentification valable 30 jours.",
     "downloadConfig": "Télécharger ely-config.json",
     "downloadDaemon": "Télécharger le daemon",

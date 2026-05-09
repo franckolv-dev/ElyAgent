@@ -101,8 +101,42 @@ chmod +x ely-desktop-macos-arm64    # première fois seulement
 ./ely-desktop-macos-arm64
 ```
 
+#### 🍎 macOS — premier lancement (Gatekeeper)
+
+Le binaire est buildé localement, donc **non signé Apple Developer ID**. Au premier lancement, macOS affiche :
+
+> *« ely-desktop-macos-arm64 non ouvert. Apple n'a pas pu confirmer que… ne contenait pas de logiciel malveillant »* avec uniquement les boutons **« Placer dans la corbeille »** ou **« Terminé »**.
+
+**Ne mets surtout pas à la corbeille.** Trois méthodes pour autoriser, classées de la **plus fiable** à la **plus rapide** :
+
+##### Méthode 1 — Réglages système (la plus fiable, marche partout)
+
+1. Clique **« Terminé »** sur l'alerte
+2. Ouvre **Réglages système → Confidentialité et sécurité**
+3. Descends jusqu'à la section **Sécurité** — tu vois *« ely-desktop-macos-arm64 a été bloqué… »* avec un bouton **« Ouvrir quand même »**
+4. Clique **« Ouvrir quand même »** → saisi du mot de passe / Touch ID
+5. macOS relance le binaire et le whitelist définitivement
+
+C'est la méthode qui **marche dans tous les cas**, y compris sur macOS Sonoma et plus récent où Apple a durci Gatekeeper.
+
+##### Méthode 2 — Clic droit Finder
+
+Sur certaines versions macOS, faire un **clic droit sur le binaire dans le Finder → Ouvrir** affiche une 2e popup avec un bouton « Ouvrir » qui débloque. ⚠️ **Sur macOS récent (Sonoma+) cette option n'apparaît plus** — tu n'as que « Mettre à la corbeille ». Dans ce cas, passe à la Méthode 1.
+
+##### Méthode 3 — Ligne de commande `xattr`
+
+```bash
+xattr -d com.apple.quarantine ~/ely-desktop/ely-desktop-macos-arm64
+```
+
+⚠️ **`xattr` n'est pas toujours dans le `PATH` par défaut**, particulièrement avec certains shells custom (zsh + .zshrc qui modifie PATH, fish, etc.). Si la commande retourne *« command not found »*, utilise plutôt la Méthode 1.
+
+---
+
 **Windows** :
 Double-clique sur `ely-desktop-windows-amd64.exe`. Une fenêtre console s'ouvre. **Garde-la ouverte** tant que tu utilises ELY Desktop.
+
+Au premier lancement, **Windows Defender SmartScreen** peut afficher *« Windows a protégé votre PC »*. Clique **« Informations complémentaires »** puis **« Exécuter quand même »**.
 
 → Tu dois voir :
 ```

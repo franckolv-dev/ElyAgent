@@ -385,6 +385,8 @@
     "sshConfigDesc": "Configure SSH hosts and their allowed commands in <code>config/hosts.yaml</code>. Each host requires an explicit command list — the agent cannot run arbitrary commands.",
     "desktopDescription": "ELY Desktop is a lightweight daemon running on your machine that gives ELY controlled access to your local file system. Only the directories listed below are accessible.",
     "allowedDirs": "Allowed directories",
+    "dirShortcuts": "Shortcuts",
+    "dirShortcutTooltip": "Prefill the input with {path} (the daemon expands ~ at startup)",
     "noDirsConfigured": "No directory configured — add one below.",
     "desktopDownloadDesc": "Download the configuration file and place it in the same directory as the ELY Desktop daemon. It contains an authentication token valid for 30 days.",
     "downloadConfig": "Download ely-config.json",
