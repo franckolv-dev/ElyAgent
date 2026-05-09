@@ -27,8 +27,12 @@ import (
 	"syscall"
 )
 
-// version is the daemon version — injected at build time via -ldflags if desired.
-var version = "1.0.0"
+// version is the daemon version. Default value used when build.sh hasn't
+// run (e.g. `go run .` for dev). The proper version string is injected
+// at build time as `<base>+<git-short-sha>[+dirty]` via -ldflags so the
+// Settings UI badge reflects the actual code running. Bump base when
+// shipping a new feature set.
+var version = "1.1.0"
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
