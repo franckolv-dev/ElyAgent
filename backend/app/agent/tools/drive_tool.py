@@ -525,3 +525,202 @@ async def drive_raw_api_call(
     if not service:
         return "Google non connecté."
     return execute_raw_call(service, method_path, params_json, body_json, "drive")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# drive_find_duplicates — server-side duplicate detection
+#
+# Why a dedicated tool ?
+# Asking the LLM to « identify duplicates in /perso » means:
+#   1. recursive listing (10+ folders × 50 files = 500+ entries)
+#   2. comparing names/sizes/dates pairwise in working memory
+#   3. reasoning over a JSON blob too large for any 8-24B local model
+# Even Qwen Flash hits 5+ tool_calls and confabulates. Ministral 14B
+# OOM'd on Metal after 21 messages (mai 2026 incident).
+#
+# Design:
+#   - Server-side recursive walk via Drive API (paginated)
+#   - Group by md5Checksum (free field on binary files in Drive API v3)
+#   - Optional fallback to (name + size) for native Google formats which
+#     have no md5 (Docs, Sheets, Slides — Drive doesn't expose checksums)
+#   - Return ONLY the duplicate groups, never the full file list
+#   - Compact human-readable format for the LLM to forward
+#
+# This compresses ~500 file entries into <50 lines — tractable for any LLM.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@tool
+async def drive_find_duplicates(
+    folder_id: str,
+    recursive: bool = True,
+    by: str = "md5",
+    max_files: int = 2000,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Find duplicate files in a Google Drive folder. Server-side hashing.
+
+    👉 USE THIS TOOL whenever the user asks to find/identify/list duplicate
+    files in their Drive. NEVER try to do it via repeated drive_list_files
+    + manual comparison — it doesn't scale beyond ~10 files and hallucinates.
+
+    Args:
+        folder_id: Drive folder ID where to search (NOT the folder name).
+            Get it first via drive_list_files(query="name='myfolder' and
+            mimeType='application/vnd.google-apps.folder'").
+            For the user's root, use 'root'.
+        recursive: If True (default), explore subfolders too. If False,
+            only files directly in folder_id.
+        by: Duplicate detection strategy:
+            - 'md5'       (default) — MD5 checksum match. Most reliable
+              but only works for binary files (photos, PDFs, archives,
+              videos). Google-native formats (Docs, Sheets) are skipped.
+            - 'name'      — Identical filename match. Detects user-renamed
+              copies but generates false positives.
+            - 'name+size' — Same name AND same byte size. Best for native
+              Google docs which have no MD5 checksum.
+        max_files: Hard cap on the recursive walk (default 2000). Increase
+            for very large drives, decrease for quick scans.
+
+    Returns: a compact human-readable report — only the duplicate groups,
+    not the full file list. Format example:
+        Group 1 (3 copies, 2.4 MB each):
+          - photo.jpg (folder: vacation/2024)
+          - photo (1).jpg (folder: vacation/2024)
+          - copy_photo.jpg (folder: backup)
+
+    If nothing is duplicated, returns « Aucun doublon trouvé ».
+    """
+    service = await _get_drive_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connectez votre compte Google dans les paramètres."
+
+    by = (by or "md5").lower().strip()
+    if by not in {"md5", "name", "name+size"}:
+        return f"Paramètre 'by' invalide: '{by}'. Valeurs: 'md5', 'name', 'name+size'."
+
+    max_files = max(10, min(int(max_files), 10000))
+
+    # Recursive BFS walk to collect all files. Folders are explored in turn,
+    # files are accumulated. We track parent path for human-readable output.
+    try:
+        # path_by_id maps folder_id → human path ("perso/vacation/2024")
+        # so the final report can show where each file lives.
+        path_by_id: dict[str, str] = {folder_id: ""}
+        folders_to_visit: list[str] = [folder_id]
+        all_files: list[dict] = []
+        visited_folders: set[str] = set()
+
+        while folders_to_visit and len(all_files) < max_files:
+            current = folders_to_visit.pop(0)
+            if current in visited_folders:
+                continue
+            visited_folders.add(current)
+            current_path = path_by_id.get(current, "")
+
+            page_token: str | None = None
+            while True:
+                resp = service.files().list(
+                    q=f"'{current}' in parents and trashed=false",
+                    pageSize=200,
+                    fields=(
+                        "nextPageToken, "
+                        "files(id, name, mimeType, modifiedTime, "
+                        "size, md5Checksum)"
+                    ),
+                    pageToken=page_token,
+                ).execute()
+                for f in resp.get("files", []):
+                    if f.get("mimeType") == "application/vnd.google-apps.folder":
+                        if recursive:
+                            child_path = (
+                                f"{current_path}/{f['name']}" if current_path
+                                else f["name"]
+                            )
+                            path_by_id[f["id"]] = child_path
+                            folders_to_visit.append(f["id"])
+                    else:
+                        f["_path"] = current_path or "(racine)"
+                        all_files.append(f)
+                        if len(all_files) >= max_files:
+                            break
+                page_token = resp.get("nextPageToken")
+                if not page_token or len(all_files) >= max_files:
+                    break
+
+        if not all_files:
+            return f"Aucun fichier trouvé dans le dossier (id={folder_id})."
+
+        # Group by the chosen strategy. Keep only groups with >= 2 entries.
+        groups: dict[tuple, list[dict]] = {}
+        skipped_no_hash = 0
+        for f in all_files:
+            if by == "md5":
+                key = f.get("md5Checksum")
+                if not key:
+                    skipped_no_hash += 1
+                    continue
+                key = ("md5", key)
+            elif by == "name":
+                key = ("name", f["name"].lower().strip())
+            else:  # name+size
+                size = f.get("size") or "0"
+                key = ("name+size", f["name"].lower().strip(), str(size))
+            groups.setdefault(key, []).append(f)
+
+        dup_groups = [g for g in groups.values() if len(g) >= 2]
+        dup_groups.sort(key=lambda g: -len(g))  # biggest groups first
+
+        if not dup_groups:
+            footer = ""
+            if skipped_no_hash and by == "md5":
+                footer = (
+                    f"\n\nNote: {skipped_no_hash} fichier(s) Google natif(s) "
+                    f"(Docs, Sheets, Slides) ignoré(s) — pas de checksum MD5. "
+                    f"Relance avec by='name+size' pour les inclure."
+                )
+            return (
+                f"✅ Aucun doublon trouvé sur {len(all_files)} fichier(s) "
+                f"explorés (stratégie: {by}).{footer}"
+            )
+
+        # Build the report. Cap details to avoid context bloat: show all
+        # groups but cap individual file lists at 8 entries per group.
+        total_dups = sum(len(g) - 1 for g in dup_groups)
+        lines = [
+            f"🔍 **{len(dup_groups)} groupe(s) de doublons** détecté(s) "
+            f"sur {len(all_files)} fichier(s) explorés "
+            f"(stratégie: {by}, {total_dups} fichier(s) en trop) :",
+            "",
+        ]
+        for i, group in enumerate(dup_groups, 1):
+            sample = group[0]
+            try:
+                sample_size_kb = int(sample.get("size") or 0) // 1024
+                size_str = f"{sample_size_kb} Ko" if sample_size_kb else "N/A"
+            except (TypeError, ValueError):
+                size_str = "N/A"
+            lines.append(
+                f"**Groupe {i}** — {len(group)} copies, ~{size_str} chacune :"
+            )
+            for f in group[:8]:
+                lines.append(
+                    f"  • {f['name']} (dossier: {f['_path']}) "
+                    f"[id: {f['id']}]"
+                )
+            if len(group) > 8:
+                lines.append(f"  … et {len(group) - 8} autre(s)")
+            lines.append("")
+
+        if skipped_no_hash and by == "md5":
+            lines.append(
+                f"_Note: {skipped_no_hash} fichier(s) Google natif(s) "
+                f"ignoré(s) — pas de MD5. Relance avec by='name+size' "
+                f"pour les inclure._"
+            )
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.warning("drive_find_duplicates failed: %s", e)
+        return f"Erreur drive_find_duplicates: {e}"

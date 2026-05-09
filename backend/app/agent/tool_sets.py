@@ -57,7 +57,8 @@ GOOGLE_TOOLS: frozenset[str] = frozenset({
     "drive_list_files", "drive_read_file",
     "drive_create_folder", "drive_create_file", "drive_update_file",
     "drive_move_file", "drive_rename_file", "drive_delete_file",
-    "drive_share_file", "drive_copy_file", "drive_export_file", "drive_raw_api_call",
+    "drive_share_file", "drive_copy_file", "drive_export_file",
+    "drive_find_duplicates", "drive_raw_api_call",
     # Docs
     "docs_create_document", "docs_read_document", "docs_append_text",
     "docs_replace_text", "docs_insert_table",

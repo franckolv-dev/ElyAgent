@@ -87,6 +87,19 @@ def test_default_profile_covers_mail_cleanup_workflow():
     assert not missing, f"Mail cleanup tools missing from default profile: {missing}"
 
 
+def test_default_profile_exposes_drive_find_duplicates():
+    """Asking « find duplicate files in /perso » without this tool means
+    asking an 8-24B local model to do a recursive walk + pairwise comparison
+    in working memory. We saw Ministral 14B OOM Metal on this scenario
+    after 21 messages (mai 2026). The dedicated tool collapses 30+ tool
+    calls into one — must stay in the default profile."""
+    tools = set(get_profile_tool_names("default"))
+    assert "drive_find_duplicates" in tools, (
+        "drive_find_duplicates missing — duplicate-finding scenarios will "
+        "fall back to manual recursive listing and OOM small local models"
+    )
+
+
 def test_default_profile_exposes_gmail_settings():
     """Mail-audit workflows often end with the LLM proposing « je vais
     créer des filtres pour bloquer ce bruit ». If `gmail_update_settings`

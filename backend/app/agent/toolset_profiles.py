@@ -99,10 +99,15 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "calendar_create_event",
     "calendar_list_events",
     "calendar_quick_add",
-    # Drive — create text files + list + read
+    # Drive — create text files + list + read + find duplicates
     "drive_create_file",
     "drive_list_files",
     "drive_read_file",
+    # Server-side duplicate detection (added 2026-05-09 after observing
+    # Ministral 14B OOM Metal trying to do it manually with 30+ tool calls).
+    # Compresses recursive walk + md5 grouping into 1 tool call → tractable
+    # for any LLM, even Ministral 8B.
+    "drive_find_duplicates",
     # Browser — capture + navigate + extract text
     "browser_navigate",
     "browser_screenshot",

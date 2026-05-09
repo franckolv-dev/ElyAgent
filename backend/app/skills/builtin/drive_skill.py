@@ -29,6 +29,7 @@ from app.agent.tools.drive_tool import (
     drive_share_file,
     drive_copy_file,
     drive_export_file,
+    drive_find_duplicates,
     drive_raw_api_call,
 )
 
@@ -55,6 +56,7 @@ get_skill_registry().register(Skill(
         drive_share_file,
         drive_copy_file,
         drive_export_file,
+        drive_find_duplicates,
         drive_raw_api_call,
     ],
 ))
