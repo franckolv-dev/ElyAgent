@@ -30,7 +30,7 @@ import { api } from "@/lib/api";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
-  Monitor, Download, Plus, Trash2, Wifi, WifiOff, Lock, Eye, EyeOff,
+  Monitor, Download, Plus, Trash2, Pencil, Wifi, WifiOff, Lock, Eye, EyeOff,
   GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight, User,
   Plug, Sparkles, Zap, KeyRound,
 } from "lucide-react";
@@ -260,6 +260,10 @@ export default function SettingsPage() {
   const [modalModel, setModalModel]           = useState("");
   const [modalLabel, setModalLabel]           = useState("");
   const [modalApiKey, setModalApiKey]         = useState("");
+  // When non-null, the modal is in edit mode and PATCH-es this instance
+  // instead of creating a new one. Provider is locked (PATCH backend
+  // doesn't support changing it — would require deleting and recreating).
+  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const [modalOllamaModels, setModalOllamaModels] = useState<string[]>([]);
   const [modalSaving, setModalSaving]         = useState(false);
 
@@ -753,6 +757,7 @@ export default function SettingsPage() {
   // ---------------------------------------------------------------------------
 
   const openAddModal = () => {
+    setEditingInstanceId(null);
     setModalProvider("ollama");
     setModalModel("");
     setModalLabel("");
@@ -760,29 +765,74 @@ export default function SettingsPage() {
     setShowAddModal(true);
   };
 
-  const handleCreateInstance = async () => {
+  const openEditModal = (inst: LLMInstance) => {
+    setEditingInstanceId(inst.id);
+    setModalProvider(inst.provider);
+    setModalModel(inst.model);
+    setModalLabel(inst.label);
+    // API key field stays empty in edit mode — typing here replaces the
+    // stored key, leaving it blank keeps the existing one untouched.
+    setModalApiKey("");
+    setShowAddModal(true);
+  };
+
+  const closeModal = () => {
+    setShowAddModal(false);
+    setEditingInstanceId(null);
+  };
+
+  const handleSubmitInstance = async () => {
     if (modalSaving || !modalLabel.trim() || !modalModel.trim()) return;
     setModalSaving(true);
     try {
-      const body: { label: string; provider: string; model: string; api_key?: string } = {
-        label: modalLabel.trim(),
-        provider: modalProvider,
-        model: modalModel.trim(),
-      };
-      if (modalApiKey.trim()) body.api_key = modalApiKey.trim();
+      if (editingInstanceId) {
+        // ── PATCH (edit existing) ──────────────────────────────────────
+        // Provider is intentionally NOT sent — backend doesn't accept it
+        // on PATCH. label/model always sent, api_key only if user typed
+        // a new one (empty = keep existing key).
+        const body: { label: string; model: string; api_key?: string } = {
+          label: modalLabel.trim(),
+          model: modalModel.trim(),
+        };
+        if (modalApiKey.trim()) body.api_key = modalApiKey.trim();
 
-      const res = await authFetch(`${API_URL}/api/settings/llm/instances`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        push("error", err.detail ?? t("errorStatus", { status: res.status }));
-        return;
+        const res = await authFetch(
+          `${API_URL}/api/settings/llm/instances/${editingInstanceId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        );
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          push("error", err.detail ?? t("errorStatus", { status: res.status }));
+          return;
+        }
+        push("success", t("instanceUpdated"));
+      } else {
+        // ── POST (create new) ──────────────────────────────────────────
+        const body: { label: string; provider: string; model: string; api_key?: string } = {
+          label: modalLabel.trim(),
+          provider: modalProvider,
+          model: modalModel.trim(),
+        };
+        if (modalApiKey.trim()) body.api_key = modalApiKey.trim();
+
+        const res = await authFetch(`${API_URL}/api/settings/llm/instances`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          push("error", err.detail ?? t("errorStatus", { status: res.status }));
+          return;
+        }
+        push("success", t("instanceCreated"));
       }
-      push("success", t("instanceCreated"));
-      setShowAddModal(false);
+
+      closeModal();
       await loadInstances();
       // Refresh tier config to get updated instances list
       await loadTierConfig();
@@ -1191,13 +1241,24 @@ export default function SettingsPage() {
                               </div>
                             </div>
                           </div>
-                          <button
-                            onClick={() => handleDeleteInstance(inst.id)}
-                            className="shrink-0 text-text-muted hover:text-cyber-red transition-colors"
-                            title={t("delete")}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => openEditModal(inst)}
+                              className="text-text-muted hover:text-cyber-cyan transition-colors"
+                              title={t("edit")}
+                              aria-label={t("edit")}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteInstance(inst.id)}
+                              className="text-text-muted hover:text-cyber-red transition-colors"
+                              title={t("delete")}
+                              aria-label={t("delete")}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -2363,29 +2424,33 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Cpu className="w-4 h-4 text-cyber-cyan" />
-                <h3 className="text-sm font-medium text-text-primary">{t("addModel")}</h3>
+                <h3 className="text-sm font-medium text-text-primary">
+                  {editingInstanceId ? t("editModel") : t("addModel")}
+                </h3>
               </div>
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={closeModal}
                 className="text-text-muted hover:text-text-secondary transition-colors"
               >
                 <XCircle className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Step 1: Provider */}
+            {/* Step 1: Provider — locked in edit mode (PATCH backend
+                doesn't accept provider changes) */}
             <div className="space-y-2">
               <label className="text-xs text-text-muted uppercase tracking-wider">{t("providerLabel")}</label>
               <div className="grid grid-cols-2 gap-2">
                 {PROVIDERS.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => setModalProvider(p.id)}
+                    onClick={() => !editingInstanceId && setModalProvider(p.id)}
+                    disabled={!!editingInstanceId}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-xs transition-all ${
                       modalProvider === p.id
                         ? "bg-cyber-cyan/5 border-cyber-cyan/30 text-text-primary"
                         : "bg-bg-primary border-border-dim text-text-muted hover:border-text-muted"
-                    }`}
+                    } ${editingInstanceId ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     <span className="text-sm">{p.flag}</span>
                     <span className="truncate">{p.label}</span>
@@ -2439,12 +2504,12 @@ export default function SettingsPage() {
                   type="password"
                   value={modalApiKey}
                   onChange={(e) => setModalApiKey(e.target.value)}
-                  placeholder="sk-••••••••"
+                  placeholder={editingInstanceId ? t("apiKeyEditPlaceholder") : "sk-••••••••"}
                   autoComplete="new-password"
                   className="input"
                 />
                 <p className="text-[10px] text-text-muted">
-                  {t("apiKeyOptional")}
+                  {editingInstanceId ? t("apiKeyEditHint") : t("apiKeyOptional")}
                 </p>
               </div>
             )}
@@ -2464,17 +2529,19 @@ export default function SettingsPage() {
             {/* Actions */}
             <div className="flex items-center gap-3 pt-2">
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={closeModal}
                 className="flex-1 text-xs py-2 rounded border border-border-dim text-text-muted hover:text-text-secondary transition-all"
               >
                 {tc("cancel")}
               </button>
               <button
-                onClick={handleCreateInstance}
+                onClick={handleSubmitInstance}
                 disabled={modalSaving || !modalLabel.trim() || !modalModel.trim()}
                 className="flex-1 text-xs py-2 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {modalSaving ? t("creatingInstance") : t("createInstance")}
+                {modalSaving
+                  ? (editingInstanceId ? t("savingInstance") : t("creatingInstance"))
+                  : (editingInstanceId ? t("saveInstance") : t("createInstance"))}
               </button>
             </div>
           </div>
