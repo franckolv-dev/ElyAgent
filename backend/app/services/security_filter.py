@@ -95,6 +95,7 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "os_mouse_move",
     "desktop_write_file",
     "desktop_move_file",
+    "desktop_create_dir",
     # ── 6. Communications externes + partage ──
     "whatsapp_send",
     "whatsapp_send_template",

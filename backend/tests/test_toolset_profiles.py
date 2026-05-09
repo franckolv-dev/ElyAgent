@@ -33,12 +33,11 @@ def test_unknown_profile_falls_back_to_default(caplog):
 def test_default_profile_has_reasonable_size():
     """Profile size must stay in a reasonable window — bigger overwhelms
     small models (xLAM-2 8B drowned at 50+), smaller misses common workflows.
-    Bumped to 45 in 2026-05-09 after adding gmail_trash_*,
-    gmail_update_settings, drive_find_duplicates, drive_delete_file —
-    DeepSeek / Qwen Flash / Mistral Small handle 40-45 without measurable
-    degradation. xLAM-style fragile FC-tunes are no longer in the chain."""
+    Bumped to 55 in 2026-05-09 after adding 9 ELY Desktop filesystem tools.
+    DeepSeek / Mistral Small / Mistral Large handle 50+ tools comfortably;
+    xLAM-style fragile FC-tunes are no longer in the chain anyway."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 45, f"default has {len(tools)} tools (target 25-45)"
+    assert 25 <= len(tools) <= 55, f"default has {len(tools)} tools (target 25-55)"
 
 
 def test_default_profile_no_duplicates():
@@ -114,6 +113,55 @@ def test_default_profile_exposes_drive_delete_file():
     assert "drive_delete_file" in tools, (
         "drive_delete_file missing — user can find duplicates but not "
         "remove them, which is the obvious follow-up action"
+    )
+
+
+def test_default_profile_exposes_desktop_filesystem_tools():
+    """ELY Desktop = local filesystem access via the Go daemon. Without
+    these in the profile, asking « lis ce fichier sur mon Mac » makes the
+    LLM honestly answer « je ne peux pas » (good — no confabulation) but
+    leaves a useful capability locked behind a profile gap.
+
+    Read-only tools have no HITL gate (just sandbox check). Write tools
+    (write/move/delete/create_dir) are all in LOCKED_HITL_TOOLS, so even
+    when exposed they cannot fire without user confirmation."""
+    tools = set(get_profile_tool_names("default"))
+    read_tools = {
+        "desktop_list_dir",
+        "desktop_read_file",
+        "desktop_search_files",
+        "desktop_stat_file",
+        "desktop_hash_file",
+    }
+    write_tools = {
+        "desktop_write_file",
+        "desktop_move_file",
+        "desktop_delete_file",
+        "desktop_create_dir",
+    }
+    missing_read = read_tools - tools
+    missing_write = write_tools - tools
+    assert not missing_read, f"Desktop read tools missing: {missing_read}"
+    assert not missing_write, f"Desktop write tools missing: {missing_write}"
+
+
+def test_desktop_write_tools_are_hitl_locked():
+    """Belt-and-braces check: even if a future maintainer accidentally
+    removes a desktop write tool from LOCKED_HITL_TOOLS, this test catches
+    it. The four desktop write tools must remain user-confirmable, full
+    stop — they touch the user's disk."""
+    from app.services.hitl_preferences import LOCKED_HITL_TOOLS
+
+    write_tools = {
+        "desktop_write_file",
+        "desktop_move_file",
+        "desktop_delete_file",
+        "desktop_create_dir",
+    }
+    missing = write_tools - LOCKED_HITL_TOOLS
+    assert not missing, (
+        f"Desktop write tools must be locked into LOCKED_HITL_TOOLS, "
+        f"missing: {missing}"
     )
 
 

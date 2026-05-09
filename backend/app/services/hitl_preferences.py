@@ -38,9 +38,12 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     # future incoming mail — far more impactful than trashing 10 mails.
     # Forwarding can leak the inbox to a 3rd-party address. Always lock.
     "gmail_update_settings",
-    # Filesystem destructive
+    # Filesystem destructive — all four locked. The user always confirms
+    # before any change to local files; non-disableable per preferences.
     "desktop_delete_file",
     "desktop_write_file",   # overwrites existing files
+    "desktop_move_file",    # rename / move can clobber the destination
+    "desktop_create_dir",   # creates directories — low risk but still a write
     # Drive destructive
     "drive_delete_file",
     "drive_share_file",     # privacy-sensitive (could expose private docs)

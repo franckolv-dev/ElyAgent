@@ -112,6 +112,22 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # Natural follow-up to drive_find_duplicates: « OK, supprime ces 3 doublons ».
     # Already in LOCKED_HITL_TOOLS so user always confirms before action.
     "drive_delete_file",
+    # ELY Desktop — local filesystem access via the Go daemon. Sandboxed
+    # to the directories the user explicitly authorised in
+    # Paramètres → Intégrations → ELY Desktop. Daemon connection state
+    # is checked at tool-call time — when offline the tools return a
+    # clear « ELY Desktop n'est pas connecté » message.
+    # 5 read-only tools (no HITL):
+    "desktop_list_dir",
+    "desktop_read_file",
+    "desktop_search_files",
+    "desktop_stat_file",
+    "desktop_hash_file",
+    # 4 write tools (HITL forced — all in LOCKED_HITL_TOOLS):
+    "desktop_write_file",
+    "desktop_move_file",
+    "desktop_delete_file",
+    "desktop_create_dir",
     # Browser — capture + navigate + extract text
     "browser_navigate",
     "browser_screenshot",
