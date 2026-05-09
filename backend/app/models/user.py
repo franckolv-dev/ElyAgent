@@ -85,3 +85,12 @@ class User(Base):
     onboarding_skip_count: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0"
     )
+    # TTS preference — when False, the agent's text replies are NOT read
+    # aloud automatically by the avatar. Default True (legacy behaviour).
+    # The user can toggle the per-message « Voix active / muette » button
+    # on the avatar panel, and the choice now survives page reload.
+    # Voice INPUT (microphone) is a separate concept — the dedicated voice
+    # mode overlay handles its own enable/disable lifecycle.
+    tts_auto_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="1"
+    )

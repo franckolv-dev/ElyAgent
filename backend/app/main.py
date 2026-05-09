@@ -442,6 +442,10 @@ from app.routers import hitl_prefs as _hitl_prefs_router
 app.include_router(_hitl_prefs_router.router, prefix="/api")
 from app.routers import onboarding as _onboarding_router
 app.include_router(_onboarding_router.router, prefix="/api")
+# Voice / TTS preferences. The router already self-prefixes with
+# `/api/preferences`, so no extra prefix here.
+from app.routers import voice_prefs as _voice_prefs_router
+app.include_router(_voice_prefs_router.router)
 # Tier-aware licence enforcement (Phase 1) — router carries its own /api/licence prefix.
 from app.routers import licence as _licence_router
 app.include_router(_licence_router.router)

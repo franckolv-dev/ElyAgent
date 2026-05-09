@@ -24,6 +24,7 @@ import { TTSPlayer } from "@/lib/tts";
 import type { WSMessage } from "@/lib/types";
 import { useTranslations } from "next-intl";
 import { authFetch } from "@/lib/auth";
+import { api } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -71,7 +72,12 @@ function neuralScoreForModel(modelUsed: string): number {
 export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   const t = useTranslations("avatar");
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
+  // ttsEnabled persists per user (mai 2026 — was previously local state
+  // that reverted to true on every page reload). The TTS player itself is
+  // not engaged until prefsLoaded becomes true, to avoid speaking the
+  // first message of a session before we know the user's choice.
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [hitlAction, setHitlAction] = useState<{ id: string; description: string } | null>(null);
   const [hitlPending, setHitlPending] = useState<"allow" | "deny" | "ban" | null>(null);
   const [hitlError, setHitlError] = useState<string | null>(null);
@@ -138,6 +144,38 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
     ttsRef.current?.setEnabled(ttsEnabled);
   }, [ttsEnabled]);
 
+  // Load persisted TTS preference once at mount (fire-and-forget).
+  // If the user is not logged in or the API fails, we fall back to the
+  // default (enabled) — same behaviour as before this preference existed.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .voicePrefsGet()
+      .then((p) => {
+        if (!cancelled) setTtsEnabled(p.tts_auto_enabled);
+      })
+      .catch(() => {
+        // Auth not ready / network blip — keep default `true`.
+      })
+      .finally(() => {
+        if (!cancelled) setPrefsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Toggle handler — flips local state immediately for snappy UI, then
+  // persists in background. On API failure we revert so the UI stays
+  // truthful about the actual stored preference.
+  const toggleTts = () => {
+    const next = !ttsEnabled;
+    setTtsEnabled(next);
+    api.voicePrefsPatch({ tts_auto_enabled: next }).catch(() => {
+      setTtsEnabled(!next); // revert on failure
+    });
+  };
+
   useEffect(() => {
     if (!wsMessage) return;
 
@@ -186,7 +224,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       }
 
       setHitlAction(null);
-      if (ttsEnabled && wsMessage.content) ttsRef.current?.speak(wsMessage.content);
+      if (ttsEnabled && prefsLoaded && wsMessage.content) ttsRef.current?.speak(wsMessage.content);
       else setAvatarState("idle");
     }
     if (wsMessage.type === "error") {
@@ -196,7 +234,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       setSyncPercent(parseFloat((rate * 100).toFixed(1)));
       setAvatarState("idle");
     }
-  }, [wsMessage, ttsEnabled]);
+  }, [wsMessage, ttsEnabled, prefsLoaded]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)", width: "100%" }}>
@@ -240,7 +278,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       {/* ── Actions (TTS + état) ── */}
       <div className="avatar-actions">
         <button
-          onClick={() => setTtsEnabled((v) => !v)}
+          onClick={toggleTts}
           className={`avatar-action ${ttsEnabled ? "primary" : ""}`}
         >
           {ttsEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}

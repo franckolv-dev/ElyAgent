@@ -305,6 +305,19 @@ export const api = {
       body: JSON.stringify({ reason: reason ?? null }),
     }),
 
+  // ── Voice / TTS preferences ─────────────────────────────────────────────
+  /** Get the current user's voice preferences (default: tts_auto_enabled=true). */
+  voicePrefsGet: () =>
+    fetchAPI("/api/preferences/voice") as Promise<{ tts_auto_enabled: boolean }>,
+
+  /** Update one or more voice preferences. PATCH semantics — pass only the
+   * fields you want to change. Returns the post-update state. */
+  voicePrefsPatch: (patch: { tts_auto_enabled?: boolean }) =>
+    fetchAPI("/api/preferences/voice", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }) as Promise<{ tts_auto_enabled: boolean }>,
+
   // ── Licence enforcement (Phase 1) ────────────────────────────────────────
   /** Current licence state — drives the LicenceSection panel and global banner. */
   licenceStatus: () =>

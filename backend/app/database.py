@@ -65,6 +65,7 @@ async def init_db():
             ("users", "onboarding_skipped_at", "DATETIME"),
             ("users", "onboarding_step", "INTEGER NOT NULL DEFAULT 0"),
             ("users", "onboarding_skip_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("users", "tts_auto_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
             # Hermes Chantier 1 (audit 2026-05-07) — sticky toolset profile
             # per conversation. NULL until first message auto-detects it.
             ("conversations", "toolset_profile", "VARCHAR(40)"),
