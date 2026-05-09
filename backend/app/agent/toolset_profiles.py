@@ -99,7 +99,7 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "calendar_create_event",
     "calendar_list_events",
     "calendar_quick_add",
-    # Drive — create text files + list + read + find duplicates
+    # Drive — create text files + list + read + find duplicates + trash
     "drive_create_file",
     "drive_list_files",
     "drive_read_file",
@@ -108,6 +108,10 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # Compresses recursive walk + md5 grouping into 1 tool call → tractable
     # for any LLM, even Ministral 8B.
     "drive_find_duplicates",
+    # Trash a file by ID (NOT permanent — Drive keeps trashed files 30 days).
+    # Natural follow-up to drive_find_duplicates: « OK, supprime ces 3 doublons ».
+    # Already in LOCKED_HITL_TOOLS so user always confirms before action.
+    "drive_delete_file",
     # Browser — capture + navigate + extract text
     "browser_navigate",
     "browser_screenshot",

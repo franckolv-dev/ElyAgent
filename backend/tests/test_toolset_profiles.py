@@ -31,10 +31,14 @@ def test_unknown_profile_falls_back_to_default(caplog):
 
 
 def test_default_profile_has_reasonable_size():
-    """Profile size must stay in the 25-40 tool window — bigger overwhelms small
-    models, smaller misses common workflows."""
+    """Profile size must stay in a reasonable window — bigger overwhelms
+    small models (xLAM-2 8B drowned at 50+), smaller misses common workflows.
+    Bumped to 45 in 2026-05-09 after adding gmail_trash_*,
+    gmail_update_settings, drive_find_duplicates, drive_delete_file —
+    DeepSeek / Qwen Flash / Mistral Small handle 40-45 without measurable
+    degradation. xLAM-style fragile FC-tunes are no longer in the chain."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 40, f"default has {len(tools)} tools (target 25-40)"
+    assert 25 <= len(tools) <= 45, f"default has {len(tools)} tools (target 25-45)"
 
 
 def test_default_profile_no_duplicates():
@@ -97,6 +101,19 @@ def test_default_profile_exposes_drive_find_duplicates():
     assert "drive_find_duplicates" in tools, (
         "drive_find_duplicates missing — duplicate-finding scenarios will "
         "fall back to manual recursive listing and OOM small local models"
+    )
+
+
+def test_default_profile_exposes_drive_delete_file():
+    """drive_find_duplicates is useless without a way to act on the result.
+    Natural follow-up « OK, supprime ces doublons » needs drive_delete_file
+    in the toolset. The tool itself is a soft trash (30-day Drive recycle
+    bin) and is locked into LOCKED_HITL_TOOLS, so it cannot fire without
+    user confirmation."""
+    tools = set(get_profile_tool_names("default"))
+    assert "drive_delete_file" in tools, (
+        "drive_delete_file missing — user can find duplicates but not "
+        "remove them, which is the obvious follow-up action"
     )
 
 
