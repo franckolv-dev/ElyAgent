@@ -163,10 +163,18 @@ function ChatPageInner() {
 
   const { width: avatarWidth, onHandleMouseDown } = usePanelResize();
 
-  // Reactive URL params via Next.js hook
+  // Reactive URL params via Next.js hook.
+  // For « new conversation » we read the timestamp value (not just .has)
+  // so consecutive clicks on the « Nouvelle conversation » button — each
+  // pushing /chat?new=<Date.now()> with a different number — are seen as
+  // distinct param changes by React. A boolean .has() flag would stay
+  // `true` between the two clicks and the reset useEffect would never
+  // re-run (bug surfaced 2026-05-09: 2nd click did nothing, the WS stayed
+  // on the previous conv and the next message hit a 504 gateway timeout).
   const searchParams  = useSearchParams();
   const urlConvId     = searchParams.get("c") ?? undefined;
-  const isNewConv     = searchParams.has("new"); // ?new=<ts> → reset
+  const newConvToken  = searchParams.get("new"); // string | null — the timestamp
+  const isNewConv     = newConvToken !== null;
 
   useEffect(() => {
     const ws = new AgentWebSocket();
@@ -302,7 +310,11 @@ function ChatPageInner() {
     };
   }, []); // WebSocket lifecycle: mount once, disconnect on unmount
 
-  // React to URL param changes (new conv or load history)
+  // React to URL param changes (new conv or load history).
+  // `newConvToken` (the ?new=<ts> value, not just its existence) is in
+  // the dep array so each click on « Nouvelle conversation » is seen as
+  // a distinct change even when the previous URL was already on /chat
+  // with a ?new=… param. This was the « 2nd click does nothing » bug.
   useEffect(() => {
     if (isNewConv) {
       setMessages([]);
@@ -322,7 +334,7 @@ function ChatPageInner() {
         })
         .catch(() => {});
     }
-  }, [urlConvId, isNewConv]);
+  }, [urlConvId, isNewConv, newConvToken]);
 
   // -- Title rename helpers ---------------------------------------------------
   const startTitleEdit = () => {
