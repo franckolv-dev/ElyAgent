@@ -70,16 +70,51 @@ async def scheduler_create_task(
 ) -> str:
     """Create a new scheduled task that will run automatically.
 
-    The task executes the given prompt at the specified schedule and delivers
-    the result via the chosen channel.
+    The task executes the given `prompt` at the specified schedule, just as
+    if the user had typed it in the chat at that moment. The result is
+    delivered via the chosen `channel`. Use this tool whenever the user asks
+    to « programmer », « planifier », « rappeler », « envoyer plus tard »,
+    « me notifier dans X heures/jours », « dans 3 jours ouvrés », etc.
+
+    The `prompt` field can request ANY action ELY can normally perform —
+    not just summaries. This includes sending an email, taking a screenshot,
+    running a web search, listing emails, creating a calendar event, etc.
 
     Args:
-        name: Short name for the task (e.g. "Résumé emails du matin")
-        prompt: The prompt to execute (e.g. "Liste mes 5 derniers emails non lus et fais un résumé")
-        cron_expression: Standard cron expression with 5 fields: minute hour day month day_of_week.
-            Examples: '0 8 * * 1-5' (weekdays 8am), '30 9 * * *' (daily 9:30am),
-            '0 20 * * 0' (Sunday 8pm), '0 */2 * * *' (every 2 hours)
-        channel: Delivery channel — 'web' for browser notification, 'telegram' for Telegram message
+        name: Short name for the task (e.g. "Rappel livraison Gert").
+        prompt: The natural-language instruction to execute at run time.
+            Examples:
+              - One-shot reminder that triggers an email :
+                « Envoie un email à gert@example.com en lui rappelant
+                la livraison du colis prévue cette semaine »
+              - Recurring summary :
+                « Liste mes 5 derniers emails non lus et fais un résumé »
+              - Recurring web check :
+                « Vérifie les news IA d'hier et fais-moi un résumé en 5 lignes »
+        cron_expression: Standard cron with 5 fields: minute hour day month day_of_week.
+
+            ── RECURRING tasks (most common case) ──
+              '0 8 * * 1-5'    weekdays 8am
+              '30 9 * * *'     daily 9:30am
+              '0 20 * * 0'     Sunday 8pm
+              '0 */2 * * *'    every 2 hours
+
+            ── ONE-SHOT tasks (specific date + time) ──
+            Set the day and month explicitly; leave the others as «*».
+              '0 8 14 5 *'     8 am on May 14th
+              '30 9 27 12 *'   9:30 am on December 27th
+
+            ⚠️ « Dans X jours ouvrés », « la semaine prochaine », « demain
+            matin » must be converted to an ABSOLUTE date BEFORE building
+            the cron. Use the current date (provided at the top of your
+            prompt) and SKIP Saturdays / Sundays when counting « jours
+            ouvrés ». Example reasoning for « dans 3 jours ouvrés à 8h »
+            starting from a Monday: Tue=1, Wed=2, Thu=3 → cron `0 8 <Thu> <month> *`.
+            Starting from a Saturday: Mon=1, Tue=2, Wed=3 → cron uses Wednesday.
+
+        channel: 'web' (default — browser notification + accumulated in the
+            « Missions » tab) or 'telegram' (Telegram message via the
+            linked bot).
     """
     from croniter import croniter
     if not croniter.is_valid(cron_expression):
