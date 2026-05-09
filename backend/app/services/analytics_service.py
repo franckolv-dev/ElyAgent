@@ -43,10 +43,17 @@ _PRICING: dict[str, tuple[float, float]] = {
     "glm-4-plus": (0.07, 0.07),
     "glm-4-air":  (0.014, 0.014),
     "glm-4-flash":(0.0, 0.0),    # gratuit
-    # Mistral
+    # Mistral (USD per 1M tokens, non-cached input). The `*-latest` aliases
+    # track Mistral's newest tagged release; pricing here is the historical
+    # tier price — Mistral keeps it stable across generations within a tier.
     "mistral-small-latest": (0.2, 0.6),
     "mistral-medium-latest": (2.7, 8.1),
     "mistral-large-latest": (8.0, 24.0),
+    # Magistral reasoning family — slightly more expensive than the
+    # standard medium tier because of the longer reasoning trace.
+    "magistral-medium-2509": (3.0, 9.0),
+    # Codestral — code-focused, similar tier to small.
+    "codestral-latest": (0.3, 0.9),
     # DeepSeek (USD per 1M tokens, non-cached input)
     # v4 family — 1M context, tool calling supported, current generation.
     # Pricing as of mai 2026 — DeepSeek runs frequent promo discounts so

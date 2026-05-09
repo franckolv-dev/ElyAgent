@@ -113,7 +113,21 @@ PROVIDERS_META = [
         "name": "Mistral AI",
         "env_key": "MISTRAL_API_KEY",
         "config_key": "api_key_mistral",
-        "models": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
+        # The `*-latest` aliases auto-track Mistral's newest tagged release
+        # so they keep working without a code change when Mistral ships
+        # a new generation. As of mai 2026 they resolve to:
+        #   mistral-large-latest   → mistral-large-3-25-12
+        #   mistral-medium-latest  → mistral-medium-3-5-26-04
+        #   mistral-small-latest   → mistral-small-4-0-26-03
+        # Magistral is the reasoning family — pinned because no -latest alias.
+        # Codestral is the code-focused model.
+        "models": [
+            "mistral-large-latest",
+            "mistral-medium-latest",
+            "mistral-small-latest",
+            "magistral-medium-2509",
+            "codestral-latest",
+        ],
     },
     {
         "id": "openrouter",
