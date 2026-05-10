@@ -30,7 +30,38 @@ class Base(DeclarativeBase):
 # pydantic-settings reads .env at that moment, which happens when this
 # module is first imported (during the uvicorn startup sequence, after
 # the working directory is already correct).
-engine = create_async_engine(get_settings().database_url, echo=False)
+def _make_engine():
+    settings = get_settings()
+    url = settings.database_url
+    # SQLite-specific tuning — safe to apply, ignored for PostgreSQL URLs.
+    if url.startswith("sqlite"):
+        from sqlalchemy import event
+        _engine = create_async_engine(
+            url,
+            echo=False,
+            connect_args={
+                "timeout": 30,          # busy-wait up to 30s instead of raising immediately
+                "check_same_thread": False,
+            },
+        )
+        # Enable WAL mode and increase cache on every new connection.
+        # WAL allows concurrent readers while a write is in progress —
+        # critical once several users are active simultaneously.
+        @event.listens_for(_engine.sync_engine, "connect")
+        def _set_sqlite_pragma(dbapi_conn, _record):
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA busy_timeout=30000")   # ms — belt-and-suspenders
+            cur.execute("PRAGMA synchronous=NORMAL")    # safe with WAL, faster than FULL
+            cur.execute("PRAGMA cache_size=-32000")     # 32 MB page cache
+            cur.execute("PRAGMA foreign_keys=ON")
+            cur.close()
+        return _engine
+    # PostgreSQL / other — no special args needed.
+    return create_async_engine(url, echo=False)
+
+
+engine = _make_engine()
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
