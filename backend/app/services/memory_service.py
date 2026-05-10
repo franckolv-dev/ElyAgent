@@ -219,6 +219,8 @@ async def extract_and_store_facts(
 _PROFILE_CORE_KEYS: frozenset[str] = frozenset({
     "user_name", "preferred_language", "response_style",
     "main_project", "email_provider", "timezone_reminder",
+    # Onboarding-sourced keys — always injected so agent knows them from turn 1
+    "location", "profession", "routines", "strict_rules",
 })
 
 # Keys we deliberately SKIP in the compact injection — they're too

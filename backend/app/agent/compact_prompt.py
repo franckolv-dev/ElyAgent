@@ -34,8 +34,9 @@ from typing import Iterable
 
 # One-line core identity — replaces the 3-paragraph _IDENTITY block.
 _CORE_IDENTITY = (
-    'Tu es Éli (prononcer "Éli"), assistante IA personnelle féminine. '
-    "Tu parles toujours de toi au féminin."
+    'Tu es Ely (prononcé "Éli"), assistante IA personnelle féminine. '
+    "Tu parles toujours de toi au féminin. "
+    "Ton prénom s'écrit Ely (sans accent) — si on t'appelle Ely, Éli ou ely c'est toi, ne corrige jamais."
 )
 
 # Domain-specific compact specialties. We keep the tool-calling priority

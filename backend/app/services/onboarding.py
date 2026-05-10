@@ -348,21 +348,36 @@ _MAPPING_RE = re.compile(r"\s*([^=:→\->\n]+?)\s*(?:=|:|→|->)\s*([^;,\n]+)\s*
 async def _persist_answer(user_id: str, question: OnboardingQuestion, answer: str) -> None:
     """Dispatch by question id to the right storage strategy.
 
-    Every answer is also stored as a generic memory fact so the agent can
-    surface it via memory search.
+    Every answer is stored in two ways:
+    1. As a semantic memory fact (Qdrant) — surfaced via RAG when contextually relevant.
+    2. As a structured UserProfile row (SQLite) — immediately injected into every
+       system prompt via get_user_context(), no need to wait for the cron consolidation.
     """
-    # Always store the raw fact
+    # 1. Semantic memory (Qdrant) — use store_memory, not the non-existent store_fact
     try:
         from app.services.memory_manager import get_memory_manager
-        await get_memory_manager().store_fact(
+        await get_memory_manager().store_memory(
             content=f"[Onboarding/{question.id}] {answer[:500]}",
             user_id=user_id,
-            category="preference",
+            extra_payload={"category": "preference", "source": "onboarding"},
         )
     except Exception as exc:
         logger.debug("Onboarding memory store failed: %s", exc)
 
-    # Question-specific extraction → user_vocabulary
+    # 2. Structured UserProfile rows — available immediately in get_user_context()
+    #    Map each question to the profile key that get_user_context() will inject.
+    _profile_key_map: dict[str, str] = {
+        "preferred_name": "user_name",
+        "response_style": "response_style",
+        "location":       "location",
+        "profession":     "profession",
+        "routines":       "routines",
+        "strict_rules":   "strict_rules",
+    }
+    if question.id in _profile_key_map:
+        await _upsert_user_profile(user_id, _profile_key_map[question.id], answer)
+
+    # 3. Question-specific extraction → user_vocabulary (fast lookup for term mapping)
     try:
         if question.id == "vocabulary":
             await _store_vocab_mappings(user_id, question.domain, answer)
@@ -374,9 +389,42 @@ async def _persist_answer(user_id: str, question: OnboardingQuestion, answer: st
             await _store_single_vocab(user_id, "general", "préféré_nom_utilisateur", answer)
         elif question.id == "response_style":
             await _store_single_vocab(user_id, "general", "style_de_réponse_préféré", answer)
-        # routines & strict_rules → memory only (already done above)
     except Exception as exc:
         logger.warning("Onboarding answer persistence failed for %s: %s", question.id, exc)
+
+
+async def _upsert_user_profile(user_id: str, key: str, value: str) -> None:
+    """Write (or overwrite) a UserProfile fact directly — bypasses the consolidation
+    cron so data is available in the very next conversation turn."""
+    try:
+        from app.database import async_session
+        from app.models.user_memory import UserProfile
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        async with async_session() as db:
+            # Use INSERT OR REPLACE semantics via merge
+            result = await db.execute(
+                __import__("sqlalchemy", fromlist=["select"]).select(UserProfile).where(
+                    UserProfile.user_id == user_id,
+                    UserProfile.key == key,
+                )
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                db.add(UserProfile(
+                    user_id=user_id,
+                    key=key,
+                    value=value[:500],
+                    confidence=1.0,
+                    source_count=1,
+                ))
+            else:
+                row.value = value[:500]
+                row.confidence = 1.0
+                row.source_count = (row.source_count or 0) + 1
+            await db.commit()
+    except Exception as exc:
+        logger.warning("Onboarding UserProfile upsert failed for key=%s: %s", key, exc)
 
 
 async def _store_vocab_mappings(user_id: str, domain: str, answer: str) -> None:
