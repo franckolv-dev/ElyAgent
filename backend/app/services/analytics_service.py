@@ -228,7 +228,7 @@ async def get_provider_breakdown(user_id: str, days: int = 30) -> list[dict]:
                 UsageLog.timestamp >= since,
                 UsageLog.provider.isnot(None),
             ).group_by(UsageLog.provider, UsageLog.model)
-            .order_by(func.sum(UsageLog.total_tokens).desc())
+            .order_by(func.count(UsageLog.id).desc())
         )
         rows = result.all()
 

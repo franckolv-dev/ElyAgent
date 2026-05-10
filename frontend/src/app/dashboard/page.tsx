@@ -395,8 +395,9 @@ export default function DashboardPage() {
                 <p className="text-sm text-text-muted text-center py-4">{t("noData")}</p>
               ) : (
                 <div className="space-y-3">
-                  {llmProviders.map((p) => {
-                    const maxTokens = Math.max(...llmProviders.map((x) => x.tokens), 1);
+                  {(() => {
+                    const maxRequests = Math.max(...llmProviders.map((x) => x.requests), 1);
+                    const LOCAL_PROVIDERS = new Set(["ollama", "lmstudio", "local"]);
                     const PROVIDER_COLORS: Record<string, string> = {
                       anthropic: "bg-cyber-cyan",
                       zhipu:     "bg-violet-500",
@@ -404,25 +405,31 @@ export default function DashboardPage() {
                       mistral:   "bg-orange-400",
                       deepseek:  "bg-purple-500",
                       ollama:    "bg-emerald-500",
+                      lmstudio:  "bg-emerald-500",
+                      local:     "bg-emerald-500",
                       moonshot:  "bg-indigo-500",
                     };
-                    const color = PROVIDER_COLORS[p.provider] ?? "bg-text-muted";
-                    return (
-                      <div key={`${p.provider}-${p.model}`} className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-text-secondary font-medium">{p.provider}</span>
-                          <span className="text-text-muted text-[10px] truncate max-w-[120px]">{p.model}</span>
-                          <span className="text-text-muted ml-2">{p.requests} req · {formatCost(p.cost)}</span>
+                    return llmProviders.map((p) => {
+                      const color = PROVIDER_COLORS[p.provider] ?? "bg-text-muted";
+                      const isLocal = LOCAL_PROVIDERS.has(p.provider);
+                      const costLabel = isLocal ? "0€" : formatCost(p.cost);
+                      return (
+                        <div key={`${p.provider}-${p.model}`} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-text-secondary font-medium">{p.provider}</span>
+                            <span className="text-text-muted text-[10px] truncate max-w-[120px]">{p.model}</span>
+                            <span className="text-text-muted ml-2">{p.requests} req · {costLabel}</span>
+                          </div>
+                          <div className="h-1.5 bg-bg-primary rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${color} rounded-full transition-all`}
+                              style={{ width: `${(p.requests / maxRequests) * 100}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="h-1.5 bg-bg-primary rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${color} rounded-full transition-all`}
-                            style={{ width: `${(p.tokens / maxTokens) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               );
               })()}
