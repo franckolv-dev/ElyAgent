@@ -230,7 +230,7 @@ class HITLManager:
         # See https://docs.ntfy.sh/publish/#publish-as-json
         payload = {
             "topic": settings.ntfy_topic or "ely",
-            "title": "Action requise — Éli",
+            "title": "Action requise — Ely",
             "message": description[:4000],
             "priority": 5,
             "tags": ["warning", "robot"],

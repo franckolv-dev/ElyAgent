@@ -1,7 +1,7 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/onboarding.py
-# @brief      Conversational onboarding — Éli learns the user's vocabulary at
+# @brief      Conversational onboarding — Ely learns the user's vocabulary at
 #             first login (preferred name, communication style, Gmail labels,
 #             calendar names, vocabulary mappings, routines, strict rules).
 #
@@ -17,7 +17,7 @@ mailings » = newsletters, « boulot » = the « Travail Pro » calendar,
 each time — and sometimes guesses wrong with destructive consequences
 (see May 2026 Temu incident).
 
-Flow : at first login, Éli pushes a guided sequence of ~7 questions in
+Flow : at first login, Ely pushes a guided sequence of ~7 questions in
 the chat. Each answer is :
   - Stored as a `fact` in `memory_manager` (long-term semantic memory)
   - Mapped into `user_vocabulary` rows when relevant (fast lookup at
@@ -27,7 +27,7 @@ the chat. Each answer is :
 Resumable : `User.onboarding_step` tracks the next question index, so
 closing the tab mid-flow keeps progress.
 
-A separate Settings page (« Mon profil Éli ») lets the user revise
+A separate Settings page (« Mon profil Ely ») lets the user revise
 their answers anytime — also accessible via `/api/onboarding/restart`.
 """
 from __future__ import annotations
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 class OnboardingQuestion:
     """Definition of a single onboarding step."""
     id: str                              # stable id, e.g. "preferred_name"
-    text: str                            # what Éli says to the user
+    text: str                            # what Ely says to the user
     placeholder: str = ""                # input placeholder hint
     skippable: bool = True               # show "Plus tard" button
     domain: str = "general"              # used for vocabulary entries
@@ -62,7 +62,7 @@ QUESTIONS: list[OnboardingQuestion] = [
     OnboardingQuestion(
         id="preferred_name",
         text=(
-            "Bonjour ! Je suis Éli, ton assistante. Je vais te poser quelques "
+            "Bonjour ! Je suis Ely, ton assistante. Je vais te poser quelques "
             "questions rapides pour mieux te connaître — ça me permettra de "
             "comprendre ce que tu me demandes plus précisément, sans te faire "
             "répéter à chaque fois.\n\n"
