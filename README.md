@@ -6,10 +6,10 @@
 
 # ELY
 
-### A self-hosted AI agent that anonymises sensitive data *before* any LLM call.
+### The self-hosted AI agent that keeps your data in Europe — and never acts without your green light.
 
-Multi-user · multi-channel · GDPR-native · HITL on every irreversible action.
-Built for individuals, families and SMBs that can't afford to leak data to third-party AI.
+**EU-sovereign by default** · multi-user · multi-channel · GDPR-native · HITL on every irreversible action.
+PII anonymised before every LLM call · anti-confabulation guard · 374 tests green.
 
 [**Website**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
@@ -42,14 +42,16 @@ Most AI agents send your raw data — emails, IBANs, client names, medical notes
 <tr>
 <td width="50%" valign="top">
 
-### 🛡️ PII never reaches the LLM
-Emails, IBANs, credit cards, API tokens, phone numbers, French SIRET — automatically detected and replaced with deterministic placeholders **before** any prompt is built. The model sees `[EMAIL_0]`. You see the real value. **Native, not a plugin. Cannot be silently disabled.**
+### 🛡️ PII never reaches the LLM — and ELY never invents facts
+Emails, IBANs, credit cards, API tokens, phone numbers, French SIRET — detected and replaced with deterministic placeholders **before** any prompt is built. The LLM sees `[EMAIL_0]`. You see the real value. **Native, not a plugin. Cannot be silently disabled.**
+
+Plus a hard-coded anti-confabulation rule in every system prompt: if a tool returns 0 results, ELY says so — it never invents events, contacts or files.
 
 </td>
 <td width="50%" valign="top">
 
 ### ✋ HITL on every irreversible action
-Mail send, file delete, SSH command, sharing — every destructive tool pauses for explicit approval. Same UX on web, Telegram, Slack, Outlook, mobile push. Approve once · deny once · **ban permanently**, persisted across sessions.
+Mail send, file delete, SSH command, sharing — every destructive tool pauses for explicit approval. Same UX on web, Telegram, Slack, mobile push. Approve once · deny once · **ban permanently**, persisted across sessions.
 
 </td>
 </tr>
@@ -62,8 +64,11 @@ A single deployment serves a family, a team, or a small business. Each user has 
 </td>
 <td width="50%" valign="top">
 
-### ⚡ Hybrid local / cloud routing
-Simple and medium tasks route to your local model (Ollama, LM Studio MLX). Complex tasks reach a cloud API — only after PII has been masked. **Configurable per complexity tier, no code, no restart.**
+### 🇪🇺 EU-sovereign by default
+**Tier A:** Ministral 3B runs entirely on your hardware — zero cloud, zero latency.  
+**Tiers B/C:** Mistral AI (Paris, France) — your data never leaves Europe.  
+**100 % EU mode:** enable it in Settings for absolute sovereignty on every tier.  
+Auto-fallback chain if any provider goes down. Configurable per tier, no restart.
 
 </td>
 </tr>
@@ -75,20 +80,24 @@ Simple and medium tasks route to your local model (Ollama, LM Studio MLX). Compl
 
 We respect what other projects do well. We're explicit about where we draw the line.
 
-| | **ELY** | Other self-hosted agents | Hosted AI assistants |
-|---|:---:|:---:|:---:|
-| Self-hosted on your hardware | ✅ | ✅ | ❌ |
-| **PII anonymised before LLM call** | ✅ Native | ⚠️ Plugin or absent | ❌ |
-| **HITL on by default, not removable** | ✅ Structural | ⚠️ Configurable | N/A |
-| **Multi-user (family / team / SMB)** | ✅ | ❌ Mostly single-user | ✅ (vendor cloud) |
-| **Hybrid local / cloud routing** | ✅ Explicit tiers | ⚠️ Manual / partial | ❌ |
-| Native mobile apps (iOS + Android) | ✅ | ❌ Rare | ✅ |
-| Encrypted vault (zero-knowledge) | ✅ AES-256-GCM | ❌ Rare | ❌ |
-| Native French interface | ✅ | ⚠️ Often EN-only | ⚠️ Partial |
-| License | Source-available | Varies | Proprietary |
-| Commercial licence available | ✅ | Varies | N/A |
+| | **ELY** | **OpenClaw** | **Hermes-based agents** | Hosted (REMY / Copilot) |
+|---|:---:|:---:|:---:|:---:|
+| Self-hosted on your hardware | ✅ | ✅ | ⚠️ Model only | ❌ |
+| **PII anonymised before LLM call** | ✅ Native | ❌ | ❌ | ❌ |
+| **HITL — structural, non-bypassable** | ✅ | ⚠️ Optional | ❌ Auto-executes | N/A |
+| **EU-sovereign routing by default** | ✅ Mistral AI (Paris) | ❌ US APIs | ❌ US | ❌ US |
+| **Anti-confabulation guard** | ✅ Built-in rule | ❌ | ⚠️ Model-dependent | ❌ |
+| **Multi-user (family / team / SMB)** | ✅ | ❌ Single-user | ❌ | ✅ Vendor cloud |
+| **Full Google Workspace (8 domains)** | ✅ | ⚠️ Partial | ❌ | ✅ Vendor |
+| Native mobile apps (iOS + Android) | ✅ | ❌ | ❌ | ✅ Vendor |
+| Desktop daemon (local file ops, HITL) | ✅ Go daemon | ❌ | ❌ | ❌ |
+| Encrypted vault (zero-knowledge) | ✅ AES-256-GCM | ❌ | ❌ | ❌ |
+| Native French interface | ✅ | ❌ EN only | ❌ EN only | ⚠️ Partial |
+| License | Source-available | Open-source | Model licence | Proprietary |
 
-> **Honest take.** Other self-hosted agents have larger communities and more channel adapters. **If you handle data you can't afford to leak — yours, your family's, your clients' — ELY's anonymisation pipeline and structural HITL are why you'd pick it over the alternatives.**
+> **Honest take.** OpenClaw has a larger community. Hermes-style skill auto-generation is genuinely powerful — we've intentionally deferred code-generated skills to v2.0 (sandbox + security review to avoid RCE-by-design). **What neither offers: PII anonymisation that's structural and non-bypassable, EU-sovereign routing out of the box, HITL bans that persist across sessions, and a complete product UI on web + mobile + voice.**
+>
+> → [Real benchmark numbers and sovereignty architecture →](https://agent-ely.fr/sovereignty.html)
 
 ---
 
@@ -147,8 +156,9 @@ A real product UI on every surface — **not a terminal dressed as a website.** 
 <details>
 <summary><strong>🤖 Multi-LLM engine</strong> — bring your own keys, route by complexity</summary>
 
-Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/SYS) to a model. Switch any time, no restart. Local models (Ollama, LM Studio) get auto-detected compact prompts so 7B models actually obey `tool_choice="required"`.
+Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/SYS) to a model. Switch any time, no restart. Local models get auto-detected compact prompts so smaller models actually obey `tool_choice="required"`.
 
+- **Default sovereign stack:** Ministral 3B local (Tier A) · Mistral Small 4 / Large 3, Mistral AI Paris 🇫🇷 (Tiers B/C) · DeepSeek v4-flash for vision — [benchmark →](https://agent-ely.fr/sovereignty.html)
 - **Cloud:** OpenAI · Anthropic · Gemini · Qwen API · Moonshot Kimi K2.x · Mistral · DeepSeek · Zhipu · OpenRouter
 - **Local:** Ollama · LM Studio (MLX on Apple Silicon)
 - **Auto-fallback** if a provider goes down — disable per-tier for pure-local testing.
@@ -247,7 +257,7 @@ A multi-channel, multi-user, hybrid local/cloud agent built on FastAPI + LangGra
 
 ## Roadmap
 
-**Sprint 0** ✅ *May 2026* — Public launch. UI refresh, multi-domain routing, mono-agent toggle, Moonshot Kimi K2.x, anti-hallucination guards, 92/92 tests green.
+**Sprint 0** ✅ *May 2026* — Public launch. EU sovereign stack (Mistral-first, 3/4 tiers in EU), ELY Desktop daemon (Go, local file ops + HITL), drive dedup server tool, anti-confabulation rule, DeepSeek thinking-mode fix, TTS sanitizer, 374/374 tests green.
 
 **Sprint 1** *June 2026* — Cross-conversation memory recall (FTS5 + LLM-summarised retrieval). Biggest perceived-value sprint of the year.
 
