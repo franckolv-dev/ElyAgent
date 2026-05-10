@@ -19,14 +19,36 @@ import { authFetch } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/** Authenticated fetch — adds Bearer token, retries once after token refresh. */
 async function fetchAPI(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
 
-  // authFetch adds Authorization header and retries once after token refresh
   const res = await authFetch(`${API_URL}${path}`, { ...options, headers });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `API error: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Public (unauthenticated) fetch — plain fetch, no Bearer token, no token refresh.
+ * Used for /auth/login and /auth/register so that a wrong-password 401 is returned
+ * as-is to the caller instead of being intercepted by authFetch and rewritten as
+ * "Session expirée".
+ */
+async function fetchPublic(path: string, options: RequestInit = {}) {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -38,13 +60,13 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
 
 export const api = {
   login: (username: string, password: string) =>
-    fetchAPI("/auth/login", {
+    fetchPublic("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
 
   register: (username: string, email: string, password: string) =>
-    fetchAPI("/auth/register", {
+    fetchPublic("/auth/register", {
       method: "POST",
       body: JSON.stringify({ username, email, password }),
     }),

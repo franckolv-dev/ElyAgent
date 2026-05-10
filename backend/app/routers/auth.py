@@ -46,7 +46,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         key=_COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="strict",
+        samesite="lax",   # "strict" broke Safari + redirect flows; "lax" is sufficient
         max_age=_COOKIE_MAX_AGE,
         secure=settings.cookie_secure,
         path="/",

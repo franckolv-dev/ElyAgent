@@ -49,8 +49,27 @@ export function clearTokens() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/**
+ * Returns true only if a non-expired access token exists in localStorage.
+ * A token present but past its `exp` claim is treated as absent so the caller
+ * is redirected to /login rather than hitting a guaranteed 401 on the next request.
+ */
 export function isAuthenticated(): boolean {
-  return getAccessToken() !== null;
+  const token = getAccessToken();
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) {
+      // Token expired — clear it so subsequent checks don't loop
+      clearTokens();
+      return false;
+    }
+    return true;
+  } catch {
+    // Malformed token — treat as unauthenticated
+    clearTokens();
+    return false;
+  }
 }
 
 /**
