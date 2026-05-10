@@ -30,17 +30,17 @@ interface RecentConv {
 const PAGE_SIZE = 50;
 
 const BASE_NAV = [
-  { href: "/chat",      labelKey: "navChat",        icon: MessageSquare },
-  { href: "/missions",  labelKey: "navMissions",    icon: Target        },
-  { href: "/knowledge", labelKey: "navKnowledge",   icon: BookOpen      },
-  { href: "/arena",     labelKey: "navArena",       icon: Swords        },
-  { href: "/settings",  labelKey: "navSettings",    icon: Settings      },
+  { href: "/chat",       labelKey: "navChat",       icon: MessageSquare  },
+  { href: "/missions",   labelKey: "navMissions",   icon: Target         },
+  { href: "/knowledge",  labelKey: "navKnowledge",  icon: BookOpen       },
+  { href: "/arena",      labelKey: "navArena",      icon: Swords         },
+  { href: "/dashboard",  labelKey: "navDashboard",  icon: LayoutDashboard },
+  { href: "/settings",   labelKey: "navSettings",   icon: Settings       },
 ];
 
 const ADMIN_NAV = [
-  { href: "/dashboard", labelKey: "navDashboard", icon: LayoutDashboard },
-  { href: "/security",  labelKey: "navSecurity",  icon: ShieldCheck     },
-  { href: "/admin",     labelKey: "navAdmin",     icon: Shield          },
+  { href: "/security",  labelKey: "navSecurity",  icon: ShieldCheck },
+  { href: "/admin",     labelKey: "navAdmin",     icon: Shield      },
 ];
 
 export function Sidebar() {

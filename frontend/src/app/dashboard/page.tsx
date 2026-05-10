@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { AdminGuard } from "@/components/layout/AuthGuard";
+import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { api } from "@/lib/api";
@@ -223,7 +223,7 @@ export default function DashboardPage() {
   const totalHitl = (hitl?.allow ?? 0) + (hitl?.deny ?? 0) + (hitl?.ban ?? 0);
 
   return (
-    <AdminGuard>
+    <AuthGuard>
       <div className="flex flex-col h-screen overflow-hidden">
         <Header />
         <div className="flex flex-1 overflow-hidden">
@@ -515,6 +515,6 @@ export default function DashboardPage() {
           </main>
         </div>
       </div>
-    </AdminGuard>
+    </AuthGuard>
   );
 }
