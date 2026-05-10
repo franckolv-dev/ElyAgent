@@ -197,7 +197,7 @@ async def logout(
     response.delete_cookie(
         key=_COOKIE_NAME,
         path="/",
-        samesite="strict",
+        samesite="lax",   # Must match _set_refresh_cookie — mismatched SameSite can prevent deletion in Safari
         secure=settings.cookie_secure,
         httponly=True,
     )

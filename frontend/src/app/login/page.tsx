@@ -22,7 +22,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import { api } from "@/lib/api";
-import { saveTokens } from "@/lib/auth";
+import { clearTokens, saveTokens } from "@/lib/auth";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { GlowOrb } from "@/components/ui/GlowEffect";
@@ -39,6 +39,9 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    // Clear any stale token before login — prevents stale state from a previous
+    // session (or a different user) from interfering with the new session.
+    clearTokens();
     try {
       const tokens = await api.login(form.username, form.password);
       saveTokens(tokens);
