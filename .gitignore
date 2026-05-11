@@ -90,6 +90,35 @@ gemini-report.md
 *.private.md
 .canaries.*
 
+# ════════════════════════════════════════════════════════════════════════
+# INTERNAL DOCS — NEVER PUSH TO PUBLIC REPO
+# These files contain strategy, internal infrastructure references,
+# concurrent analyses, debug journals — kept locally only.
+# Added 2026-05-11 during pre-public-launch security purge.
+# ════════════════════════════════════════════════════════════════════════
+CLAUDE.md
+AUDIT_REPORT.md
+/TESTING.md
+docs/memory.md
+docs/LAUNCH_PLAN.md
+docs/teasingELY.md
+docs/roadmap-post-launch.md
+docs/plan-hermes.md
+docs/audits/
+docs/TEST_REPORT_*.md
+docs/auto-amelioration.md
+docs/optimisation-Ely-Gemini.md
+launch-drafts/
+test-runner/
+frontend/.env.local
+frontend/.env.production.local
+frontend/.env.development.local
+
+# Backup directories (sometimes created when debugging)
+TO_DELETE/
+*.bak.20*
+*.tar.gz
+
 # ELY Desktop binaries — too large for git (~5 MB each), distributed via
 # GitHub Releases attached to each tag. Keep the dist/ folder placeholder so
 # Docker volume mount doesn't fail on a fresh clone before binaries are built.
