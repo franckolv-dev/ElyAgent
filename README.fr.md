@@ -34,36 +34,65 @@ Conçu pour les particuliers, les familles et les PME qui ne peuvent pas se perm
 
 ---
 
-## Pourquoi ELY
+## Pourquoi ELY existe
 
-La plupart des agents IA envoient vos données brutes — e-mails, IBAN, noms de clients, notes médicales — directement à un LLM tiers. L'écosystème des agents a grandi vite en 2025-2026 ; la sécurité, non. ELY repose sur trois choix de conception non négociables :
+Les agents IA cloud — ChatGPT, Claude, Gemini, le futur Google Remy, OpenAI Operator, Microsoft Copilot — sont puissants, mais ils partagent tous la même architecture : **vos données brutes partent vers un serveur tiers aux États-Unis.** E-mails, IBAN, noms de clients, dossiers médicaux, projets de contrats — tout transite par des modèles que vous ne contrôlez pas, dans des juridictions qui ne sont pas la vôtre.
+
+Pour un particulier curieux, c'est un compromis. **Pour un cabinet d'avocats, un cabinet médical, une PME qui traite des contrats ou des dossiers clients — c'est un non-sujet.** Le secret professionnel, le RGPD, les secteurs réglementés ne permettent pas ce compromis.
+
+ELY est la réponse pour les particuliers et les organisations qui ont besoin d'un agent IA **qui tourne sur leur matériel, anonymise les données sensibles avant tout appel modèle, demande l'autorisation avant chaque action irréversible, et respecte la souveraineté européenne par défaut.**
+
+---
+
+## Les quatre piliers
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### Les données sensibles n'atteignent jamais le LLM
-E-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone, SIRET — détectés et remplacés par des placeholders déterministes **avant** la construction du prompt. Le modèle voit `[EMAIL_0]`. Vous voyez la vraie valeur. **Natif, pas un plugin. Ne peut pas être désactivé silencieusement.**
+### Souveraineté
+**Votre matériel. Vos données. Votre juridiction.**
+
+- Auto-hébergé sur Mac, serveur, NAS, on-premise ou cloud souverain
+- Routage local-first — les tiers simples/moyens utilisent votre modèle local (Ollama, LM Studio MLX). Mistral privilégié pour le tier C cloud, données conservées dans l'UE.
+- RGPD natif par construction · DPA disponible · modèle d'AIPD fourni
+- Zéro télémétrie · zéro phone-home · aucune dépendance cloud forcée
+- Code source auditable (PolyForm Strict 1.0)
 
 </td>
 <td width="50%" valign="top">
 
-### Validation humaine sur chaque action irréversible
-Envoi de mail, suppression de fichier, commande SSH, partage — chaque outil destructif est mis en pause pour validation explicite. Même UX sur web, Telegram, Slack, Outlook, push mobile. Autoriser une fois · refuser une fois · **bannir définitivement**, persisté entre toutes les sessions.
+### Sécurité
+**Les données sensibles n'atteignent jamais le LLM. Les actions irréversibles ne s'exécutent jamais sans autorisation.**
+
+- **Anonymisation PII native** — e-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone, SIRET, identifiants salariés masqués avant la construction du prompt. Non désactivable silencieusement.
+- **HITL structurel** — chaque outil irréversible (envoi de mail, suppression, SSH, partage) attend une validation explicite. Autoriser une fois · refuser une fois · **bannir définitivement**.
+- Coffre chiffré (AES-256-GCM, zero-knowledge) pour les identifiants.
+- Journal d'audit immuable — chaque validation tracée, exportable pour la conformité.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-### Multi-utilisateur, natif
-Un seul déploiement sert une famille, une équipe ou une PME. Chaque utilisateur a sa propre mémoire, son coffre de secrets, sa file de validation. Le mappage des canaux empêche l'usurpation d'identité entre plateformes de messagerie.
+### Intégration
+**Branché sur les outils que vos équipes utilisent déjà.**
+
+- **Google Workspace complet** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (76 outils, lecture/écriture intégrale avec HITL sur chaque action destructive)
+- 10 canaux — Web · Voix (mot-clé « Éli ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy
+- Notifications push natives pour les validations HITL (FCM + APNs) — la plupart des concurrents ne proposent qu'un proxy via bot de messagerie
+- 148 outils sur web automation, système, RAG, coffre, missions
 
 </td>
 <td width="50%" valign="top">
 
-### ⚡ Routage hybride local / cloud
-Les tâches simples et moyennes sont traitées par votre modèle local (Ollama, LM Studio MLX). Les tâches complexes appellent une API cloud — uniquement après masquage des PII. **Configurable par tier de complexité, sans code, sans redémarrage.**
+### Architecture
+**Multi-utilisateur. Multi-LLM. Conçu pour passer à l'échelle d'une famille ou d'une organisation.**
+
+- **Multi-utilisateur natif** — un déploiement sert une famille, une équipe, une PME. Chaque utilisateur a sa mémoire, son coffre, sa file de validation.
+- **Multi-LLM avec tiers de complexité** — assignez des modèles différents aux Tiers A (rapide) / B (standard) / C (profond) / IMG / SYS. Local pour les tâches simples, Mistral ou Anthropic pour les complexes — votre choix, sans redémarrage.
+- 11 fournisseurs LLM supportés · bascule automatique en cas de panne · cache de prompt Anthropic activé
+- Mappage canal-utilisateur empêchant l'usurpation entre plateformes
 
 </td>
 </tr>
@@ -88,7 +117,7 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 | Licence | Source-available | Variable | Propriétaire |
 | Licence commerciale disponible | ✅ | Variable | N/A |
 
-> **Notre lecture honnête.** D'autres agents auto-hébergés ont des communautés plus larges et plus d'adaptateurs de canaux. **Si vous traitez des données que vous ne pouvez pas vous permettre de fuiter — les vôtres, celles de votre famille, celles de vos clients — le pipeline d'anonymisation et le HITL structurel d'ELY sont les raisons qui vous le feront choisir face aux alternatives.**
+> **Notre lecture honnête.** D'autres agents auto-hébergés ont des communautés plus larges et plus d'adaptateurs de canaux. **Si vous traitez des données que vous ne pouvez pas vous permettre de divulguer — les vôtres, celles de votre famille, celles de vos clients — le pipeline d'anonymisation et le HITL structurel d'ELY sont les raisons qui vous le feront choisir face aux alternatives.**
 
 ---
 
@@ -133,7 +162,7 @@ Quatre scénarios, du POC local en 30 minutes (Scénario A) au déploiement à d
 Une vraie UI produit sur chaque surface — **pas un terminal déguisé en site web.** Beaucoup d'agents auto-hébergés sont d'abord des outils en ligne de commande ; ELY traite l'UI comme un citoyen de première classe, y compris pour les utilisateurs non techniques.
 
 <details>
-<summary><strong>🔒 Pipeline de sécurité</strong> — masquage PII · HITL · coffre · journal d'audit</summary>
+<summary><strong>Pipeline de sécurité</strong> — masquage PII · HITL · coffre · journal d'audit</summary>
 
 - **Pipeline de masquage PII.** Détection regex + heuristiques ML pour e-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone, SIRET, identifiants salariés. Placeholders déterministes. Restitution uniquement à l'affichage côté utilisateur.
 - **Validation humaine.** Bloque par défaut plus de 30 catégories d'outils. Trois actions : autoriser une fois, refuser une fois, **bannir définitivement** (persisté entre toutes les sessions futures).
