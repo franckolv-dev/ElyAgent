@@ -271,7 +271,7 @@ ELY est source-available. Les contributions sont bienvenues dans le cadre de la 
 ⚠️ Changements architecturaux — ouvrez d'abord une issue
 ❌ Les forks sans accord préalable, les suppression des en-têtes de licence et le code désactivant HITL par défaut ne sont pas autorisés
 
-[Politique de sécurité →](./security.md) (merci de signaler les vulnérabilités par e-mail, pas en issue publique)
+[Guide de contribution complet →](./CONTRIBUTING.md) · [Code de conduite →](./CODE_OF_CONDUCT.md) · [Politique de sécurité →](./SECURITY.md) (merci de signaler les vulnérabilités par e-mail, pas en issue publique)
 
 ---
 
