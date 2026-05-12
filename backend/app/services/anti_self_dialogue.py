@@ -153,7 +153,7 @@ def trim_self_dialogue(text: str) -> tuple[str, bool]:
     # so the user sees a complete-looking thought rather than a cliffhanger.
     if cleaned.endswith("?"):
         pass  # question is fine, the user can answer it
-    elif cleaned and not cleaned[-1] in ".!?":
+    elif cleaned and cleaned[-1] not in ".!?":
         cleaned += "…"
 
     logger.warning(
