@@ -305,13 +305,13 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 ELY is source-available. ✅ Bug fixes · documentation · translations · channel adapters · performance · tests · ⚠️ Architectural changes — open an issue first · ❌ Forks for commercial use without prior agreement.
 
-[Security policy →](./SECURITY.md)
+[Full contribution guide →](./CONTRIBUTING.md) · [Code of Conduct →](./CODE_OF_CONDUCT.md) · [Security policy →](./SECURITY.md)
 
 ---
 
 <div align="center">
 
-**Built in Nouvelle-Aquitaine, France ** by [Franck Ollivier](https://github.com/franckolv-dev)
+**Built in Nouvelle-Aquitaine, France **
 
 [Website](https://agent-ely.fr) · [Documentation](./docs/START_HERE.md) · [Sponsor](https://github.com/sponsors/franckolv-dev) · [Newsletter](https://agent-ely.fr/newsletter.html)
 
