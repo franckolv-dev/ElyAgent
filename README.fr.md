@@ -271,7 +271,7 @@ ELY est source-available. Les contributions sont bienvenues dans le cadre de la 
 ⚠️ Changements architecturaux — ouvrez d'abord une issue
 ❌ Les forks sans accord préalable, les suppression des en-têtes de licence et le code désactivant HITL par défaut ne sont pas autorisés
 
-[Guide de contribution complet →](./CONTRIBUTING.md) · [Code de conduite →](./CODE_OF_CONDUCT.md) · [Politique de sécurité →](./SECURITY.md) (merci de signaler les vulnérabilités par e-mail, pas en issue publique)
+[Politique de sécurité →](./security.md) (merci de signaler les vulnérabilités par e-mail, pas en issue publique)
 
 ---
 
@@ -293,7 +293,7 @@ Tarification annuelle transparente, par organisation, sans coût par utilisateur
 
 → [FAQ complète sur la licence + contrat type →](https://agent-ely.fr/pricing.html)
 
-**Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. [Politique de marques →](./TRADEMARK.md)
+**Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. [Politique de marques →]
 
 **Contact :** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — réponse sous 48 h, toujours.
 
