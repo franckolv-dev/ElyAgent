@@ -6,21 +6,20 @@
 
 # ELY
 
-### The self-hosted AI agent that keeps your data in Europe — and never acts without your green light.
+### The sovereign AI agent for people and organisations that can't afford to leak data.
 
-**EU-sovereign by default** · multi-user · multi-channel · GDPR-native · HITL on every irreversible action.
-PII anonymised before every LLM call · anti-confabulation guard · 374 tests green.
+Self-hosted · GDPR-native · multi-user · multi-LLM · 10 channels · 148 tools.
 
 [**Website**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
 [**Pricing**](https://agent-ely.fr/pricing.html) ·
+[**Roadmap**](https://agent-ely.fr/roadmap.html) ·
 [**Discussions**](https://github.com/franckolv-dev/ElyAgent/discussions)
 
 [![Source-available](https://img.shields.io/badge/source--available-PolyForm%20Strict%201.0-13bbc2?style=flat-square)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/franckolv-dev/ElyAgent/ci.yml?style=flat-square&label=tests)](https://github.com/franckolv-dev/ElyAgent/actions)
 [![Stars](https://img.shields.io/github/stars/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/stargazers)
-[![Discussions](https://img.shields.io/github/discussions/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/discussions)
 
 [![Python](https://img.shields.io/badge/Python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -34,41 +33,73 @@ PII anonymised before every LLM call · anti-confabulation guard · 374 tests gr
 
 ---
 
-## Why ELY
+<p align="center">
+  <img src="docs/assets/ely-pii-demo.gif" alt="ELY masks personal data before any LLM call" width="720">
+  <br>
+  <sub><i>PII masking in action — your sensitive values never reach the model.</i></sub>
+</p>
 
-Most AI agents send your raw data — emails, IBANs, client names, medical notes — straight to a third-party LLM. The agent ecosystem grew up fast in 2025-2026; security didn't. ELY was built on three uncompromising design choices:
+---
+
+## Why ELY exists
+
+Cloud AI agents — ChatGPT, Claude, Gemini, the upcoming Google Remy, OpenAI Operator, Microsoft Copilot — are powerful, but they all share the same architecture: **your raw data goes to a third-party server in the United States.** Emails, IBANs, client names, medical records, contract drafts — all transit through models you don't control, in jurisdictions that aren't yours.
+
+For a curious individual, that's a tradeoff. **For a law firm, a medical practice, an SMB handling contracts or client files — it's a non-starter.** Professional secrecy, GDPR, regulated sectors don't allow that compromise.
+
+ELY is the answer for the people and organisations who need an AI agent **that runs on their hardware, anonymises sensitive data before any model call, asks before every irreversible action, and respects European sovereignty by default.**
+
+---
+
+## The four pillars
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 🛡️ PII never reaches the LLM — and ELY never invents facts
-Emails, IBANs, credit cards, API tokens, phone numbers, French SIRET — detected and replaced with deterministic placeholders **before** any prompt is built. The LLM sees `[EMAIL_0]`. You see the real value. **Native, not a plugin. Cannot be silently disabled.**
+### Sovereignty
+**Your hardware. Your data. Your jurisdiction.**
 
-Plus a hard-coded anti-confabulation rule in every system prompt: if a tool returns 0 results, ELY says so — it never invents events, contacts or files.
+- Self-hosted on your Mac, server, NAS, on-prem or sovereign cloud
+- Local-first routing — simple/medium tiers run on your local model (Ollama, LM Studio MLX). Mistral preferred for cloud tier C, keeping data inside the EU.
+- GDPR-native by construction · DPA available · DPIA template provided
+- Zero telemetry · zero phone-home · zero forced cloud dependency
+- Source code auditable (PolyForm Strict 1.0)
 
 </td>
 <td width="50%" valign="top">
 
-### ✋ HITL on every irreversible action
-Mail send, file delete, SSH command, sharing — every destructive tool pauses for explicit approval. Same UX on web, Telegram, Slack, mobile push. Approve once · deny once · **ban permanently**, persisted across sessions.
+### Security
+**Sensitive data never reaches the LLM. Irreversible actions never run unattended.**
+
+- **Native PII anonymisation** — emails, IBANs, credit cards, API tokens, phone numbers, French SIRET, employee IDs masked before any prompt is built. Cannot be silently disabled.
+- **Structural HITL** — every irreversible tool (mail send, file delete, SSH, sharing) pauses for explicit approval. Allow once · deny once · **ban permanently** (persisted across sessions).
+- Encrypted vault (AES-256-GCM, zero-knowledge) for credentials.
+- Immutable audit trail — every approval logged, exportable for compliance.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-### 👥 Multi-user, native
-A single deployment serves a family, a team, or a small business. Each user has their own memory, their own credentials vault, their own approval queue. Channel mappings prevent impersonation across messaging platforms.
+### Integration
+**Plugged into the tools your team already uses.**
+
+- **Full Google Workspace** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (76 tools, full read/write with HITL on every destructive action)
+- 10 channels — Web · Voice (wake-word "Éli") · PWA · iOS native · Android native · Telegram · WhatsApp · Slack · Discord · ntfy push
+- Native push notifications for HITL approvals (FCM + APNs) — most competitors only proxy via messaging bots
+- 148 tools across web automation, system, RAG, vault, missions
 
 </td>
 <td width="50%" valign="top">
 
-### 🇪🇺 EU-sovereign by default
-**Tier A:** Ministral 3B runs entirely on your hardware — zero cloud, zero latency.  
-**Tiers B/C:** Mistral AI (Paris, France) — your data never leaves Europe.  
-**100 % EU mode:** enable it in Settings for absolute sovereignty on every tier.  
-Auto-fallback chain if any provider goes down. Configurable per tier, no restart.
+### Architecture
+**Multi-user. Multi-LLM. Built to scale across a family or an organisation.**
+
+- **Multi-user native** — one deployment serves a family, a team, or an SMB. Each user has their own memory, vault, approval queue.
+- **Multi-LLM with complexity tiers** — assign different models to Tier A (fast) / B (standard) / C (deep) / IMG / SYS. Local for simple tasks, Mistral or Anthropic for complex ones — your choice, no restart.
+- 11 LLM providers supported · auto-fallback on outage · Anthropic prompt caching enabled
+- Channel-to-user mapping prevents impersonation across messaging platforms
 
 </td>
 </tr>
@@ -76,38 +107,32 @@ Auto-fallback chain if any provider goes down. Configurable per tier, no restart
 
 ---
 
-## ELY vs alternatives — an honest comparison
+## ELY vs cloud AI agents
 
-We respect what other projects do well. We're explicit about where we draw the line.
+| | **ELY** | Google Remy | OpenAI Operator | MS Copilot | ChatGPT Enterprise |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Self-hosted on your hardware | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Data stays in your jurisdiction** | ✅ Always | ❌ US | ❌ US | ⚠️ EU paid tier | ⚠️ EU paid tier |
+| **PII anonymised before LLM call** | ✅ Native | ❌ | ❌ | ❌ | ❌ |
+| **HITL on by default, irreversible-only** | ✅ Structural | ⚠️ Confirmation | ⚠️ Confirmation | ⚠️ Limited | ❌ |
+| Multi-user (family / team / SMB) | ✅ Native | ✅ Cloud | ✅ Cloud | ✅ Cloud | ✅ Cloud |
+| Multi-LLM, your choice | ✅ 11 providers | ❌ Gemini only | ❌ GPT only | ❌ GPT only | ❌ GPT only |
+| Local model option (Ollama / LM Studio) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| GDPR-native architecture | ✅ | ⚠️ Compliance layer | ⚠️ Compliance layer | ⚠️ Compliance layer | ⚠️ Compliance layer |
+| Pricing model | One-off licence | Per-user/month | Per-user/month | Per-user/month | Per-user/month |
+| EU-sovereign by default | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-| | **ELY** | **OpenClaw** | **Hermes-based agents** | Hosted (REMY / Copilot) |
-|---|:---:|:---:|:---:|:---:|
-| Self-hosted on your hardware | ✅ | ✅ | ⚠️ Model only | ❌ |
-| **PII anonymised before LLM call** | ✅ Native | ❌ | ❌ | ❌ |
-| **HITL — structural, non-bypassable** | ✅ | ⚠️ Optional | ❌ Auto-executes | N/A |
-| **EU-sovereign routing by default** | ✅ Mistral AI (Paris) | ❌ US APIs | ❌ US | ❌ US |
-| **Anti-confabulation guard** | ✅ Built-in rule | ❌ | ⚠️ Model-dependent | ❌ |
-| **Multi-user (family / team / SMB)** | ✅ | ❌ Single-user | ❌ | ✅ Vendor cloud |
-| **Full Google Workspace (8 domains)** | ✅ | ⚠️ Partial | ❌ | ✅ Vendor |
-| Native mobile apps (iOS + Android) | ✅ | ❌ | ❌ | ✅ Vendor |
-| Desktop daemon (local file ops, HITL) | ✅ Go daemon | ❌ | ❌ | ❌ |
-| Encrypted vault (zero-knowledge) | ✅ AES-256-GCM | ❌ | ❌ | ❌ |
-| Native French interface | ✅ | ❌ EN only | ❌ EN only | ⚠️ Partial |
-| License | Source-available | Open-source | Model licence | Proprietary |
+> **Honest take.** Cloud agents will be the right choice for most users. They're polished, fast, and you don't have to maintain anything. **ELY is the right choice when "fast and polished" isn't enough — when professional secrecy, GDPR, regulated data or trade-secret sensitivity make a third-party LLM call simply not an option.**
 
-> **Honest take.** OpenClaw has a larger community. Hermes-style skill auto-generation is genuinely powerful — we've intentionally deferred code-generated skills to v2.0 (sandbox + security review to avoid RCE-by-design). **What neither offers: PII anonymisation that's structural and non-bypassable, EU-sovereign routing out of the box, HITL bans that persist across sessions, and a complete product UI on web + mobile + voice.**
->
-> → [Real benchmark numbers and sovereignty architecture →](https://agent-ely.fr/sovereignty.html)
+> *Looking for a technical comparison with self-hosted alternatives like Hermes or OpenClaw? See [docs/compare-selfhosted.md](./docs/compare-selfhosted.md).*
 
 ---
 
 ## Who ELY is for
 
-ELY is made for two distinct audiences. Both run the same codebase.
+**Privacy-conscious individuals & families** — you want a powerful AI assistant but you refuse to send your inbox, banking details and medical history to OpenAI, Google or Anthropic. Free under the personal licence. Up to 5 family members on one deployment.
 
-🏠 **Privacy-conscious individuals & families** — you want a powerful AI assistant but you refuse to send your inbox, banking details and medical history to OpenAI or Anthropic. Free under the personal licence. Up to 4 family members on one deployment.
-
-🏢 **SMBs in regulated sectors** *(commercial licence)* — law firms, accounting practices, medical practices, HR consultancies, notaries, local government. You handle data covered by professional secrecy or GDPR. ELY's anonymisation pipeline is the difference between *"we considered AI"* and *"we deployed AI."*
+**SMBs in regulated sectors** *(commercial licence)* — law firms, accounting practices, medical practices, HR consultancies, notaries, local government. You handle data covered by professional secrecy or GDPR. ELY's anonymisation pipeline is the difference between *"we considered AI"* and *"we deployed AI."*
 
 → Detailed personas, deployment scenarios and pricing on **[agent-ely.fr](https://agent-ely.fr)**.
 
@@ -139,76 +164,66 @@ Four scenarios, from 30-min local install (Scenario A) to fully remote deploymen
 
 ## What ELY can do
 
-A real product UI on every surface — **not a terminal dressed as a website.** Many self-hosted agents ship terminal-first; ELY treats the UI as a first-class citizen, including for non-technical users.
+A real product UI on every surface — not a terminal dressed as a website. ELY treats the UI as a first-class citizen, including for non-technical users.
 
 <details>
-<summary><strong>🔒 Security pipeline</strong> — PII masking · HITL · vault · audit trail</summary>
+<summary><strong>Security pipeline</strong> — PII masking · HITL · vault · audit trail</summary>
 
 - **PII masking pipeline.** Regex + ML-assisted detection of emails, IBANs, credit cards, API tokens, phone numbers, French SIRET, employee IDs. Deterministic placeholders. Reversed only when displayed back to you.
-- **Human-in-the-loop.** Blocks 30+ tool categories by default. Three actions: allow once, deny once, **ban permanently** (persisted across all future sessions).
-- **Encrypted vault.** AES-256-GCM, per-user key derived from password. Zero-knowledge — the server cannot read after lock. Stores API keys, OAuth tokens, channel credentials.
-- **Audit trail.** Every approval decision logged immutably (JSON Lines). Exportable for compliance.
+- **Human-in-the-loop.** Blocks 30+ tool categories by default. Three actions: allow once, deny once, **ban permanently** (persisted across sessions).
+- **Encrypted vault.** AES-256-GCM, per-user key derived from password. Zero-knowledge.
+- **Audit trail.** Immutable JSON Lines. Exportable for compliance.
 
 [Full security model →](./docs/security.md)
 
 </details>
 
 <details>
-<summary><strong>🤖 Multi-LLM engine</strong> — bring your own keys, route by complexity</summary>
+<summary><strong>Multi-LLM engine</strong> — your keys, route by complexity tier</summary>
 
-Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/SYS) to a model. Switch any time, no restart. Local models get auto-detected compact prompts so smaller models actually obey `tool_choice="required"`.
+Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/SYS) to a model. Switch any time, no code, no restart.
 
-- **Default sovereign stack:** Ministral 3B local (Tier A) · Mistral Small 4 / Large 3, Mistral AI Paris 🇫🇷 (Tiers B/C) · DeepSeek v4-flash for vision — [benchmark →](https://agent-ely.fr/sovereignty.html)
-- **Cloud:** OpenAI · Anthropic · Gemini · Qwen API · Moonshot Kimi K2.x · Mistral · DeepSeek · Zhipu · OpenRouter
+- **Cloud:** Mistral (preferred, EU) · Anthropic · OpenAI · Gemini · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
 - **Local:** Ollama · LM Studio (MLX on Apple Silicon)
-- **Auto-fallback** if a provider goes down — disable per-tier for pure-local testing.
-- **Anthropic prompt caching** enabled where supported (up to 90% cost reduction).
+- Auto-detected compact prompts so 7B local models actually obey `tool_choice="required"`
+- Auto-fallback if a provider goes down — disable per-tier for pure-local testing
 
 </details>
 
 <details>
-<summary><strong>🎯 Missions</strong> — goal-driven loop that survives restarts</summary>
+<summary><strong>Google Workspace integration</strong> — 76 tools, full read/write with HITL</summary>
 
-Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Survives backend restarts (LangGraph SQLite checkpointer).
-
-Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures. Notifications in parallel: web UI · Telegram DM · ntfy push.
+Gmail · Calendar · Drive · Docs · Sheets · Tasks · Contacts. High-level tools, batch operations, and a `raw_api_call` escape hatch for any method of the official Google Python client. Critical raw calls still trigger HITL. Multi-Google-account support — link several mailboxes to one ELY user.
 
 </details>
 
 <details>
-<summary><strong>📡 Channels</strong> — 10 ways to reach ELY</summary>
+<summary><strong>Missions</strong> — goal-driven loop that survives restarts</summary>
 
-Web UI · Voice (wake-word "Éli") · PWA · iOS native · Android native · Telegram · WhatsApp · Slack · Discord · ntfy push.
-
-Same agent, same memory, same security across all surfaces. Native iOS (SwiftUI) and Android (Kotlin/Compose) apps with FCM/APNs push for HITL approvals — most competitors only proxy via messaging bots.
+Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures.
 
 </details>
 
 <details>
-<summary><strong>📚 Memory & RAG</strong> — local Qdrant + SQLite FTS5</summary>
+<summary><strong>Channels</strong> — 10 ways to reach ELY</summary>
 
-PDF · TXT · Markdown · CSV · JSON · DOCX. fastembed + Qdrant for semantic retrieval, SQLite FTS5 for keyword. ELY decides whether to search before answering, reranks results, cites sources. No data sent to remote embedding services — everything local.
-
-</details>
-
-<details>
-<summary><strong>⚔️ LLM Arena</strong> — blind head-to-head ELO ranking</summary>
-
-Pick any two of your configured providers. Vote without knowing which is which. K=32 ELO leaderboard. Local providers pinged before being added — no `[connection failed]` matches.
+Web UI · Voice (wake-word "Éli") · PWA · iOS native · Android native · Telegram · WhatsApp · Slack · Discord · ntfy push. Same agent, same memory, same security across all surfaces.
 
 </details>
 
 <details>
-<summary><strong>🖥️ ELY Desktop</strong> — native Go daemon for local automation</summary>
+<summary><strong>Memory & RAG</strong> — local Qdrant + SQLite FTS5</summary>
 
-Outbound WebSocket — your desktop never needs to be publicly reachable. Capabilities: screen capture · keyboard/mouse · app launcher · clipboard · local file ops (HITL) · system info.
+PDF · TXT · Markdown · CSV · JSON · DOCX. Everything local — no remote embedding services. ELY decides when to search, reranks results, cites sources.
+
+</details>
 
 </details>
 
 <details>
-<summary><strong>📱 Smart File Manager (Android)</strong> — on-device cleanup</summary>
+<summary><strong>LLM Arena, Desktop daemon, Smart File Manager</strong></summary>
 
-MD5-based exact-duplicate detection (size-pruned), perceptual dHash for visual duplicates (Hamming ≤6), declarative filters (size/age/category/extension). **Files never transit the backend** — everything stays on your phone.
+Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automation · On-device duplicate detection on Android (files never transit the backend).
 
 </details>
 
@@ -218,21 +233,19 @@ MD5-based exact-duplicate detection (size-pruned), perceptual dHash for visual d
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│  USER INPUT  ─→  SecurityFilter (PII masking)  ─→  Complexity Router │
+│  USER INPUT  ─→  PII Filter (mask)  ─→  Complexity Router            │
 │                                                          │           │
 │  RESPONSE  ←─  Restore real values  ←─  HITL gate  ←─  LangGraph     │
 │                                                          │           │
 │                                              ┌───────────┼─────────┐ │
 │                                              ▼           ▼         ▼ │
-│                                          Local LLM    Tools     Cloud│
-│                                          (Ollama)     (148)    (PII-│
-│                                                                masked)│
+│                                         Local LLM     Tools     Cloud│
+│                                         (Ollama,      (148)    (PII-│
+│                                         LM Studio)             masked)│
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-A multi-channel, multi-user, hybrid local/cloud agent built on FastAPI + LangGraph (backend), Next.js 16 (frontend), native iOS/Android clients, and a Go desktop daemon.
-
-→ [Full architecture deep-dive](./docs/architecture.md) · [Security model](./docs/security.md)
+→ [Full architecture deep-dive](./docs/architecture.md) · [PII pipeline detail](./docs/pii-pipeline.md) · [HITL approval gate](./docs/hitl.md)
 
 ---
 
@@ -246,8 +259,6 @@ A multi-channel, multi-user, hybrid local/cloud agent built on FastAPI + LangGra
 | Desktop daemon | Go (Linux · macOS · Windows) |
 | LLM providers | 11 (cloud + local) |
 | Memory | Qdrant · SQLite FTS5 · fastembed |
-| Browser automation | Playwright |
-| STT / TTS | faster-whisper · edge-tts |
 | Auth | JWT HS256 · Argon2id · HttpOnly refresh cookie |
 | Vault | AES-256-GCM, per-user key derivation |
 | Push | FCM · APNs · Telegram · WebSocket |
@@ -257,31 +268,17 @@ A multi-channel, multi-user, hybrid local/cloud agent built on FastAPI + LangGra
 
 ## Roadmap
 
-**Sprint 0** ✅ *May 2026* — Public launch. EU sovereign stack (Mistral-first, 3/4 tiers in EU), ELY Desktop daemon (Go, local file ops + HITL), drive dedup server tool, anti-confabulation rule, DeepSeek thinking-mode fix, TTS sanitizer, 374/374 tests green.
+**Sprint 0** *May 2026* — Public launch. UI refresh, multi-domain routing, Mistral as default cloud tier, mono-agent toggle, anti-hallucination guards, 92/92 tests green.
 
-**Sprint 1** *June 2026* — Cross-conversation memory recall (FTS5 + LLM-summarised retrieval). Biggest perceived-value sprint of the year.
+**Sprint 1** *June 2026* — Cross-conversation memory recall.
 
-**Sprint 2** *June 2026* — Auto-discovery tool registry (AST-based `@register` decorator).
+**Sprint 2** *June 2026* — Auto-discovery tool registry.
 
-**Sprint 3** *July 2026* — User State Vector (mood · current_focus · open_loops · energy_budget) — closest functional equivalent to a transparent World Model.
+**Sprint 3** *July 2026* — User State Vector (transparent user model).
 
-**Sprint 4** *August 2026* — MCP client + server. Consume any MCP server (Claude Desktop, Cursor, Zed). Expose ELY as MCP server too.
+**Sprint 4** *August 2026* — MCP client + server. Consume any MCP server, expose ELY as MCP server too.
 
-→ [Full public roadmap with effort tags →](https://agent-ely.fr/roadmap.html)
-
-🤝 [Want to influence the roadmap? Open a discussion →](https://github.com/franckolv-dev/ElyAgent/discussions)
-
----
-
-## Contributing
-
-ELY is source-available. Contributions are welcome within the bounds of the licence:
-
-✅ Bug fixes · documentation · translations · channel adapters · performance improvements · test coverage
-⚠️ Architectural changes — open an issue first
-❌ Forks for commercial use without prior agreement · removal of licence headers · code disabling HITL by default
-
-[Full contribution guide →](./CONTRIBUTING.md) · [Code of Conduct →](./CODE_OF_CONDUCT.md) · [Security policy →](./SECURITY.md) (please disclose vulnerabilities responsibly via email)
+→ [Full public roadmap →](https://agent-ely.fr/roadmap.html)
 
 ---
 
@@ -289,30 +286,33 @@ ELY is source-available. Contributions are welcome within the bounds of the lice
 
 **Source code** — [PolyForm Strict License 1.0.0](LICENSE)
 
-✅ **Free for:** personal use · family use · learning · non-commercial research
-❌ **Requires a commercial licence:** any deployment generating revenue · integration into a paid product · redistribution of modified versions · training other AI models on this codebase
-
-We offer **transparent annual pricing**, by organisation, no per-user or per-LLM-call cost:
-
 | Tier | Scope | Price |
 |------|-------|-------|
 | **Personal** | Family, learning, evaluation | **Free** |
 | **Pro** | 1 organisation · up to 5 users | **€490 / year** |
-| **Business** | 1 organisation · up to 25 users · SSO included | **€1,990 / year** |
-| **Enterprise** | Multi-instance · unlimited users · 4h SLA | On quote |
+| **Business** | 1 organisation · up to 25 users · SSO | **€1,990 / year** |
+| **Enterprise** | Multi-instance · unlimited · 4h SLA | On quote |
 
 → [Full licensing FAQ + sample contract →](https://agent-ely.fr/pricing.html)
 
-**Trademark.** The name **Ely** (acronym for *"Exactly Like You"*, pronounced "Éli"), **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. [Trademark policy →](./TRADEMARK.md)
+**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. Fork freely — pick your own name and your own logo. [Trademark policy →](./TRADEMARK.md)
 
 📩 **Contact:** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.
 
 ---
 
+## Contributing
+
+ELY is source-available. ✅ Bug fixes · documentation · translations · channel adapters · performance · tests · ⚠️ Architectural changes — open an issue first · ❌ Forks for commercial use without prior agreement.
+
+[Full contribution guide →](./CONTRIBUTING.md) · [Code of Conduct →](./CODE_OF_CONDUCT.md) · [Security policy →](./SECURITY.md)
+
+---
+
 <div align="center">
 
-**Built in Nouvelle-Aquitaine, France 🇫🇷**
+**Built in Nouvelle-Aquitaine, France ** by [Franck Ollivier](https://github.com/franckolv-dev)
 
-[Website](https://agent-ely.fr) · [Documentation](./docs/START_HERE.md) · [Newsletter](https://agent-ely.fr/newsletter.html)
+[Website](https://agent-ely.fr) · [Documentation](./docs/START_HERE.md) · [Sponsor](https://github.com/sponsors/franckolv-dev) · [Newsletter](https://agent-ely.fr/newsletter.html)
 
 </div>
