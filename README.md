@@ -34,7 +34,7 @@ Self-hosted · GDPR-native · multi-user · multi-LLM · 10 channels · 148 tool
 ---
 
 <p align="center">
-  <img src="docs/assets/ely-pii-demo.gif" alt="ELY masks personal data before any LLM call" width="720">
+  ELY masks personal data before any LLM call
   <br>
   <sub><i>PII masking in action — your sensitive values never reach the model.</i></sub>
 </p>
@@ -107,24 +107,24 @@ ELY is the answer for the people and organisations who need an AI agent **that r
 
 ---
 
-## ELY vs cloud AI agents
+## ELY vs. the Alternatives — An Honest Comparison
 
-| | **ELY** | Google Remy | OpenAI Operator | MS Copilot | ChatGPT Enterprise |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Self-hosted on your hardware | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Data stays in your jurisdiction** | ✅ Always | ❌ US | ❌ US | ⚠️ EU paid tier | ⚠️ EU paid tier |
-| **PII anonymised before LLM call** | ✅ Native | ❌ | ❌ | ❌ | ❌ |
-| **HITL on by default, irreversible-only** | ✅ Structural | ⚠️ Confirmation | ⚠️ Confirmation | ⚠️ Limited | ❌ |
-| Multi-user (family / team / SMB) | ✅ Native | ✅ Cloud | ✅ Cloud | ✅ Cloud | ✅ Cloud |
-| Multi-LLM, your choice | ✅ 11 providers | ❌ Gemini only | ❌ GPT only | ❌ GPT only | ❌ GPT only |
-| Local model option (Ollama / LM Studio) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| GDPR-native architecture | ✅ | ⚠️ Compliance layer | ⚠️ Compliance layer | ⚠️ Compliance layer | ⚠️ Compliance layer |
-| Pricing model | One-off licence | Per-user/month | Per-user/month | Per-user/month | Per-user/month |
-| EU-sovereign by default | ✅ | ❌ | ❌ | ❌ | ❌ |
+We respect what other projects do well. We are explicit about what sets us apart.
 
-> **Honest take.** Cloud agents will be the right choice for most users. They're polished, fast, and you don't have to maintain anything. **ELY is the right choice when "fast and polished" isn't enough — when professional secrecy, GDPR, regulated data or trade-secret sensitivity make a third-party LLM call simply not an option.**
+| | **ELY** | Other Self-Hosted Agents | Hosted AI Assistants |
+|---|:---:|:---:|:---:|
+| Self-Hosted on Your Hardware | ✅ | ✅ | ❌ |
+| **Anonymized PII before LLM Call** | ✅ Native | ⚠️ Plugin or Absent | ❌ |
+| **HITL Enabled by Default, Cannot Be Disabled** | ✅ Structural | ⚠️ Configurable | N/A |
+| **Multi-User (Family / Team / SMB)** | ✅ | ❌ Often Single-User | ✅ (Cloud Publisher) |
+| **Hybrid Local/Cloud Routing** | ✅ Explicit Third Parties | ⚠️ Manual / Partial | ❌ |
+| Native Mobile Apps (iOS + Android) | ✅ | ❌ Rare | ✅ |
+| Encrypted Vault (Zero-Knowledge) | ✅ AES-256-GCM | ❌ Rare | ❌ |
+| Full French Interface | ✅ | ⚠️ Often EN Only | ⚠️ Partial |
+| License | Source-Available | Variable | Proprietary |
+| Commercial License Available | ✅ | Variable | N/A |
 
-> *Looking for a technical comparison with self-hosted alternatives like Hermes or OpenClaw? See [docs/compare-selfhosted.md](./docs/compare-selfhosted.md).*
+> **Our Honest Read.** Other self-hosted agents have larger communities and more channel adapters. **If you handle data that you cannot afford to leak—yours, your family's, your clients'—ELY's anonymization pipeline and structural HITL are the reasons why you should choose it over the alternatives.**
 
 ---
 
@@ -245,7 +245,7 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-→ [Full architecture deep-dive](./docs/architecture.md) · [PII pipeline detail](./docs/pii-pipeline.md) · [HITL approval gate](./docs/hitl.md)
+→ [Full architecture deep-dive](./docs/architecture.md)
 
 ---
 
@@ -295,7 +295,7 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 → [Full licensing FAQ + sample contract →](https://agent-ely.fr/pricing.html)
 
-**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. Fork freely — pick your own name and your own logo. [Trademark policy →](./TRADEMARK.md)
+**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. Fork freely — pick your own name and your own logo. 
 
 📩 **Contact:** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.
 
@@ -305,7 +305,7 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 ELY is source-available. ✅ Bug fixes · documentation · translations · channel adapters · performance · tests · ⚠️ Architectural changes — open an issue first · ❌ Forks for commercial use without prior agreement.
 
-[Full contribution guide →](./CONTRIBUTING.md) · [Code of Conduct →](./CODE_OF_CONDUCT.md) · [Security policy →](./SECURITY.md)
+[Security policy →](./SECURITY.md)
 
 ---
 
