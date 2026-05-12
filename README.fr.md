@@ -42,13 +42,13 @@ La plupart des agents IA envoient vos données brutes — e-mails, IBAN, noms de
 <tr>
 <td width="50%" valign="top">
 
-### 🛡️ Les données sensibles n'atteignent jamais le LLM
+### Les données sensibles n'atteignent jamais le LLM
 E-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone, SIRET — détectés et remplacés par des placeholders déterministes **avant** la construction du prompt. Le modèle voit `[EMAIL_0]`. Vous voyez la vraie valeur. **Natif, pas un plugin. Ne peut pas être désactivé silencieusement.**
 
 </td>
 <td width="50%" valign="top">
 
-### ✋ Validation humaine sur chaque action irréversible
+### Validation humaine sur chaque action irréversible
 Envoi de mail, suppression de fichier, commande SSH, partage — chaque outil destructif est mis en pause pour validation explicite. Même UX sur web, Telegram, Slack, Outlook, push mobile. Autoriser une fois · refuser une fois · **bannir définitivement**, persisté entre toutes les sessions.
 
 </td>
@@ -56,7 +56,7 @@ Envoi de mail, suppression de fichier, commande SSH, partage — chaque outil de
 <tr>
 <td width="50%" valign="top">
 
-### 👥 Multi-utilisateur, natif
+### Multi-utilisateur, natif
 Un seul déploiement sert une famille, une équipe ou une PME. Chaque utilisateur a sa propre mémoire, son coffre de secrets, sa file de validation. Le mappage des canaux empêche l'usurpation d'identité entre plateformes de messagerie.
 
 </td>
@@ -96,9 +96,9 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 
 ELY est conçu pour deux audiences distinctes. Toutes deux exécutent le même code.
 
-🏠 **Particuliers et familles soucieux de leur vie privée** — vous voulez un assistant IA puissant mais vous refusez d'envoyer votre boîte mail, vos relevés bancaires et votre historique médical à OpenAI ou Anthropic. Gratuit sous la licence personnelle. Jusqu'à 4 membres de la famille sur un déploiement.
+**Particuliers et familles soucieux de leur vie privée** — vous voulez un assistant IA puissant mais vous refusez d'envoyer votre boîte mail, vos relevés bancaires et votre historique médical à OpenAI ou Anthropic. Gratuit sous la licence personnelle. Jusqu'à 4 membres de la famille sur un déploiement.
 
-🏢 **PME en secteurs réglementés** *(licence commerciale)* — cabinets d'avocats, expertise comptable, cabinets médicaux, conseil RH, notaires, collectivités. Vous traitez des données couvertes par le secret professionnel ou le RGPD. Le pipeline d'anonymisation d'ELY fait la différence entre *« on a envisagé l'IA »* et *« on a déployé l'IA »*.
+**PME en secteurs réglementés** *(licence commerciale)* — cabinets d'avocats, expertise comptable, cabinets médicaux, conseil RH, notaires, collectivités. Vous traitez des données couvertes par le secret professionnel ou le RGPD. Le pipeline d'anonymisation d'ELY fait la différence entre *« on a envisagé l'IA »* et *« on a déployé l'IA »*.
 
 → Personas détaillés, scénarios de déploiement et tarifs sur **[agent-ely.fr](https://agent-ely.fr)**.
 
@@ -145,7 +145,7 @@ Une vraie UI produit sur chaque surface — **pas un terminal déguisé en site 
 </details>
 
 <details>
-<summary><strong>🤖 Moteur multi-LLM</strong> — vos clés, routage par complexité</summary>
+<summary><strong>Moteur multi-LLM</strong> — vos clés, routage par complexité</summary>
 
 Configurez les fournisseurs dans **Réglages → Modèles IA**. Assignez chaque tier (A/B/C/IMG/SYS) à un modèle. Changez à tout moment, sans redémarrage. Les modèles locaux (Ollama, LM Studio) bénéficient de prompts compacts auto-détectés pour que les modèles 7B obéissent réellement à `tool_choice="required"`.
 
@@ -157,7 +157,7 @@ Configurez les fournisseurs dans **Réglages → Modèles IA**. Assignez chaque 
 </details>
 
 <details>
-<summary><strong>🎯 Missions</strong> — boucle orientée objectif, persistante entre redémarrages</summary>
+<summary><strong>Missions</strong> — boucle orientée objectif, persistante entre redémarrages</summary>
 
 Donnez un objectif à ELY — elle le décompose en étapes, choisit les outils, exécute, évalue, replanifie en cas d'échec et vous notifie quand c'est terminé. Survit aux redémarrages backend (checkpointer LangGraph SQLite).
 
@@ -166,37 +166,37 @@ Cinq garde-fous : budget de tokens · budget d'itérations · deadline optionnel
 </details>
 
 <details>
-<summary><strong>📡 Canaux</strong> — 10 façons de joindre ELY</summary>
+<summary><strong>Canaux</strong> — 10 façons de joindre ELY</summary>
 
-Web · Voix (mot-clé « Éli ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy.
+Web · Voix (mot-clé « Ély ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy.
 
 Même agent, même mémoire, même sécurité sur toutes les surfaces. Apps natives iOS (SwiftUI) et Android (Kotlin/Compose) avec push FCM/APNs pour les validations HITL — la plupart des concurrents ne proposent qu'un proxy via bot de messagerie.
 
 </details>
 
 <details>
-<summary><strong>📚 Mémoire & RAG</strong> — Qdrant local + SQLite FTS5</summary>
+<summary><strong>Mémoire & RAG</strong> — Qdrant local + SQLite FTS5</summary>
 
 PDF · TXT · Markdown · CSV · JSON · DOCX. fastembed + Qdrant pour la recherche sémantique, SQLite FTS5 pour le mot-clé. ELY décide elle-même si une recherche est utile avant de répondre, classe les résultats, cite les sources. Aucune donnée envoyée à des services d'embeddings distants — tout est local.
 
 </details>
 
 <details>
-<summary><strong>⚔️ Arena LLM</strong> — comparatif aveugle avec classement ELO</summary>
+<summary><strong>Arena LLM</strong> — comparatif aveugle avec classement ELO</summary>
 
 Choisissez deux fournisseurs configurés. Votez sans savoir lequel est lequel. Classement ELO K=32. Les fournisseurs locaux sont pingés avant d'être ajoutés — plus de matchs `[connection failed]`.
 
 </details>
 
 <details>
-<summary><strong>🖥️ ELY Desktop</strong> — daemon Go natif pour l'automatisation locale</summary>
+<summary><strong>ELY Desktop</strong> — daemon Go natif pour l'automatisation locale</summary>
 
 Connexion WebSocket sortante — votre poste n'a jamais besoin d'être joignable depuis l'extérieur. Capacités : capture d'écran · clavier/souris · lanceur d'app · presse-papier · opérations fichiers locales (HITL) · infos système.
 
 </details>
 
 <details>
-<summary><strong>📱 Smart File Manager (Android)</strong> — nettoyage on-device</summary>
+<summary><strong>Smart File Manager (Android)</strong> — nettoyage on-device</summary>
 
 Détection de doublons exacts par MD5 (élagage par taille), doublons visuels par dHash perceptuel (Hamming ≤ 6), filtres déclaratifs (taille/âge/catégorie/extension). **Les fichiers ne transitent jamais par le backend** — tout reste sur votre téléphone.
 
@@ -247,7 +247,7 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 
 ## Roadmap
 
-**Sprint 0** ✅ *Mai 2026* — Ouverture du dépôt public. Refonte UI, routage multi-domaines, bascule mono-agent, garde-fous anti-hallucination, 92/92 tests verts.
+**Sprint 0** *Mai 2026* — Ouverture du dépôt public. Refonte UI, routage multi-domaines, bascule mono-agent, garde-fous anti-hallucination, 92/92 tests verts.
 
 **Sprint 1** *Juin 2026* — Mémoire transversale entre conversations (FTS5 + résumé LLM à la demande). Le sprint avec le meilleur ratio valeur perçue / effort de l'année.
 
@@ -259,7 +259,7 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 
 → [Roadmap publique complète avec efforts annoncés →](https://agent-ely.fr/roadmap.html)
 
-🤝 [Envie d'influencer la roadmap ? Ouvrez une discussion →](https://github.com/franckolv-dev/ElyAgent/discussions)
+[Envie d'influencer la roadmap ? Ouvrez une discussion →](https://github.com/franckolv-dev/ElyAgent/discussions)
 
 ---
 
@@ -295,13 +295,13 @@ Tarification annuelle transparente, par organisation, sans coût par utilisateur
 
 **Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. [Politique de marques →](./TRADEMARK.md)
 
-📩 **Contact :** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — réponse sous 48 h, toujours.
+**Contact :** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — réponse sous 48 h, toujours.
 
 ---
 
 <div align="center">
 
-**Construit en Nouvelle-Aquitaine, France 🇫🇷**
+**Construit en Nouvelle-Aquitaine, France **
 
 [Site web](https://agent-ely.fr) · [Documentation](./docs/START_HERE.md) · [Newsletter](https://agent-ely.fr/newsletter.html)
 
