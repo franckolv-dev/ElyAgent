@@ -214,12 +214,14 @@
   .ely-app .avatar-panel { display: none; }
 }
 @media (max-width: 720px) {
-  .ely-app { grid-template-columns: 64px 1fr; grid-template-rows: 48px 1fr; }
-  .ely-app .nav-item span:not(.nav-icon),
-  .ely-app .brand-name,
-  .ely-app .nav-cta span,
-  .ely-app .recent-list,
-  .ely-app .nav-section-label { display: none; }
+  /* On mobile the sidebar is a drawer (fixed, slide-in from the left)
+     rather than a permanent column. The main grid becomes single-column. */
+  .ely-app { grid-template-columns: 1fr; grid-template-rows: 56px 1fr; }
+  .ely-app .brand-name { display: none; }
+  /* Tighter topbar on mobile */
+  .topbar { padding: 0 12px; height: 56px; }
+  .topbar-center { display: none; }
+  .brand { width: auto; padding-right: 0; border-right: none; }
 }
 
 /* ── Topbar ── */
@@ -500,7 +502,69 @@
   overflow: hidden;
 }
 @media (max-width: 720px) {
-  .sidebar { width: 64px; }
+  /* On mobile, the sidebar becomes a fixed-position drawer that slides
+     in from the left when the hamburger is tapped. Closed by default. */
+  .sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    max-width: 85vw;
+    transform: translateX(-100%);
+    transition: transform 0.25s var(--ease, ease);
+    z-index: 50;
+    box-shadow: 6px 0 24px rgba(0, 0, 0, 0.35);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+}
+
+/* ── Mobile nav backdrop (overlay behind drawer) ── */
+.mobile-nav-backdrop {
+  display: none;
+}
+@media (max-width: 720px) {
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 45;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .mobile-nav-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ── Hamburger button (mobile only) ── */
+.mobile-nav-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-right: 8px;
+  transition: background 0.12s ease;
+}
+.mobile-nav-toggle:hover { background: var(--bg-hover); }
+.mobile-nav-toggle:active { background: var(--bg-surface); }
+@media (max-width: 720px) {
+  .mobile-nav-toggle { display: inline-flex; }
 }
 
 .nav {

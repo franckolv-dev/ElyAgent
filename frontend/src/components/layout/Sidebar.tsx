@@ -64,6 +64,25 @@ export function Sidebar() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // ── Mobile drawer state ──
+  // Synced with Header via window CustomEvents (zero-dependency cross-component messaging).
+  const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => {
+    const toggle = () => setMobileOpen((v) => !v);
+    const close = () => setMobileOpen(false);
+    window.addEventListener("ely-toggle-mobile-nav", toggle);
+    window.addEventListener("ely-close-mobile-nav", close);
+    return () => {
+      window.removeEventListener("ely-toggle-mobile-nav", toggle);
+      window.removeEventListener("ely-close-mobile-nav", close);
+    };
+  }, []);
+  // Close the drawer whenever the route changes — so tapping a nav item
+  // navigates AND collapses the sidebar in a single user action.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   const navItems = admin ? [...BASE_NAV, ...ADMIN_NAV] : BASE_NAV;
 
   // ── Conversations fetching ──
@@ -172,7 +191,14 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="sidebar">
+    <>
+      {/* Mobile backdrop — clic anywhere to close the drawer */}
+      <div
+        className={`mobile-nav-backdrop ${mobileOpen ? "visible" : ""}`}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
+      <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       {/* Main nav */}
       <nav className="nav">
         {navItems.map(({ href, labelKey, icon: Icon }) => {
@@ -420,6 +446,7 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+    </>
   );
 }
 

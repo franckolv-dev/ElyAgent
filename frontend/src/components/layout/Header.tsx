@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Wifi, WifiOff, Zap } from "lucide-react";
+import { Menu, Wifi, WifiOff, Zap } from "lucide-react";
 import HitlBell from "./HitlBell";
 import type { User } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -31,6 +31,18 @@ export function Header({ wsStatus, children }: HeaderProps) {
 
   return (
     <header className="topbar">
+      {/* Hamburger — mobile only, opens the sidebar drawer */}
+      <button
+        type="button"
+        className="mobile-nav-toggle"
+        aria-label="Open menu"
+        onClick={() =>
+          window.dispatchEvent(new CustomEvent("ely-toggle-mobile-nav"))
+        }
+      >
+        <Menu size={18} />
+      </button>
+
       {/* Brand (left, 240px wide, matches sidebar width) */}
       <div className="brand">
         <div className="brand-logo">
