@@ -140,7 +140,7 @@ We respect what other projects do well. We are explicit about what sets us apart
 
 ## Quick start
 
-**Prerequisites:** Docker · Docker Compose · 16 GB RAM (32 GB for local LLMs) · 20 GB disk.
+**Prerequisites:** Docker · Docker Compose · 16 GB RAM (32 GB for local LLMs) · 20 GB disk · `make` (preinstalled on Mac and most Linux) · `openssl` (preinstalled everywhere).
 
 ```bash
 # 1. Clone
@@ -149,16 +149,66 @@ cd ElyAgent
 
 # 2. Configure — minimum: a JWT secret
 cp .env.example .env
-echo "JWT_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> .env
+# Generate a 64-char hex secret and replace the placeholder in .env:
+#   macOS / Linux: openssl is always available
+sed -i.bak "s|^JWT_SECRET_KEY=.*|JWT_SECRET_KEY=$(openssl rand -hex 32)|" .env && rm .env.bak
 
-# 3. Boot the stack
+# 3. Pick a LLM provider (REQUIRED — without this, ELY can't answer anything)
+# Easiest free option: Google Gemini key (Anthropic / Mistral / OpenAI work too)
+# 1. Grab a free key at https://aistudio.google.com/apikey
+# 2. Paste it into .env on the line GEMINI_API_KEY=
+# 3. Change ACTIVE_LLM_PROVIDER from "ollama" to "gemini" in .env
+#
+# Full provider list and setup links: docs/SETUP_AI_PROVIDERS.md
+
+# 4. Boot the stack (first run downloads ~2 GB of images, takes 5-10 min)
 make up
 
-# 4. Open http://localhost:3000 — first signup becomes admin
+# 5. Watch logs until the backend is healthy
+make logs s=backend     # ctrl-C once you see "Application startup complete"
+
+# 6. Open http://localhost:3000 — first signup becomes admin
+#    Password policy: min 12 chars, at least one uppercase + one special char (!@#$%^&*…)
 ```
+
+> **Without an LLM key**: ELY boots fine but every chat message will fail
+> with a connection error. The default `ACTIVE_LLM_PROVIDER=ollama`
+> assumes a local Ollama is running on the host — install it from
+> https://ollama.ai or switch to a cloud provider in `.env`.
 
 → **[Full setup guide for non-developers →](./docs/START_HERE.md)**
 Four scenarios, from 30-min local install (Scenario A) to fully remote deployment with Cloudflare Tunnel and all messaging channels (Scenario D). No prior knowledge of Docker, Google Cloud or APIs assumed.
+
+→ **[Browser Extension setup →](./extension/chrome/README.md)** for ELY to act on your real Chrome tabs (LinkedIn, Gmail, GitHub, Amazon…) with your existing sessions. Optional but it's the killer feature.
+
+→ **[Troubleshooting →](./docs/TROUBLESHOOTING.md)** if `make up` fails, the first chat errors out, or ports clash with another project.
+
+---
+
+## Browser autonomy — ELY acts in your real Chrome
+
+> **The killer feature no cloud agent can replicate.**
+
+ELY ships with a Chrome extension that lets the agent **read and act on the tabs you already have open**, using YOUR authenticated sessions. No headless Playwright with empty cookies — it's your actual browser, with your actual logins.
+
+What this enables, with zero credentials shared:
+
+- *"How many impressions did my last LinkedIn post get?"* → ELY opens linkedin.com (your session, already logged in), reads the data, closes the tab. ~5 seconds.
+- *"What's in my Gmail inbox?"* → reads via the Gmail web UI, no API token needed.
+- *"Summarise this Amazon order page"* → captures + reads the rendered page, even when anti-bot blocks DOM extraction (falls back to Gemini Vision).
+
+```
+You → ELY → Chrome Extension → YOUR Chrome tab → site (with YOUR cookies)
+                  ↑
+             ELY backend never sees your cookies, never stores credentials
+```
+
+**Setup** (one-time, 2 min):
+1. `chrome://extensions/` → enable Developer Mode → Load unpacked → select [`extension/chrome/`](./extension/chrome/)
+2. Right-click the ⚡ ELY icon → Options → paste your ELY backend URL + access token
+3. Done — pop-up turns green when connected
+
+→ Full extension docs: [`extension/chrome/README.md`](./extension/chrome/README.md)
 
 ---
 

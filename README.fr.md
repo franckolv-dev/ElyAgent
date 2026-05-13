@@ -135,7 +135,7 @@ ELY est conçu pour deux audiences distinctes. Toutes deux exécutent le même c
 
 ## Démarrage rapide
 
-**Pré-requis :** Docker · Docker Compose · 16 Go RAM (32 Go pour les LLM locaux) · 20 Go disque.
+**Pré-requis :** Docker · Docker Compose · 16 Go RAM (32 Go pour les LLM locaux) · 20 Go disque · `make` (préinstallé sur Mac et la plupart des Linux) · `openssl` (préinstallé partout).
 
 ```bash
 # 1. Cloner
@@ -144,16 +144,38 @@ cd ElyAgent
 
 # 2. Configurer — minimum requis : un secret JWT
 cp .env.example .env
-echo "JWT_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> .env
+# Génère un secret hex de 64 caractères et remplace le placeholder dans .env :
+sed -i.bak "s|^JWT_SECRET_KEY=.*|JWT_SECRET_KEY=$(openssl rand -hex 32)|" .env && rm .env.bak
 
-# 3. Lancer la stack
+# 3. Choisir un fournisseur LLM (OBLIGATOIRE — sans ça, ELY ne peut rien répondre)
+# Option gratuite la plus simple : clé Google Gemini (Anthropic / Mistral / OpenAI marchent aussi)
+# 1. Récupérer une clé gratuite sur https://aistudio.google.com/apikey
+# 2. La coller dans .env sur la ligne GEMINI_API_KEY=
+# 3. Changer ACTIVE_LLM_PROVIDER de "ollama" à "gemini" dans .env
+#
+# Liste complète des fournisseurs et liens de configuration : docs/SETUP_AI_PROVIDERS.md
+
+# 4. Lancer la stack (le premier `make up` télécharge ~2 Go d'images, durée 5-10 min)
 make up
 
-# 4. Ouvrir http://localhost:3000 — la première inscription devient admin
+# 5. Surveiller les logs jusqu'à ce que le backend soit prêt
+make logs s=backend     # ctrl-C dès que tu vois "Application startup complete"
+
+# 6. Ouvrir http://localhost:3000 — la première inscription devient admin
+#    Politique de mot de passe : min 12 caractères, au moins 1 majuscule + 1 caractère spécial (!@#$%^&*…)
 ```
 
+> **Sans clé LLM** : ELY démarre mais chaque message de chat échouera avec
+> une erreur de connexion. La valeur par défaut `ACTIVE_LLM_PROVIDER=ollama`
+> suppose qu'un Ollama tourne en local sur la machine hôte — installe-le
+> depuis https://ollama.ai ou bascule sur un fournisseur cloud dans `.env`.
+
 → **[Guide d'installation complet pour non-développeurs →](./docs/START_HERE.md)**
-Quatre scénarios, du POC local en 30 minutes (Scénario A) au déploiement à distance complet avec Cloudflare Tunnel et tous les canaux de messagerie (Scénario D). Aucune connaissance préalable de Docker, Google Cloud ou des API n'est requise.
+Quatre scénarios, du POC local en 30 minutes (Scénario A) au déploiement à distance complet avec Cloudflare Tunnel et tous les canaux de messagerie (Scénario D).
+
+→ **[Configuration de l'extension navigateur →](./extension/chrome/README.md)** pour qu'ELY agisse dans tes vrais onglets Chrome (LinkedIn, Gmail, GitHub, Amazon…) avec tes sessions existantes. Optionnel mais c'est la fonctionnalité tueuse.
+
+→ **[Dépannage →](./docs/TROUBLESHOOTING.md)** si `make up` plante, le premier chat échoue ou des ports sont déjà occupés.
 
 ---
 
