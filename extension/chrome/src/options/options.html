@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>ELY — Réglages de l'extension</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="hdr">
+        <div class="logo">⚡</div>
+        <div class="title">
+          <h1>ELY · Browser Companion</h1>
+          <p class="lede">
+            Pour qu'Ely puisse agir dans ton navigateur, donne-lui l'adresse
+            de ton instance et un jeton d'accès (généré dans
+            <strong>ELY → Réglages → Extension navigateur</strong>).
+            Aucune information ne sort de ce poste tant que le jeton n'est
+            pas posé ici.
+          </p>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>1. Adresse de ton ELY</h2>
+        <label class="field">
+          <span class="lbl">URL backend</span>
+          <input
+            id="backendUrl"
+            type="url"
+            placeholder="https://ely.example.com"
+            autocomplete="url"
+            spellcheck="false"
+          />
+        </label>
+        <p class="help">
+          Sans slash final. Exemple : <code>https://ely.catalogmaker.fr</code>.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>2. Jeton d'accès (JWT)</h2>
+        <label class="field">
+          <span class="lbl">Token</span>
+          <textarea
+            id="jwt"
+            rows="4"
+            placeholder="Colle ici le token généré dans ELY → Réglages → Extension navigateur"
+            spellcheck="false"
+          ></textarea>
+        </label>
+        <p class="help">
+          Le token est stocké uniquement dans le storage de ton navigateur
+          (chiffré par Chrome). Il n'est jamais envoyé à un tiers — seule
+          ton instance ELY le voit.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>3. Statut</h2>
+        <div class="status" id="statusBox">
+          <span class="dot" id="dot"></span>
+          <span class="lbl" id="statusLabel">—</span>
+        </div>
+        <p class="help" id="statusHint"></p>
+      </section>
+
+      <div class="actions">
+        <button id="save" class="btn primary">Enregistrer & reconnecter</button>
+        <button id="clear" class="btn ghost">Effacer la configuration</button>
+      </div>
+
+      <p class="footer">
+        ELY est libre (PolyForm Strict 1.0). Cette extension fait partie du
+        projet — code source sur
+        <a href="https://github.com/franckolv-dev/ElyAgent" target="_blank" rel="noopener">github.com/franckolv-dev/ElyAgent</a>.
+      </p>
+    </main>
+
+    <script src="options.js" type="module"></script>
+  </body>
+</html>

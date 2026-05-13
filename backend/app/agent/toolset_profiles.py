@@ -128,11 +128,28 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "desktop_move_file",
     "desktop_delete_file",
     "desktop_create_dir",
-    # Browser — capture + navigate + extract text
+    # Browser — capture + navigate + extract text (server-side Playwright,
+    # no user session)
     "browser_navigate",
     "browser_screenshot",
     "browser_get_text",
     "browser_search_web",
+    # Browser extension — acts on the user's REAL Chrome tabs (their cookies,
+    # their authenticated sessions on LinkedIn / Gmail / Amazon / X / etc.).
+    # Two patterns:
+    #   1. Read an existing tab the user already has open:
+    #      list_tabs → tab_read_text(tab_id)
+    #   2. Autonomously fetch a URL using the user's Chrome session:
+    #      open_tab → wait_loaded → tab_read_text → close_tab
+    "browser_list_tabs",
+    "browser_open_tab",
+    "browser_tab_wait_loaded",
+    "browser_tab_wait_for_selector",
+    "browser_tab_get_url",
+    "browser_tab_read_text",
+    "browser_tab_read_html",
+    "browser_tab_screenshot",
+    "browser_close_tab",
     # Web search (DuckDuckGo / SerpAPI fallback path)
     "web_search",
     # Tasks (Google Tasks)

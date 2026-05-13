@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>ELY</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="hdr">
+      <div class="logo">⚡</div>
+      <div class="title">
+        <div class="brand">ELY</div>
+        <div class="sub">Browser Companion</div>
+      </div>
+    </header>
+
+    <div class="status" id="status">
+      <span class="dot" id="dot"></span>
+      <span class="lbl" id="lbl">Initialisation…</span>
+    </div>
+
+    <div class="info">
+      <div class="row">
+        <span class="k">Serveur</span>
+        <span class="v" id="backend">—</span>
+      </div>
+      <div class="row">
+        <span class="k">Onglet actif</span>
+        <span class="v" id="tab" title="">—</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="btnReconnect">Reconnecter</button>
+      <button class="btn ghost" id="btnSettings">Réglages</button>
+    </div>
+
+    <div class="hint" id="hint"></div>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

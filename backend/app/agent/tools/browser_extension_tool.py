@@ -1,0 +1,473 @@
+# =============================================================================
+# @project    ELY — Exactly Like You
+# @file       backend/app/agent/tools/browser_extension_tool.py
+# @brief      Tools that act in the user's REAL Chrome tab via the ELY
+#             browser extension (Sprint 2: read-only — read_text, read_html,
+#             get_url, screenshot). Click/fill/navigate come in Sprint 1
+#             once the in-page HITL overlay lands.
+#
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+# @license    PolyForm Strict License 1.0.0
+# =============================================================================
+"""Use the connected ELY browser extension to act on the user's own Chrome.
+
+Why this exists
+---------------
+Without the extension, the agent navigates with a server-side Playwright
+that has no cookies, no logged-in sessions, no user context. Anything
+behind auth (LinkedIn, Gmail UI, Amazon orders, X) returns the login page.
+
+With the extension, the agent commands the user's actual Chrome tab,
+which holds the user's real cookies and sessions. The agent never sees
+those cookies — it just asks "read the text of the active tab" and
+gets the post-login content the user is looking at.
+
+Operational notes
+-----------------
+- Every tool checks `browser_extension_registry.get(user_id)` first.
+  If the extension is not connected, the tool returns a clear message
+  inviting the user to install/connect it, rather than silently failing.
+- Round-trip works via an `asyncio.Future` stored in the connection's
+  `pending` dict, keyed by the envelope id. The browser_extension
+  router resolves the future when a matching `result` envelope arrives.
+- Timeout is 15 s for reads — generous because some pages take time to
+  finish their async rendering, but short enough to avoid hanging the
+  agent on a stuck tab.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+import uuid
+from typing import Annotated
+
+from langchain_core.tools import tool, InjectedToolArg
+
+from app.services import browser_extension_registry as bext_registry
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_TIMEOUT_S = 15.0
+_PROTOCOL_VERSION = "0.1.0"
+
+
+def _not_connected_msg() -> str:
+    return (
+        "⚠️ L'extension navigateur ELY n'est pas connectée pour cet utilisateur.\n"
+        "Pour utiliser ce type de capacité, installer l'extension Chrome depuis "
+        "https://github.com/franckolv-dev/ElyAgent/tree/main/extension/chrome "
+        "et la connecter via Options → token JWT."
+    )
+
+
+async def _send_and_wait(user_id: str, command_type: str, payload: dict) -> dict:
+    """Send a command envelope to the user's extension and await the result.
+
+    Returns the result payload as a dict (with `ok` + `data`/`error`).
+    Raises TimeoutError if no answer comes within _DEFAULT_TIMEOUT_S.
+    """
+    # Normalise to str — the registry keys are always str, but the agent
+    # state may pass a UUID object, which would silently miss the lookup.
+    key = str(user_id) if user_id is not None else ""
+    conn = bext_registry.get(key)
+    if conn is None:
+        # Diagnostic log so we can tell the difference between
+        # "extension truly not connected" and "user_id mismatch".
+        known = list(getattr(bext_registry, "_connections", {}).keys())
+        logger.warning(
+            "[browser-ext-tool] no connection for user_id=%r (cmd=%s). "
+            "Registry currently has %d connection(s): %s",
+            key, command_type, len(known), known,
+        )
+        return {"ok": False, "error": "extension_not_connected", "hint": _not_connected_msg()}
+
+    envelope_id = f"backend-{uuid.uuid4().hex[:12]}"
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future = loop.create_future()
+    conn.pending[envelope_id] = fut
+
+    envelope = {
+        "v": _PROTOCOL_VERSION,
+        "id": envelope_id,
+        "type": command_type,
+        "payload": payload,
+        "ts": int(time.time() * 1000),
+    }
+
+    try:
+        await conn.websocket.send_text(json.dumps(envelope))
+    except Exception as e:
+        conn.pending.pop(envelope_id, None)
+        return {"ok": False, "error": f"send_failed: {e}"}
+
+    try:
+        result_envelope = await asyncio.wait_for(fut, timeout=_DEFAULT_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        conn.pending.pop(envelope_id, None)
+        return {"ok": False, "error": f"timeout after {_DEFAULT_TIMEOUT_S}s"}
+
+    # Result envelope shape:
+    #   { ok: bool, data: <handler_response>, error: str | null }
+    # where `data` is whatever the SW/content-script handler returned.
+    # We FLATTEN so tools can do `res.get("tab_id")` directly without
+    # having to navigate `res["data"]["tab_id"]`.
+    #
+    # If the handler itself returned an `{ok: false, error}` dict, we
+    # propagate that as the source-of-truth (the transport delivered the
+    # message OK, but the operation failed).
+    if isinstance(result_envelope, dict):
+        ok = result_envelope.get("ok", True)
+        error = result_envelope.get("error")
+        data = result_envelope.get("data")
+        merged: dict = {"ok": bool(ok)}
+        if error is not None:
+            merged["error"] = error
+        if isinstance(data, dict):
+            # Handler's `ok`/`error` (if any) override the envelope's.
+            merged.update(data)
+        elif data is not None:
+            merged["data"] = data
+        return merged
+    return {"ok": True, "data": result_envelope}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Tools exposed to the agent
+# ─────────────────────────────────────────────────────────────────────
+
+@tool
+async def browser_list_tabs(
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """List every Chrome tab currently open in the user's browser.
+
+    CALL THIS FIRST when the user asks to look at "their LinkedIn", "their
+    Gmail", "this article", or any specific tab — because the conversation
+    with ELY is itself running in a Chrome tab, so "the active tab" is
+    almost always ELY's chat itself, not the page the user wants you to
+    read. Use this list to pick the right tab_id, then pass it to the
+    other browser_tab_* tools.
+
+    Returns: a numbered list of open tabs with their tab_id, URL and title.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    res = await _send_and_wait(user_id, "list_tabs", {})
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    tabs = res.get("tabs", []) or []
+    if not tabs:
+        return "Aucun onglet web ouvert (seules les pages http(s) sont listées)."
+    lines = [f"{len(tabs)} onglet(s) Chrome ouvert(s) :"]
+    for t in tabs:
+        active_marker = " ← onglet actif" if t.get("active") else ""
+        lines.append(
+            f"  - tab_id={t.get('tab_id')} | {t.get('title', '')[:80]}"
+            f"\n      url: {t.get('url', '')}{active_marker}"
+        )
+    return "\n".join(lines)
+
+
+@tool
+async def browser_tab_get_url(
+    tab_id: int = 0,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Return the URL and title of a specific Chrome tab.
+
+    Args:
+        tab_id: the numeric ID returned by browser_list_tabs. Use 0
+            (or omit) to target the active tab — but remember that's
+            usually the ELY chat tab itself, so prefer an explicit id.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    payload = {"tab_id": tab_id} if tab_id else {}
+    res = await _send_and_wait(user_id, "get_url", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    return (
+        f"URL : {res.get('url', 'inconnue')}\n"
+        f"Titre : {res.get('title', 'inconnu')}\n"
+        f"Tab ID : {res.get('tab_id', 'n/a')}"
+    )
+
+
+@tool
+async def browser_tab_read_text(
+    tab_id: int = 0,
+    selector: str = "",
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Read the visible TEXT content of a specific Chrome tab.
+
+    USE THIS for anything behind authentication: LinkedIn profile, post
+    impressions, Gmail UI, Amazon orders, X timeline, Discord messages, etc.
+    The user's real session is used — no separate login needed.
+
+    Args:
+        tab_id: the numeric ID returned by browser_list_tabs. Required
+            in most real cases — without it the tool falls back to the
+            currently active tab, which is usually ELY's chat itself.
+        selector: optional CSS selector to scope the read (e.g. "main",
+            "#main-content", ".post-stats"). When empty, reads `body`.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    payload = {"selector": selector or ""}
+    if tab_id:
+        payload["tab_id"] = tab_id
+    res = await _send_and_wait(user_id, "read_text", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    text = res.get("text", "")
+    return (
+        f"URL : {res.get('url', '')}\n"
+        f"Titre : {res.get('title', '')}\n"
+        f"Sélecteur : {res.get('selector', 'body')}\n"
+        f"Contenu ({len(text)} caractères) :\n{text}"
+    )
+
+
+@tool
+async def browser_tab_read_html(
+    tab_id: int = 0,
+    selector: str = "",
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Read the HTML (outerHTML) of a specific Chrome tab.
+
+    Prefer browser_tab_read_text when you only need the visible text.
+    Use this when you need to inspect DOM structure, attributes, or
+    specific elements (data-* attributes, hidden values, link href, etc.).
+
+    Args:
+        tab_id: the numeric ID returned by browser_list_tabs. Required
+            in most real cases.
+        selector: optional CSS selector to scope the read. Output is
+            automatically truncated to 200 kB.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    payload = {"selector": selector or ""}
+    if tab_id:
+        payload["tab_id"] = tab_id
+    res = await _send_and_wait(user_id, "read_dom", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    html = res.get("html", "")
+    return (
+        f"URL : {res.get('url', '')}\n"
+        f"Sélecteur : {res.get('selector', 'body')}\n"
+        f"HTML ({len(html)} caractères) :\n{html}"
+    )
+
+
+@tool
+async def browser_tab_screenshot(
+    tab_id: int = 0,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Capture a PNG screenshot of the visible viewport of a specific Chrome tab.
+
+    The screenshot is stashed to a local backend path and returned as such
+    so you can pass it directly to `vision_analyze_image(image_path=...)`
+    when the page DOM is anti-bot-protected (e.g. Amazon) and
+    `browser_tab_read_text` returns near-empty content.
+
+    Usage pattern for anti-bot sites:
+      1. browser_open_tab(...)
+      2. browser_tab_wait_loaded(tab_id)
+      3. browser_tab_screenshot(tab_id) → returns a local path
+      4. vision_analyze_image(image_path=<that path>, question="...")
+      5. browser_close_tab(tab_id)
+
+    Args:
+        tab_id: the numeric ID returned by browser_list_tabs.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    payload = {"tab_id": tab_id} if tab_id else {}
+    res = await _send_and_wait(user_id, "screenshot", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    data_url = res.get("data_url", "")
+    if not data_url:
+        return "Erreur : capture sans données."
+
+    # Stash the PNG to a local path so vision_analyze_image can pick it up
+    # without dragging the full base64 through the LLM context window.
+    try:
+        import base64 as _b64
+        import pathlib as _pl
+        import uuid as _uuid
+
+        if not data_url.startswith("data:"):
+            return f"Erreur : format inattendu (data_url ne commence pas par 'data:'): {data_url[:60]}…"
+        _, _payload = data_url.split(",", 1)
+        _raw = _b64.b64decode(_payload)
+        _dir = _pl.Path("/tmp/ely-screenshots")
+        _dir.mkdir(parents=True, exist_ok=True)
+        _path = _dir / f"tab-{res.get('tab_id', 'x')}-{_uuid.uuid4().hex[:8]}.png"
+        _path.write_bytes(_raw)
+        return (
+            f"Capture prête ({len(_raw)} bytes, tab_id={res.get('tab_id', 'n/a')}).\n"
+            f"\n"
+            f"⚠️ ÉTAPE SUIVANTE OBLIGATOIRE — appelle DIRECTEMENT :\n"
+            f"    vision_analyze_image(image_path='{_path}', question='<question_utilisateur>')\n"
+            f"\n"
+            f"NE PAS utiliser desktop_write_file, desktop_read_file, ou tout autre outil pour "
+            f"manipuler ce chemin. Il vit dans le backend Python, pas sur la machine de l'utilisateur. "
+            f"vision_analyze_image sait lire ce chemin sans intermédiaire."
+        )
+    except Exception as e:
+        return f"Erreur lors de la sauvegarde du screenshot : {e}"
+
+
+@tool
+async def browser_open_tab(
+    url: str,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Open a URL in a NEW Chrome tab in the user's browser, in the background.
+
+    The new tab inherits the user's Chrome profile, including their cookies
+    and authenticated sessions. So if the user is logged into LinkedIn /
+    Gmail / Amazon in Chrome, the new tab is automatically logged in too —
+    no fresh login required.
+
+    This is the **idiomatic way to autonomously visit a page on behalf of
+    the user**:
+        1. browser_open_tab("https://www.linkedin.com/in/me/recent-activity/")
+        2. browser_tab_wait_loaded(tab_id=<id from step 1>)
+        3. browser_tab_read_text(tab_id=...)
+        4. browser_close_tab(tab_id=...)  — clean up
+
+    The tab opens in the BACKGROUND (does not steal focus), so the user
+    keeps doing what they were doing in their current tab.
+
+    Args:
+        url: must start with http:// or https://. No about:, chrome:, file:.
+
+    Returns:
+        Tab id, final URL after redirects, and title. Pass tab_id to
+        browser_tab_wait_loaded next.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return "Erreur : l'URL doit commencer par http:// ou https://."
+    res = await _send_and_wait(user_id, "open_tab", {"url": url, "active": False})
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    return (
+        f"Nouvel onglet ouvert en arrière-plan :\n"
+        f"  tab_id : {res.get('tab_id')}\n"
+        f"  URL    : {res.get('url')}\n"
+        f"  Titre  : {res.get('title')}\n"
+        f"→ appeler browser_tab_wait_loaded(tab_id={res.get('tab_id')}) avant de lire."
+    )
+
+
+@tool
+async def browser_tab_wait_loaded(
+    tab_id: int,
+    timeout_s: int = 15,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Wait until a Chrome tab finishes loading (`document.readyState=complete`).
+
+    Call this RIGHT AFTER browser_open_tab. It blocks for up to
+    `timeout_s` seconds. Returns the final URL (after redirects) and title.
+
+    Args:
+        tab_id: the tab id returned by browser_open_tab.
+        timeout_s: max wait, 15 s by default. Increase to 30 for slow pages.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    res = await _send_and_wait(user_id, "wait_loaded", {
+        "tab_id": tab_id, "timeout_s": timeout_s,
+    })
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    return (
+        f"Onglet {res.get('tab_id')} chargé en {res.get('waited_ms', 0)} ms :\n"
+        f"  URL final : {res.get('url')}\n"
+        f"  Titre     : {res.get('title')}"
+    )
+
+
+@tool
+async def browser_tab_wait_for_selector(
+    tab_id: int,
+    selector: str,
+    timeout_s: int = 10,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Wait until a CSS selector becomes present in the target tab's DOM.
+
+    USE THIS FOR SPAs (Amazon, LinkedIn, X, Gmail, Notion…) where
+    `browser_tab_wait_loaded` returns immediately but the page content
+    is still being rendered by JavaScript afterwards. Without this,
+    `browser_tab_read_text` returns a near-empty DOM and you'll think
+    the page is broken.
+
+    Tip — common selectors per site:
+      • Amazon orders list   : `.order-card, .a-box-group, [data-component=orderCard]`
+      • LinkedIn feed        : `main, [role=main]`
+      • Gmail inbox          : `.AO, [role=main]`
+      • X timeline           : `[data-testid=primaryColumn]`
+
+    Args:
+        tab_id: target Chrome tab.
+        selector: CSS selector to wait for (e.g. `.order-card`).
+        timeout_s: max wait, 10 s default. Bump to 20-30 for heavy SPAs.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    res = await _send_and_wait(user_id, "wait_for", {
+        "tab_id": tab_id, "selector": selector, "timeout_ms": timeout_s * 1000,
+    })
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    return (
+        f"Selector '{selector}' trouvé dans l'onglet {tab_id} en "
+        f"{res.get('waited_ms', 0)} ms. Tu peux maintenant lire le contenu."
+    )
+
+
+@tool
+async def browser_close_tab(
+    tab_id: int,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Close a Chrome tab. Use this to clean up after reading an autonomous tab.
+
+    Refuses to close the ELY chat tab itself (safety).
+
+    Args:
+        tab_id: the tab id to close.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    res = await _send_and_wait(user_id, "close_tab", {"tab_id": tab_id})
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    return f"Onglet {tab_id} fermé."
+
+
+BROWSER_EXTENSION_TOOLS = [
+    browser_list_tabs,
+    browser_open_tab,
+    browser_tab_wait_loaded,
+    browser_tab_wait_for_selector,
+    browser_tab_get_url,
+    browser_tab_read_text,
+    browser_tab_read_html,
+    browser_tab_screenshot,
+    browser_close_tab,
+]

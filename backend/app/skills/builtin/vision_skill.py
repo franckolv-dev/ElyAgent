@@ -71,9 +71,14 @@ async def vision_analyze_image(
     - L'utilisateur a joint une image et veut qu'Ély la décrive ou l'analyse
     - L'utilisateur demande : 'regarde mon écran', 'qu'est-ce que tu vois',
       'analyse cette image', 'que dit ce document visuel'
+    - Tu as fait un `browser_tab_screenshot` sur un site anti-bot (Amazon,
+      certains intranets) où `browser_tab_read_text` renvoie du DOM presque
+      vide : passe directement le data URL renvoyé par le screenshot ici.
 
     Args:
-        image_path: Chemin local (/app/uploads/…) ou URL https:// de l'image
+        image_path: Chemin local (/app/uploads/…), URL https://, ou data URL
+                    ("data:image/png;base64,iVBORw0KGgo…") tel que renvoyé par
+                    `browser_tab_screenshot`.
         question:   Question précise sur l'image (par défaut : description générale)
     """
     try:
@@ -90,7 +95,18 @@ async def vision_analyze_image(
         genai.configure(api_key=settings.gemini_api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
 
-        if image_path.startswith(("http://", "https://")):
+        if image_path.startswith("data:"):
+            # Inline data URL — typically from browser_tab_screenshot.
+            # Format: data:<mime>;base64,<payload>
+            import base64 as _b64
+            try:
+                header, payload = image_path.split(",", 1)
+                # header looks like "data:image/png;base64"
+                mime = header.split(":", 1)[1].split(";", 1)[0] or "image/png"
+                data = _b64.b64decode(payload)
+            except Exception as e:
+                return f"data URL malformé : {e}"
+        elif image_path.startswith(("http://", "https://")):
             # Image distante — on la télécharge nous-mêmes pour rester dans les limites d'upload
             import httpx
             async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:

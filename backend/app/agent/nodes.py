@@ -189,6 +189,64 @@ Comportement attendu :
 - "cherche sur le web" / "google [sujet]" / "trouve le site de" / "restaurants à" / "commerces à" / "horaires de" → utiliser web_search EN PREMIER (fiable, pas de blocage bot) — TOUJOURS inclure la ville et le pays dans la requête pour les recherches locales
 - "va sur [url]" / "ouvre le site" / "lis cette page" → utiliser browser_navigate puis browser_get_text si besoin
 - Pour réserver sur un site : web_search pour trouver l'URL, puis browser_navigate + browser_fill + browser_click
+
+EXTENSION CHROME (autonomie web avec la session de l'utilisateur) — RÈGLE PRIORITAIRE :
+- L'extension Chrome ELY est DIFFÉRENTE d'ELY Desktop :
+  • ELY Desktop = daemon Go pour les FICHIERS locaux (outils desktop_*)
+  • Extension Chrome = ouvre / lit des ONGLETS CHROME chez l'utilisateur, AVEC sa session déjà ouverte (cookies, login préservés)
+
+INTERDICTIONS ABSOLUES quand l'extension Chrome est disponible (= les outils browser_open_tab, browser_tab_read_text, etc. sont dans ton toolkit) :
+  ❌ NE JAMAIS appeler `browser_navigate`, `browser_get_text`, `browser_screenshot` (= Playwright headless serveur — session vierge, atterrit sur login, c'est ÇA qui te fait demander un mot de passe).
+  ❌ NE JAMAIS faire une recherche web par NOM pour trouver le profil/page de l'utilisateur (ça retourne des HOMONYMES — d'autres personnes du même nom). Utiliser les URLs canoniques de session ci-dessous.
+  ❌ NE JAMAIS basculer sur un fallback Playwright si la lecture d'un onglet échoue — répondre simplement à l'utilisateur que la page n'a pas pu être lue et lui demander de l'aide.
+
+URLs CANONIQUES POUR ATTEINDRE LES PAGES "MOI" DE L'UTILISATEUR (= sa session Chrome résoud ça automatiquement) :
+  • LinkedIn — feed perso + sidebar stats profil  : https://www.linkedin.com/feed/
+  • LinkedIn — son profil (alias officiel)        : https://www.linkedin.com/in/me/
+  • LinkedIn — son activité (posts + impressions) : https://www.linkedin.com/in/me/detail/recent-activity/shares/
+  • LinkedIn — analytics de ses posts             : https://www.linkedin.com/my-items/posts-and-activity/
+  • Gmail (UI web)        : https://mail.google.com/mail/u/0/#inbox
+  • Google Calendar       : https://calendar.google.com/calendar/u/0/r
+  • X (home + son profil) : https://x.com/home
+  • GitHub (son tableau)  : https://github.com/
+  • Amazon (commandes)    : https://www.amazon.fr/gp/your-account/order-history
+
+PATTERN A — lecture autonome (le cas standard, ~90% des cas) :
+  Quand l'utilisateur demande « regarde mon LinkedIn », « combien d'impressions », « va voir mes mails », tu fais TOUT toi-même :
+  1. `browser_open_tab(url=<URL_CANONIQUE_CI-DESSUS>)` — l'extension utilise la session Chrome de l'utilisateur ; il est déjà connecté ; l'onglet s'ouvre en arrière-plan
+  2. `browser_tab_wait_loaded(tab_id=...)` — attend `document.readyState=complete`
+  3. **Pour les SPA modernes (Amazon, LinkedIn, X, Gmail, Notion, etc.) le rendu JS continue après `complete`. Ajoute :**
+     `browser_tab_wait_for_selector(tab_id=..., selector=<sélecteur attendu>)` — sinon `read_text` renverra un DOM presque vide et tu croiras que la page est cassée alors qu'elle n'est juste pas finie de rendre.
+     Sélecteurs utiles connus :
+       • Amazon — liste commandes : `.order-card, .a-box-group, [data-component=orderCard]`
+       • LinkedIn — feed/profil  : `main, [role=main]`
+       • Gmail inbox             : `.AO, [role=main]`
+       • X timeline              : `[data-testid=primaryColumn]`
+  4. `browser_tab_read_text(tab_id=..., selector=<le même selector que ci-dessus>)` — utilise un selector spécifique, PAS `body` (le DOM Amazon fait 200 kB et tu va perdre l'info dans le bruit pub/recommendations)
+  5. `browser_close_tab(tab_id=...)` pour nettoyer
+
+  Si `read_text` renvoie un résultat trop vague (< 500 caractères ou « JavaScript inside ») :
+    → re-essayer une seule fois avec un selector plus précis
+    → si toujours rien : **fallback vision** (site anti-bot type Amazon) :
+       a. `browser_tab_screenshot(tab_id=...)` retourne un path local (genre `/tmp/ely-screenshots/tab-X.png`)
+       b. `vision_analyze_image(image_path=<ce_path>, question="<question_user>")` — Gemini lit visuellement la page rendue, contourne l'anti-DOM-scraping
+       c. `browser_close_tab(tab_id=...)`
+       Ce fallback est plus coûteux (un appel LLM vision) mais marche sur N'IMPORTE QUEL site, parce qu'on lit la page comme un humain la voit.
+    → si même la vision ne suffit pas : dire honnêtement à l'utilisateur que le contenu ne s'extrait pas et lui demander d'aller voir manuellement
+
+PATTERN B — lire un onglet déjà ouvert par l'utilisateur (« cet onglet », « la page que je regarde ») :
+  1. `browser_list_tabs`
+  2. Identifier l'onglet pertinent par URL/titre — IGNORER tous les onglets dont l'URL commence par l'instance ELY (c'est TOI-MÊME, pas la page demandée).
+  3. `browser_tab_read_text(tab_id=...)`
+  PAS de close_tab — l'utilisateur l'avait ouvert lui-même.
+
+DIAGNOSTIC en cas d'échec :
+  - Si la lecture renvoie « extension_not_connected » → indiquer à l'utilisateur que l'extension Chrome doit être connectée (chrome://extensions/ → icône ELY → Options). NE PAS tenter de fallback Playwright.
+  - Si l'URL ouverte redirige vers une page de login → c'est que la session n'est plus valide dans Chrome (cookies expirés). Demander à l'utilisateur de se reconnecter au site dans son Chrome avant de réessayer.
+  - Si la page ne contient pas l'info attendue → essayer une URL plus spécifique de la liste canonique ci-dessus.
+
+Mots-clés pattern A : « regarde mon LinkedIn », « combien d'impressions », « consulte mes mails », « va voir », « cherche dans », « mes notifications », « mon agenda ».
+Mots-clés pattern B : « cet onglet », « la page courante », « ce que j'ai ouvert », « cette page ».
 - "prends une capture d'écran" → utiliser browser_screenshot (s'affiche directement dans le chat)
 - "montre-moi une image de" / "trouve une photo de" / "cherche une image de" → utiliser browser_search_images (photos réelles depuis le web, pas une image générée)
 - "surveille ce site" / "veille sur" / "préviens-moi si" → utiliser watchdog_add
@@ -1136,6 +1194,36 @@ def create_agent_node():
                         len(_filtered_tools),
                         sorted(t.name for t in _filtered_tools),
                     )
+                # When the user's ELY Chrome extension is connected, hide
+                # the server-side Playwright tools entirely. They live in
+                # a separate, cookie-less context that always lands on
+                # login pages — and the LLM tends to fall back to them
+                # the second `browser_tab_*` returns less data than
+                # expected. Removing them from the toolkit makes the
+                # fallback impossible (belt-and-braces with the system
+                # prompt rule).
+                try:
+                    from app.services import browser_extension_registry as _bext
+                    _uid_for_bext = str(state.get("user_id") or "")
+                    if _uid_for_bext and _bext.is_connected(_uid_for_bext):
+                        _PLAYWRIGHT_TOOLS = {
+                            "browser_navigate", "browser_screenshot",
+                            "browser_get_text", "browser_search_web",
+                            "browser_click", "browser_fill", "browser_close",
+                        }
+                        _before = len(_filtered_tools)
+                        _filtered_tools = [
+                            t for t in _filtered_tools if t.name not in _PLAYWRIGHT_TOOLS
+                        ]
+                        if len(_filtered_tools) != _before:
+                            logger.warning(
+                                "[diag.bind] extension connected → hiding %d Playwright tool(s); "
+                                "agent now has %d tools",
+                                _before - len(_filtered_tools), len(_filtered_tools),
+                            )
+                except Exception as _bext_err:
+                    logger.debug("[diag.bind] extension-check skipped: %s", _bext_err)
+
                 # Mini-chantier A — apply parallel_tool_calls policy by
                 # model family. Permissive models (Qwen, Mistral…) and OpenAI
                 # family invent downstream args (e.g. fake local_path) when

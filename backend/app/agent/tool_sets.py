@@ -93,6 +93,17 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "browser_click",
     "browser_fill",
     "browser_close",
+    # Browser extension tools — need user_id to look up the user's
+    # connected Chrome extension in the registry
+    "browser_list_tabs",
+    "browser_open_tab",
+    "browser_tab_wait_loaded",
+    "browser_tab_wait_for_selector",
+    "browser_tab_get_url",
+    "browser_tab_read_text",
+    "browser_tab_read_html",
+    "browser_tab_screenshot",
+    "browser_close_tab",
     # Watchdog tools
     "watchdog_add",
     "watchdog_list",
