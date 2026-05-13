@@ -34,10 +34,16 @@ def test_default_profile_has_reasonable_size():
     """Profile size must stay in a reasonable window — bigger overwhelms
     small models (xLAM-2 8B drowned at 50+), smaller misses common workflows.
     Bumped to 55 in 2026-05-09 after adding 9 ELY Desktop filesystem tools.
-    DeepSeek / Mistral Small / Mistral Large handle 50+ tools comfortably;
-    xLAM-style fragile FC-tunes are no longer in the chain anyway."""
+    Bumped to 70 in 2026-05-13 after adding 9 browser_extension tools
+    (the Chrome companion that lets the agent act in the user's real
+    tabs — list/open/wait/read/screenshot/close). Note: the Playwright
+    server-side tools are dynamically REMOVED at bind time when the
+    extension is connected, so the runtime toolset stays smaller (~51)
+    even though the static profile is now 59.
+    DeepSeek / Mistral Small / Mistral Large handle 50-70 tools
+    comfortably; xLAM-style fragile FC-tunes are no longer in the chain."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 55, f"default has {len(tools)} tools (target 25-55)"
+    assert 25 <= len(tools) <= 70, f"default has {len(tools)} tools (target 25-70)"
 
 
 def test_default_profile_no_duplicates():
