@@ -460,6 +460,133 @@ async def browser_close_tab(
     return f"Onglet {tab_id} fermé."
 
 
+@tool
+async def browser_tab_click(
+    selector: str,
+    tab_id: int = 0,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Click an element in a Chrome tab using a CSS selector.
+
+    USE THIS to drive multi-step web flows: Doctolib (click "Prendre
+    rendez-vous", pick a consultation reason, choose a slot), SNCF Connect,
+    Booking, forms on .gouv.fr, any React/SPA where a button must be
+    pressed before the next data is visible.
+
+    Best practices:
+        - First call browser_tab_read_html with a tight selector (e.g.
+          "main", "[role=main]") and locate the button/link you want to
+          click. Pick a selector specific enough to match a SINGLE
+          element — class names with hash suffixes (.dl-button-primary,
+          .btn-r2x9fp) often work better than generic [role=button].
+        - The tool auto-picks the first VISIBLE match when several
+          elements match (mobile/desktop dupes are common in React apps).
+        - After click, ALWAYS call browser_tab_wait_for_selector for the
+          NEXT page's expected element before reading — React rerenders
+          asynchronously and a fast read_text right after click will
+          return the OLD content.
+
+    Args:
+        selector: CSS selector of the element to click. Required.
+        tab_id: the tab id from browser_list_tabs. Defaults to the active
+            tab — usually NOT what you want (that's the ELY chat tab).
+
+    Returns: confirmation + the matched element's tag + first 200 chars
+        of its visible text, so you can sanity-check you clicked the
+        right thing before continuing.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    if not selector:
+        return "Erreur : selector requis."
+    payload = {"selector": selector}
+    if tab_id:
+        payload["tab_id"] = tab_id
+    res = await _send_and_wait(user_id, "click", payload)
+    if not res.get("ok"):
+        return (
+            f"Erreur : {res.get('error', 'inconnue')}. "
+            f"Détail : {res.get('detail', '')} {res.get('hint', '')}"
+        )
+    return (
+        f"Clic exécuté sur '{selector}' (matched={res.get('matched', '?')}).\n"
+        f"Élément : <{res.get('tag', '?')}> | Texte : {res.get('text', '')!r}\n"
+        f"URL après clic : {res.get('url', '')}\n"
+        "⚠️ Pour les SPA (React, Vue), appelle browser_tab_wait_for_selector "
+        "avant de lire la page suivante : le rendu est asynchrone."
+    )
+
+
+@tool
+async def browser_tab_fill(
+    selector: str,
+    value: str,
+    tab_id: int = 0,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Fill an <input> or <textarea> with a given value.
+
+    Handles React-controlled inputs correctly (uses the native setter +
+    dispatches `input`/`change` events — a plain ``element.value = …``
+    would be silently ignored by frameworks like React).
+
+    Args:
+        selector: CSS selector of the input/textarea. Must match exactly
+            one element.
+        value: text to type in.
+        tab_id: target tab; defaults to the active tab.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    if not selector:
+        return "Erreur : selector requis."
+    payload = {"selector": selector, "value": value}
+    if tab_id:
+        payload["tab_id"] = tab_id
+    res = await _send_and_wait(user_id, "fill", payload)
+    if not res.get("ok"):
+        return (
+            f"Erreur : {res.get('error', 'inconnue')}. "
+            f"Détail : {res.get('detail', '')} {res.get('hint', '')}"
+        )
+    return (
+        f"Champ '{selector}' rempli avec {res.get('value_length', 0)} caractères."
+    )
+
+
+@tool
+async def browser_tab_navigate(
+    url: str,
+    tab_id: int = 0,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Navigate an existing tab to a new URL.
+
+    Prefer browser_open_tab when you want a fresh tab; use this only
+    when you want to keep the same tab (e.g. multi-step flow where
+    closing/reopening would reset auth state in the page's memory).
+
+    Args:
+        url: must start with http:// or https://.
+        tab_id: target tab; defaults to active tab.
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    if not url:
+        return "Erreur : url requise."
+    payload = {"url": url}
+    if tab_id:
+        payload["tab_id"] = tab_id
+    res = await _send_and_wait(user_id, "navigate", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    return (
+        f"Navigation : {res.get('from', '')} → {res.get('navigated_to', url)}.\n"
+        "Appelle ensuite browser_tab_wait_loaded puis "
+        "browser_tab_wait_for_selector avant de lire le contenu."
+    )
+
+
 BROWSER_EXTENSION_TOOLS = [
     browser_list_tabs,
     browser_open_tab,
@@ -469,5 +596,8 @@ BROWSER_EXTENSION_TOOLS = [
     browser_tab_read_text,
     browser_tab_read_html,
     browser_tab_screenshot,
+    browser_tab_click,
+    browser_tab_fill,
+    browser_tab_navigate,
     browser_close_tab,
 ]

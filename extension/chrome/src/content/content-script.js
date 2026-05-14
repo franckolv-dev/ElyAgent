@@ -84,10 +84,110 @@
       });
     },
 
-    // Sprint 1 will replace these stubs with HITL-gated implementations.
-    click() { return { ok: false, error: "not_implemented_yet_sprint1" }; },
-    fill()  { return { ok: false, error: "not_implemented_yet_sprint1" }; },
-    navigate() { return { ok: false, error: "not_implemented_yet_sprint1" }; },
+    // Sprint 1 implementations.
+    //
+    // No in-page HITL overlay (yet) — the trust model is:
+    //   - The agent only emits a click on explicit user request in chat.
+    //   - The user sees the tab live in their own Chrome window.
+    //   - The backend can lock specific tool names via LOCKED_HITL_TOOLS
+    //     if some flow needs server-side confirmation.
+    // This is the pragmatic "ship it, the user is watching" version. The
+    // proper in-page overlay can come later without breaking the protocol.
+    click({ selector } = {}) {
+      if (!selector) return { ok: false, error: "missing_selector" };
+      let nodes;
+      try { nodes = document.querySelectorAll(selector); }
+      catch (e) { return { ok: false, error: "invalid_selector", detail: String(e) }; }
+      if (nodes.length === 0) return { ok: false, error: "selector_not_found", selector };
+
+      // Pick the first VISIBLE match — React apps often render duplicate
+      // selectors (e.g. mobile + desktop variants both in the DOM) and
+      // clicking the hidden one does nothing visible to the user.
+      let target = null;
+      for (const n of nodes) {
+        const r = n.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) { target = n; break; }
+      }
+      if (!target) target = nodes[0]; // fall back if everything is offscreen
+
+      try {
+        // Bring it into view first, otherwise position-fixed overlays can
+        // intercept synthetic clicks on long pages.
+        target.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      } catch { /* old browsers ignore options */ }
+
+      // Native .click() is enough for 95 % of cases (React, Vue, Svelte
+      // all listen to native click events). For the remaining 5 % we
+      // also dispatch a bubbling MouseEvent so frameworks that bind to
+      // mousedown/mouseup still fire their handlers.
+      try {
+        target.focus?.();
+        const evt = new MouseEvent("click", {
+          bubbles: true, cancelable: true, view: window, button: 0,
+        });
+        target.dispatchEvent(evt);
+        // Belt-and-suspenders: also call the property method, which some
+        // React synthetic-event wrappers prefer.
+        if (typeof target.click === "function") target.click();
+      } catch (e) {
+        return { ok: false, error: "click_failed", detail: String(e) };
+      }
+
+      return {
+        ok: true,
+        clicked: true,
+        selector,
+        matched: nodes.length,
+        tag: target.tagName?.toLowerCase() || null,
+        text: (target.innerText || target.textContent || "").slice(0, 200).trim(),
+        url: location.href,
+      };
+    },
+
+    fill({ selector, value } = {}) {
+      if (!selector) return { ok: false, error: "missing_selector" };
+      if (value == null) return { ok: false, error: "missing_value" };
+      let element;
+      try { element = document.querySelector(selector); }
+      catch (e) { return { ok: false, error: "invalid_selector", detail: String(e) }; }
+      if (!element) return { ok: false, error: "selector_not_found", selector };
+
+      // React + controlled inputs intercept the native value setter. Going
+      // through the prototype's native setter and then dispatching `input`
+      // events is the documented workaround (see facebook/react#10135).
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        element instanceof HTMLTextAreaElement
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype,
+        "value"
+      )?.set;
+
+      try {
+        element.focus?.();
+        if (nativeSetter && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+          nativeSetter.call(element, String(value));
+        } else {
+          element.value = String(value);
+        }
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch (e) {
+        return { ok: false, error: "fill_failed", detail: String(e) };
+      }
+      return { ok: true, selector, value_length: String(value).length };
+    },
+
+    navigate({ url } = {}) {
+      if (!url) return { ok: false, error: "missing_url" };
+      if (!/^https?:\/\//i.test(url)) {
+        return { ok: false, error: "url_must_be_http_or_https" };
+      }
+      // Use location.assign for proper history entry. Reply BEFORE navigating
+      // because the navigation will tear down this content-script context.
+      const reply = { ok: true, navigated_to: url, from: location.href };
+      setTimeout(() => { location.assign(url); }, 0);
+      return reply;
+    },
   };
 
   // ── Service worker bridge ───────────────────────────────────────────

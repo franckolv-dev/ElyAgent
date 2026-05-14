@@ -103,6 +103,9 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "browser_tab_read_text",
     "browser_tab_read_html",
     "browser_tab_screenshot",
+    "browser_tab_click",
+    "browser_tab_fill",
+    "browser_tab_navigate",
     "browser_close_tab",
     # Watchdog tools
     "watchdog_add",

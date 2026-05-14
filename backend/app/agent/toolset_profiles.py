@@ -149,6 +149,12 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "browser_tab_read_text",
     "browser_tab_read_html",
     "browser_tab_screenshot",
+    # Sprint 1 (2026-05-14) — interactivity. Required to drive multi-step
+    # SPA workflows (Doctolib, SNCF, Booking, .gouv.fr) that hide their
+    # data behind buttons React refuses to expose via URL.
+    "browser_tab_click",
+    "browser_tab_fill",
+    "browser_tab_navigate",
     "browser_close_tab",
     # Web search (DuckDuckGo / SerpAPI fallback path)
     "web_search",

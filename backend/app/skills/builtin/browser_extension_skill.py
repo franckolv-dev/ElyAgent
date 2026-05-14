@@ -32,6 +32,9 @@ from app.agent.tools.browser_extension_tool import (
     browser_tab_read_text,
     browser_tab_read_html,
     browser_tab_screenshot,
+    browser_tab_click,
+    browser_tab_fill,
+    browser_tab_navigate,
     browser_close_tab,
 )
 
@@ -57,6 +60,9 @@ get_skill_registry().register(Skill(
         browser_tab_read_text,
         browser_tab_read_html,
         browser_tab_screenshot,
+        browser_tab_click,
+        browser_tab_fill,
+        browser_tab_navigate,
         browser_close_tab,
     ],
 ))
