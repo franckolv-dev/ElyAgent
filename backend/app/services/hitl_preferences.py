@@ -66,12 +66,16 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     "contacts_batch_operations",
     # Tasks bulk delete via raw
     "tasks_delete",
-    # Scheduled tasks — deleting a recurring task is destructive (irreversible
-    # for that task instance, even if the user can recreate one manually).
-    # ELY should always confirm before deleting cron jobs she set up,
-    # especially in scripted cleanup scenarios where she might delete more
-    # than intended (audit Franck 2026-05-14).
-    "scheduler_delete_task",
+    # ⚠ Deliberately NOT here: scheduler_delete_task. When the user explicitly
+    # asks in chat to remove a scheduled task they themselves set up, asking
+    # again for confirmation is pure friction (Franck audit 2026-05-14):
+    # "du moment que c'est moi qui lui demande de supprimer mes propres
+    # taches, je ne trouve pas génant de ne pas avoir à confirmer une de
+    # mes demandes". The HITL mechanism is meant for irreversible actions
+    # that touch third parties (mails, shares, SSH) or autonomous behavior
+    # (cron run unattended), not for user-initiated cleanup of their own
+    # cron jobs. If a user wants confirmation, they can enable it from
+    # Settings → HITL preferences (the tool is intentionally toggleable).
     # Memory — persisting permanent constraints affects ALL future
     # conversations. A model that hallucinates "I can't do X" and saves it
     # as a constraint will poison every subsequent chat for every model.
