@@ -90,6 +90,7 @@ from app.routers import voice as voice_router
 from app.routers import arena as arena_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
 from app.routers.browser_extension import ws_router as bext_ws_router, api_router as bext_api_router
+from app.routers import extension_tokens as extension_tokens_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -441,6 +442,9 @@ app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
 app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])
 app.include_router(bext_ws_router, prefix="/ws", tags=["browser-extension"])
 app.include_router(bext_api_router, prefix="/api", tags=["browser-extension"])
+# Long-lived extension tokens (Sprint 0.5) — router self-prefixes with
+# /api/extension/tokens, no extra prefix here.
+app.include_router(extension_tokens_router.router)
 from app.routers import hitl_prefs as _hitl_prefs_router
 app.include_router(_hitl_prefs_router.router, prefix="/api")
 from app.routers import onboarding as _onboarding_router

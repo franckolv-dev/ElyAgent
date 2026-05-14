@@ -369,4 +369,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ tier, licence_key, customer_label }),
     }),
+
+  // ── Browser-extension long-lived tokens (Sprint 0.5) ────────────────────
+  extensionTokensList: () =>
+    fetchAPI("/api/extension/tokens"),
+
+  /** Returns the plaintext token ONCE — caller must show + let the user copy it. */
+  extensionTokenCreate: (name: string) =>
+    fetchAPI("/api/extension/tokens", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+
+  extensionTokenRevoke: (id: string) =>
+    fetchAPI(`/api/extension/tokens/${id}`, { method: "DELETE" }),
 };

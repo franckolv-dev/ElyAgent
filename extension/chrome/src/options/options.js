@@ -67,6 +67,19 @@ $("save").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ kind: "ely:reconnect" });
 });
 
+// "Generate a token in ELY" — opens the Settings → Extension page in a new
+// tab on whatever backend URL is currently configured (falls back to
+// agent-ely.fr if empty so first-time users have a sane default).
+$("openTokenPage").addEventListener("click", async () => {
+  const cfgUrl = $("backendUrl").value.trim().replace(/\/$/, "");
+  // The backend URL is the API host; the web UI lives at the same origin
+  // for ely.catalogmaker.fr / agent-ely.fr deployments. For users running
+  // a split deployment (api.foo / app.foo) they'll need to fix the URL
+  // by hand but that's a niche case — the help text above flags it.
+  const base = cfgUrl || "https://agent-ely.fr";
+  chrome.tabs.create({ url: `${base}/settings/extension` });
+});
+
 $("clear").addEventListener("click", async () => {
   if (!confirm("Effacer la configuration et déconnecter l'extension ?")) return;
   await clearConfig();

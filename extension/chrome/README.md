@@ -1,10 +1,14 @@
-# ELY · Browser Companion (Chrome) — Sprint 0
+# ELY · Browser Companion (Chrome)
 
 > Extension navigateur qui permet à ELY d'agir dans ton vrai Chrome,
 > avec tes sessions, sous ton contrôle (HITL avant chaque action irréversible).
-> Sprint 0 actuel : lecture DOM, status, plomberie WebSocket. Aucune action
-> destructive encore — les handlers `click` / `fill` / `navigate` renvoient
-> `not_implemented_yet_sprint1`.
+>
+> **Statut au 14 mai 2026 — Sprints 0, 0.5 et 2 livrés en production.**
+> Connexion WebSocket stable, tokens longue durée (plus de coupure toutes
+> les 60 minutes), 9 outils d'autonomie agent (ouverture d'onglets, attente
+> de chargement, screenshots avec fallback vision pour Amazon / LinkedIn).
+> Sprint 1 (overlay HITL dans la page) en cours ; Sprint 3 (Chrome Web Store)
+> à venir. Voir la [roadmap complète](#roadmap) en bas du fichier.
 
 ## Architecture
 
@@ -61,12 +65,24 @@
 
 1. Clic-droit sur l'icône ELY → **Options**
    (ou clic gauche sur l'icône → bouton **Réglages**)
-2. Renseigner :
-   - **URL backend** : `https://ely.catalogmaker.fr` (ton instance ELY)
-   - **JWT** : token obtenu via *ELY → Réglages → Extension navigateur*
-     (endpoint à ajouter — voir todo Sprint 0.5)
-3. Clic **Enregistrer & reconnecter**
-4. Le popup ELY doit basculer en vert "Connecté"
+2. Renseigner l'**URL backend** : `https://ely.catalogmaker.fr`
+   (ou ton instance ELY auto-hébergée — sans slash final).
+3. Cliquer **« 🔑 Générer un token dans ELY »** — ça ouvre la page
+   *Réglages → Extension navigateur* dans un nouvel onglet.
+4. Donner un nom au token (ex : *Chrome Mac Studio*) → **Générer** →
+   copier le token (`ely_ext_…`) **immédiatement** (il ne sera plus
+   jamais affiché en clair).
+5. Revenir sur la page Options, coller le token, **Enregistrer & reconnecter**.
+6. Le popup ELY doit basculer en vert « Connecté » — et y rester, même
+   après un redémarrage de Chrome.
+
+> **Pourquoi un token longue durée ?** Le JWT classique de l'app web
+> expire au bout de 60 minutes. Pour une extension qui tourne en tâche
+> de fond, ça veut dire reconnexion forcée toutes les heures. Les
+> tokens `ely_ext_…` n'expirent pas ; tu les révoques toi-même depuis
+> *Réglages → Extension navigateur* quand tu n'en as plus besoin.
+> Seul le hash SHA-256 est stocké côté serveur — le plaintext ne
+> quitte jamais ta machine après la copie initiale.
 
 ## Test end-to-end (Sprint 0)
 
@@ -111,15 +127,31 @@ Tu devrais voir le `textContent` du `<h1>` de la page active.
 
 ## Roadmap
 
-- ✅ **Sprint 0** — Plomberie : connexion WS, HELLO, lecture DOM, screenshot.
-- ⏭ **Sprint 0.5** — REST endpoint `/api/browser-extension/issue-token`
-  côté backend + UI dans Réglages ELY pour générer un JWT scoped extension.
-- ⏭ **Sprint 1** — Actions HITL-gated : `click`, `fill`, `navigate` avec
-  overlay de validation dans la page.
-- ⏭ **Sprint 2** — Outils agent : `browser.read_active_page`,
-  `browser.fill_form`, `browser.click_element`. Intégration dans le
-  registry des tools backend.
-- ⏭ **Sprint 3** — Publication Chrome Web Store + adaptation Firefox/Edge.
+- ✅ **Sprint 0** *(mai 2026)* — Plomberie : connexion WebSocket, handshake
+  `hello`, lecture DOM, heartbeat 20 s pour survivre au killer MV3 de Chrome,
+  reconnect avec backoff exponentiel + suspension sur close codes fatals
+  (4001/4029/1008).
+- ✅ **Sprint 0.5** *(mai 2026)* — Tokens longue durée au format
+  `ely_ext_<48 hex>` (192 bits d'entropie). REST endpoints
+  `POST/GET /api/extension/tokens` + `DELETE /api/extension/tokens/{id}`.
+  UI dédiée *Réglages → Extension navigateur* pour générer / lister /
+  révoquer. Plaintext affiché **une seule fois** ; hash SHA-256 + last_4
+  en base. Fini le copier-coller depuis DevTools.
+- ✅ **Sprint 2** *(mai 2026)* — Autonomie agent : 9 outils backend
+  (`browser_list_tabs`, `browser_open_tab`, `browser_tab_wait_loaded`,
+  `browser_tab_wait_for_selector`, `browser_tab_get_url`,
+  `browser_tab_read_text`, `browser_tab_read_html`,
+  `browser_tab_screenshot`, `browser_close_tab`). Screenshot avec
+  fallback vision pour les sites anti-bot (Amazon, LinkedIn…).
+  Intégration complète dans `tool_sets.py` + `toolset_profiles.py` +
+  registration de skill `browser_extension_skill`.
+- 🟨 **Sprint 1** *(en cours)* — Actions destructives `click` / `fill` /
+  `navigate` avec overlay de validation HITL **dans la page elle-même**.
+  Le gating HITL existe déjà côté backend (validation/HITL channels) ;
+  reste à câbler l'overlay côté content-script pour que la confirmation
+  soit visible là où l'action se produit, pas dans Telegram/web.
+- ⏭ **Sprint 3** — Publication Chrome Web Store + adaptation Firefox/Edge
+  (signature MV3, screenshots store, asset pack, build CI automatisé).
 
 ## Licence
 

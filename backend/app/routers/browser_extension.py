@@ -35,6 +35,7 @@ import json
 import logging
 import time
 from collections import defaultdict
+from datetime import datetime
 from threading import Lock
 from typing import Any
 
@@ -43,7 +44,9 @@ from sqlalchemy import select
 
 from app.auth.jwt import decode_token
 from app.database import async_session
+from app.models.extension_token import ExtensionToken
 from app.models.user import User
+from app.routers.extension_tokens import TOKEN_PREFIX, hash_token
 from app.services import browser_extension_registry as bext_registry
 
 logger = logging.getLogger(__name__)
@@ -109,20 +112,48 @@ async def websocket_browser_extension(websocket: WebSocket):
         return
 
     payload: dict[str, Any] = env.get("payload") or {}
-    token = payload.get("jwt", "")
+    token = payload.get("jwt", "") or payload.get("token", "")
     if not token:
-        await websocket.close(code=4001, reason="Missing jwt")
+        await websocket.close(code=4001, reason="Missing token")
         return
 
-    decoded = decode_token(token)
-    if not decoded or decoded.get("type") != "access":
-        await websocket.close(code=4001, reason="Invalid token")
-        return
+    user_id: str | None = None
+    auth_method: str = ""
+    ext_token_row: ExtensionToken | None = None
 
-    user_id = decoded.get("sub")
-    if not user_id:
-        await websocket.close(code=4001, reason="Invalid token payload")
-        return
+    if token.startswith(TOKEN_PREFIX):
+        # ── Long-lived extension token path (Sprint 0.5) ─────────────────
+        # No expiry; the user revokes it from the web Settings UI when
+        # they're done. We look up the row by SHA-256 hash so the plaintext
+        # never sits in the database.
+        digest = hash_token(token)
+        async with async_session() as db:
+            row = (await db.execute(
+                select(ExtensionToken).where(ExtensionToken.token_hash == digest)
+            )).scalar_one_or_none()
+            if row is None or row.revoked_at is not None:
+                await websocket.close(code=4001, reason="Invalid or revoked extension token")
+                return
+            # Touch last_used_at so the user can spot dormant tokens in
+            # Settings and revoke them.
+            row.last_used_at = datetime.utcnow()
+            db.add(row)
+            await db.commit()
+            user_id = row.user_id
+            ext_token_row = row
+        auth_method = "extension_token"
+    else:
+        # ── Short-lived JWT path (legacy, still supported for the popup
+        # quick-test flow). 60-minute expiry — fine for ad-hoc usage.
+        decoded = decode_token(token)
+        if not decoded or decoded.get("type") != "access":
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+        user_id = decoded.get("sub")
+        if not user_id:
+            await websocket.close(code=4001, reason="Invalid token payload")
+            return
+        auth_method = "jwt"
 
     # Look up the user to make sure they still exist and are active.
     async with async_session() as db:
@@ -133,6 +164,12 @@ async def websocket_browser_extension(websocket: WebSocket):
     if user is None:
         await websocket.close(code=4001, reason="User not found")
         return
+
+    logger.info(
+        "[browser-ext] auth ok user=%s method=%s token_name=%s",
+        user_id, auth_method,
+        ext_token_row.name if ext_token_row else "—",
+    )
 
     # Register.
     conn = bext_registry.BrowserExtensionConnection(

@@ -26,10 +26,11 @@ from app.models.hitl_preference import HitlPreference
 from app.models.user_vocabulary import UserVocabulary
 from app.models.learned_routing_keyword import LearnedRoutingKeyword
 from app.models.licence import Licence
+from app.models.extension_token import ExtensionToken
 
 __all__ = [
     "User", "Conversation", "Message", "AuditLog", "RevokedToken",
     "Mission", "MissionPlan", "MissionStep", "GoogleAccount", "WatchedFolder",
     "HitlPreference", "UserVocabulary", "LearnedRoutingKeyword",
-    "Licence",
+    "Licence", "ExtensionToken",
 ]

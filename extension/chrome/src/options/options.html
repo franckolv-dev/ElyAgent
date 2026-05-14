@@ -39,20 +39,31 @@
       </section>
 
       <section class="card">
-        <h2>2. Jeton d'accès (JWT)</h2>
+        <h2>2. Jeton d'accès longue durée</h2>
+        <p class="help" style="margin-top:-4px;margin-bottom:10px">
+          <strong>Recommandé.</strong> Génère un token longue durée (format
+          <code>ely_ext_…</code>) qui survit aux redémarrages de Chrome.
+          Plus jamais besoin d'ouvrir DevTools.
+        </p>
+        <div class="actions" style="margin: 0 0 10px 0">
+          <button id="openTokenPage" class="btn primary" type="button">
+            🔑 Générer un token dans ELY
+          </button>
+        </div>
         <label class="field">
           <span class="lbl">Token</span>
           <textarea
             id="jwt"
             rows="4"
-            placeholder="Colle ici le token généré dans ELY → Réglages → Extension navigateur"
+            placeholder="Colle ici le token (ely_ext_… ou un JWT classique)"
             spellcheck="false"
           ></textarea>
         </label>
         <p class="help">
-          Le token est stocké uniquement dans le storage de ton navigateur
-          (chiffré par Chrome). Il n'est jamais envoyé à un tiers — seule
-          ton instance ELY le voit.
+          Le token est stocké uniquement dans le storage local du navigateur.
+          Il n'est jamais envoyé à un tiers — seule ton instance ELY le voit.
+          Les tokens <code>ely_ext_</code> n'expirent pas ; tu peux les
+          révoquer à tout moment depuis ELY → Réglages → Extension navigateur.
         </p>
       </section>
 

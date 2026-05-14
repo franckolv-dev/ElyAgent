@@ -2283,6 +2283,39 @@ export default function SettingsPage() {
             )}
 
             {/* ----------------------------------------------------------------
+                Browser Extension — in "integrations" tab
+                Sprint 0.5: long-lived tokens replace the DevTools bidouille.
+            ---------------------------------------------------------------- */}
+            {activeTab === "integrations" && (
+              <section style={{ marginTop: 16 }}>
+                <div className="section-block">
+                  <div className="section-block-head">
+                    <h3>
+                      <Plug size={16} /> Extension navigateur ELY
+                    </h3>
+                  </div>
+                  <div className="vstack" style={{ gap: 12 }}>
+                    <p className="text-xs text-text-muted">
+                      L’extension Chrome permet à Ely d’agir directement dans
+                      vos onglets (lire le DOM, cliquer, remplir des champs,
+                      avec confirmation HITL avant chaque action destructive).
+                      Pour la connecter sans avoir à copier un JWT depuis les
+                      DevTools, générez un token longue durée.
+                    </p>
+                    <a
+                      href="/settings/extension"
+                      className="btn primary"
+                      style={{ minWidth: 280, justifyContent: "center", alignSelf: "flex-start" }}
+                    >
+                      <KeyRound size={14} />
+                      Gérer les tokens d’extension
+                    </a>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* ----------------------------------------------------------------
                 Mon compte — changement de mot de passe
             ---------------------------------------------------------------- */}
             {activeTab === "compte" && (() => {

@@ -120,10 +120,44 @@ docker compose logs --no-color | grep -E "pull|download|fetch" | tail -20
 
 ## 🌍 Browser extension doesn't connect
 
-See [`extension/chrome/README.md`](../extension/chrome/README.md) — the 3 most common issues there are:
-1. Extension reloaded but old service worker still cached → `chrome://extensions/` → 🔄 Reload
-2. Backend URL has a trailing slash → strip it
-3. Token expired → grab a fresh one from `localStorage.ely_access_token` in the ELY web UI (DevTools → Application → Local Storage)
+See [`extension/chrome/README.md`](../extension/chrome/README.md). The most common issues:
+
+1. **Extension reloaded but old service worker still cached**
+   → `chrome://extensions/` → 🔄 Reload on the ELY card.
+2. **Backend URL has a trailing slash** → strip it
+   (use `https://ely.example.com`, not `https://ely.example.com/`).
+3. **Disconnects every ~60 min** → you're using the short-lived JWT
+   from `localStorage.ely_access_token`. Switch to a long-lived token:
+   ELY web app → **Réglages → Extension navigateur** → **Générer**.
+   Tokens are formatted `ely_ext_<48 hex chars>` and never expire
+   (you revoke them yourself from the same page).
+4. **Token revoked or invalid** → the WS closes with code `4001` and
+   the service worker suspends to avoid reconnect loops. Open
+   `chrome://extensions/` → ELY → *service worker* (Inspect) to confirm
+   the close code, then paste a fresh token in the Options page.
+5. **Rate limited (close code 4029)** → wait 60 s. The backend allows
+   30 connection attempts per minute per IP.
+
+### Generating a token from the CLI (for self-hosters)
+
+If the web UI isn't reachable yet, hit the API directly:
+
+```bash
+TOKEN_API="https://ely.example.com/api/extension/tokens"
+ACCESS_JWT="$(curl -s -X POST https://ely.example.com/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"…"}' | jq -r .access_token)"
+
+curl -s -X POST "$TOKEN_API" \
+  -H "Authorization: Bearer $ACCESS_JWT" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Chrome Mac Studio"}' | jq .
+# → { "id": "...", "name": "...", "token": "ely_ext_xxxx...", "last_4": "xxxx", ... }
+```
+
+The plaintext `token` is returned **once**; store it in your password
+manager before closing the terminal. The server only keeps the SHA-256
+hash.
 
 ---
 
