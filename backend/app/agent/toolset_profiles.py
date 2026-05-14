@@ -164,8 +164,13 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # Weather + translation (frequent quick utilities)
     "weather_get",
     "translate_text",
-    # Scheduler — recurring reminders (cron-like)
+    # Scheduler — recurring reminders (cron-like). All three operations
+    # exposed together so ELY can manage the lifecycle of her own tasks
+    # without resorting to "schedule a task to delete the other tasks
+    # tomorrow morning" workarounds (audit Franck 2026-05-14).
     "scheduler_create_task",
+    "scheduler_list_tasks",
+    "scheduler_delete_task",
 )
 
 

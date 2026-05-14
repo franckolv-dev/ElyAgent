@@ -66,6 +66,35 @@ def test_default_profile_includes_universals():
     assert not missing, f"Universals missing from default: {missing}"
 
 
+def test_default_profile_exposes_full_scheduler_lifecycle():
+    """ELY must be able to create AND list AND delete her own scheduled tasks.
+
+    Regression guard for the 2026-05-14 audit: ELY had ``scheduler_create_task``
+    in the default profile but not ``scheduler_list_tasks`` /
+    ``scheduler_delete_task``, so when a user asked her to remove the
+    6 individual cron jobs she had just consolidated into 2, she answered:
+
+        "Je n'ai pas d'outil direct pour supprimer des tâches planifiées.
+         J'ai créé une tâche qui s'exécutera demain à 9h pour faire le
+         ménage, mais ce n'est pas idéal."
+
+    She literally scheduled a cleanup task at 9am to delete the others.
+    Fixing the toolset_profiles entry restores the full lifecycle.
+    """
+    tools = set(get_profile_tool_names("default"))
+    lifecycle = {
+        "scheduler_create_task",
+        "scheduler_list_tasks",
+        "scheduler_delete_task",
+    }
+    missing = lifecycle - tools
+    assert not missing, (
+        f"Scheduler lifecycle incomplete in default profile: {missing}. "
+        "ELY needs all three to manage her own cron jobs without resorting "
+        "to 'schedule a task to delete the others tomorrow' workarounds."
+    )
+
+
 def test_default_profile_covers_capture_mail_drive_workflow():
     """The recurring workflow that exposed all the bugs: capture site +
     mail to address + save to drive. The profile MUST include the three

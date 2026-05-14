@@ -66,6 +66,12 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     "contacts_batch_operations",
     # Tasks bulk delete via raw
     "tasks_delete",
+    # Scheduled tasks — deleting a recurring task is destructive (irreversible
+    # for that task instance, even if the user can recreate one manually).
+    # ELY should always confirm before deleting cron jobs she set up,
+    # especially in scripted cleanup scenarios where she might delete more
+    # than intended (audit Franck 2026-05-14).
+    "scheduler_delete_task",
     # Memory — persisting permanent constraints affects ALL future
     # conversations. A model that hallucinates "I can't do X" and saves it
     # as a constraint will poison every subsequent chat for every model.
