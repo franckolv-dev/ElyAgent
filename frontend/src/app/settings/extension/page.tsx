@@ -145,6 +145,14 @@ export default function ExtensionTokensPage() {
 
   return (
     <AuthGuard>
+      {/* Inline styles for hover states that can't be expressed inline */}
+      <style jsx>{`
+        :global(.revoke-btn:hover:not(:disabled)) {
+          background: rgba(239, 68, 68, 0.12) !important;
+          border-color: rgba(239, 68, 68, 0.55) !important;
+          color: rgb(248, 113, 113) !important;
+        }
+      `}</style>
       <div className="flex h-screen bg-[var(--bg)] text-[var(--text)]">
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -171,22 +179,40 @@ export default function ExtensionTokensPage() {
                 </p>
               </header>
 
-              {/* New-token banner — only visible just after creation */}
+              {/* New-token banner — only visible just after creation.
+                  Theme-agnostic colors (semi-transparent amber overlay
+                  + var(--text) for foreground) so the contrast holds
+                  in both light and dark mode. */}
               {newToken && (
                 <div
-                  className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-4 mb-6"
+                  className="rounded-lg p-4 mb-6"
                   role="alert"
+                  style={{
+                    background: "rgba(245, 158, 11, 0.10)",
+                    border: "1px solid rgba(245, 158, 11, 0.55)",
+                    color: "var(--text)",
+                  }}
                 >
                   <div className="flex items-start gap-3">
-                    <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <AlertTriangle
+                      size={18}
+                      className="flex-shrink-0 mt-0.5"
+                      style={{ color: "rgb(245, 158, 11)" }}
+                    />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium mb-1">
+                      <div
+                        className="font-semibold mb-1"
+                        style={{ color: "var(--text)" }}
+                      >
                         Token créé : « {newToken.name} »
                       </div>
-                      <p className="text-sm text-[var(--text-2)] mb-3">
-                        Copiez ce token <strong>maintenant</strong>. Il ne sera
-                        plus jamais affiché ; seuls les 4 derniers caractères
-                        seront visibles pour identification.
+                      <p
+                        className="text-sm mb-3"
+                        style={{ color: "var(--text-2)" }}
+                      >
+                        Copiez ce token <strong style={{ color: "var(--text)" }}>maintenant</strong>.
+                        Il ne sera plus jamais affiché ; seuls les 4 derniers
+                        caractères seront visibles pour identification.
                       </p>
                       <div className="flex gap-2">
                         <input
@@ -195,16 +221,26 @@ export default function ExtensionTokensPage() {
                           readOnly
                           value={newToken.token}
                           onFocus={(e) => e.currentTarget.select()}
-                          className="flex-1 font-mono text-sm px-3 py-2 rounded border border-[var(--border)] bg-[var(--bg-2)]"
+                          className="flex-1 font-mono text-sm px-3 py-2 rounded"
+                          style={{
+                            background: "var(--bg)",
+                            border: "1px solid var(--border)",
+                            color: "var(--text)",
+                          }}
                         />
                         <button
                           type="button"
                           onClick={handleCopy}
-                          className="px-3 py-2 rounded border border-[var(--border)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] inline-flex items-center gap-2 text-sm"
+                          className="px-3 py-2 rounded inline-flex items-center gap-2 text-sm"
+                          style={{
+                            background: "var(--bg-2)",
+                            border: "1px solid var(--border)",
+                            color: "var(--text)",
+                          }}
                         >
                           {copied ? (
                             <>
-                              <CheckCircle2 size={14} className="text-green-600" /> Copié
+                              <CheckCircle2 size={14} style={{ color: "rgb(34, 197, 94)" }} /> Copié
                             </>
                           ) : (
                             <>
@@ -216,7 +252,8 @@ export default function ExtensionTokensPage() {
                       <button
                         type="button"
                         onClick={() => setNewToken(null)}
-                        className="mt-3 text-xs text-[var(--text-3)] hover:text-[var(--text)]"
+                        className="mt-3 text-xs underline"
+                        style={{ color: "var(--text-2)" }}
                       >
                         J’ai copié le token, masquer
                       </button>
@@ -266,7 +303,14 @@ export default function ExtensionTokensPage() {
               </section>
 
               {error && (
-                <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-700 text-red-700 dark:text-red-300 text-sm px-3 py-2 mb-4">
+                <div
+                  className="rounded-md text-sm px-3 py-2 mb-4"
+                  style={{
+                    background: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.55)",
+                    color: "var(--text)",
+                  }}
+                >
                   {error}
                 </div>
               )}
@@ -301,7 +345,14 @@ export default function ExtensionTokensPage() {
                               …{tok.last_4}
                             </span>
                             {tok.revoked && (
-                              <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 dark:bg-red-950/40 px-2 py-0.5 rounded">
+                              <span
+                                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded"
+                                style={{
+                                  background: "rgba(239, 68, 68, 0.15)",
+                                  color: "rgb(248, 113, 113)",
+                                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                                }}
+                              >
                                 <ShieldOff size={11} /> révoqué
                               </span>
                             )}
@@ -320,7 +371,12 @@ export default function ExtensionTokensPage() {
                             type="button"
                             onClick={() => handleRevoke(tok.id, tok.name)}
                             disabled={revokingId === tok.id}
-                            className="px-3 py-1.5 rounded border border-[var(--border)] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 hover:border-red-300 inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+                            className="revoke-btn px-3 py-1.5 rounded inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+                            style={{
+                              background: "transparent",
+                              border: "1px solid var(--border)",
+                              color: "var(--text)",
+                            }}
                             title="Révoquer ce token"
                           >
                             {revokingId === tok.id ? (
