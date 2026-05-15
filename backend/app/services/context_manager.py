@@ -313,6 +313,52 @@ def fit_messages_to_context(
     if keep_from > max_keep_from:
         keep_from = max_keep_from
 
+    # ───────────────────────────────────────────────────────────────────
+    # Tool-pair-aware trimming (bug fix, audit 2026-05-15)
+    #
+    # If keep_from lands on a `tool` message (ToolMessage / dict
+    # {"role": "tool"}), we have a dangling tool_response whose preceding
+    # tool_call assistant message just got dropped. DeepSeek and most
+    # other providers reject this with:
+    #     400 — "Messages with role 'tool' must be a response to a
+    #     preceding message with 'tool_calls'"
+    #
+    # We therefore advance keep_from past any orphan tool messages until
+    # we hit a real human/assistant turn. May drop a few extra messages
+    # but keeps the conversation valid for ALL providers.
+    # ───────────────────────────────────────────────────────────────────
+    from langchain_core.messages import ToolMessage as _Tool, AIMessage as _AI
+
+    def _is_orphan_tool(msg) -> bool:
+        # langchain BaseMessage variant
+        if isinstance(msg, _Tool):
+            return True
+        # dict variant from raw API payloads
+        if isinstance(msg, dict) and msg.get("role") == "tool":
+            return True
+        return False
+
+    while keep_from < len(messages) and _is_orphan_tool(messages[keep_from]):
+        keep_from += 1
+
+    # Same protection in the other direction: if the LAST kept message is
+    # an assistant with tool_calls but no following tool response, that's
+    # also rejected by some providers. We trim it from the tail.
+    def _has_unanswered_tool_calls(msg) -> bool:
+        if isinstance(msg, _AI):
+            tcs = getattr(msg, "tool_calls", None) or []
+            return bool(tcs)
+        if isinstance(msg, dict) and msg.get("role") == "assistant":
+            return bool(msg.get("tool_calls"))
+        return False
+
+    while (
+        len(messages) - keep_from > min_keep  # don't go below floor
+        and _has_unanswered_tool_calls(messages[-1])
+    ):
+        # Trim the dangling tool_call assistant from the tail
+        messages = messages[:-1]
+
     kept = messages[keep_from:]
     dropped = messages[:keep_from]
 
