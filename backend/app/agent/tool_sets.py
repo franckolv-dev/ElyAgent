@@ -142,6 +142,13 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "knowledge_search",
     "knowledge_list",
     "smart_knowledge_query",
+    # Sprint 1 (2026-05-15) — cross-conversation memory recall.
+    # Different from memory_search (structured fact store) and
+    # knowledge_search (uploaded documents). Searches the literal
+    # messages of every past conversation and summarises the top
+    # matches via Ministral 3B local. user_id injected so the LLM
+    # never sees a foreign user's history.
+    "search_past_conversations_tool",
     # System self-diagnostic tools — scoped per user (logs/missions/tasks/channels)
     # Must receive the calling user's id so they only return that user's data,
     # never another user's. system_get_health and system_check_llm_providers
@@ -166,4 +173,5 @@ MEMORY_SKILLS: frozenset[str] = frozenset({
     "knowledge_search",
     "knowledge_list",
     "smart_knowledge_query",
+    "search_past_conversations_tool",  # Sprint 1 — cross-conversation recall
 })

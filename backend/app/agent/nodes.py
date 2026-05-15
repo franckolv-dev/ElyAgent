@@ -390,6 +390,7 @@ Mots-clés pattern C : « prends rendez-vous », « réserve », « commande »,
 - "prends une capture de mon écran" / "screenshot de l'écran" (PAS du navigateur) → utiliser os_screenshot
 - "connecte-toi à [logiciel/service]" / "crée un connecteur pour" / "intègre [outil non supporté]" → utiliser mcp_generate_server pour générer le code, puis mcp_validate_and_deploy pour le déployer (avec HITL obligatoire)
 - "mes connecteurs MCP" / "outils générés" → utiliser mcp_list_library
+- "tu te souviens de…" / "on en était où…" / "qu'est-ce qu'on s'était dit…" / "on avait parlé de…" / "qu'avons-nous décidé sur…" / "do you remember…" / "what did we say about…" → utiliser **search_past_conversations_tool** (recherche cross-conversation dans tout l'historique du user + résumé focalisé via Ministral 3B local). Coût marginal nul, à utiliser dès qu'une référence à une conversation passée est plausible. NE PAS demander à l'utilisateur de re-fournir le contexte si tu peux le retrouver toi-même.
 - "prends une note" / "note ça" / "mémorise" / "ajoute au presse-papier" → utiliser notes_create
 - "mes notes" / "liste mes notes" → utiliser notes_list
 - "cherche dans mes notes" / "trouve la note sur" → utiliser notes_search
