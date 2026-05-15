@@ -113,8 +113,18 @@ Réponds UNIQUEMENT avec un objet JSON valide de la forme :
   "summary": "Résumé en 2-4 phrases mettant l'accent sur ce qui est pertinent par rapport à la requête de l'utilisateur. Si la conversation a abouti à une décision, un résultat ou une liste concrète, mentionne-le. Si elle est restée sans conclusion, dis-le aussi."
 }
 
-Pas de markdown autour du JSON. Pas de commentaire avant ou après. \
-Juste l'objet JSON.
+CONTRAINTES STRICTES sur le format :
+- Le champ "title" DOIT être une string simple, pas un objet imbriqué.
+- Le champ "summary" DOIT être une string simple en prose continue (2-4 phrases),
+  PAS un objet, PAS une liste, PAS une structure avec sous-catégories.
+- Pas de markdown autour du JSON. Pas de commentaire avant ou après.
+  Juste l'objet JSON.
+
+EXEMPLE de bonne réponse :
+{"title": "Recherche pompe Bestway 58361", "summary": "Tu cherchais une pompe à filtre Bestway. On a comparé 5 sites : Amazon (49,99€), Cdiscount (52,90€), Leroy Merlin (54,99€). Tu n'as pas commandé."}
+
+EXEMPLE de MAUVAISE réponse (à éviter) :
+{"title": "Recherche pompe", "summary": {"sites": [...], "decisions": [...]}}
 """
 
 
@@ -243,6 +253,56 @@ def _content_to_text(content) -> str:
     return str(content)
 
 
+def _flatten_to_summary(value, _depth: int = 0) -> str:
+    """Aplatir récursivement n'importe quoi en string lisible.
+
+    Sister of ``_content_to_text`` but with a different goal: instead of
+    extracting "the text field of a LangChain block", this flattens any
+    structured value (str / list / dict / numeric) into a Markdown-ish
+    bullet-list representation that a human (and an agent) can read.
+
+    Born from audit 2026-05-15: Ministral 3B sometimes ignores the
+    instruction "summary must be a plain string" and returns a nested
+    object like ``{"rendez-vous_principaux": [...], "actions_pendantes":
+    [...]}``. The content is excellent — it's just shaped as a JSON
+    object rather than prose. Rather than dropping the LLM's work
+    on the floor, we serialise it back into prose-ish text.
+
+    Output examples:
+        "hello"           → "hello"
+        ["a", "b"]        → "• a\n• b"
+        {"k": "v"}        → "k : v"
+        {"k": ["a", "b"]} → "k :\n  • a\n  • b"
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    indent = "  " * _depth
+    if isinstance(value, list):
+        if not value:
+            return ""
+        items = [_flatten_to_summary(v, _depth + 1) for v in value]
+        return "\n".join(f"{indent}• {item}" for item in items if item)
+    if isinstance(value, dict):
+        if not value:
+            return ""
+        parts: list[str] = []
+        for k, v in value.items():
+            v_str = _flatten_to_summary(v, _depth + 1)
+            if not v_str:
+                continue
+            # If the value spans multiple lines, put the key on its own line
+            if "\n" in v_str:
+                parts.append(f"{indent}{k} :\n{v_str}")
+            else:
+                parts.append(f"{indent}{k} : {v_str}")
+        return "\n".join(parts)
+    return str(value).strip()
+
+
 def _extract_json(text: str) -> dict | None:
     """Best-effort JSON extraction from a LLM response.
 
@@ -329,13 +389,16 @@ async def _summarise_conversation(
             return fallback
 
         # Robustness: parsed values can themselves be non-strings if the
-        # LLM returned a nested object (Ministral 3B sometimes embeds
-        # {"text": "..."} inside the JSON values). Coerce via the same
-        # normaliser before calling .strip().
+        # LLM returned a nested object. Ministral 3B sometimes ignores
+        # the "summary must be a plain string" instruction and returns
+        # a JSON object like {"rendez-vous_principaux": [...],
+        # "actions_pendantes": [...]} — the content is excellent, just
+        # mis-shaped. ``_flatten_to_summary`` reshapes it back into
+        # bullet-list prose rather than dropping it.
         raw_title = parsed.get("title") or conv.title or "Conversation passée"
         raw_summary = parsed.get("summary") or ""
-        title = _content_to_text(raw_title).strip() if not isinstance(raw_title, str) else raw_title.strip()
-        summary = _content_to_text(raw_summary).strip() if not isinstance(raw_summary, str) else raw_summary.strip()
+        title = _flatten_to_summary(raw_title)
+        summary = _flatten_to_summary(raw_summary)
         if not summary:
             logger.info(
                 "session_search: parsed JSON had empty summary for conv %s. "

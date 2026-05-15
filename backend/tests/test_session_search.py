@@ -152,6 +152,70 @@ def test_content_to_text_dict_without_text_returns_empty():
     assert result == ""
 
 
+# ── _flatten_to_summary: structured LLM output → readable prose ──────
+
+
+def test_flatten_str_passthrough():
+    assert ss._flatten_to_summary("hello world") == "hello world"
+    assert ss._flatten_to_summary("  trimmed  ") == "trimmed"
+
+
+def test_flatten_none_and_empty():
+    assert ss._flatten_to_summary(None) == ""
+    assert ss._flatten_to_summary([]) == ""
+    assert ss._flatten_to_summary({}) == ""
+
+
+def test_flatten_list_of_strings():
+    result = ss._flatten_to_summary(["alpha", "beta", "gamma"])
+    assert "• alpha" in result
+    assert "• beta" in result
+    assert "• gamma" in result
+
+
+def test_flatten_dict_of_strings():
+    result = ss._flatten_to_summary({"key1": "val1", "key2": "val2"})
+    assert "key1 : val1" in result
+    assert "key2 : val2" in result
+
+
+def test_flatten_nested_dict_with_list():
+    """The Ministral 3B output shape from the 2026-05-15 audit."""
+    structured = {
+        "rendez-vous_principaux": [
+            "Réunion mardi 9h",
+            "RDV médecin mercredi 14h",
+        ],
+        "actions_pendantes": [
+            "Confirmer le créneau",
+        ],
+    }
+    result = ss._flatten_to_summary(structured)
+    # Should produce something readable
+    assert "rendez-vous_principaux" in result
+    assert "Réunion mardi 9h" in result
+    assert "RDV médecin mercredi 14h" in result
+    assert "actions_pendantes" in result
+    assert "Confirmer le créneau" in result
+    # Bullets present
+    assert "•" in result
+
+
+def test_flatten_numbers_and_booleans():
+    """Non-string scalars get stringified."""
+    assert ss._flatten_to_summary(42) == "42"
+    assert ss._flatten_to_summary(3.14) == "3.14"
+    assert ss._flatten_to_summary(True) == "True"
+
+
+def test_flatten_deeply_nested():
+    """Doesn't crash on 3+ levels of nesting."""
+    deep = {"level1": {"level2": {"level3": ["item"]}}}
+    result = ss._flatten_to_summary(deep)
+    assert "item" in result
+    assert isinstance(result, str)
+
+
 # ── User prompt formatting ────────────────────────────────────────────
 
 
