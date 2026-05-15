@@ -38,6 +38,10 @@ RUN uv pip install --force-reinstall "neonize>=0.3.17.post0" "protobuf>=6.32.1"
 # Copy application code
 COPY app/ ./app/
 
+# Copy operational scripts (backfill, admin, migrations…)
+# Run from the container with: docker compose exec backend python scripts/<name>.py
+COPY scripts/ ./scripts/
+
 # Config files (hosts, providers) mounted via volume at runtime
 # but we create the dir so the app doesn't fail if not mounted
 RUN mkdir -p /config /app/uploads

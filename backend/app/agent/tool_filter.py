@@ -87,8 +87,18 @@ _KW_FILTERS: list[tuple[re.Pattern, tuple[str, ...]]] = [
     # News
     (re.compile(r"\b(news|actualit[ée]s?|infos?|articles?|presse|titres?|headlines?)\b"),
      ("news_",)),
-    # Web search / browse
-    (re.compile(r"\b(web|internet|cherche|recherche|googl|sites?|urls?|pages?|navig|browse|catalogmaker|http)\b"),
+    # Web search / browse — includes social network keywords because most
+    # social-media tasks ("regarde mes notifs LinkedIn", "vérifie mes profils
+    # réseaux sociaux", "va voir sur Mastodon") need the Chrome extension
+    # to act in the user's authenticated session, which lives in browser_*.
+    (re.compile(
+        r"\b("
+        r"web|internet|cherche|recherche|googl|sites?|urls?|pages?|navig|browse|catalogmaker|http"
+        r"|onglets?|tab|tabs"
+        r"|profils?|réseau(x)?\s*sociau(x)?|reseau(x)?\s*sociau(x)?|social[\s-]*media"
+        r"|linkedin|mastodon|twitter|x\.com|instagram|facebook|threads|bluesky|tiktok"
+        r"|doctolib|sncf|booking|amazon\.fr|leboncoin"
+        r")\b"),
      ("web_", "browser_")),
     # Translation
     (re.compile(r"\b(traduis|traduit|traduction|translate|translator)\b"),
