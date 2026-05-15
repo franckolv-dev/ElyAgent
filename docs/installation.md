@@ -308,3 +308,62 @@ Autres voix françaises : `fr-FR-HenriNeural` (H), `fr-BE-CharlineNeural` (F)
 | Variable | Description |
 |----------|-------------|
 | `SSH_KEYS_PATH` | Chemin vers les clés SSH (défaut: `~/.ssh`) |
+
+---
+
+## 8. Exposer ELY à l'extérieur (3 options, du plus souverain au plus pratique)
+
+ELY n'a **aucune dépendance** vis-à-vis d'un service externe pour fonctionner en local. Si vous voulez y accéder depuis l'extérieur de votre LAN (téléphone en déplacement, autre poste), voici les trois approches courantes, classées par niveau de souveraineté.
+
+### Option A — **Tailscale / WireGuard** (recommandé pour la souveraineté maximale)
+
+Votre machine ELY apparaît dans un VPN privé maillé. Aucun port n'est ouvert publiquement, aucun proxy externe ne voit votre trafic, et la connexion est de bout-en-bout chiffrée. **Aucun acteur tiers ne voit jamais vos requêtes.**
+
+```bash
+# Sur macOS, exemple Tailscale
+brew install tailscale && tailscale up
+# Notez l'IP 100.x.y.z attribuée
+# Sur vos autres appareils : installez Tailscale, login → ELY est joignable à https://100.x.y.z:3000
+```
+
+Avantage : zéro confiance en un tiers, RGPD-strict, gratuit pour ≤ 100 appareils.
+Coût : chaque utilisateur doit installer un client Tailscale.
+
+### Option B — **Reverse proxy local avec certificat Let's Encrypt sur votre IP fixe**
+
+Si vous avez une IP publique fixe (FAI pro, VPS dédié), vous pouvez exposer ELY via un **nginx / Caddy / Traefik** sur votre propre serveur, avec un certificat Let's Encrypt obtenu en validation DNS-01 (pas besoin d'ouvrir le port 80 sortant).
+
+```bash
+# Exemple Caddy minimal
+caddy reverse-proxy --from ely.mondomaine.fr --to localhost:3000
+```
+
+Avantage : aucun tiers entre le navigateur et ELY après le DNS. Certificat TLS sans tiers de confiance autre que Let's Encrypt.
+Coût : maintenance du reverse proxy + nécessite une IP publique stable.
+
+### Option C — **Cloudflare Tunnel** (le plus pratique mais avec un compromis souveraineté)
+
+Cloudflare Tunnel ouvre une connexion sortante depuis votre machine vers le réseau CF, qui sert ensuite votre domaine. **Aucun port public à ouvrir, IP cachée**, déploiement en 5 minutes. C'est l'option utilisée par `agent-ely.fr` actuellement.
+
+**Compromis assumé** : le trafic HTTP transite via les serveurs Cloudflare (US-based holding). CF voit donc les requêtes et réponses en clair (puisqu'il termine TLS de son côté). Pour la majorité des cas d'usage personnels c'est acceptable — pour des déploiements professionnels avec données sensibles, préférer Option A ou B.
+
+```bash
+# Installation cloudflared sur macOS
+brew install cloudflared
+cloudflared tunnel login            # ouvre votre dashboard CF dans le navigateur
+cloudflared tunnel create ely
+cloudflared tunnel route dns ely ely.mondomaine.fr
+cloudflared tunnel run --url http://localhost:3000 ely
+```
+
+Avantage : zéro configuration réseau, gratuit, résilient.
+Coût : Cloudflare est un acteur US-based. À ne pas utiliser pour transmettre des données qui doivent rester en UE par construction.
+
+### Résumé du choix
+
+| Cas d'usage | Recommandation |
+|---|---|
+| Usage perso, sécurité maximale | Option A (Tailscale) |
+| Petite équipe / asso, IP fixe disponible | Option B (Caddy + Let's Encrypt) |
+| Démo publique, prototype rapide | Option C (Cloudflare Tunnel) |
+| Déploiement pro avec données sensibles (santé, juridique, finance) | Option A obligatoire |

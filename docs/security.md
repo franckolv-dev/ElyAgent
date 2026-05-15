@@ -38,6 +38,19 @@ Avant d'envoyer un message au LLM cloud, les données sensibles sont remplacées
 
 La réponse du LLM est **dé-anonymisée** avant d'être renvoyée à l'utilisateur.
 
+#### Limites assumées de l'anonymisation déterministe
+
+L'anonymisation utilise un mapping **déterministe par session** : la même valeur (`Jean Dupont`) est toujours remplacée par le même placeholder (`[PERSON_0]`) à l'intérieur d'une conversation, pour que le LLM puisse raisonner sur les relations entre entités (« le PERSON_0 a envoyé un mail au PERSON_1 »). Ce choix a un coût en termes de garanties, qu'il faut documenter clairement :
+
+| Limite | Description | Mitigation actuelle / planifiée |
+|---|---|---|
+| **Attaque de fréquence corpus-wide** | Si un attaquant dispose d'un grand corpus de prompts ELY anonymisés (par exemple via un dump compromis du provider LLM), il peut potentiellement reconstruire les entités les plus fréquentes via leur signature statistique. | Sel par session différent ; rotation périodique des sels en production ; chiffrement au repos des logs LLM côté serveur ELY. |
+| **Données hors patterns regex** | Les patterns couvrent : carte bancaire, email, IBAN, téléphone FR, token API, et noms via NER. Tout PII en dehors de ces catégories (numéro de SS, immatriculation, identifiant interne entreprise…) **passe non-anonymisé** par défaut. | Configuration ajoutable côté serveur (`security_filter.custom_patterns`) ; passe ultérieure prévue avec une NER multilingue plus large. |
+| **Inférence indirecte** | Même anonymisé, le LLM peut inférer des informations sensibles à partir du contexte (« le PERSON_0 travaille dans une banque parisienne et a 3 enfants »). L'anonymisation ne masque pas le contexte qualitatif. | Aucune mitigation technique simple ; en pratique : pour les secrets stricts, utiliser le **tier A 100% local** (Ministral 3B sur la machine de l'utilisateur, aucune donnée ne sort). |
+| **Réversibilité de hashe court** | Les placeholders comme `[PERSON_0]` numérotent dans l'ordre d'apparition, ce qui peut leak l'ordre conversationnel. | Acceptable pour le cas d'usage ; pour les paranos : tier local. |
+
+**Conclusion produit** : l'anonymisation déterministe est utile pour les cas d'usage standards (réduction de surface d'attaque, conformité raisonnable, raisonnement préservé). Pour les cas à très haut risque (secrets industriels, données HDS, professions réglementées), **la bonne réponse est le tier A 100% local**, pas l'anonymisation seule. La page Sovereignty détaille les 3 modes (local / 100% EU / mixte performant).
+
 ### 3. HITL (Human-In-The-Loop)
 
 Certaines actions **requièrent toujours** une validation humaine :

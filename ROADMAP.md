@@ -66,7 +66,7 @@ L'objectif a été : ouvrir le repo sans honte ni faille. Catalogue final livré
 - ✅ **Anti-hallucination prompt v3** (6 règles structurées) : refus dur sur patterns suspects, sanity-check temporel obligatoire avant proposition de dates, vision interdite pour lecture de valeurs numériques précises.
 - ✅ **Pattern C system prompt** pour workflows multi-étapes (Doctolib, SNCF, Booking…) avec recette détaillée cartes pliables → click chevron → wait_for_selector → read scoped.
 
-**Différenciateur produit fort** : seul agent open-source qui agit dans le **vrai navigateur de l'utilisateur** avec ses sessions, ses cookies, ses préférences — pas dans un Playwright headless serveur aveugle aux logins. RGPD-native par construction (les cookies n'arrivent jamais sur le serveur).
+**Différenciateur produit fort** : seul agent en **code source ouvert et auditable** qui agit dans le **vrai navigateur de l'utilisateur** avec ses sessions, ses cookies, ses préférences — pas dans un Playwright headless serveur aveugle aux logins. RGPD-compatible par construction (les cookies n'arrivent jamais sur le serveur).
 
 ---
 
