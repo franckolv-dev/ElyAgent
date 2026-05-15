@@ -2,7 +2,7 @@
 
 > **TL;DR** — ELY converge sur ce que personne d'autre n'offre dans le monde des agents IA personnels : un agent **self-hosted** qui combine la **surface produit grand public** (UI riche sur tous les canaux) avec un **moat technique unique** (modèle qui apprend et qui appartient au user). Ce document liste les chantiers, leur ordre, et leur valeur différenciatrice.
 >
-> Last updated: **May 2, 2026** — public launch.
+> Last updated: **May 15, 2026** — aligné sur les livraisons des sprints 0.5 + extension Chrome.
 > Maintainer: [Franck OLLIVIER](mailto:contact@agent-ely.fr).
 
 ---
@@ -55,6 +55,21 @@ L'objectif a été : ouvrir le repo sans honte ni faille. Catalogue final livré
 
 ---
 
+## Sprint 0.5 — Extension Chrome ELY ✅ *14-15 mai 2026*
+
+> Livrée en 2 itérations sur 2 jours, en réponse au feedback usage réel : *« ELY prend une autre dimension avec l'extension Chrome, mais c'est de la bidouille de devoir coller un JWT depuis DevTools, et elle se déconnecte toutes les heures. »*
+
+- ✅ **Tokens longue durée** (`ely_ext_<48 hex>`, 192 bits d'entropie) — fini le JWT 60 min et la copie depuis DevTools. Token affiché une seule fois, hash SHA-256 + last_4 stockés côté serveur, révocation depuis Settings → Extension navigateur.
+- ✅ **REST `/api/extension/tokens`** (POST create / GET list / DELETE revoke) + page Settings dédiée.
+- ✅ **Handshake WebSocket dual-protocol** : accepte JWT classique (legacy) ET tokens `ely_ext_*` (lookup par hash, bump `last_used_at`).
+- ✅ **Sprint 1 interactivité** dans la foulée : tools `browser_tab_click`, `browser_tab_fill`, `browser_tab_navigate` (implémentation React-aware : native value setter + dispatchEvent input/change pour les inputs contrôlés, MouseEvent + native click pour les boutons React).
+- ✅ **Anti-hallucination prompt v3** (6 règles structurées) : refus dur sur patterns suspects, sanity-check temporel obligatoire avant proposition de dates, vision interdite pour lecture de valeurs numériques précises.
+- ✅ **Pattern C system prompt** pour workflows multi-étapes (Doctolib, SNCF, Booking…) avec recette détaillée cartes pliables → click chevron → wait_for_selector → read scoped.
+
+**Différenciateur produit fort** : seul agent open-source qui agit dans le **vrai navigateur de l'utilisateur** avec ses sessions, ses cookies, ses préférences — pas dans un Playwright headless serveur aveugle aux logins. RGPD-native par construction (les cookies n'arrivent jamais sur le serveur).
+
+---
+
 ## Sprint 1 — Memory recall ⏳ *Mai-Juin 2026*
 
 | # | Item | Type | Effort | Source d'inspiration |
@@ -91,25 +106,39 @@ L'objectif a été : ouvrir le repo sans honte ni faille. Catalogue final livré
 
 ---
 
-## Sprint 3.5 — Web Automation suite ⏳ *Juillet 2026*
+## Sprint 3.5 — Web Automation suite headless ⏳ *Juillet 2026*
+
+> **Note 2026-05-15** : le Sprint 0.5 a livré l'extension Chrome avec actions interactives. Ce sprint 3.5 reste pertinent pour les use cases **non-interactifs / batch** où on n'a pas besoin de la session utilisateur (capture périodique d'un site public, conversion de documents, monitoring de pages publiques en cron).
 
 | # | Item | Type | Effort | Source |
 |---|---|---|---|---|
-| 3.5 | **Web Automation tools (Playwright)** — 10 tools high-level user-facing exposés à l'agent : `web_screenshot` (full-page ou viewport), `web_to_pdf`, `web_extract` (CSS/XPath ou auto-LLM), `web_visual_search` (web_search + screenshot N résultats), `web_compare` (diff visuel), `web_record_session` (vidéo MP4), `web_fill_form` (auto-fill + soumission HITL), `web_monitor` (combiné watchdog), `web_extract_to_sheet` (scraping → Google Sheets), `attachment_to_pdf` (.docx/.html/.xlsx → PDF). | 🔴 Unique to ELY | M-L | Playwright déjà en backend (services/browser_manager.py) — manque la surface d'exposition |
+| 3.5 | **Web Automation tools (Playwright headless serveur)** — tools complémentaires à l'extension Chrome pour les contextes batch / autonomes : `web_screenshot` (full-page sites publics), `web_to_pdf`, `web_extract` (CSS/XPath ou auto-LLM), `web_compare` (diff visuel pour monitoring), `web_record_session` (vidéo MP4 pour rapports), `attachment_to_pdf` (.docx/.html/.xlsx → PDF). | 🔴 Unique to ELY | M | Playwright déjà en backend — manque la surface d'exposition propre |
 
-**Pourquoi unique** : aucun agent IA grand public ne donne accès à un browser headless avec interface conversationnelle. Permet des cas d'usage agentiques massifs : *"Cherche les concurrents de mon produit, capture leurs homes, fais une analyse comparée dans un Doc"*, *"Tous les lundis envoie-moi par WhatsApp la météo capturée depuis ce site"*, *"Surveille les prix de 3 concurrents et alerte-moi sur tout changement"*.
+**Pourquoi ces tools restent utiles malgré l'extension** : l'extension exige que l'utilisateur ait Chrome ouvert et l'extension connectée. Pour les cas *« tous les lundis matin à 6h, capture le site X et envoie-moi le PDF »*, on ne peut pas dépendre de la présence de l'utilisateur — il faut du headless serveur. Les deux mondes sont complémentaires : extension Chrome = action **interactive avec session user** ; Web Automation = action **batch sur sites publics**.
 
-**Différentiation** vs ELY Trainer (déjà existant) : Trainer contrôle le desktop physique de l'user (visible, démos, apps natives). Web Automation tourne en headless backend (silencieux, scalable, batch). Les 2 sont complémentaires, exposés dans 2 catégories distinctes de l'UI.
+**Couplage avec Sprint 6 (scheduler) et Sprint 7 (predictive gate)** : ces tools alimentent des missions périodiques où l'agent capture et résume sans intervention humaine.
 
 ---
 
-## Sprint 4 — MCP integration ⏳ *Juillet-Août 2026*
+## Sprint 4 — Écosystème MCP ⏳ *Juillet-Août 2026*
 
-| # | Item | Type | Effort | Source |
+> **Objectif** : faire d'ELY un citoyen de premier rang de l'écosystème MCP, dans les deux sens — **consommer** ce que la communauté offre (capacités gratuites), **exposer** ce qu'elle apporte (différenciation produit forte). Effet réseau gratuit dans les deux directions.
+
+| # | Sous-item | Type | Effort | Détail |
 |---|---|---|---|---|
-| 4 | **MCP client + server** — ELY consomme tout MCP server (Claude Desktop, Cursor, Zed exposent leurs intégrations) ET s'expose elle-même comme MCP server (apparaît dans Claude Desktop, Cursor, etc.). Pattern `_build_safe_env()` + OSV malware check pour npx/uvx. OAuth manager. | 🟡 Hermes-parity | M-L | `hermes-agent-main/tools/mcp_tool.py` + `mcp_serve.py` |
+| 4.1 | **ELY consomme des serveurs MCP externes** | 🟡 Hermes-parity | M | Configuration utilisateur d'une liste de serveurs MCP (stdio + HTTP+SSE). ELY les charge au démarrage, fusionne leurs tools/resources dans son toolset profile actif, applique son HITL gating dessus. Sécurité : sandbox env (`_build_safe_env()`), validation des packages npx/uvx contre la DB OSV, allowlist explicite par user. **Premiers serveurs cibles** : `mcp-server-fetch`, `mcp-server-filesystem`, `mcp-server-github`, `mcp-server-postgres`, `mcp-server-time`, `mcp-server-puppeteer`. Pour chacun, doc d'install + cas d'usage typique dans `docs/integrations/mcp-clients/`. |
+| 4.2 | **ELY s'expose comme serveur MCP** | 🔴 Unique to ELY | M | Wrap les 30-40 tools les plus utiles d'ELY (memory_*, knowledge_*, gmail_*, calendar_*, drive_*, contacts_*, scheduler_*, save_constraint, save_user_preference) dans un serveur MCP standard. Authentification via les tokens longue durée du Sprint 0.5. Donne à l'utilisateur : *« mon ELY accessible depuis Claude Desktop / Cursor / Zed / VS Code Copilot / ChatGPT (quand support)»*. **Aucun agent personnel auto-hébergé open-source n'expose un MCP server aujourd'hui** — angle commercial très fort pour la version PolyForm Strict business : *« ton agent perso, branchable partout ».* |
+| 4.3 | **UI Settings → MCP (entrée + sortie)** | 🟢 Standard | S | Liste des MCP servers connectés (entrants + sortants), toggle activation par tool, indicateur de santé (last_ping, error_rate), bouton « tester la connexion ». Sépare clairement les deux directions pour éviter la confusion. |
+| 4.4 | **OAuth manager pour MCP authentifiés** | 🟡 Hermes-parity | S-M | Certains serveurs MCP officiels (Slack, Notion, Linear, Atlassian) exigent OAuth. Centraliser le flow, stocker les tokens chiffrés via le vault ELY existant, refresh automatique avant expiration. |
 
-**Pourquoi** : effet réseau gratuit. Ouvre ELY à l'écosystème dev sans coût marketing. Aujourd'hui MCP est le standard de fait pour étendre Claude Desktop / Cursor / Zed.
+**Livrables mesurables** :
+- Charger 5 MCP serveurs externes sans crash, leurs tools visibles dans le toolset profile et appelables par l'agent
+- Lancer Claude Desktop avec `ely` dans son `claude_desktop_config.json` → l'agent Claude voit les tools ELY et peut interroger la mémoire ELY de l'utilisateur
+- Page Settings → MCP fonctionnelle avec les deux directions clairement distinctes
+- Doc d'intégration *« branche ELY à ton Cursor »* dans `docs/integrations/mcp-as-client.md` + *« expose ELY à tes autres agents »* dans `docs/integrations/mcp-as-server.md`
+- 4 tests d'intégration : (1) MCP externe loaded, (2) MCP externe tool callable, (3) ELY MCP server répond aux requêtes Claude Desktop, (4) auth OAuth round-trip OK
+
+**Cible commerciale** : la combinaison 4.1 + 4.2 transforme ELY en *« hub d'agents personnels »* — c'est probablement l'argument commercial le plus fort vis-à-vis des entreprises qui ont déjà investi dans Claude Enterprise, Cursor, ou des forks internes.
 
 ---
 
@@ -212,9 +241,10 @@ Voir [CONTRIBUTING.md](./CONTRIBUTING.md) pour les détails.
 | Version | Sprint(s) inclus | ETA |
 |---|---|---|
 | **v1.1.x** | Sprint 0 (launch) | ✅ Mai 2026 |
+| **v1.1.2** | Sprint 0.5 (extension Chrome — tokens longue durée + actions interactives) | ✅ 14-15 mai 2026 |
 | **v1.2** | Sprint 1 (memory recall) | Juin 2026 |
 | **v1.3** | Sprint 2 (registry) + Sprint 3 (user state) | Juillet 2026 |
-| **v1.4** | Sprint 4 (MCP) | Août 2026 |
+| **v1.4** | Sprint 4 (MCP — client + server + UI + OAuth) | Août 2026 |
 | **v1.5** | Sprint 5 (Personal KG) | Septembre 2026 |
 | **v1.6** | Sprint 6 (smart approval) + Sprint 7 (predictive gate) | Octobre-Novembre 2026 |
 | **v1.7** | Sprint 8 (SKILL.md) | Novembre-Décembre 2026 |
@@ -237,3 +267,5 @@ Toutes les ETAs sont des **objectifs cibles**, pas des promesses. Un agent perso
 ---
 
 *« On ne va pas confondre vitesse et précipitation. »* — Franck, 2 mai 2026
+
+*« Il n'y a que ceux qui ne font rien qui ne se trompent jamais. »* — Franck, 15 mai 2026 (après un downtime de 4 min sur le site, le lendemain d'avoir livré 9 commits significatifs sur ELY 😅)
