@@ -319,15 +319,28 @@ async def _summarise_conversation(
         response_text = _content_to_text(response.content)
         parsed = _extract_json(response_text)
         if not parsed or not isinstance(parsed, dict):
-            logger.debug(
-                "session_search: LLM did not return parseable JSON for conv %s — falling back",
-                conv.id,
+            # One-time diagnostic log so we can spot weird LLM outputs
+            # in production. Truncated to keep the log readable.
+            logger.info(
+                "session_search: LLM JSON parse failed for conv %s. "
+                "raw_response_text[:300]=%r",
+                conv.id, (response_text or "")[:300],
             )
             return fallback
 
-        title = (parsed.get("title") or conv.title or "Conversation passée").strip()
-        summary = (parsed.get("summary") or "").strip()
+        # Robustness: parsed values can themselves be non-strings if the
+        # LLM returned a nested object (Ministral 3B sometimes embeds
+        # {"text": "..."} inside the JSON values). Coerce via the same
+        # normaliser before calling .strip().
+        raw_title = parsed.get("title") or conv.title or "Conversation passée"
+        raw_summary = parsed.get("summary") or ""
+        title = _content_to_text(raw_title).strip() if not isinstance(raw_title, str) else raw_title.strip()
+        summary = _content_to_text(raw_summary).strip() if not isinstance(raw_summary, str) else raw_summary.strip()
         if not summary:
+            logger.info(
+                "session_search: parsed JSON had empty summary for conv %s. "
+                "parsed=%r", conv.id, str(parsed)[:300],
+            )
             return fallback
 
         return {
