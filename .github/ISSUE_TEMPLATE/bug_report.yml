@@ -119,6 +119,37 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: hud_model
+    attributes:
+      label: Model shown in the HUD at the time of the bug
+      description: |
+        Look at the right sidebar of the chat (SESSION panel → MODEL).
+        Copy the exact string. Critical for diagnosing fallback-chain cascades
+        (e.g. you configured DeepSeek as primary but you're actually seeing
+        `qwen3.6-flash` → that's a different bug than seeing `deepseek-v4-flash`).
+      placeholder: "e.g. deepseek-v4-flash, qwen3.6-flash, mistral-small-latest, ministral-3-3b-instruct-2512"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: hud_tier
+    attributes:
+      label: Tier shown in the agent timing logs (if visible)
+      description: |
+        If you have backend log access, `grep "tier=" backend.log | tail` shows
+        `tier=small / medium / complex / image`. Helps narrow whether the bug
+        is in the simple, standard or complex routing tier.
+      options:
+        - "I don't have log access"
+        - "small (Tier A — local/fast)"
+        - "medium (Tier B — standard)"
+        - "complex (Tier C — heavy reasoning)"
+        - "image (Tier IMG — vision)"
+        - "maintenance (background extractor)"
+    validations:
+      required: false
+
   - type: textarea
     id: logs
     attributes:
