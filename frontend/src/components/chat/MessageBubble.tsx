@@ -229,11 +229,19 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
                   code: ({ children, className }) => {
                     const isBlock = className?.includes("language-");
                     return isBlock ? (
-                      <pre className="bg-bg-primary/60 border border-border-dim rounded p-2 overflow-x-auto my-2">
+                      // overflow-x-auto + whitespace-pre-wrap + break-all :
+                      // long single-line blocks (JSON dumps, base64 URLs)
+                      // wrap inside the bubble instead of forcing a horizontal
+                      // scrollbar across the chat. Real source code with its
+                      // own line breaks still renders normally because
+                      // pre-wrap keeps existing newlines.
+                      <pre className="bg-bg-primary/60 border border-border-dim rounded p-2 overflow-x-auto my-2 whitespace-pre-wrap break-all">
                         <code className="font-mono text-xs text-text-secondary">{children}</code>
                       </pre>
                     ) : (
-                      <code className="font-mono text-xs bg-bg-primary/60 px-1 py-0.5 rounded text-cyber-cyan/80">{children}</code>
+                      // Inline code: prevent ultra-long tokens (URLs, hashes)
+                      // from breaking the bubble layout.
+                      <code className="font-mono text-xs bg-bg-primary/60 px-1 py-0.5 rounded text-cyber-cyan/80 break-all">{children}</code>
                     );
                   },
                   ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,

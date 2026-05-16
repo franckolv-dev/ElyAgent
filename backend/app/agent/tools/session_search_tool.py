@@ -106,6 +106,20 @@ async def search_past_conversations_tool(
     Returns: a Markdown-formatted string with 1-3 sections, one per
         retrieved conversation. Empty string-equivalent "Aucune
         conversation passée pertinente trouvée." when nothing matches.
+
+    ⚠ IMPORTANT — comment traiter le retour de ce tool :
+    Le retour est DÉJÀ rédigé pour l'utilisateur final, en français,
+    en prose continue. Tu DOIS :
+      - le PARAPHRASER en quelques phrases naturelles
+      - OU citer 1-2 informations clés pertinentes pour la question posée
+    Tu NE DOIS PAS :
+      - copier le retour verbatim
+      - le re-encoder en JSON ou autre format structuré
+      - le wrapper dans des blocs ```json``` ou ```markdown```
+      - lister "title" / "summary" comme champs structurés
+    Si tu reproduis le retour en JSON dans ton message, l'utilisateur
+    voit du bruit technique. La règle : reformule comme si tu te
+    souvenais toi-même de la conversation.
     """
     if not user_id:
         return "Erreur interne : user_id manquant."
