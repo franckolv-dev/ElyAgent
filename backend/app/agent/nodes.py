@@ -1465,6 +1465,72 @@ def create_agent_node():
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
 
+                    # ── 2026-05-16 universal post-memory-recall cleanup ────
+                    # Observation: when search_past_conversations_tool returns
+                    # its prose summary, ALL tested cloud LLMs (DeepSeek, Haiku,
+                    # Qwen, Mistral large, Kimi K2.6) re-structure the prose
+                    # into JSON/Markdown blocks before relaying to the user.
+                    # Only the local Ministral 3B respected the prose format.
+                    # This is a SYSTEMIC behaviour of tool-calling models —
+                    # they're trained to present tool outputs as structured
+                    # artefacts even when the output is plain prose.
+                    #
+                    # Fix is CONTEXTUAL (only fires when memory recall was
+                    # just called) and MODEL-AGNOSTIC (applies the same way
+                    # regardless of which LLM produced the response). This
+                    # is NOT a DeepSeek-specific bandaid — it's a response
+                    # to a universal post-training bias.
+                    try:
+                        _called_recall = False
+                        # Look at the last few messages — was search_past_conversations_tool
+                        # invoked in this conversation turn?
+                        from langchain_core.messages import AIMessage as _AI, ToolMessage as _TM
+                        for _msg in reversed(_invoke_msgs[-6:]):
+                            if isinstance(_msg, _AI):
+                                _tcs = getattr(_msg, "tool_calls", None) or []
+                                if any(tc.get("name") == "search_past_conversations_tool" for tc in _tcs):
+                                    _called_recall = True
+                                    break
+                            elif isinstance(_msg, _TM):
+                                # ToolMessage doesn't carry its tool name in
+                                # all versions of langchain; we keep going
+                                continue
+
+                        if _called_recall:
+                            import re as _re
+                            _before_len = len(response.content)
+                            # Pass 1: strip fenced code blocks (any language)
+                            _cleaned = _re.sub(
+                                r'```[\w]*\s*\n?[\s\S]*?\n?```\s*\n?',
+                                '',
+                                response.content,
+                            )
+                            # Pass 2: strip naked JSON objects containing
+                            # "title" + "summary" (DeepSeek's variant without
+                            # closing ``` between blocks).
+                            _cleaned = _re.sub(
+                                r'\{\s*"title"\s*:[\s\S]*?"summary"\s*:[\s\S]*?\}',
+                                '',
+                                _cleaned,
+                            )
+                            # Pass 3: strip orphan fence remnants
+                            _cleaned = _re.sub(
+                                r'```\w*\s*\n?', '', _cleaned,
+                            )
+                            # Collapse triple+ newlines
+                            _cleaned = _re.sub(r'\n{3,}', '\n\n', _cleaned).strip()
+                            if _cleaned != response.content and len(_cleaned) > 0:
+                                response.content = _cleaned
+                                logger.warning(
+                                    "[recall_post_filter] stripped %d chars of "
+                                    "structured noise from post-memory-recall "
+                                    "response (final: %d chars)",
+                                    _before_len - len(_cleaned),
+                                    len(_cleaned),
+                                )
+                    except Exception as _filter_exc:
+                        logger.debug("recall_post_filter skipped: %s", _filter_exc)
+
                 # FIX 2026-05-06 (Option A): some cloud models (Kimi K2.x,
                 # Qwen 3.6 Flash via DashScope, occasionally DeepSeek) emit
                 # tool calls as TEXT inside content instead of populating
