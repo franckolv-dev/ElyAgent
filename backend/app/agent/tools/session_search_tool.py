@@ -107,19 +107,13 @@ async def search_past_conversations_tool(
         retrieved conversation. Empty string-equivalent "Aucune
         conversation passée pertinente trouvée." when nothing matches.
 
-    ⚠ IMPORTANT — comment traiter le retour de ce tool :
-    Le retour est DÉJÀ rédigé pour l'utilisateur final, en français,
-    en prose continue. Tu DOIS :
-      - le PARAPHRASER en quelques phrases naturelles
-      - OU citer 1-2 informations clés pertinentes pour la question posée
-    Tu NE DOIS PAS :
-      - copier le retour verbatim
-      - le re-encoder en JSON ou autre format structuré
-      - le wrapper dans des blocs ```json``` ou ```markdown```
-      - lister "title" / "summary" comme champs structurés
-    Si tu reproduis le retour en JSON dans ton message, l'utilisateur
-    voit du bruit technique. La règle : reformule comme si tu te
-    souvenais toi-même de la conversation.
+    Le retour est un paragraphe de prose conversationnelle directement
+    quotable par toi (en français, déjà rédigé). Tu peux :
+      - le citer tel quel
+      - ou le paraphraser pour mieux coller à la question
+    Pas de structure, pas de champs nommés, pas de blocs de code dans
+    le retour : c'est délibéré pour que tu n'aies pas la tentation de
+    le restructurer.
     """
     if not user_id:
         return "Erreur interne : user_id manquant."
@@ -150,30 +144,33 @@ async def search_past_conversations_tool(
             "l'époque — tu peux reformuler avec d'autres termes."
         )
 
-    # Build a Markdown-ish digest the LLM can quote directly.
-    lines: list[str] = [
-        f"J'ai retrouvé {len(results)} conversation(s) passée(s) pertinente(s) "
-        f"pour « {query} » :",
-        "",
-    ]
+    # Build a conversational, prose-only digest. NO Markdown headings,
+    # NO ``` code fences, NO key:value structure — anything that looks
+    # "structured" tempts the calling LLM (DeepSeek-v4-pro especially)
+    # to re-serialise the tool result as a JSON card in its reply to
+    # the user. Model-agnostic fix: speak in narrative.
+    n = len(results)
+    if n == 1:
+        opener = f"J'ai retrouvé une conversation passée à propos de « {query} »."
+    else:
+        opener = f"J'ai retrouvé {n} conversations passées à propos de « {query} »."
+
+    sentences: list[str] = [opener]
     for i, r in enumerate(results, 1):
         date = _format_date(r.get("date"))
-        title = r.get("title") or "Conversation"
-        summary = r.get("summary") or "(résumé indisponible)"
-        n_matches = r.get("matched_messages", 0)
-        via = r.get("via", "?")
-        lines.append(f"### [{i}] {title}")
-        lines.append(f"_{date} — {n_matches} message(s) correspondant(s)_")
-        lines.append("")
-        lines.append(summary)
-        lines.append("")
-        # Discreet provenance marker — helps debugging without polluting
-        # the user-facing reply if the agent quotes verbatim.
-        if via == "fallback":
-            lines.append(
-                "_(résumé limité — le contenu ci-dessus est un extrait brut, "
-                "non synthétisé)_"
-            )
-            lines.append("")
+        title = (r.get("title") or "Conversation").strip().rstrip(".")
+        summary = (r.get("summary") or "(résumé indisponible)").strip()
 
-    return "\n".join(lines).strip()
+        # Connector word — keeps the paragraph flowing naturally
+        if n == 1 or i == 1:
+            connector = "D'abord" if n > 1 else "Voilà"
+        elif i == n:
+            connector = "Et enfin"
+        else:
+            connector = "Ensuite"
+
+        sentences.append(
+            f"{connector}, le {date}, on a parlé de « {title} » : {summary}"
+        )
+
+    return " ".join(sentences)
