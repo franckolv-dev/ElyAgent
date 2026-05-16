@@ -1464,6 +1464,52 @@ def create_agent_node():
                 # Strip any <think> block that slipped through
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
+                    # ── 2026-05-16 defensive fix ──────────────────────────────
+                    # DeepSeek-v4-pro habit: after calling
+                    # search_past_conversations_tool (which returns clean
+                    # Markdown), it re-encodes the tool result as ```json```
+                    # blocks INSIDE its reply, before adding its prose answer.
+                    # Verified: the tool returns 0 JSON blocks, the leak is
+                    # purely DeepSeek-side. Two rounds of system-prompt
+                    # instructions ("don't re-encode in JSON, don't wrap in
+                    # code fences") failed to stop it. We strip the leaked
+                    # blocks server-side as a last line of defence.
+                    #
+                    # Pattern is narrowly tailored: ```json {"title": ...,
+                    # "summary": ...}``` — anything not matching both keys
+                    # remains untouched (don't break legitimate JSON the user
+                    # might actually want to see, e.g. when asking about API
+                    # responses).
+                    import re as _re
+                    # Pass 1: strip the JSON objects matching our tool's signature
+                    # ("title" + "summary" keys both present).
+                    _tool_json_body = _re.compile(
+                        r'\{\s*"title"\s*:[\s\S]*?"summary"\s*:[\s\S]*?\}',
+                        _re.MULTILINE,
+                    )
+                    # Pass 2: clean leftover ```json or ``` fences that became
+                    # orphan after pass 1 (i.e. wrap nothing or wrap another
+                    # fence). Trade-off: this may also remove syntax-highlight
+                    # fences around legitimate JSON that the user actually
+                    # wants to see — but the JSON content itself is preserved,
+                    # just without syntax highlighting. Acceptable price to
+                    # cut the leak cleanly.
+                    _orphan_fence = _re.compile(
+                        r'```(?:json)?\s*\n?(?=\s*(?:```|\n\n|$))|^```\s*\n?',
+                        _re.MULTILINE,
+                    )
+                    if _tool_json_body.search(response.content):
+                        _before_len = len(response.content)
+                        _stripped = _tool_json_body.sub('', response.content)
+                        _stripped = _orphan_fence.sub('', _stripped)
+                        # Collapse triple+ newlines into double
+                        _stripped = _re.sub(r'\n{3,}', '\n\n', _stripped).strip()
+                        response.content = _stripped
+                        logger.warning(
+                            "[json_leak_filter] stripped session-search JSON "
+                            "leak from response (%d → %d chars)",
+                            _before_len, len(response.content),
+                        )
 
                 # FIX 2026-05-06 (Option A): some cloud models (Kimi K2.x,
                 # Qwen 3.6 Flash via DashScope, occasionally DeepSeek) emit
