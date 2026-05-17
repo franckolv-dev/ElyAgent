@@ -562,6 +562,52 @@ async def websocket_chat(websocket: WebSocket):
             except Exception as _media_exc:
                 logger.warning("media_router skipped: %s", _media_exc)
 
+            # ── Anti-hallucination completion guard (incident 2026-05-17) ──
+            # After 4-5 cycles of "user asks delete → tool_call → tool_result
+            # → assistant 'supprimé'", every LLM (DeepSeek v4-flash, Mistral
+            # Small 4, etc.) starts shortcutting: it outputs the final
+            # 'supprimé' text WITHOUT the tool_call in between. Nothing is
+            # actually deleted but the user thinks the action happened.
+            # This is the worst-class bug for ELY (silent break of the HITL
+            # promise), so we gate hard server-side regardless of the model.
+            try:
+                from app.services.completion_guard import (
+                    build_warning_replacement,
+                    detect_unbacked_completion_claim,
+                )
+                _guard_verdict = detect_unbacked_completion_claim(
+                    ai_content, tools_called,
+                )
+                if _guard_verdict.is_hallucination:
+                    logger.error(
+                        "completion_guard: HALLUCINATION BLOCKED "
+                        "(user=%s conv=%s model=%s reason=%s)",
+                        user_id, conversation_id, model_used_out or "unknown",
+                        _guard_verdict.reason,
+                    )
+                    # Surface to the frontend so the UI can show a red badge
+                    # next to the assistant message (and so a future analytics
+                    # event collector can count occurrences per model/tier).
+                    try:
+                        await websocket.send_text(_dumps({
+                            "type": "hallucination_blocked",
+                            "reason": _guard_verdict.reason,
+                            "matched_patterns": _guard_verdict.matched_patterns,
+                            "tools_in_turn": _guard_verdict.tools_invoked,
+                        }))
+                    except Exception as _wse:
+                        logger.debug("hallucination_blocked event skipped: %s", _wse)
+                    # Replace the lying content with an honest warning.
+                    # Persisted as-is so the conversation history shows the
+                    # incident (auditability) and the user can reference it
+                    # later in support.
+                    ai_content = build_warning_replacement(
+                        ai_content, _guard_verdict, locale="fr",
+                    )
+            except Exception as _guard_exc:
+                # Never let the guard itself break the response delivery.
+                logger.warning("completion_guard skipped: %s", _guard_exc)
+
             # If interrupted but partial content exists, send it as a normal message
             if stop_event.is_set() and ai_content:
                 ai_content = ai_content.rstrip() + " …"
