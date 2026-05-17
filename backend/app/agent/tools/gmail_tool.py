@@ -864,6 +864,112 @@ async def gmail_trash_by_query(
 
 
 @tool
+async def gmail_empty_trash(
+    max_to_delete: int = 1000,
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """⚠️ DEFINITIVELY delete emails from the user's Gmail Trash.
+
+    Unlike `gmail_trash_*` tools which only MOVE emails to trash (and
+    Gmail auto-purges trash after 30 days), this tool permanently
+    removes emails from the trash NOW. **The action is irreversible —
+    no API recovers a permanently deleted Gmail message.**
+
+    Created 2026-05-17 after the agent kept hallucinating that the trash
+    « a été vidée » without an actual tool to do it. Now the agent has
+    a real tool — but it's HITL-locked (impossible to opt-out of the
+    confirmation prompt in Settings) precisely because the action is
+    irreversible.
+
+    USE THIS when the user explicitly asks to free disk space, comply
+    with a data-retention policy, or definitively erase sensitive emails
+    they don't want recoverable.
+
+    DO NOT USE THIS routinely — Gmail auto-empties trash after 30 days,
+    so this tool is only worth calling when the user can't wait.
+
+    Args:
+        max_to_delete: Safety cap on how many emails to permanently
+            delete in this call. Default 1000 (= Gmail API batch limit).
+            Set lower (e.g. 100) if you want a more granular approach
+            for very large trashes. Set to a number you can explain
+            to the user in the HITL confirmation.
+
+    Returns: a summary with the count of permanently deleted emails.
+    """
+    service = await _get_gmail_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connectez votre compte dans les paramètres."
+
+    max_to_delete = min(max(1, max_to_delete), 1000)
+
+    try:
+        # 1. List up to max_to_delete IDs in the Trash. The Gmail API
+        #    requires us to enumerate before deleting — there's no
+        #    "purge trash" endpoint, only batchDelete(ids=[...]).
+        ids: list[str] = []
+        page_token = None
+        while len(ids) < max_to_delete:
+            req = service.users().messages().list(
+                userId="me",
+                maxResults=min(100, max_to_delete - len(ids)),
+                q="in:trash",
+                pageToken=page_token,
+            ).execute()
+            batch = req.get("messages", [])
+            ids.extend([m["id"] for m in batch])
+            page_token = req.get("nextPageToken")
+            if not page_token or not batch:
+                break
+
+        if not ids:
+            return "✅ La corbeille est déjà vide. Rien à faire."
+
+        # 2. Permanently delete via batchDelete (Gmail API caps at 1000).
+        #    Unlike messages().delete() called in a loop, batchDelete
+        #    is a single atomic API call — much faster and counts as
+        #    one quota unit instead of N.
+        try:
+            service.users().messages().batchDelete(
+                userId="me",
+                body={"ids": ids},
+            ).execute()
+        except Exception as exc:
+            logger.warning("gmail_empty_trash batchDelete failed: %s", exc)
+            return (
+                f"❌ Erreur Gmail lors de la suppression définitive de "
+                f"{len(ids)} email(s) : {exc}. Les emails restent dans la corbeille."
+            )
+
+        # Check whether more remain (we capped at max_to_delete; the
+        # trash may contain more). Tell the user honestly so they can
+        # decide whether to call again.
+        try:
+            more = service.users().messages().list(
+                userId="me",
+                maxResults=1,
+                q="in:trash",
+            ).execute()
+            has_more = bool(more.get("messages"))
+        except Exception:
+            has_more = False  # best-effort honesty: don't lie if check fails
+
+        if has_more:
+            return (
+                f"🗑️ ✅ {len(ids)} email(s) définitivement supprimé(s) de la "
+                f"corbeille. ⚠️ Il en reste — rappelle-moi pour vider le reste, "
+                f"ou augmente max_to_delete (max 1000 par appel)."
+            )
+        return (
+            f"🗑️ ✅ {len(ids)} email(s) définitivement supprimé(s). "
+            f"La corbeille est maintenant vide."
+        )
+    except Exception as e:
+        return f"Erreur gmail_empty_trash: {e}"
+
+
+@tool
 async def gmail_reply_email(
     email_id: str,
     body: str,

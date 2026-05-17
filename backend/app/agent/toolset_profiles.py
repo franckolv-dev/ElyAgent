@@ -103,6 +103,12 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # LOCKED_HITL_TOOLS — a single bad query can match thousands of
     # mails, so the user can NEVER opt out of confirming this one.
     "gmail_trash_by_query",
+    # 2026-05-17 — gmail_empty_trash : DEFINITIVELY empties the trash
+    # (vs gmail_trash_* which only MOVE to trash and rely on Gmail's
+    # 30-day auto-purge). Created after the agent kept hallucinating
+    # « la corbeille a été vidée » without an actual tool to do it.
+    # HITL-locked (irreversible — no API recovers a deleted Gmail msg).
+    "gmail_empty_trash",
     # Gmail — settings (filters, signature, vacation, forwarding).
     # Added 2026-05-08 after observing Qwen 3.6 Flash spontaneously
     # propose « je vais créer des filtres » during a mail audit, then

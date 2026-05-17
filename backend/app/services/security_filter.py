@@ -70,6 +70,7 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "gmail_trash_emails",
     "gmail_trash_by_category",
     "gmail_trash_by_query",
+    "gmail_empty_trash",            # PERMANENT delete of trash contents — irreversible
     "contacts_delete",
     "calendar_delete_event",
     # ── 2. Envois de mail (relecture obligatoire) ──

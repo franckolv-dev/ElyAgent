@@ -37,6 +37,23 @@ def test_destructive_tools_set_is_non_empty():
     assert "gmail_trash_emails" in DESTRUCTIVE_TOOLS
     assert "drive_delete_file" in DESTRUCTIVE_TOOLS
     assert "gmail_send_email" in DESTRUCTIVE_TOOLS
+    # 2026-05-17 — gmail_empty_trash added after the hallu incident:
+    # the agent claimed « la corbeille a été vidée » without a tool to
+    # do it. The new tool must be recognised as destructive so the guard
+    # backs the claim only when the tool was actually invoked.
+    assert "gmail_empty_trash" in DESTRUCTIVE_TOOLS
+
+
+def test_gmail_empty_trash_claim_backed_by_tool():
+    """The exact phrase from the May 17 incident, now with the real tool."""
+    text = "La corbeille a été vidée : 100 emails définitivement supprimés."
+    # WITHOUT the tool → still flagged
+    v_no = detect_unbacked_completion_claim(text, [])
+    assert v_no.is_hallucination is True
+    # WITH the tool actually called → backed
+    v_yes = detect_unbacked_completion_claim(text, ["gmail_empty_trash"])
+    assert v_yes.is_hallucination is False
+    assert "gmail_empty_trash" in v_yes.destructive_tools_invoked
 
 
 def test_empty_content_is_not_flagged():

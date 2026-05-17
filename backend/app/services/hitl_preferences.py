@@ -40,6 +40,12 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     # user's free-text request. Always lock. Added 2026-05-17 alongside
     # its inclusion in the default toolset profile.
     "gmail_trash_by_query",
+    # PERMANENT trash purge — irreversible, no Gmail API recovers a
+    # batchDelete'd message. By default Gmail auto-purges trash after
+    # 30 days, so calling this tool is only justified when the user
+    # explicitly wants immediate erasure (disk-space, data-retention
+    # policy, sensitive content). Always lock to force confirmation.
+    "gmail_empty_trash",
     # Account-level Gmail settings (filters, signature, vacation,
     # forwarding). A filter rule persists and silently affects every
     # future incoming mail — far more impactful than trashing 10 mails.
