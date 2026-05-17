@@ -94,6 +94,15 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "gmail_search_for_cleanup",
     "gmail_trash_by_category",
     "gmail_trash_emails",
+    # 2026-05-17 — Added after the agent told Franck «je n'ai pas accès à
+    # l'outil gmail_trash_by_query» while doing a SHEIN cleanup. The tool
+    # existed in gmail_tool.py but was missing from the default profile,
+    # forcing every sender-based bulk delete through the 2-step
+    # list+trash_by_id flow (slower + more turns = more LLM pressure).
+    # Now exposed. Already in ALWAYS_CRITICAL_TOOLS and just added to
+    # LOCKED_HITL_TOOLS — a single bad query can match thousands of
+    # mails, so the user can NEVER opt out of confirming this one.
+    "gmail_trash_by_query",
     # Gmail — settings (filters, signature, vacation, forwarding).
     # Added 2026-05-08 after observing Qwen 3.6 Flash spontaneously
     # propose « je vais créer des filtres » during a mail audit, then

@@ -33,6 +33,13 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     "gmail_batch_modify",
     "gmail_trash_emails",
     "gmail_move_emails",
+    # Query-based bulk trash — a single bad Gmail query
+    # (e.g. "from:gmail.com") can match thousands of mails. MORE
+    # dangerous than gmail_trash_emails (which takes a specific ID list)
+    # because the agent constructs the query string itself from the
+    # user's free-text request. Always lock. Added 2026-05-17 alongside
+    # its inclusion in the default toolset profile.
+    "gmail_trash_by_query",
     # Account-level Gmail settings (filters, signature, vacation,
     # forwarding). A filter rule persists and silently affects every
     # future incoming mail — far more impactful than trashing 10 mails.
