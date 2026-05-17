@@ -109,6 +109,12 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # « la corbeille a été vidée » without an actual tool to do it.
     # HITL-locked (irreversible — no API recovers a deleted Gmail msg).
     "gmail_empty_trash",
+    # GitHub — read-only stats + traffic + notifications (2026-05-17,
+    # added to unblock screencast scenario step « clones du repo ElyAgent »).
+    # Token configured via GITHUB_TOKEN env var.
+    "github_repo_stats",
+    "github_traffic_stats",
+    "github_notifications",
     # Gmail — settings (filters, signature, vacation, forwarding).
     # Added 2026-05-08 after observing Qwen 3.6 Flash spontaneously
     # propose « je vais créer des filtres » during a mail audit, then

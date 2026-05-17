@@ -124,6 +124,16 @@ class Settings(BaseSettings):
     # Gratuit : 1000 requêtes/mois sur https://tavily.com
     tavily_api_key: str = ""
 
+    # GitHub Personal Access Token (optionnel)
+    # Used by github_traffic_stats / github_repo_stats tools to read traffic,
+    # stars, issues, notifications. Generate at https://github.com/settings/tokens
+    # — required scopes: `public_repo` + `notifications` (or `repo` for private).
+    # Traffic endpoints (clones/views) require PUSH access on the target repo.
+    github_token: str = ""
+    # Default repo for "show me the stats" without args. Format: "owner/repo".
+    # If empty, tools require the owner/repo args explicitly.
+    github_default_repo: str = ""
+
     # Telegram bot (optionnel — configurer via Admin ou .env)
     telegram_bot_token: str = ""
 
