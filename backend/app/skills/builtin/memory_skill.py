@@ -21,6 +21,11 @@ from app.agent.tools.memory_tool import save_user_preference, save_constraint
 from app.agent.tools.memgpt_tool import (
     memory_archive, memory_search, memory_recent,
 )
+# Sprint 1 — Memory recall (cross-conversation FTS5 + Ministral 3B summariser).
+# Distinct capability from memory_archive/search above (which operate on the
+# structured Qdrant fact store): this one searches the literal messages of
+# every past conversation the user had.
+from app.agent.tools.session_search_tool import search_past_conversations_tool
 
 get_skill_registry().register(Skill(
     name="memory_preferences",
@@ -50,5 +55,28 @@ get_skill_registry().register(Skill(
     scopes=[],
     domains=[Domain.MEMORY],
     tools=[memory_archive, memory_search, memory_recent],
+    enabled_by_default=True,
+))
+
+# Sprint 1 (2026-05-15) — Cross-conversation memory recall.
+# Lets the agent answer "tu te souviens de…", "on en était où…",
+# "what did we say about…" by searching the literal messages of every
+# past conversation (FTS5 index) and summarising the top matches via a
+# local LLM (Ministral 3B in the default tier-A setup). Cost: ~0€ per
+# call, ~5-10s latency for 3 conversation summaries in parallel.
+get_skill_registry().register(Skill(
+    name="memory_recall",
+    display_name="Mémoire transversale entre conversations",
+    description=(
+        "Recherche dans tout l'historique des conversations passées du user, "
+        "groupe par session, charge le contexte autour des matchs et résume "
+        "chaque conversation pertinente via un LLM local. Permet à l'agent de "
+        "se souvenir de discussions précédentes sans que le user ait à les "
+        "réintroduire en contexte."
+    ),
+    icon="🧭",
+    scopes=[],
+    domains=[Domain.MEMORY],
+    tools=[search_past_conversations_tool],
     enabled_by_default=True,
 ))

@@ -94,6 +94,7 @@ from app.routers import extension_tokens as extension_tokens_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
+from app.services.messages_fts_store import get_messages_fts_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -130,6 +131,13 @@ async def lifespan(app: FastAPI):
 
     await get_memory_manager().init_collections()
     await get_fts_store().init()
+    # Sprint 1 — Memory recall: messages_fts indexes the literal messages
+    # of every conversation for cross-session retrieval. Separate from
+    # memory_fts (which indexes extracted facts).
+    await get_messages_fts_store().init()
+    # Auto-indexer event hook (SQLAlchemy after_insert on Message)
+    from app.services.messages_fts_indexer import install_indexer as _install_msg_indexer
+    _install_msg_indexer()
 
     # Init RAG knowledge collection
     from app.services.rag_service import get_rag_service

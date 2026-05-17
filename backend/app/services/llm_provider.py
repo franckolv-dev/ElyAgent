@@ -1190,7 +1190,47 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     Each entry in the providers list can be:
     - A known provider name ("ollama", "anthropic", …) — legacy behavior
     - A UUID of a LLMInstance present in _instance_cache — named-instance routing
+
+    Defensive auto-load (Sprint 1, audit 2026-05-15)
+    -------------------------------------------------
+    If ``_instance_cache`` is empty AND ``_runtime`` looks unconfigured,
+    we assume this function is being called outside the normal uvicorn
+    lifespan (e.g. a `docker compose exec` script, a cron job, or an
+    isolated test harness). In that case we trigger
+    ``load_llm_settings_from_db()`` on the fly so the caller doesn't
+    have to remember to do it. The cost is one DB read, cached forever
+    after; in the normal serving path the cache is already warm and
+    this branch is a no-op (the ``if`` short-circuits).
     """
+    if not _instance_cache and not _runtime.get("provider"):
+        try:
+            import asyncio
+            # We're in an async context (every caller of this function is),
+            # but get_llm_for_tier itself is sync. Use the running loop to
+            # await the loader in a way that doesn't deadlock.
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We can't await from sync code inside a running loop —
+                # schedule it and block briefly. Acceptable here because
+                # this branch only fires once per process at most.
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(
+                        lambda: asyncio.run(load_llm_settings_from_db())
+                    )
+                    fut.result(timeout=10)
+            else:
+                loop.run_until_complete(load_llm_settings_from_db())
+            logger.info(
+                "get_llm_for_tier: lazily loaded LLM settings from DB "
+                "(cache had 0 instances, now %d)", len(_instance_cache),
+            )
+        except Exception as exc:
+            logger.warning(
+                "get_llm_for_tier: lazy load failed (will use defaults): %s",
+                exc,
+            )
+
     settings = get_settings()
     config = get_tier_config()
     tier_cfg = config.get(tier.value, DEFAULT_TIER_CONFIG.get(tier.value, {}))
