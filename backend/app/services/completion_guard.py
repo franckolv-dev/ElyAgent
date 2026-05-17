@@ -121,6 +121,22 @@ DESTRUCTIVE_TOOLS: frozenset[str] = frozenset({
     "scheduler_create_task",
     "scheduler_delete_task",
     "scheduler_update_task",
+    # Memory & knowledge state-changing tools.
+    # FIX 2026-05-17 evening : initially the guard only knew about
+    # *destructive* tools (delete email, etc.). But « j'ai enregistré
+    # dans ma mémoire » is ALSO a state-change claim that should be
+    # backed by a real tool call. Without these, the agent saying
+    # « j'ai enregistré le Dr Untel » without calling memory_archive
+    # was correctly flagged as hallucination — but if the agent DID
+    # call memory_archive, the guard wouldn't recognise it as backing.
+    # Added so both cases (hallucinated AND real archive) are handled
+    # correctly.
+    "memory_archive",
+    "save_user_preference",
+    "save_constraint",
+    "knowledge_save",
+    "notes_update",
+    "notes_delete",
 })
 
 
