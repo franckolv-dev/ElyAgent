@@ -105,6 +105,10 @@ docs/teasingELY.md
 docs/roadmap-post-launch.md
 docs/plan-hermes.md
 docs/audits/
+# Études internes de patterns observés dans d'autres agents open-source
+# (Hermes, OpenClaw, etc.). Réflexion stratégique + chemins locaux Franck.
+# Reste hors du dépôt public.
+docs/external-references/
 docs/TEST_REPORT_*.md
 docs/auto-amelioration.md
 docs/optimisation-Ely-Gemini.md
