@@ -88,6 +88,7 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     # Browser tools — each user has an isolated browser context
     "browser_navigate",
     "browser_search_web",
+    "browser_search_images",
     "browser_get_text",
     "browser_screenshot",
     "browser_click",
@@ -142,6 +143,19 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "knowledge_search",
     "knowledge_list",
     "smart_knowledge_query",
+    # MemGPT-style hierarchical memory (archive + search + recent).
+    # FIX 2026-05-17 : ces 3 tools avaient `user_id: InjectedToolArg`
+    # dans leur signature mais étaient absents de cette frozenset, donc
+    # le runtime n'injectait jamais user_id. DeepSeek v4-flash le voyait
+    # alors comme un paramètre à remplir et répondait honnêtement
+    # « le tool mémoire attend un user_id que je n'ai pas ». Toute la
+    # mémoire archive cassée silencieusement, fallback systématique sur
+    # notes_create. Same class of bug que search_past_conversations_tool
+    # corrigé la semaine dernière — preuve qu'il faut une CI qui détecte
+    # automatiquement les tools avec InjectedToolArg absents de cette set.
+    "memory_archive",
+    "memory_search",
+    "memory_recent",
     # Sprint 1 (2026-05-15) — cross-conversation memory recall.
     # Different from memory_search (structured fact store) and
     # knowledge_search (uploaded documents). Searches the literal
