@@ -187,3 +187,32 @@ frontend/
   réécrits en EN avec instruction finale `Reply in {user_language}`
 - Économie tokens + meilleure précision tool-calling
 - Risque de régression — à faire avec tests parallèles avant switch
+
+### Checker la branche `salvage/abandoned-agent-tool-policy-budget-heartbeat` (post-Sprint 2.7)
+
+Branche backup sur GitHub d'une session agent Claude Code abandonnée le
+24 avril 2026. Contient 3 scaffolds qui n'ont jamais été commités sur main :
+
+- `backend/app/services/tool_policy_service.py` + model + router +
+  `config/tool_policies/` — système de **policies tool per-user**, plus
+  généralisé que notre `TIER_C_ONLY_TOOLS` actuel. Pourrait simplifier
+  ou enrichir l'allow-list par profil utilisateur (ex : autoriser
+  `drive_delete_file` à un user expert, le bloquer pour un user lambda).
+- `backend/app/services/budget_guard.py` + router `budget.py` —
+  limitation **coûts/tokens** par user/conversation. Pré-requis pour
+  ouvrir l'agent à des early adopters payants.
+- `backend/app/services/heartbeat_service.py` + router — à comparer
+  avec `mission_heartbeat.py` existant (peut-être un heartbeat
+  backend-wide vs uniquement par mission).
+
+Pour explorer :
+```bash
+git fetch origin salvage/abandoned-agent-tool-policy-budget-heartbeat
+git show origin/salvage/abandoned-agent-tool-policy-budget-heartbeat:backend/app/services/tool_policy_service.py
+```
+
+Moment idéal pour piquer : avant le Sprint 3.7 (loop d'auto-amélioration)
+ou juste avant d'ouvrir l'agent à plus d'users. Le diff cumulatif du
+worktree (modifs partout) est probablement inappliquable tel quel sur
+main vu un mois d'évolutions, mais les 3 fichiers neufs ci-dessus sont
+picqables proprement.
