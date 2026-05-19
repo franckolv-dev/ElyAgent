@@ -38,6 +38,7 @@ en attendant les Jalons 2-4.
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from typing import Annotated
 
 from langchain_core.tools import InjectedToolArg, tool
@@ -46,6 +47,31 @@ from app.skills.base import Domain
 from app.skills.decorator import register
 
 logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Conversation-id passthrough (Sprint 2.7 — Jalon 6)
+# ──────────────────────────────────────────────────────────────────────
+#
+# The orchestrate sandbox needs the per-conversation SecurityFilter to
+# re-anonymize the sandbox's stdout/stderr before returning it to the
+# main LLM — otherwise PII pulled from Gmail/Drive inside the script
+# leaks back into the LLM context in cleartext.
+#
+# We can't add ``conversation_id`` as a LangChain InjectedToolArg
+# without modifying every tool's injection logic across the codebase,
+# so we use a ContextVar set by ``tool_node`` (in app/agent/nodes.py)
+# right before invoking any tool. The tool reads the value here and
+# looks up the SecurityFilter through the registry.
+#
+# When the context var is unset (e.g. called outside the agent graph
+# in a test), the tool falls back to running WITHOUT anonymization —
+# safe because in that case there's no LLM downstream consuming the
+# result either.
+
+ORCHESTRATE_CONVERSATION_ID: ContextVar[str] = ContextVar(
+    "orchestrate_conversation_id", default=""
+)
 
 
 @register(
@@ -138,6 +164,31 @@ async def orchestrate(
             f"Erreur d'exécution du sandbox : {type(exc).__name__}: {exc}. "
             "Si le problème persiste, retombe sur des tool_calls directs."
         )
+
+    # Sprint 2.7 Jalon 6 — re-anonymize stdout/stderr before they reach
+    # the main LLM. The sandbox receives DEANONYMIZED args (tool_node
+    # already restored real values for the script to work against the
+    # real Gmail/Drive APIs), and tool results pulled inside the sandbox
+    # contain real PII. Without this step, that PII would round-trip
+    # back into the LLM's tool_message context — defeating the whole
+    # anonymization pipeline. Re-running the same SecurityFilter
+    # preserves placeholder stability: an email mapped to <EMAIL_3>
+    # earlier in the conversation stays <EMAIL_3> in this turn too.
+    conv_id = ORCHESTRATE_CONVERSATION_ID.get()
+    if conv_id:
+        try:
+            from app.services.conversation_filters import get_filter
+            sf = get_filter(conv_id)
+            if result.stdout:
+                result.stdout = sf.anonymize(result.stdout)
+            if result.stderr:
+                result.stderr = sf.anonymize(result.stderr)
+        except Exception as anon_exc:  # noqa: BLE001
+            logger.warning(
+                "orchestrate: stdout/stderr re-anonymization skipped (%s) — "
+                "raw PII may leak to the main LLM. Investigate.",
+                anon_exc,
+            )
 
     # The agent node passes `result.tools_dispatched` to the
     # completion_guard via the `tools_called_via_sandbox` channel (§4.4).

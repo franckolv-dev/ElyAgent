@@ -1840,6 +1840,18 @@ async def tool_node(state: AgentState) -> dict:
             return [_deanonymize_value(x) for x in v]
         return v
 
+    # Sprint 2.7 Jalon 6 — expose the conversation_id to the orchestrate
+    # tool via a ContextVar so it can re-anonymize sandbox stdout/stderr
+    # using the same SecurityFilter as the rest of the pipeline. The
+    # ContextVar is set once for the whole turn and is automatically
+    # scoped to this coroutine (no manual reset needed — asyncio
+    # propagates ContextVars per task).
+    try:
+        from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+        ORCHESTRATE_CONVERSATION_ID.set(_conv_id)
+    except Exception as _orch_ctx_exc:  # noqa: BLE001
+        logger.debug("orchestrate ContextVar set skipped: %s", _orch_ctx_exc)
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
         # Deanonymize tool args BEFORE any other processing so HITL preview,
