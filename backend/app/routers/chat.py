@@ -438,6 +438,37 @@ async def websocket_chat(websocket: WebSocket):
                 elif event["event"] == "on_tool_end":
                     tool_name = event.get("name", "")
                     tool_output = event.get("data", {}).get("output", "")
+                    # Sprint 2.7 §4.4 — when ``orchestrate`` finishes, its
+                    # meta header lists the tools dispatched inside the
+                    # sandbox. Add them to ``tools_called`` so the
+                    # completion_guard sees the union and doesn't flag a
+                    # destructive action driven via the sandbox as
+                    # unbacked. (Today the sandbox is read-only — so this
+                    # is mostly preparation for V2 — but it's also harmless
+                    # for read-only tools.)
+                    if tool_name == "orchestrate":
+                        try:
+                            from app.services.orchestrate_runner import (
+                                parse_dispatched_from_result,
+                            )
+                            _output_str = (
+                                tool_output
+                                if isinstance(tool_output, str)
+                                else getattr(tool_output, "content", "") or ""
+                            )
+                            _dispatched = parse_dispatched_from_result(_output_str)
+                            if _dispatched:
+                                tools_called.extend(_dispatched)
+                                logger.debug(
+                                    "completion_guard: union'd %d sandbox tools "
+                                    "from orchestrate result",
+                                    len(_dispatched),
+                                )
+                        except Exception as _orch_parse_exc:
+                            logger.debug(
+                                "orchestrate tools_dispatched parse skipped: %s",
+                                _orch_parse_exc,
+                            )
                     # Detect image results from tools (e.g. qrcode_generate, generate_image)
                     _image_payload: dict | None = None
                     if isinstance(tool_output, str) and tool_output.startswith("{"):

@@ -1415,6 +1415,22 @@ def create_agent_node():
                 except Exception as _bext_err:
                     logger.debug("[diag.bind] extension-check skipped: %s", _bext_err)
 
+                # Sprint 2.7 — hide tier_c_only tools from SIMPLE/MEDIUM
+                # tiers. orchestrate is the canonical case: tier A/B models
+                # can't write correct Python scripts, so exposing the tool
+                # to them just burns tokens on broken sandbox runs.
+                if _tier != ComplexityTier.COMPLEX:
+                    from app.agent.tool_sets import TIER_C_ONLY_TOOLS
+                    _before_tc = len(_filtered_tools)
+                    _filtered_tools = [
+                        t for t in _filtered_tools if t.name not in TIER_C_ONLY_TOOLS
+                    ]
+                    if len(_filtered_tools) != _before_tc:
+                        logger.info(
+                            "[diag.bind] tier=%s — dropped %d tier_c_only tool(s)",
+                            _tier_key, _before_tc - len(_filtered_tools),
+                        )
+
                 # Mini-chantier A — apply parallel_tool_calls policy by
                 # model family. Permissive models (Qwen, Mistral…) and OpenAI
                 # family invent downstream args (e.g. fake local_path) when
@@ -1823,6 +1839,18 @@ async def tool_node(state: AgentState) -> dict:
         if isinstance(v, list):
             return [_deanonymize_value(x) for x in v]
         return v
+
+    # Sprint 2.7 Jalon 6 — expose the conversation_id to the orchestrate
+    # tool via a ContextVar so it can re-anonymize sandbox stdout/stderr
+    # using the same SecurityFilter as the rest of the pipeline. The
+    # ContextVar is set once for the whole turn and is automatically
+    # scoped to this coroutine (no manual reset needed — asyncio
+    # propagates ContextVars per task).
+    try:
+        from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+        ORCHESTRATE_CONVERSATION_ID.set(_conv_id)
+    except Exception as _orch_ctx_exc:  # noqa: BLE001
+        logger.debug("orchestrate ContextVar set skipped: %s", _orch_ctx_exc)
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
