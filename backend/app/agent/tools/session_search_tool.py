@@ -40,6 +40,8 @@ from typing import Annotated
 from langchain_core.tools import InjectedToolArg, tool
 
 from app.services.session_search import search_past_conversations
+from app.skills.base import Domain
+from app.skills.decorator import register
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,20 @@ def _format_date(iso_str: str | None) -> str:
         return iso_str
 
 
+@register(
+    domain=Domain.MEMORY,
+    skill_name="memory_recall",
+    skill_display_name="Mémoire transversale entre conversations",
+    skill_description=(
+        "Recherche dans tout l'historique des conversations passées du user, "
+        "groupe par session, charge le contexte autour des matchs et résume "
+        "chaque conversation pertinente via un LLM local. Permet à l'agent de "
+        "se souvenir de discussions précédentes sans que le user ait à les "
+        "réintroduire en contexte."
+    ),
+    skill_icon="🧭",
+    enabled_by_default=True,
+)
 @tool
 async def search_past_conversations_tool(
     query: str,
