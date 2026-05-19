@@ -129,17 +129,6 @@ def test_allow_list_excludes_destructive_tools() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runner_run_raises_not_implemented() -> None:
-    """``OrchestrateRunner.run()`` doit lever NotImplementedError tant
-    que les Jalons 2-4 ne sont pas terminés."""
-    from app.services.orchestrate_runner import OrchestrateRunner
-
-    runner = OrchestrateRunner(user_id="test-user")
-    with pytest.raises(NotImplementedError):
-        await runner.run(code="print('hello')")
-
-
-@pytest.mark.asyncio
 async def test_runner_run_rejects_empty_code() -> None:
     """Avant même de tenter l'exécution, on doit refuser un script vide."""
     from app.services.orchestrate_runner import OrchestrateRunner

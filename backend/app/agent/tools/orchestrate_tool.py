@@ -127,17 +127,36 @@ async def orchestrate(
     if not code or not code.strip():
         return "Erreur : le script est vide. Fournis du code Python à exécuter."
 
-    # TODO Jalons 2-4 : instancier OrchestrateRunner, exécuter le code,
-    # formatter le retour (stdout + liste tools_dispatched).
-    # Le wiring vers completion_guard (§4.4) se fait dans le nœud agent,
-    # pas ici — il a besoin de l'OrchestrateResult complet.
+    from app.services.orchestrate_runner import OrchestrateRunner
 
-    logger.warning(
-        "orchestrate called for user=%s but is still a skeleton (Sprint 2.7 Jalon 1)",
-        user_id,
-    )
-    return (
-        "⚠️ Le tool `orchestrate` est en cours d'implémentation (Sprint 2.7). "
-        "Pour l'instant, enchaîne tes tool_calls manuellement. "
-        "Disponible en version complète sous quelques jours."
-    )
+    runner = OrchestrateRunner(user_id=user_id)
+    try:
+        result = await runner.run(code=code)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("orchestrate: runner failed for user=%s", user_id)
+        return (
+            f"Erreur d'exécution du sandbox : {type(exc).__name__}: {exc}. "
+            "Si le problème persiste, retombe sur des tool_calls directs."
+        )
+
+    # The agent node passes `result.tools_dispatched` to the
+    # completion_guard via the `tools_called_via_sandbox` channel (§4.4).
+    # Here we render a string for the LLM that combines stdout + a
+    # short metadata header. Keeping the meta short so it doesn't dilute
+    # the script's own conclusion (typically the last print).
+    meta_parts: list[str] = []
+    if result.tools_dispatched:
+        meta_parts.append(
+            f"tools={','.join(result.tools_dispatched)} "
+            f"(count={len(result.tools_dispatched)})"
+        )
+    if result.exit_code != 0:
+        meta_parts.append(f"exit={result.exit_code}")
+    if result.truncated:
+        meta_parts.append(f"⚠️ {result.truncation_reason}")
+    if result.stderr.strip():
+        stderr_preview = result.stderr.strip().splitlines()[-1][:200]
+        meta_parts.append(f"stderr_last={stderr_preview!r}")
+
+    meta_line = " | ".join(meta_parts) if meta_parts else "no tools called"
+    return f"[orchestrate {meta_line}]\n{result.stdout}"

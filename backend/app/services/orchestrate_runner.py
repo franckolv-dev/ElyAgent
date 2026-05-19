@@ -7,7 +7,7 @@
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
-# @version    0.1.0-skeleton
+# @version    0.4.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 #
 # RÉSUMÉ DES CONDITIONS :
@@ -53,9 +53,9 @@ Choix : **subprocess + PYTHONPATH whitelist**, *pas* Docker-in-Docker.
   ``~`` du process backend.
 - ``os.setsid`` pour isoler le process group → kill propre si timeout.
 
-Trade-off accepté : la sécurité repose sur le rigueur du scrubbing. Tout
+Trade-off accepté : la sécurité repose sur la rigueur du scrubbing. Tout
 ajout d'une nouvelle classe de secret au backend doit penser au sandbox
-(d'où le fuzz testing au jalon 4).
+(d'où le fuzz testing dans les tests).
 
 §4.4 — Adapter completion_guard
 -------------------------------
@@ -71,10 +71,6 @@ Choix : **le RPC server logge les tools dispatchés + union dans le guard**.
   source ``tools_called_via_sandbox``. Le guard fait l'union avec les
   tools appelés directement (hors sandbox) — pas de bypass, pas de
   faux positif sur les scripts read-only.
-- Avantage vs « bypass guard quand orchestrate est appelé » : on garde
-  la protection anti-hallu même si un script ment dans son print final
-  (« j'ai supprimé ») sans qu'aucun tool destructif n'ait été
-  effectivement appelé.
 
 Allow-list V1 (15 tools read-only)
 ==================================
@@ -83,17 +79,54 @@ exposé au sandbox en V1 (cf. design note §4.1 — option A). Toute action
 qui modifie l'état (gmail_trash_*, drive_delete_file, gmail_send_*,
 notes_create, …) doit revenir au LLM principal qui passera par le flow
 HITL standard.
-
-Status : SKELETON
-=================
-Ce module est le squelette du Jalon 1. Les méthodes lèvent
-``NotImplementedError`` pour l'instant. La logique sera ajoutée par les
-jalons 2 (RPC), 3 (stubs), 4 (subprocess), 5 (wiring), 6 (anonymisation).
 """
 from __future__ import annotations
 
+import asyncio
+import logging
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Callable
+
+from app.services.orchestrate_rpc import OrchestrateRPCServer
+from app.services.orchestrate_stubs import generate_stubs
+
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Env scrubbing constants
+# ──────────────────────────────────────────────────────────────────────
+#
+# Inspired by Hermes' ``_SAFE_ENV_PREFIXES`` / ``_SECRET_SUBSTRINGS``
+# (see ``hermes-agent-main/tools/code_execution_tool.py`` line ~1034).
+# Adapted for ELY:
+#   - replaced HERMES_ prefix by ELY_
+#   - dropped PYTHONPATH from the whitelist (we override it explicitly to
+#     {tmpdir} only, otherwise the child would inherit the backend's
+#     PYTHONPATH and could ``from app.services... import``)
+#   - dropped VIRTUAL_ENV/CONDA: the child uses sys.executable, no need
+#     to point at another venv
+
+_SAFE_ENV_PREFIXES: tuple[str, ...] = (
+    "PATH", "HOME", "USER", "LANG", "LC_", "TERM",
+    "TMPDIR", "TMP", "TEMP", "SHELL", "LOGNAME",
+    "XDG_", "PYTHONDONTWRITEBYTECODE", "TZ",
+    "ELY_",
+)
+
+_SECRET_SUBSTRINGS: tuple[str, ...] = (
+    "KEY", "TOKEN", "SECRET", "PASSWORD",
+    "CREDENTIAL", "PASSWD", "AUTH",
+)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -101,15 +134,15 @@ from pathlib import Path
 # ──────────────────────────────────────────────────────────────────────
 #
 # Cette frozenset est la **source de vérité** pour ce que le sandbox peut
-# appeler. Le stub generator (jalon 3) lit cette liste pour produire
-# ``ely_tools.py``. Le RPC server (jalon 2) la lit pour rejeter tout
-# appel hors-liste avec une erreur explicite.
+# appeler. Le stub generator (``orchestrate_stubs``) lit cette liste pour
+# produire ``ely_tools.py``. Le RPC server (``orchestrate_rpc``) la lit
+# pour rejeter tout appel hors-liste avec une erreur explicite.
 #
 # Critères de sélection V1 :
 #   - read-only (aucun side-effect persistant côté user)
 #   - bien testé en prod (utilisé dans le scénario screencast ou
 #     manuellement par Franck depuis ≥ 1 semaine)
-#   - signature simple (pas de InjectedToolArg autre que user_id)
+#   - signature simple (idéalement seulement ``user_id`` comme injected)
 #
 # Tools intentionnellement exclus en V1 (à ajouter en V2 après usage) :
 #   - gmail_trash_*, drive_delete_*, gmail_send_*  → destructifs
@@ -153,9 +186,9 @@ SANDBOX_ALLOWED_TOOLS_V1: frozenset[str] = frozenset({
 class OrchestrateLimits:
     """Limites de ressources appliquées au sandbox.
 
-    Les valeurs par défaut suivent celles de Hermes (validées sur des
-    workflows réels), légèrement plus conservatives sur ``stdout`` pour
-    rester compatible avec nos contraintes de fenêtre LLM tier C.
+    Valeurs par défaut alignées avec Hermes (validées sur des workflows
+    réels), légèrement plus conservatives sur ``stdout`` pour rester
+    compatible avec nos contraintes de fenêtre LLM tier C.
     """
 
     timeout_seconds: int = 300
@@ -166,6 +199,8 @@ class OrchestrateLimits:
     # garantit que la conclusion du script (généralement la dernière
     # ligne) arrive toujours au LLM.
     stdout_head_ratio: float = 0.4
+    # Délai après SIGTERM avant SIGKILL.
+    sigkill_grace_seconds: float = 5.0
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -190,7 +225,8 @@ class OrchestrateResult:
     # Utilisé par le completion_guard (§4.4) pour la détection d'unbacked
     # completion claims.
     tools_dispatched: list[str] = field(default_factory=list)
-    # True si timeout ou OOM — le LLM doit le savoir pour ne pas mentir.
+    # True si timeout, OOM, ou stdout > max — le LLM doit le savoir pour
+    # ne pas mentir sur la complétude du travail.
     truncated: bool = False
     truncation_reason: str = ""
 
@@ -200,12 +236,20 @@ class OrchestrateResult:
 # ──────────────────────────────────────────────────────────────────────
 
 
+# Type alias for clarity: a callable that, given (tool_name, args), runs
+# the underlying tool and returns either the result or a coroutine.
+ToolDispatcher = Callable[[str, dict[str, Any]], Any]
+
+
 class OrchestrateRunner:
     """Façade publique du sandbox orchestrate.
 
     Usage typique (depuis ``orchestrate_tool.py``) :
 
-        runner = OrchestrateRunner(user_id=user_id, limits=OrchestrateLimits())
+        runner = OrchestrateRunner(
+            user_id=user_id,
+            tool_dispatcher=build_default_dispatcher(user_id),
+        )
         result = await runner.run(code=llm_generated_python)
         return result.stdout, result.tools_dispatched
 
@@ -216,7 +260,7 @@ class OrchestrateRunner:
         4. Démarrage du RPC server UDS (``orchestrate_rpc``).
         5. ``subprocess.Popen`` du script avec env scrubbée + PYTHONPATH
            = tmpdir uniquement.
-        6. Attente de la fin (timeout 300s) ou kill.
+        6. Attente de la fin (timeout 300s) ou kill du process group.
         7. Lecture stdout / stderr + récupération de la liste des tools
            dispatchés.
         8. Cleanup du tmpdir et du socket UDS.
@@ -226,13 +270,19 @@ class OrchestrateRunner:
         self,
         *,
         user_id: str,
+        tool_dispatcher: ToolDispatcher | None = None,
         limits: OrchestrateLimits | None = None,
+        allowed_tools: frozenset[str] | None = None,
     ) -> None:
         if not user_id:
             raise ValueError("OrchestrateRunner requires a non-empty user_id")
         self.user_id = user_id
         self.limits = limits or OrchestrateLimits()
-        self._tmpdir: Path | None = None
+        self.allowed_tools = allowed_tools or SANDBOX_ALLOWED_TOOLS_V1
+        # If the caller didn't pass a dispatcher, build the default one
+        # lazily on the first run() — that avoids paying the registry
+        # bootstrap cost in tests that only exercise input validation.
+        self._tool_dispatcher: ToolDispatcher | None = tool_dispatcher
         self._tools_dispatched: list[str] = []
 
     async def run(self, code: str) -> OrchestrateResult:
@@ -250,18 +300,68 @@ class OrchestrateRunner:
 
         Raises:
             ValueError: si ``code`` est vide.
-            NotImplementedError: tant que les jalons 2-4 ne sont pas
-                terminés.
         """
         if not code or not code.strip():
             raise ValueError("orchestrate.run() requires non-empty code")
-        # TODO Jalon 2 : démarrer le RPC server UDS.
-        # TODO Jalon 3 : générer ely_tools.py.
-        # TODO Jalon 4 : Popen avec env scrubbée + PYTHONPATH whitelist.
-        # TODO Jalon 4 : timeout + truncation head+tail stdout.
-        raise NotImplementedError(
-            "OrchestrateRunner.run() is a skeleton — Jalons 2-4 pending"
+
+        start_time = time.monotonic()
+        tmpdir = Path(tempfile.mkdtemp(prefix="ely_orchestrate_"))
+
+        dispatcher = self._tool_dispatcher or _build_default_dispatcher(self.user_id)
+
+        rpc_server = OrchestrateRPCServer(
+            user_id=self.user_id,
+            allowed_tools=self.allowed_tools,
+            max_tool_calls=self.limits.max_tool_calls,
+            tool_dispatcher=dispatcher,
         )
+
+        try:
+            # 1. Filesystem layout
+            home_dir = tmpdir / "home"
+            home_dir.mkdir()
+            script_path = tmpdir / "script.py"
+            ely_tools_path = tmpdir / "ely_tools.py"
+            script_path.write_text(code, encoding="utf-8")
+
+            # 2. Start RPC server (creates the UDS socket)
+            socket_path = rpc_server.start()
+
+            # 3. Generate ely_tools.py stubs
+            generate_stubs(
+                allowed_tools=self.allowed_tools,
+                socket_path=socket_path,
+                target_path=ely_tools_path,
+            )
+
+            # 4. Build the scrubbed environment for the child
+            child_env = _build_scrubbed_env(
+                socket_path=socket_path,
+                tmpdir=tmpdir,
+                home_dir=home_dir,
+            )
+
+            # 5. Spawn and wait
+            result = await self._spawn_and_wait(
+                script_path=script_path,
+                tmpdir=tmpdir,
+                child_env=child_env,
+                start_time=start_time,
+            )
+
+            # 6. Attach the tools_dispatched list from the RPC server
+            self._tools_dispatched = rpc_server.tools_dispatched
+            result.tools_dispatched = self._tools_dispatched
+            return result
+        finally:
+            try:
+                rpc_server.stop()
+            except Exception:  # noqa: BLE001
+                logger.exception("orchestrate: failed to stop RPC server cleanly")
+            try:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            except Exception:  # noqa: BLE001
+                logger.exception("orchestrate: failed to cleanup tmpdir %s", tmpdir)
 
     def last_run_tools_dispatched(self) -> list[str]:
         """Liste des tools dispatchés pendant le dernier ``run()``.
@@ -272,10 +372,300 @@ class OrchestrateRunner:
         """
         return list(self._tools_dispatched)
 
+    # ── Internals ─────────────────────────────────────────────────────
+
+    async def _spawn_and_wait(
+        self,
+        *,
+        script_path: Path,
+        tmpdir: Path,
+        child_env: dict[str, str],
+        start_time: float,
+    ) -> OrchestrateResult:
+        """Spawn the subprocess, wait with timeout, collect stdout/stderr.
+
+        Implements head+tail stdout truncation à la Hermes : the first
+        ``head_bytes`` are kept verbatim, then a rolling tail buffer of
+        the last ``tail_bytes`` bytes is maintained. On overflow, the
+        middle is replaced by a clear ``[truncated N bytes]`` marker.
+        Stderr is head-only (errors typically appear early).
+        """
+        head_bytes = int(self.limits.max_stdout_bytes * self.limits.stdout_head_ratio)
+        tail_bytes = self.limits.max_stdout_bytes - head_bytes
+
+        # ``preexec_fn=os.setsid`` is POSIX-only. On Windows the sandbox
+        # is unsupported anyway (UDS doesn't exist); we keep this guard
+        # for explicitness.
+        preexec = os.setsid if os.name != "nt" else None
+
+        # ``-S`` disables ``site.py`` so the venv's editable-install .pth
+        # files don't add ``backend/`` to sys.path. Without this, a script
+        # running in our venv can ``import app.services.vault_service``
+        # despite the PYTHONPATH whitelist. With -S, the child only sees
+        # stdlib + cwd + our explicit PYTHONPATH (= tmpdir).
+        proc = await asyncio.to_thread(
+            subprocess.Popen,
+            [sys.executable, "-S", str(script_path)],
+            cwd=str(tmpdir),
+            env=child_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            preexec_fn=preexec,
+        )
+
+        loop = asyncio.get_event_loop()
+        timeout_at = start_time + self.limits.timeout_seconds
+        truncated = False
+        truncation_reason = ""
+
+        # Background drainers — without them, a script that writes more
+        # than the pipe buffer (~64 KB) blocks forever.
+        stdout_head_chunks: list[bytes] = []
+        stdout_tail_buf: deque[bytes] = deque()
+        stdout_total = [0]
+        stderr_chunks: list[bytes] = []
+
+        def _drain_head_tail(pipe, head_chunks, tail_buf, head_limit, tail_limit, total_ref):
+            head_collected = 0
+            tail_collected = 0
+            try:
+                while True:
+                    data = pipe.read(4096)
+                    if not data:
+                        break
+                    total_ref[0] += len(data)
+                    if head_collected < head_limit:
+                        take = min(head_limit - head_collected, len(data))
+                        head_chunks.append(data[:take])
+                        head_collected += take
+                        if take < len(data):
+                            remaining = data[take:]
+                            tail_buf.append(remaining)
+                            tail_collected += len(remaining)
+                    else:
+                        tail_buf.append(data)
+                        tail_collected += len(data)
+                    # Roll the tail buffer to keep only the last tail_limit bytes
+                    while tail_collected > tail_limit and tail_buf:
+                        oldest = tail_buf[0]
+                        excess = tail_collected - tail_limit
+                        if len(oldest) <= excess:
+                            tail_buf.popleft()
+                            tail_collected -= len(oldest)
+                        else:
+                            tail_buf[0] = oldest[excess:]
+                            tail_collected -= excess
+            except (ValueError, OSError) as exc:
+                logger.debug("orchestrate: stdout drain error: %s", exc)
+
+        def _drain_head_only(pipe, chunks, max_bytes):
+            total = 0
+            try:
+                while True:
+                    data = pipe.read(4096)
+                    if not data:
+                        break
+                    if total < max_bytes:
+                        chunks.append(data[:max_bytes - total])
+                    total += len(data)
+            except (ValueError, OSError) as exc:
+                logger.debug("orchestrate: stderr drain error: %s", exc)
+
+        stdout_task = loop.run_in_executor(
+            None, _drain_head_tail,
+            proc.stdout, stdout_head_chunks, stdout_tail_buf,
+            head_bytes, tail_bytes, stdout_total,
+        )
+        stderr_task = loop.run_in_executor(
+            None, _drain_head_only,
+            proc.stderr, stderr_chunks, self.limits.max_stderr_bytes,
+        )
+
+        # Poll for exit with periodic timeout check
+        while True:
+            if proc.poll() is not None:
+                break
+            if time.monotonic() >= timeout_at:
+                truncated = True
+                truncation_reason = (
+                    f"timeout after {self.limits.timeout_seconds}s — "
+                    "process group killed"
+                )
+                _kill_process_group(proc, grace=self.limits.sigkill_grace_seconds)
+                break
+            await asyncio.sleep(0.05)
+
+        # Make sure the drains have completed (process is now dead or
+        # has exited normally, so its pipes will EOF shortly).
+        await stdout_task
+        await stderr_task
+
+        exit_code = proc.returncode if proc.returncode is not None else -1
+
+        # Assemble stdout
+        stdout_head = b"".join(stdout_head_chunks).decode("utf-8", errors="replace")
+        stdout_tail = b"".join(stdout_tail_buf).decode("utf-8", errors="replace")
+        if stdout_total[0] > self.limits.max_stdout_bytes and stdout_tail:
+            omitted = stdout_total[0] - len(stdout_head.encode("utf-8")) - len(stdout_tail.encode("utf-8"))
+            stdout_text = (
+                f"{stdout_head}\n...[truncated {max(omitted, 0)} bytes]...\n{stdout_tail}"
+            )
+            if not truncated:
+                truncated = True
+                truncation_reason = (
+                    f"stdout truncated — exceeded {self.limits.max_stdout_bytes} "
+                    "bytes, kept head+tail only"
+                )
+        elif stdout_tail:
+            # No overflow but data spilled into the tail buffer because
+            # head was already full — concatenate cleanly.
+            stdout_text = stdout_head + stdout_tail
+        else:
+            stdout_text = stdout_head
+
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+
+        return OrchestrateResult(
+            stdout=stdout_text,
+            stderr=stderr_text,
+            exit_code=exit_code,
+            duration_seconds=time.monotonic() - start_time,
+            tools_dispatched=[],
+            truncated=truncated,
+            truncation_reason=truncation_reason,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Env scrubbing helper
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _build_scrubbed_env(
+    *,
+    socket_path: Path,
+    tmpdir: Path,
+    home_dir: Path,
+) -> dict[str, str]:
+    """Build the env dict to pass to the child subprocess.
+
+    Rules (in order):
+        1. Any var whose name (uppercased) contains a secret substring
+           (``KEY``, ``TOKEN``, …) is **blocked** — even if its prefix
+           matches the whitelist. This is the defence in depth: an
+           operator who adds a new ``ELY_API_KEY`` var doesn't have to
+           remember to update the sandbox config.
+        2. Any var whose name starts with a whitelisted prefix is
+           **kept**.
+        3. Mandatory overrides:
+           - ``ELY_RPC_SOCKET = socket_path``
+           - ``HOME = tmpdir/home/`` (isolation from the parent's ``~``)
+           - ``PYTHONPATH = tmpdir`` (NO inherit — only the staging dir
+             is importable, preventing ``from app... import secret``)
+           - ``PYTHONDONTWRITEBYTECODE = 1`` (no .pyc litter)
+    """
+    child_env: dict[str, str] = {}
+    for key, value in os.environ.items():
+        upper = key.upper()
+        if any(s in upper for s in _SECRET_SUBSTRINGS):
+            continue
+        if any(key.startswith(p) for p in _SAFE_ENV_PREFIXES):
+            child_env[key] = value
+
+    # Hard overrides — must happen AFTER the loop so they win over any
+    # whitelist-derived inheritance (e.g. parent's HOME).
+    child_env["ELY_RPC_SOCKET"] = str(socket_path)
+    child_env["HOME"] = str(home_dir)
+    child_env["PYTHONPATH"] = str(tmpdir)
+    child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return child_env
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Kill helper — process group escalation
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _kill_process_group(proc: subprocess.Popen, grace: float = 5.0) -> None:
+    """SIGTERM the whole process group; if still alive after ``grace``, SIGKILL.
+
+    Pattern lifted from Hermes (``_kill_process_group``). Required to
+    handle scripts that spawn threads or sub-children — terminating the
+    parent Popen alone may leave orphans behind.
+    """
+    if os.name == "nt":  # pragma: no cover — sandbox unsupported on Windows
+        try:
+            proc.terminate()
+        except Exception:  # noqa: BLE001
+            logger.exception("orchestrate: failed to terminate child on Windows")
+        return
+
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError) as exc:
+        logger.debug("orchestrate: SIGTERM killpg failed (%s) — falling back to proc.kill", exc)
+        try:
+            proc.kill()
+        except Exception:  # noqa: BLE001
+            logger.exception("orchestrate: fallback proc.kill also failed")
+        return
+
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError) as exc:
+            logger.debug("orchestrate: SIGKILL killpg failed: %s", exc)
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                logger.exception("orchestrate: final proc.kill also failed")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Default tool_dispatcher — registry-backed
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _build_default_dispatcher(user_id: str) -> ToolDispatcher:
+    """Build a dispatcher that routes RPC calls to the real registry tools.
+
+    Each call:
+        1. Looks up the @tool by name in the global skill registry.
+        2. Adds ``user_id`` to the args (the only injection we handle in
+           V1 — see roadmap §4.4 for the multi-injected case).
+        3. Calls ``tool.ainvoke({...})`` which returns a coroutine — the
+           RPC server's thread event loop awaits it via
+           ``run_until_complete``.
+
+    Limit V1: tools that need other ``InjectedToolArg`` parameters (e.g.
+    Gmail's ``user_google_credentials_json`` / ``account``) will FAIL
+    when invoked through this dispatcher — those tools must be wired
+    through the agent's full injection chain or excluded from the V1
+    allow-list. Tracked for V2.
+    """
+    from app.skills import get_skill_registry
+    from app.skills.builtin import register_all
+
+    register_all()
+    tools_by_name = {t.name: t for t in get_skill_registry().all_tools}
+
+    def dispatch(tool_name: str, args: dict[str, Any]) -> Any:
+        tool = tools_by_name.get(tool_name)
+        if tool is None:
+            raise LookupError(f"tool {tool_name!r} not found in skill registry")
+        full_args = {**args, "user_id": user_id}
+        return tool.ainvoke(full_args)
+
+    return dispatch
+
 
 __all__ = [
     "SANDBOX_ALLOWED_TOOLS_V1",
     "OrchestrateLimits",
     "OrchestrateResult",
     "OrchestrateRunner",
+    "ToolDispatcher",
 ]
