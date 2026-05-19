@@ -3,7 +3,7 @@
 # @file       backend/app/routers/conversations.py
 # @brief      Conversations API — list, search, rename, delete and export conversations.
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/

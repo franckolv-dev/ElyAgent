@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       core/files/FileEntry.kt
 // @brief      Metadata for a single file surfaced by the file manager
-// @author     Franck OLLIVIER <franck.olv@gmail.com>
+// @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    PolyForm Strict License 1.0.0
 // =============================================================================
 

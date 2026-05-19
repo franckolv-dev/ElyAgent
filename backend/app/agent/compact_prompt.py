@@ -3,7 +3,7 @@
 # @file       backend/app/agent/compact_prompt.py
 # @brief      Compact system prompt for small local LLMs (LM Studio, Ollama)
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 # =============================================================================

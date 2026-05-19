@@ -1,0 +1,40 @@
+# =============================================================================
+# Tool policy — example (Phase 5A)
+# =============================================================================
+# Per-user tool policy file. Three modes are accepted per tool:
+#
+#   allow         → execute without HITL even if normally critical
+#   deny          → refuse outright, never ask the user
+#   require_hitl  → force HITL prompt even for non-critical tools
+#
+# Tools NOT listed here keep ELY's default behaviour
+# (ALWAYS_CRITICAL_TOOLS in backend/app/services/security_filter.py +
+# SecurityFilter.is_critical heuristics).
+#
+# Import via the REST API:
+#   POST /api/tool-policy/import   { "yaml": "<file content>", "replace": true }
+#
+# Each rule can be:
+#   - a short string : "allow" | "deny" | "require_hitl"
+#   - a dict         : { mode: <one of the above>, reason: "..." }
+# =============================================================================
+
+version: 1
+rules:
+
+  # ── Examples : autoriser certaines actions Gmail sans HITL ─────────────
+  # gmail_send_email: allow
+  # gmail_reply_email: allow
+
+  # ── Exemple : bloquer SSH pour ce user (jamais d'exécution serveur) ────
+  # ssh_execute: deny
+
+  # ── Exemple : forcer HITL même sur un outil non critique ───────────────
+  # browser_click:
+  #   mode: require_hitl
+  #   reason: "On ne fait pas confiance aux clics autonomes pour l'instant."
+
+  # ── Exemple : autoriser la suppression de fichiers Drive sans confirmer ─
+  # drive_delete_file:
+  #   mode: allow
+  #   reason: "Backups quotidiens — restaurable en cas d'erreur."

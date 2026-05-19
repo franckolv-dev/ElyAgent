@@ -3,7 +3,7 @@
 # @file       backend/app/agent/nodes.py
 # @brief      LangGraph agent node definitions
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -614,6 +614,25 @@ def create_agent_node():
 
             asyncio.create_task(_safe_memory_extract(user_id, messages + [response]))
 
+        # Phase 5A — record token usage (observability only, no hard cap yet)
+        if user_id:
+            from app.services.budget_guard import (
+                record_llm_usage, extract_usage_from_response,
+            )
+            in_tok, out_tok = extract_usage_from_response(response)
+            if in_tok or out_tok:
+                _provider = get_active_provider()
+                _model = get_active_model()
+                asyncio.create_task(record_llm_usage(
+                    user_id=user_id,
+                    provider=_provider,
+                    model=_model,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    conversation_id=state.get("conversation_id"),
+                    channel=state.get("channel", "web"),
+                ))
+
         return {"messages": [response], "model_used": model_used, "routing_score": routing_score}
 
     return agent_node
@@ -625,6 +644,7 @@ def create_agent_node():
 
 async def tool_node(state: AgentState) -> dict:
     from app.skills import get_skill_registry
+    from app.services.tool_policy_service import get_tool_policy_service
 
     last_message = state["messages"][-1]
     user_id = state.get("user_id", "")
@@ -634,6 +654,7 @@ async def tool_node(state: AgentState) -> dict:
     sf = SecurityFilter()
     hitl = get_hitl_manager()
     memory = get_memory_manager()
+    policy = get_tool_policy_service()
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
@@ -676,8 +697,32 @@ async def tool_node(state: AgentState) -> dict:
                 results.append(_tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id))
                 continue
 
-        # HITL check
-        needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
+        # ── Declarative tool policy (Phase 5A) ────────────────────────────
+        # Per-user policies override the default HITL behaviour. Modes:
+        #   - "deny"         → refuse the action without prompting
+        #   - "allow"        → execute without HITL even if normally critical
+        #   - "require_hitl" → force HITL even if not in ALWAYS_CRITICAL_TOOLS
+        #   - None           → fall back to legacy logic below
+        policy_mode = await policy.evaluate(user_id, tool_name)
+        if policy_mode == "deny":
+            logger.info("Tool '%s' denied by policy for user %s", tool_name, user_id)
+            results.append(_tool_result(
+                "Action refusée par votre politique d'outils. Modifiez la règle "
+                "dans Paramètres > Politique d'outils pour l'autoriser.", tc_id
+            ))
+            continue
+
+        # HITL check — combines legacy criticality with the optional policy override
+        legacy_needs_hitl = (
+            tool_name in ALWAYS_CRITICAL_TOOLS
+        ) or sf.is_critical(action_desc)
+        if policy_mode == "allow":
+            needs_hitl = False
+        elif policy_mode == "require_hitl":
+            needs_hitl = True
+        else:
+            needs_hitl = legacy_needs_hitl
+
         if needs_hitl:
             logger.info("HITL required for action: %s", action_desc)
             decision, reason = await hitl.request_validation(

@@ -3,7 +3,7 @@
 # @file       backend/app/agent/sub_agents/__init__.py
 # @brief      Package init for sub_agents
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/

@@ -3,7 +3,7 @@
 # @file       backend/app/main.py
 # @brief      FastAPI application entry point
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -37,6 +37,7 @@ from app.models import vault as _vault_models      # ensure VaultConfig + VaultE
 from app.models import conversation as _conversation  # ensure Conversation + Message tables
 from app.models import user_memory as _user_memory    # ensure UserMemoryLog + UserProfile tables
 from app.models import arena as _arena                 # ensure ArenaMatch + ArenaElo tables
+from app.models import tool_policy as _tool_policy     # ensure ToolPolicy table is registered
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
@@ -60,6 +61,9 @@ from app.routers import setup as setup_router
 from app.routers import voice as voice_router
 from app.routers import arena as arena_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
+from app.routers import tool_policy as tool_policy_router
+from app.routers import heartbeat as heartbeat_router
+from app.routers import budget as budget_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -124,6 +128,16 @@ async def lifespan(app: FastAPI):
         await load_and_schedule_tasks()
     except Exception:
         _startup_logger.warning("Scheduler failed to load tasks", exc_info=True)
+
+    # Phase 5A — heartbeat: opt-in autonomous self-check loop per user
+    from app.services.heartbeat_service import (
+        ensure_heartbeat_columns, load_and_schedule_heartbeats,
+    )
+    try:
+        await ensure_heartbeat_columns()
+        await load_and_schedule_heartbeats()
+    except Exception:
+        _startup_logger.warning("Heartbeat failed to start", exc_info=True)
 
     # Start watchdog service
     from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
@@ -314,6 +328,9 @@ app.include_router(voice_router.router, prefix="/ws", tags=["voice"])
 app.include_router(arena_router.router)
 app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
 app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])
+app.include_router(tool_policy_router.router)  # /api/tool-policy/*
+app.include_router(heartbeat_router.router)    # /api/heartbeat/*
+app.include_router(budget_router.router)       # /api/budget/*
 
 # ── Static files — ELY Desktop binaries ─────────────────────────────────────
 import os as _os

@@ -3,7 +3,7 @@
 # @file       backend/app/models/user.py
 # @brief      SQLAlchemy User model
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/
@@ -18,7 +18,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Boolean, DateTime, Text
+from sqlalchemy import String, Boolean, DateTime, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -40,3 +40,12 @@ class User(Base):
     slack_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
     discord_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
     fcm_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # ── Heartbeat (Phase 5A — autonomie continue inspirée d'openclaw) ──
+    # Disabled by default. When enabled, a background job invokes the agent
+    # every `heartbeat_interval_minutes` with the heartbeat prompt + this
+    # user's `heartbeat_context` (free-form markdown). The agent acts only
+    # if the context describes pending work; otherwise it returns HEARTBEAT_OK.
+    heartbeat_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    heartbeat_interval_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    heartbeat_context: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)

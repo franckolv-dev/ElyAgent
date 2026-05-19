@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       ui/files/FileManagerViewModel.kt
 // @brief      ViewModel — scan, filter, dedupe, delete
-// @author     Franck OLLIVIER <franck.olv@gmail.com>
+// @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    PolyForm Strict License 1.0.0
 // =============================================================================
 

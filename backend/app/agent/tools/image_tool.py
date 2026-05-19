@@ -3,7 +3,7 @@
 # @file       backend/app/agent/tools/image_tool.py
 # @brief      Outil de génération d'image via Gemini Imagen 3
 #
-# @author     Franck OLLIVIER <franck.olv@gmail.com>
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    PolyForm Strict License 1.0.0
 #             https://polyformproject.org/licenses/strict/1.0.0/

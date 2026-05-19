@@ -579,4 +579,4 @@ make slm-enable            # Enable local model for simple tasks
 - Redistribution of modified versions
 - Training other AI models on this codebase
 
-For commercial licensing: [franck.olv@gmail.com](mailto:franck.olv@gmail.com)
+For commercial licensing: [contact@agent-ely.fr](mailto:contact@agent-ely.fr)
