@@ -662,10 +662,54 @@ def _build_default_dispatcher(user_id: str) -> ToolDispatcher:
     return dispatch
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Parsing helper — reverse of the meta header produced by orchestrate_tool
+# ──────────────────────────────────────────────────────────────────────
+
+
+def parse_dispatched_from_result(tool_output: str) -> list[str]:
+    """Extract the list of dispatched tool names from an ``orchestrate`` result.
+
+    The ``orchestrate`` tool prepends every result with a meta header of
+    the form ``[orchestrate tools=A,B,C (count=N) | …]`` (or
+    ``[orchestrate no tools called]`` when no RPC fired). This helper
+    parses that header so the chat router can union the dispatched tools
+    into ``tools_called`` before the completion_guard runs (§4.4).
+
+    Args:
+        tool_output: the string returned by the ``orchestrate`` @tool.
+
+    Returns:
+        Ordered list of tool names (with duplicates preserved). Returns
+        an empty list if the header is malformed or no tools were
+        dispatched — never raises.
+    """
+    if not tool_output or not isinstance(tool_output, str):
+        return []
+    # Header must be the very first line, between ``[orchestrate`` and ``]``.
+    first_newline = tool_output.find("\n")
+    header = tool_output[:first_newline] if first_newline != -1 else tool_output
+    if not header.startswith("[orchestrate"):
+        return []
+    # Locate "tools=" inside the header.
+    marker = "tools="
+    idx = header.find(marker)
+    if idx == -1:
+        return []
+    rest = header[idx + len(marker):]
+    # The tool list ends at whitespace, ``|``, or ``]``.
+    for terminator in (" ", "|", "]"):
+        cut = rest.find(terminator)
+        if cut != -1:
+            rest = rest[:cut]
+    return [name for name in rest.split(",") if name]
+
+
 __all__ = [
     "SANDBOX_ALLOWED_TOOLS_V1",
     "OrchestrateLimits",
     "OrchestrateResult",
     "OrchestrateRunner",
     "ToolDispatcher",
+    "parse_dispatched_from_result",
 ]

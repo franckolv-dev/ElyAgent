@@ -184,6 +184,29 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "orchestrate",
 })
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tools restricted to ComplexityTier.COMPLEX (tier C)
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Some tools need a model capable enough to use them productively. Exposing
+# them to SIMPLE (tier A — Ministral 3B local) or MEDIUM (tier B — Mistral
+# Small 4) just burns tokens on buggy outputs.
+#
+# The filter is applied in ``app/agent/nodes.py`` right before
+# ``_bind_tools_smart``: if the resolved tier is not COMPLEX, every tool whose
+# name appears here is dropped from the binding. The LLM doesn't even see it
+# in its tool schema, so there's no risk of accidental invocation.
+
+TIER_C_ONLY_TOOLS: frozenset[str] = frozenset({
+    # Sprint 2.7 — orchestrate Python sandbox.
+    # Writing a working Python script that drives N tools cleanly requires
+    # frontier-class generation. Tier A/B produce snippets with broken
+    # imports, undefined variables, or wrong stub signatures — the script
+    # fails before any RPC fires, wasting the round-trip.
+    "orchestrate",
+})
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Memory skills — available in every specialist domain
 # ──────────────────────────────────────────────────────────────────────────────

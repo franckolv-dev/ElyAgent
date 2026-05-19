@@ -1415,6 +1415,22 @@ def create_agent_node():
                 except Exception as _bext_err:
                     logger.debug("[diag.bind] extension-check skipped: %s", _bext_err)
 
+                # Sprint 2.7 — hide tier_c_only tools from SIMPLE/MEDIUM
+                # tiers. orchestrate is the canonical case: tier A/B models
+                # can't write correct Python scripts, so exposing the tool
+                # to them just burns tokens on broken sandbox runs.
+                if _tier != ComplexityTier.COMPLEX:
+                    from app.agent.tool_sets import TIER_C_ONLY_TOOLS
+                    _before_tc = len(_filtered_tools)
+                    _filtered_tools = [
+                        t for t in _filtered_tools if t.name not in TIER_C_ONLY_TOOLS
+                    ]
+                    if len(_filtered_tools) != _before_tc:
+                        logger.info(
+                            "[diag.bind] tier=%s — dropped %d tier_c_only tool(s)",
+                            _tier_key, _before_tc - len(_filtered_tools),
+                        )
+
                 # Mini-chantier A — apply parallel_tool_calls policy by
                 # model family. Permissive models (Qwen, Mistral…) and OpenAI
                 # family invent downstream args (e.g. fake local_path) when
