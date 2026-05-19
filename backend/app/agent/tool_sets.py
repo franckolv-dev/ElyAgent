@@ -175,6 +175,13 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     # (resolved from User.telegram_id). user_id injected so the LLM can't
     # target arbitrary chats.
     "telegram_send_message",
+    # Sprint 2.7 (2026-05-19) — Programmatic Tool Calling sandbox.
+    # The orchestrate tool needs user_id to scope every RPC dispatch
+    # to the calling user (Gmail / Drive / Calendar / Knowledge / etc.
+    # inside the sandbox all run as this user). Adding to USER_ID_TOOLS
+    # is mandatory — the CI guard test_user_id_injection_completeness
+    # catches it otherwise.
+    "orchestrate",
 })
 
 # ──────────────────────────────────────────────────────────────────────────────
