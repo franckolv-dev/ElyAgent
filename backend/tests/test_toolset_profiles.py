@@ -40,10 +40,12 @@ def test_default_profile_has_reasonable_size():
     server-side tools are dynamically REMOVED at bind time when the
     extension is connected, so the runtime toolset stays smaller (~51)
     even though the static profile is now 59.
-    DeepSeek / Mistral Small / Mistral Large handle 50-70 tools
+    Bumped to 75 in 2026-05-20 to make room for orchestrate (Sprint 2.7,
+    Programmatic Tool Calling sandbox — see toolset_profiles.py).
+    DeepSeek / Mistral Small / Mistral Large handle 50-75 tools
     comfortably; xLAM-style fragile FC-tunes are no longer in the chain."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 70, f"default has {len(tools)} tools (target 25-70)"
+    assert 25 <= len(tools) <= 75, f"default has {len(tools)} tools (target 25-75)"
 
 
 def test_default_profile_no_duplicates():

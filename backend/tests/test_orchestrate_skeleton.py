@@ -92,6 +92,20 @@ def test_orchestrate_tool_name() -> None:
     )
 
 
+def test_orchestrate_is_in_default_profile() -> None:
+    """Regression: le 20 mai 2026, le tool était registered dans le skill
+    registry via @register mais oublié de _DEFAULT_TOOLS (la liste
+    statique du profile). Résultat : `resolve_profile_tools` ne le
+    retournait jamais, donc le LLM voyait jamais `orchestrate` dans son
+    binding malgré le rebuild. Ce test évite la régression."""
+    from app.agent.toolset_profiles import _DEFAULT_TOOLS
+    assert "orchestrate" in _DEFAULT_TOOLS, (
+        "Sprint 2.7: 'orchestrate' doit être dans _DEFAULT_TOOLS sinon "
+        "il n'est pas bindé au LLM (Sprint 2 auto-discovery enregistre "
+        "dans le registry, mais le profile par défaut reste manuel)."
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────
 # 3. Allow-list V1 — exactement 15 tools read-only
 # ──────────────────────────────────────────────────────────────────────
