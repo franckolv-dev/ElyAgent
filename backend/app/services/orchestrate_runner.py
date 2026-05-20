@@ -322,7 +322,25 @@ class OrchestrateRunner:
             home_dir.mkdir()
             script_path = tmpdir / "script.py"
             ely_tools_path = tmpdir / "ely_tools.py"
-            script_path.write_text(code, encoding="utf-8")
+            # Auto-prepend `from ely_tools import *` in case the LLM
+            # forgot the import line. Observed 20 May 2026: DeepSeek
+            # pro consistently writes scripts that call stubs directly
+            # without importing them — even with explicit prompt rules.
+            # Adding the wildcard import makes the runner forgiving:
+            # if the LLM already wrote `from ely_tools import gmail_list_emails`
+            # the wildcard import is harmless (idempotent re-binding).
+            # ``# noqa`` silences pylint/ruff if the script happens to
+            # be linted (which it isn't, but defensive).
+            script_path.write_text(
+                "# Auto-prepended by OrchestrateRunner (Sprint 2.7 v0.3) —\n"
+                "# defensive import so scripts that forget `from ely_tools\n"
+                "# import ...` still work. Idempotent if the script does\n"
+                "# its own imports too.\n"
+                "from ely_tools import *  # noqa: F401, F403\n"
+                "\n"
+                + code,
+                encoding="utf-8",
+            )
 
             # 2. Start RPC server (creates the UDS socket)
             socket_path = rpc_server.start()

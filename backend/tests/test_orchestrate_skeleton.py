@@ -106,6 +106,34 @@ def test_orchestrate_is_in_default_profile() -> None:
     )
 
 
+def test_docstring_mentions_every_allow_list_tool() -> None:
+    """Regression: le 20 mai 2026 (bench session), le LLM appelant écrivait
+    des scripts avec des noms inventés (drive_read_file_content au lieu
+    de drive_read_file, web_get_text qui n'existe pas) parce que la
+    docstring du tool mentionnait des noms obsolètes. Le sandbox plantait
+    en silence et le LLM bouclait. Ce test garantit que tout nom dans
+    SANDBOX_ALLOWED_TOOLS_V1 apparait dans la docstring que voit le LLM.
+
+    NOTE: l'inverse n'est pas testé (un nom dans la docstring qui ne
+    serait pas dans l'allow-list) car la docstring peut documenter des
+    helpers comme ``json_parse`` qui ne sont pas des tools."""
+    from app.agent.tools.orchestrate_tool import orchestrate
+    from app.services.orchestrate_runner import SANDBOX_ALLOWED_TOOLS_V1
+
+    docstring = orchestrate.description or orchestrate.func.__doc__ or ""
+    missing = [
+        name for name in SANDBOX_ALLOWED_TOOLS_V1
+        if name not in docstring
+    ]
+    assert not missing, (
+        f"La docstring de `orchestrate` ne mentionne pas ces tools de "
+        f"SANDBOX_ALLOWED_TOOLS_V1 : {missing}. Le LLM appelant ne saura "
+        f"pas qu'ils existent et inventera des noms qui font planter le "
+        f"sandbox. Ajoute-les à la docstring (section "
+        f"« Available functions inside the sandbox »)."
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────
 # 3. Allow-list V1 — exactement 15 tools read-only
 # ──────────────────────────────────────────────────────────────────────

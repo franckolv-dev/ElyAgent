@@ -124,16 +124,31 @@ async def orchestrate(
     context with the full tool_result), you write ONE Python script
     that orchestrates everything locally and prints the final summary.
 
-    Available functions inside the sandbox (read-only):
-        - gmail_list_emails, gmail_read_email, gmail_search_for_cleanup
-        - calendar_list_events
-        - drive_list_files, drive_read_file_content
-        - web_search, web_get_text
-        - knowledge_search, knowledge_list
-        - memory_search, memory_recent, search_past_conversations_tool
-        - github_repo_stats, github_traffic_stats
+    Available functions inside the sandbox — USE THESE NAMES EXACTLY,
+    any other name will crash the sandbox (the stub module is dynamically
+    generated from this exact list at every run):
 
-    Plus three helpers:
+        Gmail (read):
+            gmail_list_emails, gmail_read_email, gmail_search_for_cleanup
+        Calendar (read):
+            calendar_list_events
+        Drive (read):
+            drive_list_files, drive_read_file
+        Web (read):
+            web_search
+        Knowledge / mémoire (read):
+            knowledge_search, knowledge_list, memory_search, memory_recent,
+            search_past_conversations_tool
+        GitHub (read):
+            github_repo_stats, github_traffic_stats
+        System (read):
+            system_list_scheduled_tasks
+
+    None of the stubs takes ``user_id`` — it's injected server-side.
+    If you don't remember the exact name of a stub, use ``intent=`` and
+    let a tier C model write the script for you.
+
+    Plus three helpers (also in ``ely_tools``):
         - json_parse(text)       — tolerant JSON parser
         - shell_quote(s)         — shlex.quote alias
         - retry(fn, attempts, delay) — exponential backoff retry
@@ -170,6 +185,15 @@ async def orchestrate(
         the script raised or timed out, the error message + partial
         stdout are returned.
     """
+    # Diagnostic log — surface what the LLM actually decided to pass.
+    # Helps catch frontier models that ignore the intent= mode and write
+    # their own script in code=, vs smaller models that delegate via
+    # intent. INFO level so it shows up in normal prod logs.
+    logger.info(
+        "orchestrate: invoked user=%s intent=%.120r code_len=%d code_head=%.80r",
+        user_id, intent or "", len(code or ""), (code or "")[:80],
+    )
+
     if not user_id:
         return "Erreur interne : user_id manquant."
     if not (intent and intent.strip()) and not (code and code.strip()):
@@ -217,6 +241,20 @@ async def orchestrate(
             f"Erreur d'exécution du sandbox : {type(exc).__name__}: {exc}. "
             "Si le problème persiste, retombe sur des tool_calls directs."
         )
+
+    # Diagnostic — surface what the sandbox actually returned so we can
+    # debug why scripts fail at 0.21s. Logged at INFO since this is
+    # useful in prod for early bench data.
+    logger.info(
+        "orchestrate: run finished user=%s exit_code=%d duration=%.2fs "
+        "tools_dispatched=%s truncated=%s",
+        user_id, result.exit_code, result.duration_seconds,
+        result.tools_dispatched, result.truncated,
+    )
+    logger.info(
+        "orchestrate: stdout_head=%.500r stderr_head=%.300r",
+        result.stdout, result.stderr,
+    )
 
     # Sprint 2.7 Jalon 6 — re-anonymize stdout/stderr before they reach
     # the main LLM. The sandbox receives DEANONYMIZED args (tool_node
@@ -287,11 +325,31 @@ Helpers QoL également disponibles dans `ely_tools` :
 
 Règles strictes :
 1. Réponds UNIQUEMENT par du code Python. PAS de markdown, PAS de blocs ``` , PAS d'explications.
-2. Pas d'imports autres que `from ely_tools import ...`.
+2. Imports AUTORISÉS uniquement : `from ely_tools import <noms>`. Pas d'imports stdlib (le sandbox tourne en `python -S` et le PYTHONPATH est minimal).
 3. Le script doit terminer par UN OU PLUSIEURS `print(...)` synthétiques — c'est tout ce que le modèle appelant recevra.
 4. Pas de boucle infinie. Pas d'I/O réseau direct (les RPC parlent déjà aux services).
 5. Sois concis : 20-40 lignes maximum. Une boucle `for` propre vaut mieux que 10 appels séquentiels.
 6. Les stubs ne prennent JAMAIS `user_id` — il est injecté côté serveur.
+
+Conventions importantes (à respecter pour éviter des bugs runtime) :
+7. LES DEFAULTS SONT VALIDES. La plupart des stubs marchent SANS arguments — les valeurs par défaut sont configurées côté serveur (GITHUB_DEFAULT_REPO, compte Gmail principal, etc.). N'INVENTE PAS de valeurs (« Franck/main-project », « user@example.com »…). Si tu n'es pas sûr d'une valeur, appelle SANS arg.
+8. LES STUBS RETOURNENT DES STRINGS DESCRIPTIVES. Tu peux les `print(...)` DIRECTEMENT. Ils ne retournent PAS de dict — n'utilise PAS `result.get('key')`, `result['key']`, ni de json.loads sur leur sortie. Si tu as besoin de structure, parse la string toi-même (les stubs documentent leur format).
+9. ENCAPSULE les appels dangereux dans try/except si tu fais une boucle, mais sinon laisse remonter l'erreur — c'est plus debuggable côté caller.
+
+Exemple de script working :
+
+    from ely_tools import github_repo_stats, github_traffic_stats, memory_recent, search_past_conversations_tool
+
+    repo = github_repo_stats()              # pas d'args : utilise GITHUB_DEFAULT_REPO
+    traffic = github_traffic_stats()        # pareil
+    projects = memory_recent(category="project", limit=5)
+    past = search_past_conversations_tool(query="sprint en cours")
+
+    print("=== Résumé hebdo dev ===\\n")
+    print("## GitHub repo\\n" + repo + "\\n")
+    print("## Trafic 14j\\n" + traffic + "\\n")
+    print("## Projets récents\\n" + projects + "\\n")
+    print("## Conversations passées\\n" + past)
 """
 
 
