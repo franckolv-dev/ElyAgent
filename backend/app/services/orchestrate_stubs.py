@@ -403,4 +403,82 @@ def _first_doc_line(text: str) -> str:
     return "RPC stub for an ELY tool."
 
 
-__all__ = ["generate_stubs"]
+# ──────────────────────────────────────────────────────────────────────
+# Prompt-friendly description of the allow-list (Option C, Sprint 2.7)
+# ──────────────────────────────────────────────────────────────────────
+#
+# When the orchestrate tool is called with ``intent="..."`` instead of
+# ``code="..."``, it delegates script writing to a tier C LLM. That LLM
+# needs to know the stub signatures available inside the sandbox. We
+# could regenerate ely_tools.py and paste its content, but that's 7 KB
+# of Python — way too verbose. Instead, render a compact markdown list:
+# one bullet per stub with its visible signature + one-line description.
+
+
+def describe_allowed_tools_for_prompt(allowed_tools: frozenset[str]) -> str:
+    """Return a compact markdown list of stub signatures for prompt injection.
+
+    Used by ``orchestrate_tool.py`` Option C path. The output is suitable
+    for direct concatenation into a SystemMessage.
+
+    Args:
+        allowed_tools: e.g. ``SANDBOX_ALLOWED_TOOLS_V1``.
+
+    Returns:
+        One bullet per stub::
+
+            - `gmail_list_emails(max_results: int = 10, query: str = '')` —
+              List recent emails from Gmail inbox.
+
+        If a tool is missing from the registry it is silently skipped
+        (defensive — the runner would already have failed earlier).
+    """
+    if not allowed_tools:
+        return "(aucun outil disponible)"
+
+    from app.skills import get_skill_registry
+    from app.skills.builtin import register_all
+
+    register_all()
+    tools_by_name = {t.name: t for t in get_skill_registry().all_tools}
+
+    lines: list[str] = []
+    for name in sorted(allowed_tools):
+        tool = tools_by_name.get(name)
+        if tool is None:
+            continue
+        try:
+            sig = _signature_string_for_prompt(tool, name)
+        except Exception:  # noqa: BLE001 — best effort
+            sig = f"{name}(...)"
+        desc = _first_doc_line(getattr(tool, "description", "") or "")[:150]
+        lines.append(f"- `{sig}` — {desc}")
+    return "\n".join(lines)
+
+
+def _signature_string_for_prompt(tool: Any, name: str) -> str:
+    """Same logic as ``_render_stub`` but returns just the signature line."""
+    callable_ = _underlying_callable(tool)
+    if callable_ is None:
+        return f"{name}(...)"
+
+    sig = inspect.signature(callable_)
+    try:
+        hints = typing.get_type_hints(callable_, include_extras=True)
+    except Exception:
+        hints = {}
+
+    visible_params: list[inspect.Parameter] = []
+    for pname, param in sig.parameters.items():
+        annotation = hints.get(pname, param.annotation)
+        if _is_injected_arg(annotation):
+            continue
+        if pname in hints:
+            param = param.replace(annotation=annotation)
+        visible_params.append(param)
+
+    sig_str = _format_signature(visible_params)
+    return f"{name}({sig_str})"
+
+
+__all__ = ["generate_stubs", "describe_allowed_tools_for_prompt"]

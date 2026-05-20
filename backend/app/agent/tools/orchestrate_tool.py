@@ -82,18 +82,40 @@ ORCHESTRATE_CONVERSATION_ID: ContextVar[str] = ContextVar(
         "Exécute un script Python dans un sandbox isolé qui peut chaîner "
         "plusieurs tools en lecture seule (Gmail, Drive, Calendar, web, "
         "knowledge, mémoire, GitHub) en un seul tour. Économies massives "
-        "de tokens pour les workflows multi-tools analytiques."
+        "de tokens pour les workflows multi-tools analytiques. "
+        "Mode `intent` : décris ce que tu veux, un modèle frontier écrit le "
+        "script à ta place. Mode `code` : fournis ton script Python directement."
     ),
     skill_icon="🛠️",
     enabled_by_default=True,
-    skill_version="0.1.0",
+    skill_version="0.2.0",
 )
 @tool
 async def orchestrate(
-    code: str,
+    intent: str = "",
+    code: str = "",
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Run a Python script inside a sandboxed environment that can call N read-only tools.
+    """Run an orchestration in a sandboxed Python environment.
+
+    Two modes — provide EITHER ``intent`` OR ``code`` (not both).
+
+    Mode A — INTENT (recommended for non-frontier models)
+    ------------------------------------------------------
+    Describe in natural language what you want the orchestration to do.
+    A tier C model (Mistral Large 3 / DeepSeek v4-pro / Anthropic) writes
+    the Python script behind the scenes, the sandbox executes it, and
+    you receive the stdout + meta. You don't need to know Python.
+
+    Example::
+
+        orchestrate(intent="Pour les 3 derniers projets en mémoire, "
+                    "récupère leurs stats GitHub et fais un résumé hebdo")
+
+    Mode B — CODE (frontier models or known patterns)
+    -------------------------------------------------
+    Provide the full Python script yourself. Use this when you already
+    know the exact sequence of stub calls you want.
 
     USE THIS TOOL WHEN you need to chain multiple read-only tool calls
     (Gmail list, Drive read, web search, knowledge search, GitHub stats,
@@ -150,10 +172,41 @@ async def orchestrate(
     """
     if not user_id:
         return "Erreur interne : user_id manquant."
-    if not code or not code.strip():
-        return "Erreur : le script est vide. Fournis du code Python à exécuter."
+    if not (intent and intent.strip()) and not (code and code.strip()):
+        return (
+            "Erreur : fournis soit `intent` (description haut-niveau de "
+            "ce que tu veux faire, le script sera écrit par un modèle "
+            "frontier) soit `code` (script Python complet à exécuter)."
+        )
 
     from app.services.orchestrate_runner import OrchestrateRunner
+
+    # Option C — if no code provided, delegate script generation to tier C.
+    # Frontier models can still call orchestrate(code=...) directly; smaller
+    # models call orchestrate(intent=...) and let the tier C model write
+    # the script for them.
+    if not (code and code.strip()):
+        try:
+            code = await _generate_script_from_intent(intent.strip())
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "orchestrate: tier C script generation failed for user=%s", user_id,
+            )
+            return (
+                f"Erreur de génération du script via le tier C : "
+                f"{type(exc).__name__}: {exc}. "
+                "Tu peux retomber sur des tool_calls directs."
+            )
+        if not code.strip():
+            return (
+                "Erreur : le tier C a renvoyé un script vide. "
+                "Reformule ton intent ou fournis directement `code=...`."
+            )
+        logger.info(
+            "orchestrate: tier C generated %d-byte script for user=%s "
+            "(intent=%.80r)",
+            len(code), user_id, intent[:80],
+        )
 
     runner = OrchestrateRunner(user_id=user_id)
     try:
@@ -211,3 +264,99 @@ async def orchestrate(
 
     meta_line = " | ".join(meta_parts) if meta_parts else "no tools called"
     return f"[orchestrate {meta_line}]\n{result.stdout}"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Tier C delegation — Option C of Sprint 2.7
+# ──────────────────────────────────────────────────────────────────────
+
+
+_SCRIPT_GENERATION_SYSTEM_PROMPT = """\
+Tu es un assistant qui écrit des scripts Python pour le sandbox `orchestrate` d'ELY.
+
+Tu reçois un intent utilisateur en langage naturel. Tu produis UN SCRIPT \
+Python complet qui utilise UNIQUEMENT les fonctions stubs ci-dessous, \
+importables via `from ely_tools import ...` :
+
+{stubs}
+
+Helpers QoL également disponibles dans `ely_tools` :
+- `json_parse(text)` : `json.loads` tolérant aux \\t \\n dans les strings
+- `shell_quote(s)` : alias de `shlex.quote`
+- `retry(fn, max_attempts=3, delay=2)` : retry avec backoff exponentiel
+
+Règles strictes :
+1. Réponds UNIQUEMENT par du code Python. PAS de markdown, PAS de blocs ``` , PAS d'explications.
+2. Pas d'imports autres que `from ely_tools import ...`.
+3. Le script doit terminer par UN OU PLUSIEURS `print(...)` synthétiques — c'est tout ce que le modèle appelant recevra.
+4. Pas de boucle infinie. Pas d'I/O réseau direct (les RPC parlent déjà aux services).
+5. Sois concis : 20-40 lignes maximum. Une boucle `for` propre vaut mieux que 10 appels séquentiels.
+6. Les stubs ne prennent JAMAIS `user_id` — il est injecté côté serveur.
+"""
+
+
+async def _generate_script_from_intent(intent: str) -> str:
+    """Ask the tier C LLM to write a Python script that satisfies ``intent``.
+
+    Used when the orchestrate tool is invoked with ``intent="..."`` (Option C).
+    Lets non-frontier callers (tier A/B) benefit from the sandbox without
+    needing to write Python themselves — a tier C model does that for them.
+
+    Args:
+        intent: free-text description of what the script should accomplish.
+
+    Returns:
+        A bare Python script (markdown fences stripped if present).
+
+    Raises:
+        RuntimeError: if the tier C LLM is unavailable.
+        Exception: if the LLM call itself fails (propagated, caught by the
+            tool wrapper).
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.services.llm_provider import ComplexityTier, get_llm_for_tier
+    from app.services.orchestrate_runner import SANDBOX_ALLOWED_TOOLS_V1
+    from app.services.orchestrate_stubs import describe_allowed_tools_for_prompt
+
+    llm = get_llm_for_tier(ComplexityTier.COMPLEX)
+    if llm is None:
+        raise RuntimeError(
+            "tier C LLM unavailable — set a model in Settings → Routage tier C"
+        )
+
+    stubs_desc = describe_allowed_tools_for_prompt(SANDBOX_ALLOWED_TOOLS_V1)
+    system_msg = SystemMessage(
+        content=_SCRIPT_GENERATION_SYSTEM_PROMPT.format(stubs=stubs_desc)
+    )
+    user_msg = HumanMessage(
+        content=f"Intent utilisateur :\n\n{intent}\n\nProduis le script Python."
+    )
+
+    response = await llm.ainvoke([system_msg, user_msg])
+    raw = response.content if hasattr(response, "content") else str(response)
+    if isinstance(raw, list):
+        # Some providers return content as a list of content blocks.
+        raw = "".join(
+            (b.get("text", "") if isinstance(b, dict) else str(b))
+            for b in raw
+        )
+    return _strip_markdown_fences(str(raw).strip())
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Remove leading/trailing ``` or ```python markdown fences if present.
+
+    Tier C LLMs sometimes wrap their output in fences despite the prompt
+    asking for raw Python. Strip defensively rather than failing the run.
+    """
+    code = text.strip()
+    # Leading fence with optional language tag
+    if code.startswith("```"):
+        # Drop the first line entirely (handles ```python, ```py, plain ```)
+        first_newline = code.find("\n")
+        code = code[first_newline + 1:] if first_newline != -1 else ""
+    # Trailing fence
+    if code.endswith("```"):
+        code = code[: -3].rstrip()
+    return code

@@ -221,13 +221,19 @@ async def test_orchestrate_tool_returns_skeleton_warning() -> None:
 
 
 @pytest.mark.asyncio
-async def test_orchestrate_tool_rejects_empty_code() -> None:
+async def test_orchestrate_tool_rejects_when_both_args_empty() -> None:
+    """Sprint 2.7 v0.2 (Option C) — the tool now accepts EITHER `intent`
+    OR `code`. With both empty/whitespace, it returns a clear error
+    pointing at the two valid modes."""
     from app.agent.tools.orchestrate_tool import orchestrate
     result = await orchestrate.ainvoke({
+        "intent": "  ",
         "code": "   ",
         "user_id": "test-user",
     })
-    assert "vide" in result.lower() or "empty" in result.lower()
+    lower = result.lower()
+    assert "erreur" in lower
+    assert "intent" in lower and "code" in lower
 
 
 @pytest.mark.asyncio

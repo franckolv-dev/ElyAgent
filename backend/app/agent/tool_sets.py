@@ -200,11 +200,22 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
 
 TIER_C_ONLY_TOOLS: frozenset[str] = frozenset({
     # Sprint 2.7 — orchestrate Python sandbox.
-    # Writing a working Python script that drives N tools cleanly requires
-    # frontier-class generation. Tier A/B produce snippets with broken
-    # imports, undefined variables, or wrong stub signatures — the script
-    # fails before any RPC fires, wasting the round-trip.
-    "orchestrate",
+    # Writing a working Python script that drives N tools cleanly was
+    # supposed to require frontier-class generation, hence this filter.
+    #
+    # REMOVED 2026-05-20 during the bench session because the filter
+    # interacted badly with the tier downgrade between turns: after the
+    # first tool_call, the router classifies the continuation in MEDIUM
+    # or IMAGE → orchestrate gets dropped from the binding → the LLM
+    # honestly answers « le tool orchestrate n'existe pas » and abandons
+    # the workflow. Until we have a "sticky tier" mechanism that keeps
+    # tier=complex across the whole turn series of a started workflow,
+    # the cure is worse than the disease. Mistral Small / DeepSeek
+    # flash actually do produce usable scripts in our small test.
+    #
+    # To re-enable a per-tier filter once sticky-tier is in place:
+    # add tool names back to this frozenset and the existing filter in
+    # nodes.py kicks in again automatically.
 })
 
 # ──────────────────────────────────────────────────────────────────────────────

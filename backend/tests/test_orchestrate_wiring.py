@@ -33,8 +33,13 @@ from app.services.orchestrate_runner import parse_dispatched_from_result
 # ──────────────────────────────────────────────────────────────────────
 
 
-def test_tier_c_only_contains_orchestrate() -> None:
-    assert "orchestrate" in TIER_C_ONLY_TOOLS
+def test_tier_c_only_is_currently_empty() -> None:
+    """2026-05-20: emptied during the Sprint 2.7 bench session because
+    the tier-downgrade-between-turns made the filter cure worse than
+    the disease (orchestrate disappeared mid-workflow). When sticky
+    tier is implemented, repopulate this frozenset and flip the
+    assertion back to `"orchestrate" in TIER_C_ONLY_TOOLS`."""
+    assert TIER_C_ONLY_TOOLS == frozenset()
 
 
 def test_tier_c_only_is_frozenset() -> None:
@@ -187,23 +192,16 @@ class _FakeTool:
         self.name = name
 
 
-def test_tier_c_only_filter_drops_orchestrate_for_simple_tier() -> None:
-    """Reproduces the filter logic inserted in nodes.py: at non-COMPLEX
-    tiers, every name in TIER_C_ONLY_TOOLS must be removed from the bound
-    tool list."""
+def test_tier_c_only_filter_is_no_op_while_set_is_empty() -> None:
+    """Until TIER_C_ONLY_TOOLS is repopulated (post sticky-tier), the
+    filter should leave every tool through. Asserts the pure-function
+    behaviour of the nodes.py inline filter."""
     tools = [
         _FakeTool("gmail_list_emails"),
         _FakeTool("orchestrate"),
         _FakeTool("web_search"),
     ]
     filtered = [t for t in tools if t.name not in TIER_C_ONLY_TOOLS]
-    names = [t.name for t in filtered]
-    assert "orchestrate" not in names
-    assert "gmail_list_emails" in names
-    assert "web_search" in names
-
-
-def test_tier_c_only_filter_is_no_op_on_unrelated_tools() -> None:
-    tools = [_FakeTool("gmail_list_emails"), _FakeTool("web_search")]
-    filtered = [t for t in tools if t.name not in TIER_C_ONLY_TOOLS]
-    assert [t.name for t in filtered] == ["gmail_list_emails", "web_search"]
+    assert [t.name for t in filtered] == [
+        "gmail_list_emails", "orchestrate", "web_search",
+    ]
