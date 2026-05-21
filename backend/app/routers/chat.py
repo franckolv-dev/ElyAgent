@@ -748,6 +748,20 @@ async def websocket_chat(websocket: WebSocket):
             asyncio.create_task(
                 _summarize_conversation(conversation_id, user_id)
             )
+            # Sprint 2.5 Jalon 6 — event-driven rapid maintenance:
+            # extract 3-5 salient facts via Ministral 3B local and write
+            # them directly into the typed SemanticUserStore. Runs in
+            # parallel with the legacy summarisation above. Skippable
+            # via env MAINTENANCE_RAPID_DISABLED on weak hardware — the
+            # nightly cron (consolidate_user_memory) compensates.
+            try:
+                from app.services.memory.maintenance_rapid import (
+                    schedule_consolidation as _mr_schedule,
+                )
+                _mr_schedule(conversation_id, user_id)
+            except Exception:
+                # Never let the maintenance scheduling break disconnect.
+                pass
         _filters.pop(conversation_id, None) if conversation_id else None
         # Hermes Chantier 4 — drop fallback state on disconnect so the next
         # session for this user starts on the primary again. (Stickiness is

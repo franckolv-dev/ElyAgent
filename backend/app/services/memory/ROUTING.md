@@ -63,6 +63,25 @@ Le helper `log_deprecation(tool_name, successor=...)` dans
 `app/services/memory/_deprecated.py` log une fois par process et par
 tool, pour éviter le spam.
 
+## Maintenance agent rapide (Jalon 6)
+
+Fire-and-forget sur fin de conversation (WS disconnect → `chat.py`) :
+`MaintenanceAgentRapid.consolidate(conversation_id, user_id)` (dans
+`app/services/memory/maintenance_rapid.py`).
+
+- Charge les ~20 derniers messages SQL de la conv
+- Tier MAINTENANCE (Ministral 3B local par défaut) → JSON 3–5 facts max
+- Dispatch typed sur le bon store :
+  - `type=preference` → `SemanticUserStore.store_preference` (no decay, dedup)
+  - autres types (`context|event|skill|personal`) →
+    `SemanticUserStore.store_fact` avec `extra_payload={"category": ftype,
+    "source": "maintenance_rapid"}`
+
+Skip via env `MAINTENANCE_RAPID_DISABLED=true` sur hardware faible.
+Le cron nightly `consolidate_user_memory` (niveau 2) reste branché en
+parallèle pour la mémoire SQL legacy — les deux paths coexistent
+pendant la transition V1, le legacy disparaîtra en V2 ou V3.
+
 ## Comment ajouter un nouveau tool d'écriture
 
 1. Choisir le **MemoryType** (cf. design note §2 : 5 types disponibles).
