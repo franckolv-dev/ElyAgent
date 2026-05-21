@@ -21,6 +21,11 @@ from app.services.memory.episodic_store import EpisodicStore
 from app.services.memory.semantic_user_store import SemanticUserStore
 from app.services.memory.procedural_store import ProceduralStore
 from app.services.memory.error_store import ErrorStore
+from app.services.memory.recall_service import (
+    MemoryRecallService,
+    get_memory_recall_service,
+)
+from app.services.memory.types import MemoryHit, MemoryType
 
 __all__ = [
     "MemoryInfra",
@@ -30,4 +35,8 @@ __all__ = [
     "SemanticUserStore",
     "ProceduralStore",
     "ErrorStore",
+    "MemoryRecallService",
+    "get_memory_recall_service",
+    "MemoryHit",
+    "MemoryType",
 ]
