@@ -161,15 +161,40 @@ class MemoryManager:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _time_decay(created_at_ts: float | None, lambda_decay: float) -> float:
+    def _time_decay(created_at_ts: float | str | None, lambda_decay: float) -> float:
         """Exponential decay factor ∈ (0, 1].
 
         Returns 1.0 when lambda_decay == 0 (no decay) or when the timestamp
         is missing (backward-compatibility with items stored before this
         feature was introduced).
+
+        Accepts BOTH float Unix timestamps AND ISO 8601 strings. Historical
+        write paths in this module are not consistent:
+            - ``_upsert`` (line 231): stamps `created_at: time.time()`  → float
+            - ``store_memory`` (line 407): stamps with `.isoformat()`   → str
+        The 799 production entries on Franck's account at the 20 May 2026
+        bench were all ISO strings — without normalisation here, every
+        ``memory_search`` raised ``unsupported operand type(s) for -:
+        'float' and 'str'`` and returned an empty result. The fault was
+        caught silently by the broad ``except Exception`` in the caller,
+        so the bug only surfaced as "BASE VIDE" from the agent's POV.
+
+        Returns 1.0 (no decay applied) when an ISO string fails to parse —
+        better than crashing the whole search over one malformed payload.
         """
         if created_at_ts is None or lambda_decay == 0.0:
             return 1.0
+        # Normalise ISO string → Unix timestamp.
+        if isinstance(created_at_ts, str):
+            try:
+                from datetime import datetime
+                # `Z` suffix is not understood by fromisoformat() before 3.11.
+                # Strip it and append +00:00 to be forgiving on both 3.10 and 3.12+.
+                created_at_ts = datetime.fromisoformat(
+                    created_at_ts.replace("Z", "+00:00")
+                ).timestamp()
+            except (ValueError, TypeError):
+                return 1.0
         age_days = max(0.0, (time.time() - created_at_ts) / 86400.0)
         return math.exp(-lambda_decay * age_days)
 
