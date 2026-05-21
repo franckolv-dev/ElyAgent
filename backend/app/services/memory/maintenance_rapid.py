@@ -94,6 +94,9 @@ Exemples (à appliquer LITTÉRALEMENT) :
 (juste cette conv, pas une règle générale)
   ✗ À ÉVITER   : "Aime les détails botaniques" \
 (sujet du jour, pas un trait stable)
+  ✗ À ÉVITER   : un résumé en plusieurs phrases ou un paragraphe \
+entier — chaque fact tient en UNE phrase courte sous 200 caractères, \
+pas un résumé de conv
 
 Réponds UNIQUEMENT avec un objet JSON :
 {{
@@ -150,6 +153,14 @@ class MaintenanceAgentRapid:
     # without reaching into module-level constants.
     MAX_MESSAGES_LOADED = 20
     MIN_MESSAGES_TO_RUN = 2
+    # Hard cap on the length of a single extracted fact. Anything longer
+    # is rejected as a probable conversation summary (Ministral 3B
+    # ignored the prompt's 200-char hint on 2026-05-21 — observed on a
+    # hibiscus-tisane conv where it packed a whole 600-char recap into
+    # a single `fact` field). `_is_safe_fact` in memory_service.py also
+    # rejects > 500, but we want a tighter cap here so paragraphs never
+    # reach the typed stores at all.
+    MAX_FACT_CHARS = 250
 
     async def consolidate(
         self,
@@ -289,6 +300,15 @@ class MaintenanceAgentRapid:
             text = str(item.get("fact", "")).strip()
             ftype = str(item.get("type", "context")).strip().lower()
             if not text:
+                continue
+            if len(text) > self.MAX_FACT_CHARS:
+                # The model packed a paragraph-length summary into one
+                # fact, ignoring the prompt's 200-char hint. Reject hard
+                # so the typed stores never see a paragraph.
+                logger.warning(
+                    "maintenance_rapid: rejected over-long fact (%d chars) user=%s : %.80s...",
+                    len(text), user_id, text,
+                )
                 continue
             if not _is_safe_fact(text):
                 logger.warning(

@@ -279,6 +279,45 @@ async def test_extract_facts_returns_empty_on_invalid_json(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_store_facts_rejects_paragraph_length_facts(monkeypatch) -> None:
+    """A fact longer than MAX_FACT_CHARS is the smoking gun of a model
+    that packed a conversation summary into one entry (observed with
+    Ministral 3B on 2026-05-21). It must be rejected before reaching
+    any typed store — paragraphs in user_profile would be useless."""
+    agent = maintenance_rapid.MaintenanceAgentRapid()
+    fact_calls: list = []
+
+    async def fake_store_fact(self, content, user_id, conversation_id="", extra_payload=None):
+        fact_calls.append(content)
+
+    from app.services.memory.semantic_user_store import SemanticUserStore
+    monkeypatch.setattr(SemanticUserStore, "store_fact", fake_store_fact)
+    monkeypatch.setattr(SemanticUserStore, "store_preference", fake_store_fact)
+
+    paragraph = (
+        "Voici un résumé structuré des éléments clés de la conversation : "
+        "l'utilisateur s'intéresse aux infusions d'hibiscus et a posé "
+        "plusieurs questions sur leurs propriétés, leur goût acidulé, "
+        "et leur utilisation traditionnelle. Il évoque aussi son épouse "
+        "et un intérêt général pour les plantes médicinales."
+    )
+    assert len(paragraph) > agent.MAX_FACT_CHARS
+    short = "User likes hiking on weekends"
+
+    pref_count, fact_count = await agent._store_facts(
+        [
+            {"fact": paragraph, "type": "context"},
+            {"fact": short, "type": "context"},
+        ],
+        "u1",
+        "c1",
+    )
+    assert pref_count == 0
+    assert fact_count == 1
+    assert fact_calls == [short]
+
+
+@pytest.mark.asyncio
 async def test_store_facts_rejects_injection_shaped_strings(monkeypatch) -> None:
     """A fact that triggers `_is_safe_fact` rejection in memory_service
     must NOT reach the store. Pins the safety guard re-use."""
