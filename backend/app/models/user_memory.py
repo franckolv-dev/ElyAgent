@@ -50,6 +50,11 @@ class UserMemoryLog(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     # Whether this log has been processed by the consolidation job
     is_consolidated: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Sprint 2.5 — dreaming-style scoring for short→long-term promotion.
+    # Incremented each time `memory_recall` matches this log. The nightly
+    # consolidation cron uses this to prioritise frequently-recalled facts.
+    recall_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    last_recalled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
