@@ -149,6 +149,17 @@ rejoueront le scénario chaque CI run :
 
 ## Failles connues et plan V2
 
+**Iteration 1 du prompt d'extraction (2026-05-21, post-validation live)** :
+le premier prompt (modélisé sur l'existant `extract_and_store_facts`)
+faisait sur-extraire Ministral 3B — sur une conv tisane hibiscus, 8 des
+10 « préférences » stockées étaient en réalité du contexte ponctuel
+de la conv (« demande des nuances sur les saveurs », « veut des étapes
+structurées »). Prompt durci avec 3 ajouts : règle explicite *« une
+préférence doit s'appliquer à TOUTES les conversations futures »*, fallback
+*« en cas de doute → context »*, et 6 exemples positifs/négatifs littéraux
+issus de la conv hibiscus observée. À ré-évaluer en usage réel sur ~10
+conversations avant Sprint 2.5 V2.
+
 Pas dans V1 :
 
 - `ProceduralStore.get_relevant` retourne `[]` (le store est wiré, pas

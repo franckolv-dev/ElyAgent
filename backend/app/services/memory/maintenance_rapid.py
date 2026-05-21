@@ -58,26 +58,55 @@ from app.services.memory import get_semantic_user_store
 logger = logging.getLogger(__name__)
 
 
-# Prompt is intentionally identical in shape to the existing
-# _EXTRACTION_PROMPT in memory_service.py — same JSON envelope so a
-# future merge into a single extractor is straightforward.
+# Prompt is intentionally identical in JSON shape to the existing
+# _EXTRACTION_PROMPT in memory_service.py — same envelope so a future
+# merge into a single extractor is straightforward. The instructions
+# above the schema are tightened (2026-05-21) after Franck observed
+# Ministral 3B mis-classifying hibiscus-tisane conversational details
+# as "preferences" — confusing what happened in *this* conv with what
+# is true of the user *in general*. The new rules + worked examples
+# move borderline items to "context" or to nothing at all.
 _EXTRACTION_PROMPT = """\
 Tu es un extracteur de faits silencieux. Voici la conversation qui vient \
-de se terminer. Extrait 3 à 5 faits saillants sur l'utilisateur \
-(préférences, projets, outils, contexte personnel, compétences, habitudes).
+de se terminer. Extrait UNIQUEMENT les faits STABLES sur l'utilisateur — \
+ceux qui resteront vrais dans toutes les conversations futures, \
+indépendamment du sujet du jour.
 
-Réponds UNIQUEMENT avec un objet JSON de la forme :
+Règles strictes :
+1. Une PRÉFÉRENCE doit s'appliquer à TOUTES les conversations futures, \
+pas seulement à celle-ci. Si elle est liée au sujet du jour, c'est du \
+contexte ponctuel, pas une préférence stable.
+2. Un CONTEXTE = un fait durable sur la vie de l'utilisateur (projet \
+récurrent, famille, lieu, outil utilisé régulièrement).
+3. Ignore : ce que l'assistante a dit, ce que l'utilisateur a demandé \
+pour cette conv précise, et le sujet de la conv lui-même.
+4. En cas de doute entre PRÉFÉRENCE et CONTEXTE, choisis CONTEXTE.
+5. En cas de doute total, NE L'EXTRAIS PAS.
+
+Exemples (à appliquer LITTÉRALEMENT) :
+  ✓ PRÉFÉRENCE  : "L'utilisateur préfère le tutoiement"
+  ✓ PRÉFÉRENCE  : "L'utilisateur veut des réponses courtes sans markdown"
+  ✓ CONTEXTE    : "Sa femme apprécie les tisanes d'hibiscus"
+  ✓ CONTEXTE    : "Il travaille sur un projet IA nommé ELY"
+  ✗ À ÉVITER   : "A demandé des comparaisons gustatives" \
+(juste cette conv, pas un trait stable)
+  ✗ À ÉVITER   : "Veut des étapes structurées" \
+(juste cette conv, pas une règle générale)
+  ✗ À ÉVITER   : "Aime les détails botaniques" \
+(sujet du jour, pas un trait stable)
+
+Réponds UNIQUEMENT avec un objet JSON :
 {{
   "facts": [
-    {{"fact": "L'utilisateur travaille sur un projet Python nommé ELY", "type": "context"}},
-    {{"fact": "L'utilisateur préfère les réponses courtes", "type": "preference"}}
+    {{"fact": "L'utilisateur travaille sur un projet IA nommé ELY", "type": "context"}},
+    {{"fact": "L'utilisateur préfère les réponses courtes sans markdown", "type": "preference"}}
   ]
 }}
 
 Types valides : "preference", "context", "event", "skill", "personal"
-Si aucun fait utile n'est détectable, réponds avec : {{"facts": []}}
-N'invente AUCUN fait. N'extrait que ce qui est dit EXPLICITEMENT.
+Si rien d'utile à extraire, réponds : {{"facts": []}}
 Maximum 5 facts. Chaque fact tient en 1-2 phrases (< 200 caractères).
+N'invente AUCUN fait. N'extrait que ce qui est dit EXPLICITEMENT.
 
 Conversation :
 {conversation}
