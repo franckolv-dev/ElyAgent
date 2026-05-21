@@ -30,6 +30,12 @@ system prompt lean — especially important for small local models (Qwen
 The three tools write/read to the same Qdrant collection (`memories`)
 already used by the legacy path, so no schema migration is needed.
 Categories use a dedicated payload field `category` for fast filtering.
+
+Sprint 2.5 Jalon 4 — explicit write routing
+-------------------------------------------
+`memory_archive` now writes via `get_semantic_user_store().store_fact(...)`
+instead of the legacy `MemoryManager.store_memory(...)`. Routing is
+visible at the call site. See ``app/services/memory/ROUTING.md``.
 """
 from __future__ import annotations
 
@@ -38,6 +44,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
 
+from app.services.memory import get_semantic_user_store
 from app.services.memory_manager import get_memory_manager
 
 logger = logging.getLogger(__name__)
@@ -92,12 +99,14 @@ async def memory_archive(
         cat = "other"
 
     try:
-        memory = get_memory_manager()
-        # Store via the existing memory infrastructure (embedding + FTS + Qdrant),
-        # extending the payload with our MemGPT metadata (category + source).
+        # Sprint 2.5 Jalon 4 — routing explicite:
+        #     MemoryType  = SEMANTIC_USER (kind=fact)
+        #     Store       = SemanticUserStore.store_fact
+        #     Collection  = Qdrant `memories` (λ=0.01, ~69-day half-life)
+        #     Rationale   = stable user knowledge, retrievable on demand
         # `conversation_id="memgpt"` marks entries coming from active recall,
         # not from the passive extraction path.
-        await memory.store_memory(
+        await get_semantic_user_store().store_fact(
             content=fact,
             user_id=user_id,
             conversation_id="memgpt",
