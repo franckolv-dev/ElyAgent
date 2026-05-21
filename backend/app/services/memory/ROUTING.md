@@ -47,6 +47,22 @@ await get_semantic_user_store().store_fact(content=fact, user_id=user_id)
 Un seul `grep "Jalon 4 — routing"` retrouve toutes les écritures mémoire
 et leur cible.
 
+## Tools deprecated (Sprint 2.5 Jalon 7)
+
+Ces tools restent fonctionnels pour la rétrocompat mais émettent un
+`DeprecationWarning` côté logger Python à la première invocation par
+process. Ils seront supprimés en Sprint 2.5 V2 ou V3.
+
+| Tool legacy                       | Remplacé par                                 | Délégation interne ?                     |
+|-----------------------------------|----------------------------------------------|------------------------------------------|
+| `memory_search`                   | `memory_recall(memory_type="semantic_user")` | Oui — délégué à `MemoryRecallService`    |
+| `memory_recent`                   | `memory_recall` (V2 ajoutera le filtre)      | Non — logique scroll Qdrant conservée    |
+| `search_past_conversations_tool`  | `memory_recall(memory_type="episodic")` (V2) | Non — implémentation Sprint 1 conservée  |
+
+Le helper `log_deprecation(tool_name, successor=...)` dans
+`app/services/memory/_deprecated.py` log une fois par process et par
+tool, pour éviter le spam.
+
 ## Comment ajouter un nouveau tool d'écriture
 
 1. Choisir le **MemoryType** (cf. design note §2 : 5 types disponibles).
