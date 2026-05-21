@@ -41,7 +41,7 @@ android/local.properties
 
 # Claude
 .claude/
-memory/
+/memory/
 
 # Secrets Firebase — NE PAS COMMITER
 backend/firebase/
