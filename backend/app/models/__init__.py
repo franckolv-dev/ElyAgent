@@ -29,6 +29,10 @@ from app.models.licence import Licence
 from app.models.extension_token import ExtensionToken
 from app.models.procedure import Procedure
 from app.models.error_log import ErrorLog
+from app.models.hitl_refusal import HitlRefusal
+from app.models.hallucination_block import HallucinationBlock
+from app.models.provider_switch import ProviderSwitch
+from app.models.mission_critique import MissionCritique
 
 __all__ = [
     "User", "Conversation", "Message", "AuditLog", "RevokedToken",
@@ -36,4 +40,5 @@ __all__ = [
     "HitlPreference", "UserVocabulary", "LearnedRoutingKeyword",
     "Licence", "ExtensionToken",
     "Procedure", "ErrorLog",
+    "HitlRefusal", "HallucinationBlock", "ProviderSwitch", "MissionCritique",
 ]
