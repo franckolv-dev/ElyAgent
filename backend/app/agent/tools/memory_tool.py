@@ -21,6 +21,13 @@ These tools allow the agent to immediately persist user preferences (tone,
 format, style) and behavioral constraints when the user explicitly expresses
 them during a conversation. Without these tools, preferences were only
 extracted post-session and could be lost or delayed.
+
+Sprint 2.5 Jalon 4 — explicit write routing
+-------------------------------------------
+This module writes to two distinct typed stores. Each tool below states
+its target type + store + rationale right above the @tool decorator,
+so the routing is auditable from a single grep. See
+``app/services/memory/ROUTING.md`` for the full mapping.
 """
 from __future__ import annotations
 
@@ -30,7 +37,10 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
 
-from app.services.memory_manager import get_memory_manager
+from app.services.memory import (
+    get_constraint_store,
+    get_semantic_user_store,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,9 +205,14 @@ async def save_user_preference(
     Args:
         preference: Description claire et directement actionnable de la préférence
                     (ex: "Ne jamais utiliser d'émojis dans les réponses")
+
+    Sprint 2.5 Jalon 4 — routing explicite:
+        MemoryType  = SEMANTIC_USER (kind=preference)
+        Store       = SemanticUserStore.store_preference
+        Collection  = Qdrant `user_profile` (with dedup ≥ 0.88 cosine)
+        Rationale   = communication style, no decay, injected every prompt
     """
-    memory = get_memory_manager()
-    await memory.store_preference(preference, user_id)
+    await get_semantic_user_store().store_preference(preference, user_id)
     return f"Préférence enregistrée : {preference}"
 
 
@@ -258,6 +273,10 @@ async def save_constraint(
             "jamais envoyer de mail à spam@x.com\"). Les interdictions globales "
             "de capacités ne peuvent pas être enregistrées."
         )
-    memory = get_memory_manager()
-    await memory.store_constraint(rule, user_id)
+    # Sprint 2.5 Jalon 4 — routing explicite:
+    #     MemoryType  = CONSTRAINT
+    #     Store       = ConstraintStore.store
+    #     Collection  = Qdrant `security_constraints` (no decay)
+    #     Rationale   = user-imposed permanent rules, injected every prompt
+    await get_constraint_store().store(rule, user_id)
     return f"Contrainte enregistrée : {rule}"

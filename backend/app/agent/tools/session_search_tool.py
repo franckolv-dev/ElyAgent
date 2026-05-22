@@ -39,6 +39,7 @@ from typing import Annotated
 
 from langchain_core.tools import InjectedToolArg, tool
 
+from app.services.memory._deprecated import log_deprecation
 from app.services.session_search import search_past_conversations
 from app.skills.base import Domain
 from app.skills.decorator import register
@@ -130,7 +131,14 @@ async def search_past_conversations_tool(
     Pas de structure, pas de champs nommés, pas de blocs de code dans
     le retour : c'est délibéré pour que tu n'aies pas la tentation de
     le restructurer.
+
+    Sprint 2.5 Jalon 7 — DEPRECATED : ce tool deviendra un alias de
+    `memory_recall(memory_type="episodic")` en V2, quand l'EpisodicStore
+    couvrira l'historique complet des messages (et plus seulement les
+    Q&A pairs). En attendant, ce tool reste le plus mature pour la
+    recherche cross-conversation.
     """
+    log_deprecation("search_past_conversations_tool", successor="memory_recall")
     if not user_id:
         return "Erreur interne : user_id manquant."
     if not query or not query.strip():

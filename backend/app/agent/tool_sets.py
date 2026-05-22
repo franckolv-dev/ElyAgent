@@ -156,6 +156,10 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "memory_archive",
     "memory_search",
     "memory_recent",
+    # Sprint 2.5 (2026-05-21) — unified typed memory recall.
+    # New tool replacing memory_search/notes_search/... incrementally;
+    # injects user_id so the LLM cannot tamper with the scope.
+    "memory_recall",
     # Sprint 1 (2026-05-15) — cross-conversation memory recall.
     # Different from memory_search (structured fact store) and
     # knowledge_search (uploaded documents). Searches the literal

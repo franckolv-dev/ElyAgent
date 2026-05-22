@@ -100,6 +100,10 @@ async def init_db():
             # Hermes Chantier 1 (audit 2026-05-07) — sticky toolset profile
             # per conversation. NULL until first message auto-detects it.
             ("conversations", "toolset_profile", "VARCHAR(40)"),
+            # Sprint 2.5 (memory cognitive multi-typed) — dreaming-style scoring
+            # for short→long-term promotion. Inspired by OpenClaw memory-core.
+            ("user_memory_logs", "recall_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("user_memory_logs", "last_recalled_at", "DATETIME"),
         ]
         for _table, _col, _ddl in _safe_columns:
             try:

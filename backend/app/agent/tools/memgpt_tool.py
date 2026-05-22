@@ -30,6 +30,12 @@ system prompt lean — especially important for small local models (Qwen
 The three tools write/read to the same Qdrant collection (`memories`)
 already used by the legacy path, so no schema migration is needed.
 Categories use a dedicated payload field `category` for fast filtering.
+
+Sprint 2.5 Jalon 4 — explicit write routing
+-------------------------------------------
+`memory_archive` now writes via `get_semantic_user_store().store_fact(...)`
+instead of the legacy `MemoryManager.store_memory(...)`. Routing is
+visible at the call site. See ``app/services/memory/ROUTING.md``.
 """
 from __future__ import annotations
 
@@ -38,6 +44,8 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
 
+from app.services.memory import get_semantic_user_store
+from app.services.memory._deprecated import log_deprecation
 from app.services.memory_manager import get_memory_manager
 
 logger = logging.getLogger(__name__)
@@ -92,12 +100,14 @@ async def memory_archive(
         cat = "other"
 
     try:
-        memory = get_memory_manager()
-        # Store via the existing memory infrastructure (embedding + FTS + Qdrant),
-        # extending the payload with our MemGPT metadata (category + source).
+        # Sprint 2.5 Jalon 4 — routing explicite:
+        #     MemoryType  = SEMANTIC_USER (kind=fact)
+        #     Store       = SemanticUserStore.store_fact
+        #     Collection  = Qdrant `memories` (λ=0.01, ~69-day half-life)
+        #     Rationale   = stable user knowledge, retrievable on demand
         # `conversation_id="memgpt"` marks entries coming from active recall,
         # not from the passive extraction path.
-        await memory.store_memory(
+        await get_semantic_user_store().store_fact(
             content=fact,
             user_id=user_id,
             conversation_id="memgpt",
@@ -125,38 +135,40 @@ async def memory_search(
     user_id: Annotated[str, InjectedToolArg],
     limit: int = 5,
 ) -> str:
-    """Cherche dans la mémoire long-terme par similarité sémantique.
+    """[DEPRECATED — utilise `memory_recall(query, memory_type="semantic_user")`]
+    Cherche dans la mémoire long-terme par similarité sémantique.
 
-    Utilise cet outil quand tu as besoin d'un contexte que tu ne retrouves
-    pas dans les derniers messages. Exemples :
-    - "Quand est l'anniversaire de ma femme ?"
-    - "Quel était le nom du projet dont je t'avais parlé en mars ?"
-    - "Retrouve-moi les contacts liés à mon dossier X"
-
-    La recherche est sémantique — une requête en langage naturel ramène les
-    faits les plus proches, même s'ils n'utilisent pas les mêmes mots exacts.
+    Sprint 2.5 Jalon 7 : ce tool reste fonctionnel pour la rétrocompat
+    mais sera supprimé en V2. Le tool `memory_recall` couvre le même
+    besoin avec une API typée explicite.
 
     Args:
         query: Description libre de ce que tu cherches (en français ou anglais).
         limit: Nombre max de résultats (1-10). Défaut : 5.
     """
+    log_deprecation("memory_search", successor="memory_recall")
     if not user_id:
         return "Échec : identification utilisateur requise."
     if not query or not str(query).strip():
         return "Échec : la requête ne peut pas être vide."
     limit = _safe_int(limit, default=5, lo=1, hi=10)
 
+    # Sprint 2.5 Jalon 7 — delegation to the new unified API. Single
+    # source of truth for "what does recall mean", legacy formatting kept
+    # on this tool's surface for stability of the LLM-visible output.
     try:
-        memory = get_memory_manager()
-        hits = await memory.get_relevant_memories(
+        from app.services.memory import get_memory_recall_service, MemoryType
+        hits = await get_memory_recall_service().recall(
+            memory_type=MemoryType.SEMANTIC_USER,
             query=str(query).strip(),
             user_id=user_id,
             limit=limit,
         )
-        if not hits:
+        facts = [h.content for h in hits if h.metadata.get("kind") != "preference"]
+        if not facts:
             return "Aucun résultat en mémoire pour cette requête."
-        lines = [f"{len(hits)} résultat(s) pour « {str(query)[:60]} » :"]
-        for i, fact in enumerate(hits, 1):
+        lines = [f"{len(facts)} résultat(s) pour « {str(query)[:60]} » :"]
+        for i, fact in enumerate(facts, 1):
             lines.append(f"{i}. {fact[:200]}")
         return "\n".join(lines)
     except Exception as exc:
@@ -170,18 +182,19 @@ async def memory_recent(
     user_id: Annotated[str, InjectedToolArg],
     limit: int = 5,
 ) -> str:
-    """Retrieve the last N archived facts in a given category.
+    """[DEPRECATED — utilise `memory_recall(memory_type="semantic_user")`]
+    Retrieve the last N archived facts in a given category.
 
-    Useful for reviewing a category without a specific semantic query.
-    Examples:
-    - "What are my latest preferences?" → category="preference"
-    - "List my ongoing projects" → category="project"
-    - "Who are the recently mentioned contacts?" → category="contact"
+    Sprint 2.5 Jalon 7 : ce tool reste fonctionnel pour la rétrocompat
+    mais sera supprimé en V2 ou V3. Le category-filter exact n'est pas
+    encore couvert par `memory_recall` (prévu V2), donc on garde ce tool
+    en attendant.
 
     Args:
         category: One of: fact, preference, project, contact, task, event, constraint, other.
         limit: Max number of results (1-20). Default: 5.
     """
+    log_deprecation("memory_recent", successor="memory_recall")
     if not user_id:
         return "Échec : identification utilisateur requise."
     cat = (str(category) if category is not None else "").strip().lower()
