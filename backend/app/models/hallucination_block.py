@@ -46,8 +46,10 @@ class HallucinationBlock(Base):
     mission_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Concrete model identifier, e.g. "deepseek-v4-pro" or "gemma-4-e4b-it"
     model_used: Mapped[str] = mapped_column(String(120))
-    # LLM tier active at the time ("A" | "B" | "C" | "IMG" | "MAINTENANCE")
-    tier_llm: Mapped[str] = mapped_column(String(8), index=True)
+    # LLM tier active at the time ("A" | "B" | "C" | "IMG" | "MAINTENANCE").
+    # Nullable — at the call site (chat.py:612) the tier isn't always
+    # trivially reachable, so we accept NULL rather than fake a value.
+    tier_llm: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
     # JSON array of regex pattern keys that matched (e.g. ["fr.passive_past"])
     matched_patterns: Mapped[str] = mapped_column(Text)
     # JSON array of tool names actually invoked in the turn (may be empty)

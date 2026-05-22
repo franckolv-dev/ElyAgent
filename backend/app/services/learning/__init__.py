@@ -15,8 +15,18 @@ from app.services.learning.prompt_version import (
     current_system_prompt_version,
     prompt_hash,
 )
+from app.services.learning.signals import (
+    record_hallucination_block,
+    record_hitl_refusal,
+    record_provider_switch,
+    record_tool_error,
+)
 
 __all__ = [
     "prompt_hash",
     "current_system_prompt_version",
+    "record_hitl_refusal",
+    "record_hallucination_block",
+    "record_tool_error",
+    "record_provider_switch",
 ]

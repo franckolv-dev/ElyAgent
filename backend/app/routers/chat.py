@@ -616,6 +616,23 @@ async def websocket_chat(websocket: WebSocket):
                         user_id, conversation_id, model_used_out or "unknown",
                         _guard_verdict.reason,
                     )
+                    # Sprint 3.7 Jalon 2 — persist as learning signal
+                    try:
+                        from app.services.learning import record_hallucination_block
+                        asyncio.create_task(record_hallucination_block(
+                            user_id=user_id,
+                            conversation_id=conversation_id,
+                            model_used=model_used_out or "unknown",
+                            matched_patterns=list(_guard_verdict.matched_patterns),
+                            tools_invoked=list(_guard_verdict.tools_invoked),
+                            destructive_tools_invoked=list(
+                                _guard_verdict.destructive_tools_invoked
+                            ),
+                            reason=_guard_verdict.reason,
+                            original_response=ai_content,
+                        ))
+                    except Exception as _sig_exc:
+                        logger.debug("hallucination signal skipped: %s", _sig_exc)
                     # Surface to the frontend so the UI can show a red badge
                     # next to the assistant message (and so a future analytics
                     # event collector can count occurrences per model/tier).

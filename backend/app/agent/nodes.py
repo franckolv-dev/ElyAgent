@@ -1645,7 +1645,25 @@ def create_agent_node():
                 # len(chain) so it can never spin.
                 if _conv_id_fb and _fb_state is not None:
                     while True:
+                        # Sprint 3.7 Jalon 2 — capture the BEFORE state so the
+                        # learning signal can record from→to once try_activate
+                        # has advanced the chain.
+                        _from_provider_before = _fb_state.current_provider
                         _new_provider_id = _fb.try_activate(_conv_id_fb, _reason)
+                        if _new_provider_id:
+                            try:
+                                from app.services.learning import record_provider_switch
+                                asyncio.create_task(record_provider_switch(
+                                    user_id=user_id,
+                                    conversation_id=_conv_id_fb,
+                                    tier_llm=_tier.value if hasattr(_tier, "value") else str(_tier),
+                                    from_provider=_from_provider_before,
+                                    to_provider=_new_provider_id,
+                                    reason=_reason.value if hasattr(_reason, "value") else str(_reason),
+                                    position_in_chain=_fb_state.current_index + 1,
+                                ))
+                            except Exception as _sig_exc:
+                                logger.debug("provider switch signal skipped: %s", _sig_exc)
                         if not _new_provider_id:
                             logger.warning(
                                 "[fallback] chain exhausted for conv=%s",
@@ -1932,11 +1950,39 @@ async def tool_node(state: AgentState) -> dict:
                 if reason:
                     rule += f" — Raison: {reason}"
                 await memory.store_constraint(rule, user_id)
+                # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
+                try:
+                    from app.services.learning import record_hitl_refusal
+                    asyncio.create_task(record_hitl_refusal(
+                        user_id=user_id,
+                        conversation_id=_conv_id,
+                        tool_name=tool_name,
+                        args=args,
+                        action_description=action_desc,
+                        decision="ban",
+                        reason=reason or "user-provided",
+                    ))
+                except Exception as _sig_exc:
+                    logger.debug("HITL refusal signal skipped: %s", _sig_exc)
                 results.append(_tool_result(
                     "Action interdite définitivement et règle de sécurité enregistrée.", tc_id
                 ))
                 continue
             elif decision != "allow":
+                # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
+                try:
+                    from app.services.learning import record_hitl_refusal
+                    asyncio.create_task(record_hitl_refusal(
+                        user_id=user_id,
+                        conversation_id=_conv_id,
+                        tool_name=tool_name,
+                        args=args,
+                        action_description=action_desc,
+                        decision="deny",
+                        reason=reason or "user-provided",
+                    ))
+                except Exception as _sig_exc:
+                    logger.debug("HITL refusal signal skipped: %s", _sig_exc)
                 results.append(_tool_result(
                     "Action refusée par l'utilisateur pour cette occurrence.", tc_id
                 ))
@@ -1965,6 +2011,20 @@ async def tool_node(state: AgentState) -> dict:
                 results.append(_tool_result(_safe_result, tc_id))
             except Exception as exc:
                 logger.warning("Tool %s failed: %s", tool_name, exc)
+                # Sprint 3.7 Jalon 2 — persist tool exception as learning signal
+                try:
+                    import traceback as _tb
+                    from app.services.learning import record_tool_error
+                    asyncio.create_task(record_tool_error(
+                        user_id=user_id,
+                        tool_name=tool_name,
+                        args=args,
+                        error_type=type(exc).__name__,
+                        error_msg=str(exc),
+                        traceback=_tb.format_exc(),
+                    ))
+                except Exception as _sig_exc:
+                    logger.debug("tool error signal skipped: %s", _sig_exc)
                 results.append(_tool_result(f"Erreur d'exécution: {exc}", tc_id))
         else:
             from langchain_core.messages import ToolMessage
