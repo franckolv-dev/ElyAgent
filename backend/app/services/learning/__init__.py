@@ -11,6 +11,11 @@ Self-improvement signals + LLM-as-judge critic + A/B testing scaffolding.
 Jalon 3 (this file lands first) ships only the prompt_version helper.
 Jalons 2, 4, 5 will populate this subpackage with more modules.
 """
+from app.services.learning.mission_critic import (
+    critique_mission,
+    run_pending_critiques,
+    should_critique,
+)
 from app.services.learning.prompt_version import (
     current_system_prompt_version,
     prompt_hash,
@@ -29,4 +34,7 @@ __all__ = [
     "record_hallucination_block",
     "record_tool_error",
     "record_provider_switch",
+    "should_critique",
+    "critique_mission",
+    "run_pending_critiques",
 ]

@@ -307,6 +307,19 @@ async def lifespan(app: FastAPI):
         minute=0,
         id="qdrant_backup",
     )
+    # Sprint 3.7 Jalon 4 — LLM-as-judge post-mission critic.
+    # Scans terminal missions (failed/aborted/completed) without a
+    # critic_run_at every 5 minutes. Policy (design note §4.1) :
+    #   - failed / aborted → 100% sampled
+    #   - completed        → 1/5 sampled (deterministic on mission_id hash)
+    # Disable via env CRITIC_DISABLED=true on weak setups.
+    from app.services.learning import run_pending_critiques as _mc_run
+    _memory_scheduler.add_job(
+        _mc_run,
+        trigger="interval",
+        minutes=5,
+        id="mission_critic_loop",
+    )
     # Purge expired revoked tokens nightly at 4:00 AM (ARCH-3)
     async def _purge_revoked_tokens():
         from datetime import datetime
