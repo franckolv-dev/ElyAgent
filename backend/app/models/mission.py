@@ -165,6 +165,11 @@ class MissionStep(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     model_used: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
+    # Sprint 3.7 Jalon 3 — sha256[:8] of the system prompt active when this
+    # step ran. Lets analysts correlate step success/failure rates with
+    # specific prompt versions when A/B testing lands (Jalon 5).
+    prompt_version: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
 
     mission: Mapped["Mission"] = relationship(back_populates="steps")

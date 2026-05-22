@@ -44,6 +44,7 @@ class ErrorStore:
         mission_id: str | None = None,
         tier_llm: str | None = None,
         recovered: bool = False,
+        prompt_version: str | None = None,
     ) -> int | None:
         """Persist one error row. Returns the row id or None on failure.
 
@@ -51,7 +52,17 @@ class ErrorStore:
         agent loop where a fresh session would be heavier than reusing
         the request-scoped one. Failure here never raises — error capture
         must never break the outer flow.
+
+        Sprint 3.7 Jalon 3 — `prompt_version` (sha256[:8] of the system
+        prompt active when the error fired) is optional ; if omitted the
+        method tries the live ``current_system_prompt_version()``.
         """
+        if prompt_version is None:
+            try:
+                from app.services.learning import current_system_prompt_version
+                prompt_version = current_system_prompt_version()
+            except Exception:
+                prompt_version = None
         try:
             from app.models.error_log import ErrorLog
             row = ErrorLog(
@@ -64,6 +75,7 @@ class ErrorStore:
                 traceback=traceback,
                 tier_llm=tier_llm,
                 recovered=recovered,
+                prompt_version=prompt_version,
             )
             session.add(row)
             await session.flush()
