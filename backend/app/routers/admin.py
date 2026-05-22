@@ -216,3 +216,41 @@ async def memory_consolidate_now(
     ))
     await db.commit()
     return {"message": "Consolidation triggered — see backend logs for per-user counts."}
+
+
+# ── A/B testing (Sprint 3.7 Jalon 5) ──────────────────────────────────────
+
+@router.get("/ab/keys")
+async def ab_list_keys(
+    admin: User = Depends(require_admin),
+):
+    """List every registered A/B prompt key + its variants."""
+    from app.services.learning import ab_testing
+    return {
+        "keys": {
+            key: ab_testing.list_variants(key)
+            for key in ab_testing.list_prompt_keys()
+        }
+    }
+
+
+@router.get("/ab/score")
+async def ab_score_endpoint(
+    admin: User = Depends(require_admin),
+    key: str = Query("system_prompt_base", description="Prompt key to score"),
+    window: str = Query("7d", description="Time window: 7d, 30d, 24h, …"),
+):
+    """Composite-weighted A/B score for ``key`` over the window.
+
+    Sprint 3.7 design note §5.2. Reads the 4 learning signal sources
+    (HITL refusals, hallucinations, user feedback, mission completion)
+    per variant, computes a composite score (0.3/0.3/0.2/0.2), and
+    returns a winner when one variant beats the other by ≥ 0.02.
+
+    Returns ``warning`` when there's insufficient data — A/B only
+    declares a winner with ≥ 50 messages per variant.
+    """
+    from app.services.learning.ab_testing import _parse_window, score_variants
+    window_td = _parse_window(window)
+    result = await score_variants(key, window_td)
+    return result
