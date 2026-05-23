@@ -253,11 +253,126 @@ class GuardVerdict:
 # ──────────────────────────────────────────────────────────────────────
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Memory-recall question patterns (added 2026-05-23)
+# ──────────────────────────────────────────────────────────────────────
+#
+# When the user asks the assistant to RECALL what it has memorised
+# ("qu'as-tu enregistré sur mon compte amazon ?"), the honest answer
+# starts with "voici ce que j'ai noté…" or "j'ai retrouvé que…". These
+# phrases match the `fr.first_person_past` regex above and trigger a
+# false positive — even though the facts come from auto-injected
+# user_profile in the system prompt, with no tool call needed.
+#
+# Fix : when the user's last message clearly asks for a memory recall
+# (these patterns), we BYPASS the guard for that turn's response.
+# Conservative scope : only memory-recall verbs explicitly addressed
+# to the assistant ("qu'as-TU", "te souviens-TU"), not generic past
+# tense or third-person questions.
+
+# Verbs covering "memorisation" actions (FR roots, prefix-matchable)
+_FR_RECALL_VERB_ROOTS = (
+    r"(enregistr|not|reten|mémoris|stock|sauveg|gard|appri|conserv|"
+    r"trouv|recueill|collect|retrouv)"
+)
+
+_FR_MEMORY_RECALL_QUESTION_PATTERNS: list[re.Pattern] = [
+    # "qu'as-tu enregistré/noté/retenu/mémorisé/stocké/sauvegardé/gardé"
+    re.compile(
+        r"\b(qu['']as[-\s]?tu|que\s+m['']?as[-\s]?tu)\s+"
+        r"(.+?\s+)?"
+        + _FR_RECALL_VERB_ROOTS,
+        re.IGNORECASE,
+    ),
+    # "qu'est-ce que tu as <verbe de mémoire>" — variante très répandue
+    re.compile(
+        r"\bqu['']est[-\s]?ce\s+que\s+tu\s+as\s+"
+        r"(.+?\s+)?"
+        + _FR_RECALL_VERB_ROOTS,
+        re.IGNORECASE,
+    ),
+    # "te souviens-tu de" / "tu te souviens de" / "te rappelles-tu"
+    re.compile(
+        r"\b(te\s+souviens[-\s]?tu|tu\s+te\s+souviens|"
+        r"te\s+rappelles[-\s]?tu|tu\s+te\s+rappelles)",
+        re.IGNORECASE,
+    ),
+    # "que sais-tu sur" / "que connais-tu sur" / "qu'est-ce que tu sais sur"
+    re.compile(
+        r"\b(que\s+sais[-\s]?tu|que\s+connais[-\s]?tu|"
+        r"qu['']est[-\s]?ce\s+que\s+tu\s+sais|"
+        r"qu['']as[-\s]?tu\s+en\s+mémoire)",
+        re.IGNORECASE,
+    ),
+    # "liste/montre-moi/donne-moi ce que tu as noté/enregistré/en mémoire"
+    re.compile(
+        r"\b(liste[-\s]?moi|liste|montre[-\s]?moi|donne[-\s]?moi|affiche|"
+        r"rappelle[-\s]?moi)\s+"
+        r"(.+?\s+)?"
+        r"(ce\s+que\s+tu\s+(as|sais)\s+"
+        + _FR_RECALL_VERB_ROOTS + r"|"
+        r"tout\s+ce\s+que\s+tu\s+sais|ta\s+mémoire|"
+        r"mes\s+(préférences|infos|données|facts))",
+        re.IGNORECASE,
+    ),
+    # Standalone "rappelle-moi <quelque chose>" — explicit recall imperative
+    re.compile(r"\brappelle[-\s]?moi\b", re.IGNORECASE),
+]
+
+# English verbs (covering "note"/"noted", "save"/"saved", etc.)
+_EN_RECALL_VERB_ROOTS = (
+    r"(save|sav|note|stor|memoriz|memoris|learn|kept|keep|"
+    r"record|recall|remembered?)"
+)
+
+_EN_MEMORY_RECALL_QUESTION_PATTERNS: list[re.Pattern] = [
+    # "what have/did/do you save/note/store/remember about"
+    re.compile(
+        r"\bwhat\s+(have\s+you|did\s+you|do\s+you)\s+"
+        r"(.+?\s+)?"
+        + _EN_RECALL_VERB_ROOTS,
+        re.IGNORECASE,
+    ),
+    # "do you remember" / "do you recall" / "do you know about"
+    re.compile(r"\bdo\s+you\s+(remember|recall|know\s+about)\b", re.IGNORECASE),
+    # "tell me/show me what you know/have noted"
+    re.compile(
+        r"\b(tell\s+me|show\s+me|list)\s+"
+        r"(.+?\s+)?"
+        r"(what\s+you\s+(know|have|noted|remember)|"
+        r"everything\s+you\s+(know|remember))",
+        re.IGNORECASE,
+    ),
+]
+
+_ALL_MEMORY_RECALL_PATTERNS = (
+    _FR_MEMORY_RECALL_QUESTION_PATTERNS + _EN_MEMORY_RECALL_QUESTION_PATTERNS
+)
+
+
+def is_memory_recall_question(user_message: str) -> bool:
+    """True if the user is explicitly asking the assistant to recall
+    facts from its own memory ("qu'as-tu enregistré sur…", "te souviens-
+    tu de…", etc.). The assistant's honest answer to these questions
+    legitimately contains past-tense verbs ("j'ai noté…") that would
+    otherwise trip the completion-claim guard.
+
+    Conservative — only matches second-person, recall-specific verbs.
+    """
+    if not user_message or not user_message.strip():
+        return False
+    for pattern in _ALL_MEMORY_RECALL_PATTERNS:
+        if pattern.search(user_message):
+            return True
+    return False
+
+
 def detect_unbacked_completion_claim(
     ai_content: str,
     tools_invoked_in_turn: list[str],
     *,
     destructive_tools: frozenset[str] = DESTRUCTIVE_TOOLS,
+    user_message: str | None = None,
 ) -> GuardVerdict:
     """Return a verdict on whether *ai_content* hallucinates a completion.
 
@@ -294,6 +409,20 @@ def detect_unbacked_completion_claim(
             is_hallucination=False,
             tools_invoked=list(tools_invoked_in_turn),
             reason="empty_content",
+        )
+
+    # 2026-05-23 — Memory-recall question bypass.
+    # The user explicitly asked the assistant to recite what it has
+    # memorised ("qu'as-tu enregistré sur mon compte amazon ?"). An
+    # honest reply contains past-tense verbs ("voici ce que j'ai noté")
+    # that would otherwise trip `fr.first_person_past`. The facts come
+    # from auto-injected user_profile (see nodes.py:756-776) — no tool
+    # call needed. Bypass the guard for this turn.
+    if user_message and is_memory_recall_question(user_message):
+        return GuardVerdict(
+            is_hallucination=False,
+            tools_invoked=list(tools_invoked_in_turn),
+            reason="memory_recall_question_bypass",
         )
 
     matched: list[str] = []

@@ -608,6 +608,11 @@ async def websocket_chat(websocket: WebSocket):
                 )
                 _guard_verdict = detect_unbacked_completion_claim(
                     ai_content, tools_called,
+                    # 2026-05-23 — pass the user's last message so the
+                    # guard can recognise memory-recall questions ("qu'as-tu
+                    # enregistré sur X ?") and bypass the false positive
+                    # otherwise triggered by the assistant's honest reply.
+                    user_message=user_content,
                 )
                 if _guard_verdict.is_hallucination:
                     logger.error(
