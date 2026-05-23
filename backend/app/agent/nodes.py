@@ -1671,6 +1671,21 @@ async def tool_node(state: AgentState) -> dict:
 
         # HITL check
         needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
+        # Per-user override (2026-05-23) — honour "Toujours autoriser"
+        # preference set by the user via the HITL panel ; mirrors what
+        # sub_agents/factory.py:806 already does. LOCKED_HITL_TOOLS still
+        # always require HITL (handled inside user_requires_hitl).
+        if needs_hitl and user_id:
+            try:
+                from app.services.hitl_preferences import user_requires_hitl
+                if not await user_requires_hitl(user_id, tool_name):
+                    logger.info(
+                        "HITL skipped (user preference) tool=%s user=%s",
+                        tool_name, user_id[:8],
+                    )
+                    needs_hitl = False
+            except Exception as _pref_exc:
+                logger.debug("HITL preference lookup failed: %s", _pref_exc)
         if needs_hitl:
             logger.info("HITL required for action: %s", action_desc)
             decision, reason = await hitl.request_validation(
@@ -1686,6 +1701,24 @@ async def tool_node(state: AgentState) -> dict:
                     "Action interdite définitivement et règle de sécurité enregistrée.", tc_id
                 ))
                 continue
+            elif decision == "allow_always":
+                # Save user preference so future calls to the same tool by
+                # the same user skip the HITL prompt entirely. Then fall
+                # through to execute the tool this time. The frontend
+                # button "Toujours autoriser" sends this decision ; the
+                # backward-compatible "Toujours interdire" sends "ban".
+                try:
+                    from app.services.hitl_preferences import set_user_preference
+                    await set_user_preference(
+                        user_id, tool_name, requires_confirmation=False,
+                    )
+                    logger.info(
+                        "HITL: tool %s now always-allowed for user %s",
+                        tool_name, user_id[:8],
+                    )
+                except Exception as _save_exc:
+                    logger.debug("Could not save HITL preference: %s", _save_exc)
+                # Fall through to execute (same as plain "allow")
             elif decision != "allow":
                 results.append(_tool_result(
                     "Action refusée par l'utilisateur pour cette occurrence.", tc_id

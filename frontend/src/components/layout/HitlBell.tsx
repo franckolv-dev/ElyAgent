@@ -77,7 +77,7 @@ export default function HitlBell() {
 
   const resolve = async (
     actionId: string,
-    decision: "allow" | "deny" | "ban"
+    decision: "allow" | "allow_always" | "deny" | "ban"
   ) => {
     setBusy(actionId);
     try {
@@ -138,7 +138,14 @@ export default function HitlBell() {
                   <div className="hitl-bell-meta">
                     {new Date(a.created_at).toLocaleString()}
                   </div>
-                  <div className="hitl-bell-actions">
+                  {/* 2×2 grid (2026-05-23 redesign — adds "Toujours autoriser"
+                      symmetric to "Toujours interdire", so a user with
+                      recurring tasks doesn't have to re-approve the same
+                      tool 15×/day). */}
+                  <div
+                    className="hitl-bell-actions"
+                    style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}
+                  >
                     <button
                       className="hitl-act hitl-act-allow"
                       disabled={busy === a.action_id}
@@ -146,6 +153,14 @@ export default function HitlBell() {
                       title="Autoriser cette action une fois"
                     >
                       <Check size={12} /> Autoriser
+                    </button>
+                    <button
+                      className="hitl-act hitl-act-allow"
+                      disabled={busy === a.action_id}
+                      onClick={() => resolve(a.action_id, "allow_always")}
+                      title="Autoriser et ne plus jamais demander pour cette action"
+                    >
+                      <Check size={12} /> Toujours autoriser
                     </button>
                     <button
                       className="hitl-act hitl-act-deny"
@@ -161,7 +176,7 @@ export default function HitlBell() {
                       onClick={() => resolve(a.action_id, "ban")}
                       title="Refuser et bloquer définitivement cette action"
                     >
-                      <Ban size={12} /> Bloquer
+                      <Ban size={12} /> Toujours interdire
                     </button>
                   </div>
                 </li>
