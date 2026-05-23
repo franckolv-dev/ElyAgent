@@ -79,12 +79,16 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [hitlAction, setHitlAction] = useState<{ id: string; description: string } | null>(null);
-  const [hitlPending, setHitlPending] = useState<"allow" | "deny" | "ban" | null>(null);
+  const [hitlPending, setHitlPending] = useState<
+    "allow" | "allow_always" | "deny" | "ban" | null
+  >(null);
   const [hitlError, setHitlError] = useState<string | null>(null);
   const ttsRef = useRef<TTSPlayer | null>(null);
 
   // ── Resolve HITL via web — hits the same endpoint as the Android app ──
-  const resolveHitl = async (decision: "allow" | "deny" | "ban") => {
+  const resolveHitl = async (
+    decision: "allow" | "allow_always" | "deny" | "ban",
+  ) => {
     if (!hitlAction || hitlPending) return;
     setHitlPending(decision);
     setHitlError(null);
@@ -329,7 +333,14 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
             {hitlAction.description}
           </p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+          {/*
+            2×2 grid (2026-05-23 redesign — was 3 columns which caused the
+            "Toujours interdire" button to overflow the danger card on
+            narrow avatar panels). Row 1 = positive decisions, row 2 =
+            negative decisions. Mobile-friendly : each button gets half
+            the panel width.
+          */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             <button
               onClick={() => resolveHitl("allow")}
               disabled={hitlPending !== null}
@@ -339,6 +350,18 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
             >
               <Check size={11} />
               {hitlPending === "allow" ? t("hitlSending") : t("hitlApprove")}
+            </button>
+            <button
+              onClick={() => resolveHitl("allow_always")}
+              disabled={hitlPending !== null}
+              className="btn primary"
+              style={{ justifyContent: "center", padding: "5px 8px", fontSize: 11 }}
+              title={t("hitlAllowAlways")}
+            >
+              <Check size={11} />
+              {hitlPending === "allow_always"
+                ? t("hitlSending")
+                : t("hitlAllowAlways")}
             </button>
             <button
               onClick={() => resolveHitl("deny")}

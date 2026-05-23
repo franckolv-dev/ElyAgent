@@ -321,7 +321,11 @@ export const api = {
       Array<{ action_id: string; description: string; created_at: string }>
     >,
 
-  hitlResolve: (actionId: string, decision: "allow" | "deny" | "ban", reason?: string) =>
+  hitlResolve: (
+    actionId: string,
+    decision: "allow" | "allow_always" | "deny" | "ban",
+    reason?: string,
+  ) =>
     fetchAPI(`/api/validation/${actionId}/${decision}`, {
       method: "POST",
       body: JSON.stringify({ reason: reason ?? null }),

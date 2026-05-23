@@ -158,6 +158,27 @@ async def allow_action(
     return await _resolve_with_auth_or_token(action_id, "allow", None, current_user, t, channel)
 
 
+@router.post("/{action_id}/allow_always")
+async def allow_always_action(
+    action_id: str,
+    t: str | None = Query(default=None, description="Signed action token (ntfy channel)"),
+    current_user: User | None = Depends(get_optional_user),
+):
+    """Authorize the action this occurrence AND mark the underlying tool as
+    always-allowed for the calling user. Mirrors ``/ban`` on the deny side.
+
+    The tool→user binding happens in ``nodes.py`` when it handles the
+    ``allow_always`` decision : it upserts a HitlPreference row with
+    ``requires_confirmation=False`` so subsequent invocations skip the
+    HITL prompt entirely. Locked tools (``LOCKED_HITL_TOOLS``) still
+    require HITL — the preference write is accepted but ignored at read.
+    """
+    channel = "ntfy" if t else "web"
+    return await _resolve_with_auth_or_token(
+        action_id, "allow_always", None, current_user, t, channel,
+    )
+
+
 @router.post("/{action_id}/deny")
 async def deny_action(
     action_id: str,

@@ -99,6 +99,59 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
 })
 
 
+async def set_user_preference(
+    user_id: str,
+    tool_name: str,
+    *,
+    requires_confirmation: bool,
+) -> bool:
+    """Upsert a per-user HITL preference. Returns True on success.
+
+    Sprint 3.7 follow-up (2026-05-23) — backs the "Toujours autoriser" /
+    "Toujours interdire" buttons on the HITL panel. When the user picks
+    "always allow", we save ``requires_confirmation=False`` so the next
+    invocation of the same tool by the same user skips the HITL prompt.
+
+    ``LOCKED_HITL_TOOLS`` cannot be overridden — for those we accept the
+    write (the row exists, useful for audit) but ``user_requires_hitl``
+    will keep returning True regardless. The frontend should grey out
+    the "always" buttons for locked tools, but we belt-and-suspender
+    server-side too.
+
+    Never raises — any DB error returns False, caller may log + skip.
+    """
+    if not user_id or not tool_name:
+        return False
+    try:
+        from datetime import datetime, timezone
+        async with async_session() as db:
+            row = await db.execute(
+                select(HitlPreference).where(
+                    HitlPreference.user_id == user_id,
+                    HitlPreference.tool_name == tool_name,
+                )
+            )
+            pref = row.scalar_one_or_none()
+            if pref is None:
+                pref = HitlPreference(
+                    user_id=user_id,
+                    tool_name=tool_name,
+                    requires_confirmation=requires_confirmation,
+                )
+                db.add(pref)
+            else:
+                pref.requires_confirmation = requires_confirmation
+                pref.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+        return True
+    except Exception as exc:
+        logger.warning(
+            "set_user_preference failed for %s/%s: %s",
+            user_id[:8], tool_name, exc,
+        )
+        return False
+
+
 async def user_requires_hitl(user_id: str, tool_name: str) -> bool:
     """Return True if HITL approval is required for ``user_id`` on ``tool_name``.
 
