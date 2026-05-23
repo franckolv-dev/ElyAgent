@@ -53,6 +53,14 @@ async def submit_feedback(
     if payload.rating == 0:
         raise HTTPException(status_code=400, detail="rating must be 1 or -1")
 
+    # Sprint 3.7 Jalon 3 — capture the active system prompt version so the
+    # rating can be aggregated per prompt variant when A/B testing lands.
+    try:
+        from app.services.learning import current_system_prompt_version
+        prompt_version = current_system_prompt_version()
+    except Exception:
+        prompt_version = None
+
     async with async_session() as db:
         fb = Feedback(
             user_id=str(current_user.id),
@@ -61,6 +69,7 @@ async def submit_feedback(
             rating=payload.rating,
             model_used=payload.model_used,
             routing_score=payload.routing_score,
+            prompt_version=prompt_version,
         )
         db.add(fb)
         await db.commit()

@@ -64,4 +64,8 @@ class ErrorLog(Base):
     recovered: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     # Filled when the cron archives recovered rows
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Sprint 3.7 Jalon 3 — sha256[:8] of the system prompt active when the
+    # error fired. Lets the dashboard correlate error rates with specific
+    # prompt versions.
+    prompt_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)

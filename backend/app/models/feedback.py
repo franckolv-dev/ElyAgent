@@ -43,4 +43,8 @@ class Feedback(Base):
     model_used: Mapped[str] = mapped_column(String(128))
     # Raw IntentRouter score (0-100) at the time of routing
     routing_score: Mapped[int] = mapped_column(Integer, default=50)
+    # Sprint 3.7 Jalon 3 — sha256[:8] of the system prompt active when the
+    # feedback was submitted. Lets us correlate user satisfaction with the
+    # specific prompt variant (A/B testing arrives Jalon 5).
+    prompt_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

@@ -253,10 +253,26 @@ async def add_step(
     tokens_used: int = 0,
     duration_ms: int = 0,
     model_used: Optional[str] = None,
+    prompt_version: Optional[str] = None,
 ) -> MissionStep:
-    """Append a new step to the audit trail. Auto-numbers `iteration`."""
+    """Append a new step to the audit trail. Auto-numbers `iteration`.
+
+    Sprint 3.7 Jalon 3 — `prompt_version` is the sha256[:8] of the
+    system prompt active when this step ran. If omitted, fall back to
+    hashing the current ``_SYSTEM_PROMPT_BASE``. Future A/B testing
+    (Jalon 5) will pass an explicit value computed from the chosen
+    variant.
+    """
     if phase not in STEP_PHASES:
         raise ValueError(f"invalid phase: {phase!r} (allowed: {STEP_PHASES})")
+
+    if prompt_version is None:
+        try:
+            from app.services.learning import current_system_prompt_version
+            prompt_version = current_system_prompt_version()
+        except Exception:
+            # Best-effort : never block step writing on a missing hash.
+            prompt_version = None
 
     async with async_session() as db:
         # Compute next iteration number (per mission)
@@ -278,6 +294,7 @@ async def add_step(
             tokens_used=tokens_used,
             duration_ms=duration_ms,
             model_used=model_used,
+            prompt_version=prompt_version,
         )
         db.add(step)
 

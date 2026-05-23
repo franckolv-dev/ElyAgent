@@ -104,6 +104,16 @@ async def init_db():
             # for short→long-term promotion. Inspired by OpenClaw memory-core.
             ("user_memory_logs", "recall_count", "INTEGER NOT NULL DEFAULT 0"),
             ("user_memory_logs", "last_recalled_at", "DATETIME"),
+            # Sprint 3.7 Jalon 1 (auto-improvement) — prompt_version hash so
+            # every learning signal can be correlated with the exact prompt
+            # text active at the time. sha256(prompt)[:8], NULL for historical
+            # rows written before this column existed.
+            ("feedback", "prompt_version", "VARCHAR(16)"),
+            ("mission_steps", "prompt_version", "VARCHAR(16)"),
+            ("error_log", "prompt_version", "VARCHAR(16)"),
+            # Sprint 3.7 Jalon 4 — LLM-as-judge bookkeeping : timestamp when
+            # the post-mortem critic last ran for this mission. NULL = not yet.
+            ("missions", "critic_run_at", "DATETIME"),
         ]
         for _table, _col, _ddl in _safe_columns:
             try:
