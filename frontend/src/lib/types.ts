@@ -79,6 +79,12 @@ export interface WSMessage {
     | "start" | "message" | "error" | "stream" | "token"
     | "hitl_pending" | "hitl_resolved"
     | "browser_frame" | "tool_start" | "tool_end" | "stopped"
+    // Hotfix 2026-05-23 — explicit "turn-end" signal emitted by the
+    // backend after every "message" and "stopped" event, plus on
+    // receipt of a "stop" while no agent is running. Guarantees the
+    // frontend can flip `isLoading=false` independently of React's
+    // state-update batching timing.
+    | "done"
     // Hermes Chantier 4 — fired when fallback_manager swaps providers
     // mid-conversation (rate limit, h1_hallucination, billing, …) so
     // the user sees a discreet toast instead of being confused by a

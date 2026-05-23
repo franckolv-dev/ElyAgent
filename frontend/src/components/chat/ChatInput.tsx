@@ -360,13 +360,21 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      // Hotfix 2026-05-23 : if `isLoading` is still true, do NOT send a
+      // stop signal on Enter. Previous behaviour converted the keystroke
+      // into `onStop()`, but React's state batching meant `isLoading` was
+      // often stale (true) for a few ms after the agent's "message" event,
+      // so the user pressing Enter to reply to the agent's question would
+      // unintentionally stop the (already-finished) turn instead. The
+      // backend would then silently ignore the stop (no agent running),
+      // leaving the input visually locked. Now Enter during loading is a
+      // no-op — the user must click the red square explicitly to abort.
       if (isLoading) {
-        onStop?.();
-      } else {
-        handleSend();
+        return;
       }
+      handleSend();
     }
-  }, [handleSend, isLoading, onStop]);
+  }, [handleSend, isLoading]);
 
   const handleInput = useCallback(() => {
     const el = textareaRef.current;

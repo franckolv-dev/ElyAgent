@@ -159,8 +159,15 @@ async def websocket_chat(websocket: WebSocket):
                 }))
                 continue
 
-            # Stop signal with no agent running — just acknowledge and continue
+            # Stop signal with no agent running. The user clicked stop after
+            # the agent had already finished — a common race when React batches
+            # the `isLoading=false` flip after the final "message" event and
+            # the next keystroke catches the stale truthy value. Without an
+            # explicit acknowledgement, the frontend stays stuck thinking the
+            # agent is still running (red square locked). Send a `"done"`
+            # event so the frontend can force-reset its loading state.
             if msg.get("type") == "stop":
+                await websocket.send_text(_dumps({"type": "done"}))
                 continue
 
             user_content = msg.get("content", "")
@@ -539,6 +546,9 @@ async def websocket_chat(websocket: WebSocket):
             # If interrupted with no content, notify client and skip saving
             if was_stopped:
                 await websocket.send_text(_dumps({"type": "stopped"}))
+                # Always emit `"done"` to flip isLoading=false on the frontend
+                # (paired with "stopped" so the UI handles either reliably).
+                await websocket.send_text(_dumps({"type": "done"}))
                 continue
 
             # Restore real values in the response
@@ -681,6 +691,12 @@ async def websocket_chat(websocket: WebSocket):
             if _extracted_attachments:
                 payload["attachments"] = _extracted_attachments
             await websocket.send_text(_dumps(payload))
+            # Explicit turn-end signal so the frontend can flip `isLoading=false`
+            # synchronously (the React state batched on the `"message"` event
+            # could otherwise still be truthy when the next keystroke fires —
+            # causing Enter to be interpreted as "stop", not "send"). Pairs
+            # with the frontend handler in chat/page.tsx.
+            await websocket.send_text(_dumps({"type": "done"}))
 
             # ── Log usage for analytics ─────────────────────────────────────────
             if model_used_out:
