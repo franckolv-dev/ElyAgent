@@ -264,6 +264,17 @@ function ChatPageInner() {
         setActiveTool(null);
         setIsLoading(false);
         disarmWatchdog();
+      } else if (msg.type === "done") {
+        // Explicit turn-end event from the backend. Pairs with the "message"
+        // / "stopped" events to guarantee `isLoading` flips to false even
+        // when React's batched state update was delayed. Without this,
+        // clicking Enter just after the agent finished could be interpreted
+        // as `onStop()` (handleKeyDown sees stale isLoading=true), sending
+        // a stop signal that the backend then silently ignored — leaving
+        // the input visually locked until a page refresh.
+        setActiveTool(null);
+        setIsLoading(false);
+        disarmWatchdog();
       } else if (msg.type === "hitl_pending") {
         // HITL blocks the backend up to 120s waiting for approval.
         // Free the input immediately so the user can type follow-ups,
