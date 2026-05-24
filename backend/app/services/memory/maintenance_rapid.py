@@ -203,27 +203,63 @@ class MaintenanceAgentRapid:
             return {"status": "failed", "reason": "llm_failed"}
 
         if not facts:
+            # Even with no extractable facts, the user_state vector may have
+            # drifted (mood / current_focus shift on a single message). Run
+            # the refresh anyway before bailing.
+            state_status = await self._refresh_user_state(user_id, conversation_id)
             duration_ms = int((time.monotonic() - started) * 1000)
             return {
                 "status": "ok",
                 "preferences": 0,
                 "facts": 0,
+                "user_state": state_status,
                 "duration_ms": duration_ms,
             }
 
         pref_count, fact_count = await self._store_facts(facts, user_id, conversation_id)
 
+        # Sprint 3 Jalon 2 — refresh the User State Vector after fact store.
+        state_status = await self._refresh_user_state(user_id, conversation_id)
+
         duration_ms = int((time.monotonic() - started) * 1000)
         logger.info(
-            "maintenance_rapid : user=%s conv=%s facts=%d preferences=%d duration=%dms",
-            user_id, conversation_id, fact_count, pref_count, duration_ms,
+            "maintenance_rapid : user=%s conv=%s facts=%d preferences=%d user_state=%s duration=%dms",
+            user_id, conversation_id, fact_count, pref_count, state_status, duration_ms,
         )
         return {
             "status": "ok",
             "preferences": pref_count,
             "facts": fact_count,
+            "user_state": state_status,
             "duration_ms": duration_ms,
         }
+
+    async def _refresh_user_state(self, user_id: str, conversation_id: str) -> str:
+        """Best-effort refresh of the per-user state vector + frozen-memory
+        invalidation. Returns one of ``"refreshed" | "skipped" | "failed"``
+        for the upstream log line. Never raises — the maintenance pipeline
+        must stay fire-and-forget."""
+        try:
+            from app.services.frozen_memory import invalidate as _fm_invalidate
+            from app.services.learning.user_state import (
+                compute_user_state, is_disabled as _us_disabled,
+            )
+            if _us_disabled():
+                return "skipped"
+            await compute_user_state(
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+            # Drop the cached snapshot so the next turn / next conversation
+            # picks up the refreshed state. No-op if no entry was cached.
+            _fm_invalidate(conversation_id)
+            return "refreshed"
+        except Exception as exc:
+            logger.debug(
+                "maintenance_rapid: user_state refresh failed conv=%s : %s",
+                conversation_id, exc,
+            )
+            return "failed"
 
     # ── Helpers (kept small + monkeypatchable for tests) ───────────────
 

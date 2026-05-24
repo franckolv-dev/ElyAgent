@@ -32,6 +32,13 @@ from app.services.learning.signals import (
     record_provider_switch,
     record_tool_error,
 )
+from app.services.learning.user_state import (
+    DEFAULT_STATE,
+    compute_user_state,
+    format_user_state_block,
+    get_user_state,
+    set_user_state,
+)
 
 __all__ = [
     "prompt_hash",
@@ -47,4 +54,9 @@ __all__ = [
     "register_variant",
     "ab_score",
     "score_variants",
+    "DEFAULT_STATE",
+    "get_user_state",
+    "set_user_state",
+    "compute_user_state",
+    "format_user_state_block",
 ]

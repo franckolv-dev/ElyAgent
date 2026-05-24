@@ -406,6 +406,24 @@ export const api = {
     }
     return res.text();
   },
+
+  // ── User State Vector (Sprint 3 Jalon 3) ────────────────────────────────
+  /** Read the current user state. Always returns the full shape with
+   *  defaults filled in. */
+  getUserState: () =>
+    fetchAPI("/api/me/state?format=json") as Promise<UserStateResponse>,
+
+  /** Trigger a synchronous MAINTENANCE-LLM refresh on the user's most
+   *  recent conversation. The backend invalidates the frozen-memory
+   *  snapshot so the next agent turn sees the new state. */
+  recomputeUserState: () =>
+    fetchAPI("/api/me/state/recompute", { method: "POST" }) as Promise<
+      UserStateResponse & {
+        refreshed: boolean;
+        reason?: string;
+        source_conversation_id?: string;
+      }
+    >,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -468,4 +486,21 @@ export interface LearningReport {
   window: string;
   since: string;
   generated_at: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// User State Vector (Sprint 3 Jalon 3)
+// ─────────────────────────────────────────────────────────────────────────
+
+export type EnergyBudget = "high" | "normal" | "low";
+
+export interface UserStateResponse {
+  mood: string;
+  current_focus: string;
+  recent_topics: string[];
+  open_loops: string[];
+  energy_budget: EnergyBudget;
+  updated_at: string | null;
+  prompt_version: string | null;
+  disabled: boolean;
 }
