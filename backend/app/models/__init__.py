@@ -33,6 +33,7 @@ from app.models.hitl_refusal import HitlRefusal
 from app.models.hallucination_block import HallucinationBlock
 from app.models.provider_switch import ProviderSwitch
 from app.models.mission_critique import MissionCritique
+from app.models.user_state import UserState
 # Models that were registered with Base.metadata only by side-effect of being
 # imported from other parts of the codebase. Listing them here makes the
 # dependency explicit so ``Base.metadata.create_all`` sees their tables on a
@@ -59,6 +60,7 @@ __all__ = [
     "Licence", "ExtensionToken",
     "Procedure", "ErrorLog",
     "HitlRefusal", "HallucinationBlock", "ProviderSwitch", "MissionCritique",
+    "UserState",
     # Newly explicit (side-effect imports promoted to first-class)
     "ArenaMatch", "ArenaElo", "CommunitySkill", "Feedback", "LLMInstance",
     "MCPServer", "Note", "ScheduledTask", "SkillPreference", "SystemConfig",
