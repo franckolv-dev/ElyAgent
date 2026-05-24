@@ -91,6 +91,7 @@ from app.routers import arena as arena_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
 from app.routers.browser_extension import ws_router as bext_ws_router, api_router as bext_api_router
 from app.routers import extension_tokens as extension_tokens_router
+from app.routers import learning_report as learning_report_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -448,6 +449,8 @@ app.include_router(analytics_router.router, prefix="/analytics", tags=["analytic
 app.include_router(audit_router.router, prefix="/api", tags=["audit"])
 app.include_router(device_token_router)
 app.include_router(feedback_router.router)
+# Sprint 3.7 V1.5 Jalon 6 — `/api/me/learning-report` (markdown + JSON)
+app.include_router(learning_report_router.router, tags=["learning"])
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)
