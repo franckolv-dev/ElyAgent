@@ -765,13 +765,27 @@ def create_agent_node():
                         "memories": memories_,
                         "constraints": constraints,
                     }
-                return _format_memory_block(
+                _mem_block = _format_memory_block(
                     user_profile or "",
                     preferences or [],
                     constraints or [],
                     memories_ or [],
                     past_interactions or [],
                 )
+                # Sprint 3 Jalon 2 — prepend the User State Vector block.
+                # Lives inside the frozen_memory snapshot so it gets the same
+                # cache treatment as the rest of the per-user memory. Empty
+                # state collapses to empty string (handled in formatter), so
+                # we don't pollute the prompt for first-time users.
+                try:
+                    from app.services.learning.user_state import (
+                        format_user_state_block, get_user_state,
+                    )
+                    _us = await get_user_state(user_id)
+                    _us_block = format_user_state_block(_us)
+                except Exception:
+                    _us_block = ""
+                return (_us_block + _mem_block) if _us_block else _mem_block
 
             # Stash for compact-path reuse (set by _build_memory_snapshot
             # if compact mode is active).

@@ -203,11 +203,23 @@ async def test_consolidate_returns_zero_when_llm_extracts_nothing(monkeypatch) -
     async def fake_extract(self, _):
         return []
 
+    # Stub the Sprint 3 Jalon 2 hook so we don't actually hit the LLM
+    # for the user_state refresh — that's not what this test is checking.
+    async def fake_refresh(self, *_a, **_kw):
+        return "skipped"
+
     monkeypatch.setattr(maintenance_rapid.MaintenanceAgentRapid, "_load_recent_messages", fake_load)
     monkeypatch.setattr(maintenance_rapid.MaintenanceAgentRapid, "_extract_facts", fake_extract)
+    monkeypatch.setattr(maintenance_rapid.MaintenanceAgentRapid, "_refresh_user_state", fake_refresh)
 
     result = await agent.consolidate("c1", "u1")
-    assert result == {"status": "ok", "preferences": 0, "facts": 0, "duration_ms": result["duration_ms"]}
+    # Use a subset assertion so future return-dict extensions don't break
+    # this test the way Sprint 3 Jalon 2's new `user_state` key did.
+    assert result["status"] == "ok"
+    assert result["preferences"] == 0
+    assert result["facts"] == 0
+    assert "duration_ms" in result
+    assert result["user_state"] == "skipped"
 
 
 # ── _extract_facts JSON robustness ────────────────────────────────────

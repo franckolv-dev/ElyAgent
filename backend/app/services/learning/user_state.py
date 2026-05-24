@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -56,6 +57,12 @@ from app.models.user_state import UserState
 from app.services.learning.prompt_version import current_system_prompt_version
 
 logger = logging.getLogger(__name__)
+
+
+def is_disabled() -> bool:
+    """Operator kill-switch read at call time (not import time) so a
+    runtime override (tests, hotfix) takes effect immediately."""
+    return os.getenv("USER_STATE_DISABLED", "").lower() in ("1", "true", "yes")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -275,6 +282,8 @@ async def compute_user_state(
 
     if not user_id:
         return current
+    if is_disabled():
+        return current
 
     # Resolve message slice
     try:
@@ -347,7 +356,13 @@ def format_user_state_block(state: dict[str, Any]) -> str:
 
     Empty / default state collapses to a tiny block so it doesn't bloat
     the prompt early on, when ELY hasn't learned anything yet.
+
+    Honours the ``USER_STATE_DISABLED`` kill-switch : when set, no block
+    is emitted regardless of the state's content. Used by ops to fully
+    cut the feature without redeploying.
     """
+    if is_disabled():
+        return ""
     s = _merge_with_defaults(state or {})
     has_signal = bool(
         s["current_focus"]
