@@ -33,6 +33,24 @@ from app.models.hitl_refusal import HitlRefusal
 from app.models.hallucination_block import HallucinationBlock
 from app.models.provider_switch import ProviderSwitch
 from app.models.mission_critique import MissionCritique
+# Models that were registered with Base.metadata only by side-effect of being
+# imported from other parts of the codebase. Listing them here makes the
+# dependency explicit so ``Base.metadata.create_all`` sees their tables on a
+# fresh DB (notably in CI's in-memory sqlite, where nothing else imports
+# them before tests run).
+from app.models.arena import ArenaMatch, ArenaElo
+from app.models.community_skill import CommunitySkill
+from app.models.feedback import Feedback
+from app.models.llm_instance import LLMInstance
+from app.models.mcp_server import MCPServer
+from app.models.note import Note
+from app.models.scheduled_task import ScheduledTask
+from app.models.skill_preference import SkillPreference
+from app.models.system_config import SystemConfig
+from app.models.usage_log import UsageLog
+from app.models.user_memory import UserMemoryLog, UserProfile
+from app.models.vault import VaultConfig, VaultEntry
+from app.models.watch_task import WatchTask
 
 __all__ = [
     "User", "Conversation", "Message", "AuditLog", "RevokedToken",
@@ -41,4 +59,9 @@ __all__ = [
     "Licence", "ExtensionToken",
     "Procedure", "ErrorLog",
     "HitlRefusal", "HallucinationBlock", "ProviderSwitch", "MissionCritique",
+    # Newly explicit (side-effect imports promoted to first-class)
+    "ArenaMatch", "ArenaElo", "CommunitySkill", "Feedback", "LLMInstance",
+    "MCPServer", "Note", "ScheduledTask", "SkillPreference", "SystemConfig",
+    "UsageLog", "UserMemoryLog", "UserProfile", "VaultConfig", "VaultEntry",
+    "WatchTask",
 ]
