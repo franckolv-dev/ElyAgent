@@ -387,4 +387,85 @@ export const api = {
 
   extensionTokenRevoke: (id: string) =>
     fetchAPI(`/api/extension/tokens/${id}`, { method: "DELETE" }),
+
+  // ── Learning report (Sprint 3.7 V1.5 §7) ────────────────────────────────
+  /** Fetch the structured learning report — what ELY has learned about the
+   *  current user + how it has performed over `window` (7d, 30d, 90d, 24h). */
+  getLearningReportJson: (window: string) =>
+    fetchAPI(`/api/me/learning-report?window=${encodeURIComponent(window)}&format=json`) as Promise<LearningReport>,
+
+  /** Same endpoint, markdown variant — useful for a "raw" view + download. */
+  getLearningReportMarkdown: async (window: string): Promise<string> => {
+    const res = await authFetch(
+      `${API_URL}/api/me/learning-report?window=${encodeURIComponent(window)}&format=markdown`,
+      { headers: { Accept: "text/markdown" } },
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `API error: ${res.status}`);
+    }
+    return res.text();
+  },
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// Learning report — typed payload (Sprint 3.7 V1.5)
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface LearningPreference {
+  key: string;
+  value: string;
+  confidence: number;
+  source_count: number;
+  last_seen: string | null;
+}
+
+export interface LearningHitlRefusal {
+  tool_name: string;
+  action_description: string;
+  decision: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface LearningHallucination {
+  model_used: string;
+  tier_llm: string | null;
+  reason: string | null;
+  matched_patterns: string[];
+  original_response: string;
+  created_at: string;
+}
+
+export interface LearningMissionCritique {
+  mission_id: string;
+  goal: string;
+  status: string;
+  quality_score: number | null;
+  honest_completion: boolean;
+  wasted_effort: boolean;
+  user_should_have_been_warned: boolean;
+  main_issue: string | null;
+  critic_model: string | null;
+  created_at: string;
+}
+
+export interface LearningTierRow {
+  label: string;
+  messages: number;
+  hitl_refusals_total: number;
+  hallucinations_total: number;
+  feedback_count: number;
+  feedback_mean: number;
+}
+
+export interface LearningReport {
+  preferences: LearningPreference[];
+  hitl_refusals: LearningHitlRefusal[];
+  hallucinations: LearningHallucination[];
+  mission_critiques: LearningMissionCritique[];
+  tier_performance: LearningTierRow[];
+  window: string;
+  since: string;
+  generated_at: string;
+}

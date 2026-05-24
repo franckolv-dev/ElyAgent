@@ -15,7 +15,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
-  Download, X, ChevronDown, Swords, BookOpen, Target,
+  Download, X, ChevronDown, Swords, BookOpen, Target, Brain,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -35,6 +35,7 @@ const BASE_NAV = [
   { href: "/knowledge",  labelKey: "navKnowledge",  icon: BookOpen       },
   { href: "/arena",      labelKey: "navArena",      icon: Swords         },
   { href: "/dashboard",  labelKey: "navDashboard",  icon: LayoutDashboard },
+  { href: "/me/learning",labelKey: "navLearning",   icon: Brain          },
   { href: "/settings",   labelKey: "navSettings",   icon: Settings       },
 ];
 
