@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+import pytest_asyncio
 
 from app.services.learning import ab_testing as ab
 from app.services.learning.ab_testing import (
@@ -29,6 +30,20 @@ def _isolate_variants(monkeypatch):
     monkeypatch.setattr(ab, "_VARIANTS", None)
     yield
     monkeypatch.setattr(ab, "_VARIANTS", None)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _ensure_schema():
+    """Ensure all tables exist before any test queries them.
+
+    Locally the dev DB persists between runs so this is a no-op, but CI
+    uses ``sqlite+aiosqlite:///:memory:`` (fresh per session) where the
+    ``mission_steps`` table only exists after ``init_db()``. Without
+    this, the integration tests that call ``score_variants`` blow up
+    with ``no such table: mission_steps``.
+    """
+    from app.database import init_db
+    await init_db()
 
 
 # ── select_variant ────────────────────────────────────────────────────
