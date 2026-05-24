@@ -128,3 +128,6 @@ TO_DELETE/
 # Docker volume mount doesn't fail on a fresh clone before binaries are built.
 desktop/dist/*
 !desktop/dist/.gitkeep
+
+# Canonical bench artefacts — produced at run-time, not source-of-truth
+bench/results/
