@@ -281,66 +281,33 @@ def create_agent_node():
             # subsequent turns, the snapshot is returned from cache in O(1)
             # without re-querying Qdrant. New facts archived mid-session
             # appear in the snapshot of the NEXT conversation, not this one.
-            from app.services.memory_service import get_user_context
+            #
+            # Refactor 2026-05-25 Phase 4.1 — the business logic lives in
+            # app/agent/builders/memory_snapshot.py as a pure async fn that
+            # returns (snapshot_text, compact_pieces). The thin wrapper
+            # below only exists to satisfy frozen_memory's `() -> str`
+            # builder signature and to propagate compact_pieces via the
+            # only remaining `nonlocal` in this path.
+            from app.agent.builders.memory_snapshot import (
+                build_memory_snapshot,
+                refetch_compact_pieces,
+            )
+
+            _compact_pieces: dict | None = None
 
             async def _build_memory_snapshot() -> str:
-                # PERF: skip get_relevant_interactions on the very first turn —
-                # there's nothing to find yet and Qdrant + FTS + embeddings
-                # cost ~100-200ms. Only fetch when we have prior history.
-                _history_msgs_count = sum(
-                    1 for m in messages if getattr(m, "type", None) in ("human", "ai")
+                nonlocal _compact_pieces
+                snapshot, pieces = await build_memory_snapshot(
+                    messages=messages,
+                    user_id=user_id,
+                    user_query=user_query,
+                    memory=memory,
+                    use_compact=_use_compact,
                 )
-                _needs_interactions = _history_msgs_count > 1
-                _past_interactions_task = (
-                    memory.get_relevant_interactions(user_query, user_id, limit=3)
-                    if _needs_interactions
-                    else _no_interactions()
-                )
-                constraints, memories_, past_interactions, preferences, user_profile = (
-                    await asyncio.gather(
-                        memory.get_relevant_constraints(user_query, user_id),
-                        memory.get_relevant_memories(user_query, user_id),
-                        _past_interactions_task,
-                        memory.get_user_preferences(user_id),
-                        get_user_context(user_id),
-                    )
-                )
-                if _use_compact:
-                    # Compact path needs structured pieces, not a single block.
-                    # We stash them in a closure variable so the compact builder
-                    # downstream can reuse them. Yes, this is a hack inside an
-                    # async closure; the alternative is to query memory twice.
-                    nonlocal _compact_pieces
-                    _compact_pieces = {
-                        "user_profile": user_profile or "",
-                        "memories": memories_,
-                        "constraints": constraints,
-                    }
-                _mem_block = _format_memory_block(
-                    user_profile or "",
-                    preferences or [],
-                    constraints or [],
-                    memories_ or [],
-                    past_interactions or [],
-                )
-                # Sprint 3 Jalon 2 — prepend the User State Vector block.
-                # Lives inside the frozen_memory snapshot so it gets the same
-                # cache treatment as the rest of the per-user memory. Empty
-                # state collapses to empty string (handled in formatter), so
-                # we don't pollute the prompt for first-time users.
-                try:
-                    from app.services.learning.user_state import (
-                        format_user_state_block, get_user_state,
-                    )
-                    _us = await get_user_state(user_id)
-                    _us_block = format_user_state_block(_us)
-                except Exception:
-                    _us_block = ""
-                return (_us_block + _mem_block) if _us_block else _mem_block
+                if pieces is not None:
+                    _compact_pieces = pieces
+                return snapshot
 
-            # Stash for compact-path reuse (set by _build_memory_snapshot
-            # if compact mode is active).
-            _compact_pieces: dict | None = None
             memory_snapshot = await _frozen_mem.get_or_build(
                 _conv_id_fb, user_id, _build_memory_snapshot,
             )
@@ -350,21 +317,14 @@ def create_agent_node():
                 # snapshot pieces we just gathered.
                 if _compact_pieces is None:
                     # Cache hit on frozen_memory means _build_memory_snapshot
-                    # didn't run this turn, so _compact_pieces is empty. Re-fetch
-                    # the minimal trio synchronously (this is rare — only on
-                    # cache hit + compact mode together).
-                    constraints_c, memories_c, _, _, user_profile_c = await asyncio.gather(
-                        memory.get_relevant_constraints(user_query, user_id),
-                        memory.get_relevant_memories(user_query, user_id),
-                        _no_interactions(),
-                        memory.get_user_preferences(user_id),
-                        get_user_context(user_id),
+                    # didn't run this turn, so _compact_pieces is empty.
+                    # Re-fetch the minimal trio synchronously (rare path —
+                    # only on cache hit + compact mode together).
+                    _compact_pieces = await refetch_compact_pieces(
+                        user_id=user_id,
+                        user_query=user_query,
+                        memory=memory,
                     )
-                    _compact_pieces = {
-                        "user_profile": user_profile_c or "",
-                        "memories": memories_c or [],
-                        "constraints": constraints_c or [],
-                    }
                 system = build_compact_system_prompt(
                     agent_name="general",
                     date_str=date_str,
