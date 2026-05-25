@@ -20,6 +20,8 @@ from app.services.fallback_manager import (
     get_or_create,
     get_state,
     record_response,
+    reset_to_primary,
+    should_retry_primary,
     state_count,
     try_activate,
     _reset_for_tests,
@@ -274,3 +276,148 @@ def test_discard_idempotent():
     """Discarding a non-existent conv must not raise."""
     discard("never-existed")  # should be a no-op
     assert state_count() == 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Retry-primary hotfix (audit Gemini §1.3, 2026-05-25)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_should_retry_primary_false_when_no_state():
+    """No conv → no retry decision possible."""
+    assert should_retry_primary("ghost-conv") is False
+
+
+def test_should_retry_primary_false_when_primary_active():
+    """Fresh conv with primary still active → nothing to retry."""
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    assert should_retry_primary("conv-1") is False
+
+
+def test_try_activate_sets_fallback_activated_at(monkeypatch):
+    """When the chain advances, `fallback_activated_at` must be stamped."""
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    assert state.fallback_activated_at is not None
+    assert state.is_active_fallback is True
+
+
+def test_should_retry_primary_false_before_cooldown(monkeypatch):
+    """Cool-down not yet elapsed → don't retry."""
+    monkeypatch.setenv("FALLBACK_RETRY_PRIMARY_MINUTES", "10")
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    # 5 minutes after activation : not enough
+    fake_now = state.fallback_activated_at + 5 * 60
+    assert should_retry_primary("conv-1", now=fake_now) is False
+
+
+def test_should_retry_primary_true_after_cooldown(monkeypatch):
+    """Once cool-down elapsed, retry is signaled."""
+    monkeypatch.setenv("FALLBACK_RETRY_PRIMARY_MINUTES", "10")
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    fake_now = state.fallback_activated_at + 11 * 60
+    assert should_retry_primary("conv-1", now=fake_now) is True
+
+
+def test_should_retry_primary_disabled_by_env(monkeypatch):
+    """FALLBACK_RETRY_PRIMARY_MINUTES=0 → legacy sticky-forever behaviour."""
+    monkeypatch.setenv("FALLBACK_RETRY_PRIMARY_MINUTES", "0")
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    # Even 1 hour later, no retry
+    fake_now = state.fallback_activated_at + 60 * 60
+    assert should_retry_primary("conv-1", now=fake_now) is False
+
+
+def test_should_retry_primary_honors_default_when_env_unset(monkeypatch):
+    """Unset env → default 10 minutes."""
+    monkeypatch.delenv("FALLBACK_RETRY_PRIMARY_MINUTES", raising=False)
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    fake_now = state.fallback_activated_at + 11 * 60
+    assert should_retry_primary("conv-1", now=fake_now) is True
+
+
+def test_should_retry_primary_garbage_env_falls_back_to_default(monkeypatch):
+    """Non-numeric env value → fall back to 10-minute default, no crash."""
+    monkeypatch.setenv("FALLBACK_RETRY_PRIMARY_MINUTES", "totally-not-a-number")
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    fake_now = state.fallback_activated_at + 11 * 60
+    assert should_retry_primary("conv-1", now=fake_now) is True
+
+
+def test_reset_to_primary_resets_index_and_clears_activated_at():
+    get_or_create("conv-1", "medium", ["primary", "fb1", "fb2"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    assert state.current_index == 1
+    assert state.fallback_activated_at is not None
+
+    ok = reset_to_primary("conv-1")
+    assert ok is True
+    state = get_state("conv-1")
+    assert state.current_index == 0
+    assert state.current_provider == "primary"
+    assert state.fallback_activated_at is None
+    assert state.is_active_fallback is False
+
+
+def test_reset_to_primary_emits_ws_event():
+    """A reset must emit a `provider.reset_to_primary` event the UI can react to."""
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    drain_events("conv-1")  # discard the switch event from try_activate
+    reset_to_primary("conv-1", reason="manual_test")
+    events = drain_events("conv-1")
+    assert len(events) == 1
+    assert events[0]["type"] == "provider.reset_to_primary"
+    assert events[0]["from"] == "fb1"
+    assert events[0]["to"] == "primary"
+    assert events[0]["reason"] == "manual_test"
+
+
+def test_reset_to_primary_noop_on_primary():
+    """Calling reset when already on the primary must be a no-op (False)."""
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    ok = reset_to_primary("conv-1")
+    assert ok is False
+
+
+def test_reset_to_primary_noop_on_missing_conv():
+    """Calling reset on an unknown conv must not raise."""
+    assert reset_to_primary("never-existed") is False
+
+
+def test_retry_loop_after_persistent_primary_failure(monkeypatch):
+    """End-to-end : a fallback is active, cool-down elapses, retry resets to
+    primary, primary fails again → try_activate must STAMP a fresh
+    `fallback_activated_at` so the next retry waits another full cool-down.
+    Prevents busy-loop when the primary stays down."""
+    monkeypatch.setenv("FALLBACK_RETRY_PRIMARY_MINUTES", "10")
+    get_or_create("conv-1", "medium", ["primary", "fb1"])
+    try_activate("conv-1", FailoverReason.TIMEOUT)
+    state = get_state("conv-1")
+    t0 = state.fallback_activated_at
+
+    # Cool-down elapsed → reset to primary
+    reset_to_primary("conv-1", reason="cooldown_elapsed")
+    state = get_state("conv-1")
+    assert state.current_index == 0
+    assert state.fallback_activated_at is None
+
+    # Primary fails AGAIN → try_activate re-stamps activated_at
+    try_activate("conv-1", FailoverReason.RATE_LIMIT)
+    state = get_state("conv-1")
+    assert state.current_index == 1
+    assert state.fallback_activated_at is not None
+    # The new stamp is more recent than t0 (the original switch)
+    assert state.fallback_activated_at >= t0
