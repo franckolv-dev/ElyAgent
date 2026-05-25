@@ -259,19 +259,22 @@ _REPO = Path(__file__).resolve().parents[1]
 
 
 def test_nodes_py_wires_record_hitl_refusal() -> None:
-    src = (_REPO / "app" / "agent" / "nodes.py").read_text(encoding="utf-8")
+    # After the 2026-05-25 refactor (Phase 3), tool_node — and therefore
+    # the HITL signal recording — lives in app/agent/tool_node.py.
+    src = (_REPO / "app" / "agent" / "tool_node.py").read_text(encoding="utf-8")
     assert "record_hitl_refusal" in src, (
-        "nodes.py must call record_hitl_refusal in both the 'ban' and "
-        "'deny' branches of the HITL handler (~ line 1930-1943)."
+        "tool_node.py must call record_hitl_refusal in both the 'ban' and "
+        "'deny' branches of the HITL handler."
     )
     # Both branches present
     assert src.count("record_hitl_refusal") >= 2
 
 
 def test_nodes_py_wires_record_tool_error() -> None:
-    src = (_REPO / "app" / "agent" / "nodes.py").read_text(encoding="utf-8")
+    # Same relocation as test_nodes_py_wires_record_hitl_refusal above.
+    src = (_REPO / "app" / "agent" / "tool_node.py").read_text(encoding="utf-8")
     assert "record_tool_error" in src, (
-        "nodes.py must call record_tool_error inside the tool except block (~ line 1967)."
+        "tool_node.py must call record_tool_error inside the tool except block."
     )
 
 

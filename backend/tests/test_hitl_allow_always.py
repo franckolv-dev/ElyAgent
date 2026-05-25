@@ -154,21 +154,29 @@ async def test_locked_tools_ignore_skip_preference(_seeded_user_for_pref) -> Non
 
 
 def test_nodes_py_imports_user_requires_hitl_check() -> None:
-    """nodes.py must short-circuit HITL when the user has marked the
-    tool as always-allowed. Mirror of sub_agents/factory.py:806."""
-    src = (_REPO / "app" / "agent" / "nodes.py").read_text(encoding="utf-8")
+    """tool_node must short-circuit HITL when the user has marked the
+    tool as always-allowed. Mirror of sub_agents/factory.py:806.
+
+    After the 2026-05-25 refactor (Phase 3), the HITL handler lives in
+    app/agent/tool_node.py rather than nodes.py.
+    """
+    src = (_REPO / "app" / "agent" / "tool_node.py").read_text(encoding="utf-8")
     assert "user_requires_hitl" in src, (
-        "nodes.py must check user_requires_hitl before triggering the "
+        "tool_node.py must check user_requires_hitl before triggering the "
         "HITL prompt — otherwise the user's 'always allow' preference "
         "set via the new button has no effect in the main agent path."
     )
 
 
 def test_nodes_py_handles_allow_always_decision() -> None:
-    """When the HITL prompt returns `allow_always`, nodes.py must save
+    """When the HITL prompt returns `allow_always`, tool_node must save
     the preference (so the next call skips HITL) and fall through to
-    execute the tool this time."""
-    src = (_REPO / "app" / "agent" / "nodes.py").read_text(encoding="utf-8")
+    execute the tool this time.
+
+    After the 2026-05-25 refactor (Phase 3), the HITL handler lives in
+    app/agent/tool_node.py rather than nodes.py.
+    """
+    src = (_REPO / "app" / "agent" / "tool_node.py").read_text(encoding="utf-8")
     assert 'decision == "allow_always"' in src
     assert "set_user_preference" in src
     # Order : the allow_always branch comes BEFORE the catch-all "not allow"

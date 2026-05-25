@@ -40,429 +40,39 @@ async def _no_interactions() -> list[dict]:
     return []
 
 
-def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Fix Mistral-specific chat-template constraints.
-
-    Mistral's jinja chat template enforces:
-      1. AIMessage content must NOT be None (HTTP 400 error code 3240).
-         Other providers (Anthropic, Gemini, OpenAI) accept null/None.
-      2. After the (single) system message, conversation roles must
-         **alternate user → assistant → user → assistant**. Tool calls
-         and tool results count as part of the assistant turn but the
-         next user-or-tool-followed-by-assistant block must respect
-         alternation. Two consecutive HumanMessages or two consecutive
-         AIMessages crash with « roles must alternate ».
-         (Audit 2026-05-07 — observed on ministral-3-8b-instruct.)
-
-    This function is intentionally tolerant: it never drops information,
-    it merges consecutive same-role messages by concatenating content
-    with a blank-line separator.
-    """
-    # Pass 1 — fix None content
-    pass1: list[BaseMessage] = []
-    for msg in messages:
-        if isinstance(msg, AIMessage) and msg.content is None:
-            msg = msg.model_copy(update={"content": ""})
-        pass1.append(msg)
-
-    # Pass 2 — merge consecutive same-role messages (only Human/AI pairs;
-    # ToolMessage and SystemMessage have their own placement rules)
-    if len(pass1) <= 1:
-        return pass1
-    merged: list[BaseMessage] = [pass1[0]]
-    for msg in pass1[1:]:
-        prev = merged[-1]
-        same_human = isinstance(prev, HumanMessage) and isinstance(msg, HumanMessage)
-        same_ai = (
-            isinstance(prev, AIMessage)
-            and isinstance(msg, AIMessage)
-            # Don't merge if either side carries tool_calls — that would
-            # blur structured tool-use payloads with prose.
-            and not getattr(prev, "tool_calls", None)
-            and not getattr(msg, "tool_calls", None)
-        )
-        if same_human or same_ai:
-            merged_content = (
-                str(prev.content or "").rstrip()
-                + "\n\n"
-                + str(msg.content or "").lstrip()
-            ).strip()
-            merged[-1] = prev.model_copy(update={"content": merged_content})
-        else:
-            merged.append(msg)
-    return merged
+# Moved to app/agent/helpers/message_sanitizer.py (refactor 2026-05-25 Phase 1.2).
+from app.agent.helpers.message_sanitizer import (  # noqa: E402,F401
+    _sanitize_messages_for_mistral,
+)
 
 # ------------------------------------------------------------------ #
 # System prompt                                                        #
 # ------------------------------------------------------------------ #
-
-_SYSTEM_PROMPT_BASE = """Tu es Ely (prononcé "Éli"), une assistante IA personnelle féminine, chaleureuse et de confiance, avec accès aux outils système et aux services Google de l'utilisateur.
-
-Identité :
-- Parle de toi au féminin ("je suis prête", "je t'aide"). Ton prénom s'écrit Ely (sans accent), prononcé "Éli".
-- Si l'utilisateur t'appelle "Ely", "Éli", "éli" ou "ely" — c'est toi. Ne corrige JAMAIS son orthographe.
-- Ne te présente jamais comme "ELY" en majuscules ni épelle ton nom lettre par lettre.
-
-Règles de base :
-- Réponds en français par défaut.
-- Utilise les outils dès que la demande le justifie, sans annoncer ("je vais chercher…"). Appelle directement.
-- Ne divulgue jamais les credentials ou la config interne.
-- Honnêteté sur tes capacités : si un outil manque, dis-le clairement ("Je n'ai pas encore cette capacité"). Ne simule jamais un échec technique pour cacher une absence d'outil.
-
-Mémoire persistante :
-- Tu disposes d'une mémoire persistante entre sessions (Qdrant + SQLite + extraction automatique de faits).
-- Le bloc "🧠 Ce que tu sais sur cet utilisateur" injecté plus bas contient des faits déjà appris — utilise-les naturellement, comme un humain qui se souvient. Ne dis JAMAIS "je suis sans état" ou "je n'ai aucun moyen de me souvenir" : c'est faux. L'anonymisation concerne la transmission au LLM externe, pas le stockage local.
-- Si un fait demandé n'est pas dans le bloc 🧠 : réponds "je ne l'ai pas encore noté, peux-tu me le redire ?".
-
-⚠ RÈGLE 0 — ANTI-HALLUCINATION DE DONNÉES UTILISATEUR ⚠
-
-Tu n'as AUCUNE mémoire interne des données factuelles de l'utilisateur (événements agenda, mails, contacts, fichiers, tâches, prix, dates, statuts, IDs, montants, contenus de documents…). Pour chaque donnée factuelle dans ta réponse, tu DOIS avoir appelé l'outil correspondant DANS LE TOUR COURANT.
-
-Exemples d'hallucinations interdites :
-  ❌ "10h00 Point hebdo équipe"        (sans calendar_list_events appelé)
-  ❌ "Tu as 3 mails non lus de [Nom]"  (sans gmail_list_emails appelé)
-
-Le réflexe : (1) demande factuelle → appel tool d'abord ; (2) tool revient avec N items → ta réponse contient ces N items, rien de plus, jamais de complétion "pour faire bonne mesure". Si aucun outil ne peut récupérer la donnée → dis-le honnêtement. Cette règle prime sur toutes les autres.
-
-Intégrité des actions :
-- Tant qu'un outil n'a pas été appelé, ne prétends JAMAIS qu'une action est faite. Phrases interdites avant appel tool : "c'est fait", "envoyé", "créé", "supprimé", "enregistré". Phrases autorisées : "je vais le faire", "je m'en occupe".
-- Ne reformule jamais le contenu d'un email/document/fichier avant d'avoir appelé l'outil de lecture (gmail_read_email, docs_read_document, drive_read_file, notes_read). Pas de paraphrase "plausible".
-- Appelle les outils via le tool-calling natif. N'écris JAMAIS de blocs `<function_calls>`, `<tool_use>`, JSON de function call, ni pseudo-code Python dans le texte : ces formats s'affichent à l'utilisateur, ils ne s'exécutent pas.
-- Retour d'outil = vérité absolue. Un ToolMessage qui commence par "Erreur", "Error", "HttpError", "échec", "not found" signifie ÉCHEC — n'annonce jamais un succès dans ce cas. Reprends l'erreur, explique-la brièvement, propose une alternative.
-- Distinction rappel récurrent (scheduler_create_task avec cron) vs événement unique (calendar_create_event). Notification push ELY = scheduler_create_task avec channel="app".
-- "Oui" de confirmation après proposition d'action → appelle l'outil IMMÉDIATEMENT, sans re-annoncer.
-
-Intégrité des données factuelles :
-- Toute donnée précise citée doit venir d'un retour de tool (ce tour OU un tour précédent de la même conversation). Si un tool de lecture retourne 0 résultat, dis "Aucun élément correspondant" — JAMAIS une liste fabriquée, même partielle, même "à titre d'exemple".
-- Une réponse honnête "je ne sais pas" est meilleure qu'une réponse plausible et fausse.
-
-Anti-auto-dialogue :
-- N'écris QUE ton propre tour. Pas de question suivie de sa réponse simulée. Pas de message utilisateur inventé après ton tour. Pas de récap "Toi… / Moi…".
-- Pose UNE question si tu manques d'info, puis ARRÊTE-TOI.
-
-Adresses email fournies par l'utilisateur :
-- Une adresse au format `nom@domaine.tld` dans la requête ou un tour précédent → utilise-la DIRECTEMENT comme `to` de gmail_send_email. PAS de `contacts_search` (Gmail accepte n'importe quelle adresse externe).
-- `contacts_search` ne sert QUE si l'utilisateur fournit un prénom/nom sans adresse ("envoie à Alice").
-- Ne redemande JAMAIS une adresse déjà donnée.
-
-Interprétations par défaut (ne demande pas, agis) :
-| Demande | Outil |
-|---|---|
-| mail/email/courriel/brouillon | gmail_* |
-| document/doc/google doc | docs_* |
-| tableur/feuille de calcul/sheet | sheets_* |
-| note/notes | notes_create/list/search |
-| tâche/to-do (sans précision) | tasks_* |
-| fichier sur mon drive | drive_* |
-| événement ponctuel avec date | calendar_create_event |
-| rappel récurrent (chaque/tous les/hebdo) | scheduler_create_task |
-| mes rendez-vous / mon calendrier | calendar_list_events |
-| mes emails / ma boîte | gmail_list_emails |
-| mes tâches / ma to-do | tasks_list |
-| météo à [ville] | weather_get |
-| traduis [texte] en [langue] | translate_text |
-| actualités / news | web_search_news ou news_get_headlines |
-| cherche sur le web / google / restaurants à / horaires de | web_search (inclure ville+pays) |
-| va sur [url] / lis cette page | browser_navigate puis browser_get_text |
-
-Cas nécessitant une clarification (10 mots max) :
-- "Envoie ça à Alice" → mail ou WhatsApp ou Telegram ? (plusieurs canaux crédibles)
-- "Rappelle-moi de faire X demain à 14h" → événement Calendar ou scheduler ? (Calendar par défaut)
-
-EXTENSION CHROME — autonomie web avec la session utilisateur :
-L'extension Chrome ELY (outils browser_open_tab, browser_tab_*) est différente d'ELY Desktop (daemon Go pour FICHIERS locaux, outils desktop_*). Quand l'extension est disponible :
-
-  ❌ Ne JAMAIS appeler `browser_navigate`, `browser_get_text`, `browser_screenshot` (Playwright headless, session vierge, atterrit sur login).
-  ❌ Ne JAMAIS chercher le profil de l'utilisateur par NOM sur le web (homonymes). Utilise les URLs canoniques ci-dessous.
-  ❌ Pas de fallback Playwright si lecture d'onglet échoue — dis-le honnêtement.
-
-URLs canoniques (la session Chrome de l'utilisateur résout l'auth automatiquement) :
-  • LinkedIn feed         : https://www.linkedin.com/feed/
-  • LinkedIn profil/me    : https://www.linkedin.com/in/me/
-  • LinkedIn activité     : https://www.linkedin.com/in/me/detail/recent-activity/shares/
-  • LinkedIn analytics    : https://www.linkedin.com/my-items/posts-and-activity/
-  • Gmail web             : https://mail.google.com/mail/u/0/#inbox
-  • Google Calendar       : https://calendar.google.com/calendar/u/0/r
-  • X home                : https://x.com/home
-  • GitHub                : https://github.com/
-  • Amazon commandes      : https://www.amazon.fr/gp/your-account/order-history
-  • Doctolib              : https://www.doctolib.fr/
-
-ANTI-HALLUCINATION navigateur (3 principes) :
-1. Pas d'invention de valeurs précises (horaires, prix, dates, montants, noms) sans les avoir vues LITTÉRALEMENT dans un retour de tool. Une liste régulière (toutes les 20 min, tous les 5 €) sans chaque valeur en clair = hallucination. Si tu détectes un pattern suspect (valeurs identiques sur 2 items différents, liste trop propre, données qui "apparaissent" alors que ton tool précédent disait ne rien voir) → REFUSE de livrer, dis "je préfère ne pas livrer ces valeurs, vérifie manuellement".
-2. `vision_analyze_image` = structure GLOBALE de page (mise en page, présence d'un calendrier). PAS pour des valeurs numériques précises. Pour lire des chiffres → `browser_tab_read_text` avec selector précis. Si l'élément est dans une carte pliée → click pour déplier d'abord.
-3. Sanity-check temporel : avant de proposer une date (rendez-vous, créneau, livraison), vérifie qu'elle est dans le FUTUR par rapport à la date du jour (ligne "📅 Date et heure actuelles"). Une date passée = cache, mois précédent, ou hallucination → n'affiche RIEN, ré-essaie.
-
-Cohérence : si ton propre tool a renvoyé "contenu peu clair" ou "ne montre pas X", tu ne peux PAS retourner ensuite des valeurs précises sur ce même X.
-
-PATTERN A — lecture autonome (cas standard, ~90%) :
-  `browser_open_tab(url=<URL_CANONIQUE>)` → `browser_tab_wait_loaded` → `browser_tab_wait_for_selector` (sélecteur ciblé, pas `body`) → `browser_tab_read_text(selector=…)` → `browser_close_tab`.
-  Selectors connus : Amazon `.order-card, .a-box-group, [data-component=orderCard]` ; LinkedIn `main, [role=main]` ; Gmail `.AO, [role=main]` ; X `[data-testid=primaryColumn]`.
-  Si `read_text` < 500 chars ou vide → re-essayer une fois avec selector plus précis. Toujours rien → fallback vision : `browser_tab_screenshot` puis `vision_analyze_image(image_path, question)`. Si même la vision échoue → dis-le honnêtement.
-
-PATTERN B — onglet déjà ouvert ("cet onglet", "la page que je regarde") :
-  `browser_list_tabs` → identifier par URL/titre (ignorer les URLs de l'instance ELY) → `browser_tab_read_text`. Pas de close_tab.
-
-PATTERN C — workflow multi-étapes (Doctolib, SNCF Connect, Booking, gouv.fr…) :
-  Beaucoup de sites imposent des étapes de choix non-skippables avant d'exposer créneaux/prix. Outils : `browser_tab_click(selector)`, `browser_tab_fill(selector, value)`, `browser_tab_navigate(url)`. Méthode : `browser_tab_read_html(selector="main")` pour trouver le selector cliquable, puis click + wait_for_selector.
-  Règle d'or : à CHAQUE étape de choix, ARRÊTE-TOI et demande à l'utilisateur. Tu n'inventes pas de réponse "par défaut". Tu ne réserves/confirmes JAMAIS toi-même — tu rapportes les options, l'utilisateur valide.
-  Cartes pliables (Doctolib jours, SNCF horaires, Booking, Notion, accordéons gouv.fr) : si un titre est visible mais que son contenu n'est pas dans le DOM, l'élément est "collapsed" → trouve le bouton de déploiement via `browser_tab_read_html`, clique-le, puis re-lis.
-
-Diagnostic échec navigateur :
-- "extension_not_connected" → indiquer chrome://extensions/ → icône ELY → Options. NE PAS fallback Playwright.
-- Redirection vers login → cookies expirés, demander à l'utilisateur de se reconnecter dans Chrome.
-- Page ne contient pas l'info → essayer une URL canonique plus spécifique.
-
-Mappages outils — règles désambiguïsantes (pour les cas ambigus uniquement) :
-- "rappelle-moi tous les lundis / chaque matin à 8h" → scheduler_create_task (récurrent), PAS calendar_create_event.
-- "rappelle-moi demain à 14h" → calendar_create_event (one-shot, plus léger).
-- "tu te souviens de…" / "on en était où…" / "do you remember…" → search_past_conversations_tool (cross-conv FTS5 + résumé local). Déclenche-le AUSSI quand l'utilisateur référence implicitement une donnée déjà donnée ("mon médecin", "ma banque", "comme la dernière fois", "le contact que je t'ai donné") avant de dire "je n'ai pas cette info". Après ce tool : PARAPHRASE en 1-3 phrases naturelles, ne recopie pas verbatim, ne wrap pas en ```json``` ou ```markdown```.
-- "lis ce PDF" / catalogue / facture / tableau → pdf_analyze_with_vision (lit la mise en page). pdf_read pour PDF texte simple uniquement.
-- "génère une image / dessine" → generate_image (description détaillée en anglais).
-- "calcule / code python / fais un graphique" → python_execute avec print() pour les sorties.
-- "connecte-toi à [logiciel non supporté]" → mcp_generate_server puis mcp_validate_and_deploy (HITL obligatoire).
-- "regarde mon écran" / capture d'écran partagée → vision_analyze_image. "screenshot de mon écran (PAS navigateur)" → os_screenshot.
-- "envoie un WhatsApp à" → whatsapp_send (confirmer avant envoi).
-
-Pour les outils dont le nom est sans ambiguïté ("génère un QR code", "itinéraire de A à B", "mes contacts"…), réfère-toi aux descriptions LangChain des @tool — elles sont exhaustives. N'attends pas une instruction explicite ici pour chaque outil.
-
-Format des réponses texte (quand aucun tool n'est pertinent) :
-- Français naturel, sans markdown (pas de #, ##, **, *, `, ---, ni tirets de liste). Pour énumérer : "premièrement… ensuite… enfin…".
-- URLs telles quelles (pour qu'elles soient cliquables). Aucun emoji par défaut sauf préférence explicite.
-
-Utilisation des tools — priorité absolue :
-- Dès que la demande matche un tool, APPELLE-le directement via function calling. N'annonce pas. N'écris pas de code Python pour simuler un tool call.
-"""
+# Constants moved to app/agent/prompts.py (refactor 2026-05-25 Phase 1.1).
+# Re-exported below so external consumers (learning/ab_testing,
+# learning/prompt_version, test_system_prompt_size) keep working.
+from app.agent.prompts import _SYSTEM_PROMPT_BASE, _SYSTEM_PROMPT_SLM  # noqa: E402,F401
 
 
-def _tool_result(content: str, tool_call_id: str) -> dict:
-    return {"role": "tool", "content": content, "tool_call_id": tool_call_id}
+# Moved to app/agent/helpers/message_sanitizer.py (refactor 2026-05-25 Phase 1.2).
+from app.agent.helpers.message_sanitizer import _tool_result  # noqa: E402,F401
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Heavy-payload stripping for tool messages
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# Why
-# ---
-# Several tools (`browser_screenshot`, `browser_search_images`, `generate_image`)
-# return JSON whose ``data`` field carries a base64-encoded image (often
-# 100-300 KB → 100k-300k tokens). The frontend needs this payload to render
-# the image inline, but the LLM does NOT — for chaining tool calls
-# (``gmail_send_with_local_attachment``, ``drive_create_file``…) the model
-# only needs ``local_path``.
-#
-# Without stripping, every multi-turn workflow that includes a screenshot
-# saturates the model's context window. Observed 2026-05-08 :
-# - Qwen 2.5 14B local : 216k tokens → TruncateMiddle → model loses its own
-#   tool args, hallucinates paths, workflow collapses
-# - Qwen 3.6 Flash via DashScope : context bloat slows tour 2 by ~5×
-#
-# Stripping in the tool_message that goes back into LangGraph's state restores
-# correct multi-turn behaviour and dramatically reduces token cost on every
-# provider. The frontend has already consumed the original (full) payload via
-# the ``on_tool_end`` stream event ; this transformation only affects what
-# the model sees in its conversation history.
-
-# Field names that may carry oversized base64 / binary payloads.
-_HEAVY_FIELDS: frozenset[str] = frozenset({
-    "data",          # browser_screenshot, generate_image
-    "b64",           # alternate naming
-    "b64_json",      # OpenAI image API
-    "image_data",    # some adapters
-    "binary",        # generic
-    "raw",           # generic
-})
-
-# Anything below this length is left as-is even if its key looks heavy.
-# 4 000 chars ≈ 1 000 tokens — small enough to keep in context if a tool
-# legitimately returns a small base64 (avatar, icon, etc.).
-_HEAVY_FIELD_THRESHOLD: int = 4000
+# Moved to app/agent/helpers/tool_history.py (refactor 2026-05-25 Phase 1.3).
+from app.agent.helpers.tool_history import (  # noqa: E402,F401
+    _HEAVY_FIELDS,
+    _HEAVY_FIELD_THRESHOLD,
+    _sanitize_tool_result_for_history,
+)
 
 
-def _sanitize_tool_result_for_history(content: str) -> str:
-    """Strip oversized binary payloads from a tool result before it's stored
-    in the LangGraph state and sent back to the LLM at the next turn.
-
-    The frontend has already consumed the original (full) payload via the
-    ``on_tool_end`` stream event ; this transformation only affects what
-    the model sees in its conversation history.
-
-    Behaviour
-    ---------
-    - Non-JSON strings → returned unchanged.
-    - JSON dicts → fields named ``data``, ``b64``, ``b64_json``, ``image_data``,
-      ``binary``, ``raw`` are replaced by ``"[stripped: N chars …]"`` if they
-      exceed ``_HEAVY_FIELD_THRESHOLD`` chars.
-    - Other fields (notably ``local_path``, ``mime``, ``prompt``, ``next_steps``,
-      ``url``, ``title``…) are preserved verbatim — the model needs those
-      to chain subsequent tool calls.
-    - Malformed JSON or non-dict roots → returned unchanged (we don't try to
-      be clever).
-    """
-    if not content or not isinstance(content, str):
-        return content
-    # Cheap pre-check : avoid parsing JSON if it doesn't look like a dict
-    if not content.lstrip().startswith("{"):
-        return content
-    try:
-        obj = json.loads(content)
-    except (json.JSONDecodeError, ValueError):
-        return content
-    if not isinstance(obj, dict):
-        return content
-
-    changed = False
-    for key in list(obj.keys()):
-        if key in _HEAVY_FIELDS:
-            val = obj[key]
-            if isinstance(val, str) and len(val) > _HEAVY_FIELD_THRESHOLD:
-                obj[key] = (
-                    f"[stripped: {len(val)} chars — kept in frontend payload, "
-                    f"not visible to the model. Use local_path or attachment_id "
-                    f"to chain next tools.]"
-                )
-                changed = True
-    if not changed:
-        return content
-    try:
-        return json.dumps(obj, ensure_ascii=False)
-    except (TypeError, ValueError):
-        # Should never happen — obj came from json.loads — but keep the
-        # original on the off-chance.
-        return content
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Smart bind_tools — disable parallel_tool_calls for permissive/openai-family
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# Bug observed 2026-05-08 on Qwen 2.5 14B local (and reproducible on most
-# permissive instruct models) :
-#
-#   Turn 1 → modèle émet 3 tool_calls EN PARALLÈLE :
-#     browser_navigate(url="https://catalogmaker.fr")
-#     browser_screenshot()
-#     gmail_send_with_local_attachment(local_path="/tmp/.../screenshot-catalogmaker.png", ...)
-#
-#   Le modèle INVENTE le ``local_path`` parce qu'il n'a pas encore reçu le
-#   résultat de browser_screenshot (qui retourne un uuid réel). gmail_send
-#   échoue avec « fichier introuvable ». 2 tours de retry gaspillés avant
-#   que le modèle ne corrige son tir au tour 3.
-#
-# Fix : ``parallel_tool_calls=False`` au bind. Force le modèle à émettre UN
-# tool_call par tour. Au tour 1 : browser_navigate. Au tour 2 (avec le retour
-# de tour 1) : browser_screenshot. Au tour 3 (avec le local_path RÉEL) :
-# gmail_send_with_local_attachment. Workflow propre en 3 tours au lieu de 4-5.
-#
-# Famille du modèle
-# -----------------
-# - **Disciplined** (Claude / Anthropic) : NE PAS passer le kwarg, leur API
-#   ne le supporte pas. Claude sait quand chaîner sans qu'on le force.
-# - **OpenAI family** (gpt-oss, gpt-4o, Codex) : `parallel_tool_calls=False`.
-#   Ils tendent à parallel-call abusivement comme Qwen 2.5.
-# - **Permissive** (Qwen, Mistral, Gemma, Llama, Gemini, DeepSeek, GLM, …) :
-#   `parallel_tool_calls=False`. Les plus à risque pour l'invention d'args.
-#
-# Logging ultra-verbose
-# ---------------------
-# Hier soir (2026-05-08), la 1ère tentative de ce fix (commits 96569a7 +
-# b7c6c6d, rollbackés) plantait silencieusement chez Franck. Sans logs,
-# diagnostic impossible. Cette version logge à WARNING level sur TOUS les
-# code paths (entrée, succès, échec, fallback) avec ``exc_info=True`` sur
-# les exceptions — toute future régression produira une stack trace lisible
-# dans ``docker logs cyberentity-backend``.
-
-_BTS_TAG: str = "[bind_tools_smart]"
-
-
-def _classify_model_family(model_name: str | None) -> str:
-    """Return one of "disciplined", "openai_family", "permissive".
-
-    Robust to None / empty / mixed-case. Default = permissive (over-instruct
-    is safer than under-instruct).
-    """
-    if not model_name:
-        return "permissive"
-    name_lc = model_name.lower()
-    # Claude / Anthropic — disciplined, parameter not supported
-    if "claude" in name_lc or "anthropic" in name_lc:
-        return "disciplined"
-    # OpenAI family
-    for kw in ("gpt-oss", "gpt_oss", "openai/gpt", "gpt-4", "gpt-3.5", "gpt-4o",
-               "codex", "o1-", "o3-", "openai-"):
-        if kw in name_lc:
-            return "openai_family"
-    return "permissive"
-
-
-def _extract_model_name(llm) -> str:
-    """Best-effort introspection of the model name from a LangChain ChatModel.
-
-    Tries the common attribute names used by ChatOpenAI, ChatAnthropic,
-    ChatOllama, and the various providers. Returns an empty string if
-    nothing is found — safe to pass to ``_classify_model_family``
-    (defaults to permissive).
-    """
-    if llm is None:
-        return ""
-    for attr in ("model_name", "model", "deployment_name"):
-        val = getattr(llm, attr, None)
-        if val:
-            return str(val)
-    return ""
-
-
-def _bind_tools_smart(llm, tools, model_name: str | None = None):
-    """Bind tools with a parallel-tool-calls policy chosen by model family.
-
-    NEVER raises. Every exception path falls back to a plain
-    ``llm.bind_tools(tools)`` while logging the cause with full traceback.
-    Better a sub-optimal bind than a crashed agent turn.
-
-    If ``model_name`` is None, it is auto-extracted from the LLM instance.
-    """
-    if model_name is None:
-        model_name = _extract_model_name(llm)
-    family = _classify_model_family(model_name)
-    try:
-        _tools_count = len(list(tools)) if hasattr(tools, "__len__") else -1
-    except Exception:
-        _tools_count = -1
-    logger.info(
-        "%s model=%r family=%r tools=%d",
-        _BTS_TAG, model_name, family, _tools_count,
-    )
-
-    if family in ("permissive", "openai_family"):
-        try:
-            bound = llm.bind_tools(tools, parallel_tool_calls=False)
-            logger.info(
-                "%s bound with parallel_tool_calls=False (model=%r)",
-                _BTS_TAG, model_name,
-            )
-            return bound
-        except Exception as exc:
-            # Catch ALL exceptions — some adapters validate the kwarg lazily
-            # at runtime, raising on first invoke or in a wrapped chain.
-            logger.warning(
-                "%s parallel_tool_calls=False rejected (model=%r, %s: %s) "
-                "— falling back to plain bind_tools",
-                _BTS_TAG, model_name, type(exc).__name__, exc,
-                exc_info=True,
-            )
-
-    # Disciplined → plain bind. Permissive/openai with failed parametrised
-    # bind → also plain bind. If even this fails, we cannot continue.
-    try:
-        return llm.bind_tools(tools)
-    except Exception as exc:
-        logger.error(
-            "%s plain bind_tools also failed (model=%r, %s: %s)",
-            _BTS_TAG, model_name, type(exc).__name__, exc,
-            exc_info=True,
-        )
-        raise
+# Moved to app/agent/helpers/bind_tools.py (refactor 2026-05-25 Phase 1.4).
+from app.agent.helpers.bind_tools import (  # noqa: E402,F401
+    _BTS_TAG,
+    _bind_tools_smart,
+    _classify_model_family,
+    _extract_model_name,
+)
 
 
 # ------------------------------------------------------------------ #
@@ -476,25 +86,8 @@ from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS  # noqa: E402
 # ------------------------------------------------------------------ #
 # Lightweight system prompt for SLM (simple tasks, no memory needed) #
 # ------------------------------------------------------------------ #
-
-_SYSTEM_PROMPT_SLM = """Tu es Ely (prononcé "Éli"), une assistante IA personnelle — féminin, chaleureuse et directe.
-
-Règles :
-- Répondre en français, en texte naturel sans markdown
-- Utiliser les outils disponibles dès que la demande le justifie
-- Réponses courtes et claires pour les tâches simples
-- Honnêteté sur tes capacités — ne jamais simuler une tentative échouée
-
-⚠⚠⚠ RÈGLE 0 INVIOLABLE — ne jamais inventer de données factuelles :
-- Tu n'as AUCUNE mémoire interne des données utilisateur (agenda, mails, contacts, tâches, fichiers, prix, dates, statuts, IDs, montants).
-- AVANT TOUTE réponse contenant ce type de données, tu DOIS appeler l'outil correspondant DANS LE TOUR COURANT (calendar_list_events, gmail_list_emails, contacts_search, scheduler_list_tasks, etc.).
-- Si un tool retourne 0 résultat ou une liste vide, dis « Je n'ai trouvé aucun élément correspondant » — JAMAIS une liste fabriquée.
-- Si tu n'as pas appelé de tool pour une info factuelle, demande à l'utilisateur ou dis « je n'ai pas cette information ».
-- INTERDIT : compléter une réponse avec des items « plausibles » pour la rendre plus utile (ex : « Point hebdo équipe », « Déjeuner avec Sarah » alors que tu n'as pas vu ces événements dans calendar_list_events).
-- Une réponse honnête « je ne sais pas » est INFINIMENT plus utile qu'une réponse plausible inventée.
-
-📅 Date et heure : {date_str} (Europe/Paris)
-"""
+# Moved to app/agent/prompts.py (refactor 2026-05-25 Phase 1.1).
+# Already imported at the top of this file alongside _SYSTEM_PROMPT_BASE.
 
 
 # ------------------------------------------------------------------ #
@@ -502,50 +95,8 @@ Règles :
 # ------------------------------------------------------------------ #
 
 
-def _format_memory_block(
-    user_profile: str,
-    preferences: list,
-    constraints: list,
-    memories: list,
-    past_interactions: list,
-) -> str:
-    """Build the user-memory section of the system prompt as a single string.
-
-    This is the **cacheable, frozen-for-the-session** part of the prompt.
-    The output is byte-stable for given inputs, so wrapping the inputs
-    themselves with frozen_memory + this formatter gives an immutable
-    block that the prompt cache prefix can latch on.
-
-    Order is intentional: user_profile FIRST (most important to anchor
-    the model on the user's identity), preferences as RULES, constraints
-    as REFUSAL HISTORY, memories as CONTEXT, past_interactions LAST
-    (least important, longest tail).
-    """
-    parts: list[str] = []
-    if user_profile:
-        parts.append(f"\n\n🧠 {user_profile}\n")
-    if preferences:
-        parts.append(
-            "\n\n👤 RÈGLES DE COMMUNICATION PERSONNALISÉES — OBLIGATOIRES :\n"
-            "⚠️ Ces règles ont la même priorité que les règles absolues ci-dessus.\n"
-            "Elles s'appliquent à CHAQUE réponse, sans exception, même si tu penses\n"
-            "qu'une réponse plus longue serait plus utile. Respecte-les strictement.\n"
-        )
-        parts.append("\n".join(f"- {p}" for p in preferences))
-    if constraints:
-        parts.append("\n\n🛡️ CONTRAINTES DE SÉCURITÉ PERMANENTES (apprises de tes refus) :\n")
-        parts.append("\n".join(f"- {c}" for c in constraints))
-    if memories:
-        parts.append("\n\n💾 CONTEXTE MÉMORISÉ :\n")
-        parts.append("\n".join(f"- {m}" for m in memories))
-    if past_interactions:
-        parts.append("\n\n🔁 INTERACTIONS PASSÉES PERTINENTES :\n")
-        for p in past_interactions:
-            parts.append(
-                f"- Q: {p.get('user_message', '')[:120]} "
-                f"→ R: {p.get('assistant_message', '')[:120]}\n"
-            )
-    return "".join(parts)
+# Moved to app/agent/helpers/memory_formatting.py (refactor 2026-05-25 Phase 1.5).
+from app.agent.helpers.memory_formatting import _format_memory_block  # noqa: E402,F401
 
 
 # ------------------------------------------------------------------ #
@@ -651,54 +202,20 @@ def create_agent_node():
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
 
-        # Current date/time in French (Europe/Paris)
-        from datetime import datetime
-        import zoneinfo
-        _tz = zoneinfo.ZoneInfo("Europe/Paris")
-        now = datetime.now(_tz)
-        _days_fr = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-        _months_fr = ["", "janvier", "février", "mars", "avril", "mai", "juin",
-                      "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
-        date_str = (
-            f"{_days_fr[now.weekday()]} {now.day} {_months_fr[now.month]} "
-            f"{now.year}, {now.strftime('%H:%M')}"
+        # Refactor 2026-05-25 Phase 4.2 — date / language / IMPORTANT note
+        # builders extracted to app/agent/builders/system_prompt.py.
+        from app.agent.builders.system_prompt import (
+            LLM_INTROSPECTION_NOTE,
+            compute_date_segment,
+            extract_email_block_addendum,
+            fetch_user_language,
         )
-
-        # Per-user language fetch — mirrors the logic in
-        # app/agent/sub_agents/factory.py so the general agent honours
-        # the UI language toggle even when the diag sub-agent isn't reached.
-        _user_language = "fr"
-        if user_id:
-            try:
-                from app.models.user import User as _U
-                from app.database import async_session as _async_session
-                from sqlalchemy import select as _select
-                async with _async_session() as _db:
-                    _row = await _db.execute(
-                        _select(_U.language).where(_U.id == user_id)
-                    )
-                    _user_language = (_row.scalar_one_or_none() or "fr")
-            except Exception:
-                pass
-        # Compact directives — see factory.py rationale (don't bloat xLAM 8B context)
-        if _user_language == "en":
-            _lang_directive = "REPLY LANGUAGE = English. Translate any tool output.\n\n"
-            _lang_reminder = "\n\n[reply in English]"
-        else:
-            _lang_directive = "LANGUE DE RÉPONSE = Français. Traduis si besoin.\n\n"
-            _lang_reminder = "\n\n[réponds en français]"
+        date_str, _date_segment = compute_date_segment()
+        _user_language, _lang_directive, _lang_reminder = await fetch_user_language(user_id)
         logger.info(
             "[general] lang=%s user=%s",
             _user_language,
             (user_id[:8] + "…") if user_id else "(none)",
-        )
-
-        # Date string segment — ALWAYS dynamic, never goes into the cacheable
-        # part. Provider prompt cache prefix matches up to the date and stops
-        # there. Same with the trailing emails block (added later).
-        _date_segment = (
-            f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-            "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
         )
 
         if use_slm:
@@ -730,66 +247,33 @@ def create_agent_node():
             # subsequent turns, the snapshot is returned from cache in O(1)
             # without re-querying Qdrant. New facts archived mid-session
             # appear in the snapshot of the NEXT conversation, not this one.
-            from app.services.memory_service import get_user_context
+            #
+            # Refactor 2026-05-25 Phase 4.1 — the business logic lives in
+            # app/agent/builders/memory_snapshot.py as a pure async fn that
+            # returns (snapshot_text, compact_pieces). The thin wrapper
+            # below only exists to satisfy frozen_memory's `() -> str`
+            # builder signature and to propagate compact_pieces via the
+            # only remaining `nonlocal` in this path.
+            from app.agent.builders.memory_snapshot import (
+                build_memory_snapshot,
+                refetch_compact_pieces,
+            )
+
+            _compact_pieces: dict | None = None
 
             async def _build_memory_snapshot() -> str:
-                # PERF: skip get_relevant_interactions on the very first turn —
-                # there's nothing to find yet and Qdrant + FTS + embeddings
-                # cost ~100-200ms. Only fetch when we have prior history.
-                _history_msgs_count = sum(
-                    1 for m in messages if getattr(m, "type", None) in ("human", "ai")
+                nonlocal _compact_pieces
+                snapshot, pieces = await build_memory_snapshot(
+                    messages=messages,
+                    user_id=user_id,
+                    user_query=user_query,
+                    memory=memory,
+                    use_compact=_use_compact,
                 )
-                _needs_interactions = _history_msgs_count > 1
-                _past_interactions_task = (
-                    memory.get_relevant_interactions(user_query, user_id, limit=3)
-                    if _needs_interactions
-                    else _no_interactions()
-                )
-                constraints, memories_, past_interactions, preferences, user_profile = (
-                    await asyncio.gather(
-                        memory.get_relevant_constraints(user_query, user_id),
-                        memory.get_relevant_memories(user_query, user_id),
-                        _past_interactions_task,
-                        memory.get_user_preferences(user_id),
-                        get_user_context(user_id),
-                    )
-                )
-                if _use_compact:
-                    # Compact path needs structured pieces, not a single block.
-                    # We stash them in a closure variable so the compact builder
-                    # downstream can reuse them. Yes, this is a hack inside an
-                    # async closure; the alternative is to query memory twice.
-                    nonlocal _compact_pieces
-                    _compact_pieces = {
-                        "user_profile": user_profile or "",
-                        "memories": memories_,
-                        "constraints": constraints,
-                    }
-                _mem_block = _format_memory_block(
-                    user_profile or "",
-                    preferences or [],
-                    constraints or [],
-                    memories_ or [],
-                    past_interactions or [],
-                )
-                # Sprint 3 Jalon 2 — prepend the User State Vector block.
-                # Lives inside the frozen_memory snapshot so it gets the same
-                # cache treatment as the rest of the per-user memory. Empty
-                # state collapses to empty string (handled in formatter), so
-                # we don't pollute the prompt for first-time users.
-                try:
-                    from app.services.learning.user_state import (
-                        format_user_state_block, get_user_state,
-                    )
-                    _us = await get_user_state(user_id)
-                    _us_block = format_user_state_block(_us)
-                except Exception:
-                    _us_block = ""
-                return (_us_block + _mem_block) if _us_block else _mem_block
+                if pieces is not None:
+                    _compact_pieces = pieces
+                return snapshot
 
-            # Stash for compact-path reuse (set by _build_memory_snapshot
-            # if compact mode is active).
-            _compact_pieces: dict | None = None
             memory_snapshot = await _frozen_mem.get_or_build(
                 _conv_id_fb, user_id, _build_memory_snapshot,
             )
@@ -799,21 +283,14 @@ def create_agent_node():
                 # snapshot pieces we just gathered.
                 if _compact_pieces is None:
                     # Cache hit on frozen_memory means _build_memory_snapshot
-                    # didn't run this turn, so _compact_pieces is empty. Re-fetch
-                    # the minimal trio synchronously (this is rare — only on
-                    # cache hit + compact mode together).
-                    constraints_c, memories_c, _, _, user_profile_c = await asyncio.gather(
-                        memory.get_relevant_constraints(user_query, user_id),
-                        memory.get_relevant_memories(user_query, user_id),
-                        _no_interactions(),
-                        memory.get_user_preferences(user_id),
-                        get_user_context(user_id),
+                    # didn't run this turn, so _compact_pieces is empty.
+                    # Re-fetch the minimal trio synchronously (rare path —
+                    # only on cache hit + compact mode together).
+                    _compact_pieces = await refetch_compact_pieces(
+                        user_id=user_id,
+                        user_query=user_query,
+                        memory=memory,
                     )
-                    _compact_pieces = {
-                        "user_profile": user_profile_c or "",
-                        "memories": memories_c or [],
-                        "constraints": constraints_c or [],
-                    }
                 system = build_compact_system_prompt(
                     agent_name="general",
                     date_str=date_str,
@@ -829,20 +306,13 @@ def create_agent_node():
                 # Cacheable segment = lang_directive + base + IMPORTANT + snapshot.
                 # Concatenated in this order so the provider's prompt cache
                 # prefix can match every byte up to the dynamic date.
-                _llm_introspection_note = (
-                    "\n\nIMPORTANT : if the user asks which LLM/model/provider "
-                    "you are using, you MUST call `system_check_llm_providers` "
-                    "before answering. Never answer from your training memory.\n"
-                    "Si l'utilisateur te demande quel LLM/modèle/fournisseur tu "
-                    "utilises, tu DOIS appeler `system_check_llm_providers` "
-                    "avant de répondre. Ne réponds jamais depuis ta mémoire.\n"
-                )
-
+                # LLM_INTROSPECTION_NOTE imported from builders.system_prompt
+                # at the top of agent_node.
                 def _build_cacheable_prompt() -> str:
                     return (
                         _lang_directive
                         + _SYSTEM_PROMPT_BASE
-                        + _llm_introspection_note
+                        + LLM_INTROSPECTION_NOTE
                         + memory_snapshot
                     )
 
@@ -875,53 +345,8 @@ def create_agent_node():
 
         _sanitized = _sanitize_messages_for_mistral(messages)
 
-        # ── Extract user-provided emails / placeholders (audit 2026-05-07) ──
-        # Weak models (Ministral 3 8B observed) keep asking for an email
-        # already given in the conversation. We pre-scan the message stream
-        # and inject a sticky « EMAILS DÉJÀ FOURNIS » block in the system
-        # prompt. The PII filter has already replaced raw addresses with
-        # ``[EMAIL_N]`` placeholders, so we look for both shapes:
-        #   • bare address (rare — leak from filter or quoted text)
-        #   • ``[EMAIL_0]`` / ``[EMAIL_1]`` placeholders
-        try:
-            import re as _email_re
-            _email_pat = _email_re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-            _placeholder_pat = _email_re.compile(r"\[EMAIL_\d+\]")
-            _seen_addrs: list[str] = []
-            _seen_placeholders: list[str] = []
-            for _m in _sanitized[-12:]:  # last 12 messages is enough
-                _content = getattr(_m, "content", None)
-                if _content is None and isinstance(_m, dict):
-                    _content = _m.get("content")
-                if not isinstance(_content, str):
-                    continue
-                for _addr in _email_pat.findall(_content):
-                    if _addr not in _seen_addrs:
-                        _seen_addrs.append(_addr)
-                for _ph in _placeholder_pat.findall(_content):
-                    if _ph not in _seen_placeholders:
-                        _seen_placeholders.append(_ph)
-            if _seen_addrs or _seen_placeholders:
-                system += "\n\n📧 ADRESSES EMAIL DÉJÀ FOURNIES PAR L'UTILISATEUR :\n"
-                if _seen_addrs:
-                    system += "\n".join(f"- {a}" for a in _seen_addrs[:10]) + "\n"
-                if _seen_placeholders:
-                    system += (
-                        "Placeholders (anonymisation PII active) : "
-                        + ", ".join(_seen_placeholders[:10])
-                        + "\n"
-                        "→ Ces placeholders représentent de VRAIES adresses fournies par "
-                        "l'utilisateur. Utilise-les TELS QUELS comme paramètre ``to`` des "
-                        "outils gmail (ex: ``gmail_send_email(to='[EMAIL_0]', ...)``). "
-                        "Le backend remplace automatiquement le placeholder par la vraie "
-                        "adresse au moment de l'appel.\n"
-                    )
-                system += (
-                    "→ NE redemande PAS l'adresse à l'utilisateur, NE la cherche PAS dans "
-                    "contacts_search — elle est déjà fournie."
-                )
-        except Exception as _ext_exc:
-            logger.debug("email extraction skipped: %s", _ext_exc)
+        # Email / placeholder addendum — refactor Phase 4.2 (builders.system_prompt).
+        system += extract_email_block_addendum(_sanitized)
 
         # ── Inference ──────────────────────────────────────────────────────
         if use_slm:
@@ -986,25 +411,23 @@ def create_agent_node():
                 _fb_snapshot = await _frozen_mem.get_or_build(
                     _conv_id_fb, user_id, _fb_build_snapshot,
                 )
-                _fb_intro = (
-                    "\n\nIMPORTANT : if the user asks which LLM/model/provider "
-                    "you are using, you MUST call `system_check_llm_providers` "
-                    "before answering. Never answer from your training memory.\n"
-                )
-
+                # Use the same IMPORTANT note as the primary path
+                # (LLM_INTROSPECTION_NOTE imported from builders.system_prompt).
+                # Slight content drift between primary/fallback would have broken
+                # the prompt cache prefix mid-conversation — single constant
+                # avoids that whole class of bug.
                 def _fb_build_cacheable() -> str:
                     return (
                         _lang_directive
                         + _SYSTEM_PROMPT_BASE
-                        + _fb_intro
+                        + LLM_INTROSPECTION_NOTE
                         + _fb_snapshot
                     )
 
                 _fb_cacheable = _spc.get_or_build(_conv_id_fb, _fb_build_cacheable)
                 system = (
                     _fb_cacheable
-                    + f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-                    + "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
+                    + _date_segment
                     + _lang_reminder
                 )
 
@@ -1580,400 +1003,20 @@ def create_agent_node():
 # ------------------------------------------------------------------ #
 # Tool node                                                            #
 # ------------------------------------------------------------------ #
-
-async def tool_node(state: AgentState) -> dict:
-    from app.skills import get_skill_registry
-
-    last_message = state["messages"][-1]
-    user_id = state.get("user_id", "")
-    results = []
-
-    tool_map = {t.name: t for t in get_skill_registry().all_tools}
-    sf = SecurityFilter()
-    hitl = get_hitl_manager()
-    memory = get_memory_manager()
-
-    # ── PII deanonymization for tool args (audit 2026-05-07) ──────────────
-    # The user's PII (emails, phones, IBANs) is replaced with placeholders
-    # like ``[EMAIL_0]`` BEFORE messages reach the LLM. When the LLM emits a
-    # tool call, it uses those placeholders verbatim ("to": "[EMAIL_0]").
-    # Without restoring real values here, downstream APIs (Gmail, etc.)
-    # receive the placeholder string and reject it as invalid input.
-    # We pull the per-conversation SecurityFilter from the shared registry
-    # so we get the SAME vault used by chat.py for anonymization.
-    _conv_id = state.get("conversation_id") or ""
-    _vault_sf = None
-    if _conv_id:
-        try:
-            from app.services.conversation_filters import get_filter as _get_conv_filter
-            _vault_sf = _get_conv_filter(_conv_id)
-        except Exception as _vault_exc:
-            logger.debug("conversation filter lookup failed: %s", _vault_exc)
-
-    def _deanonymize_value(v):
-        """Recursively restore PII placeholders in a tool-arg value."""
-        if _vault_sf is None:
-            return v
-        if isinstance(v, str):
-            return _vault_sf.deanonymize(v)
-        if isinstance(v, dict):
-            return {k: _deanonymize_value(x) for k, x in v.items()}
-        if isinstance(v, list):
-            return [_deanonymize_value(x) for x in v]
-        return v
-
-    # Sprint 2.7 Jalon 6 — expose the conversation_id to the orchestrate
-    # tool via a ContextVar so it can re-anonymize sandbox stdout/stderr
-    # using the same SecurityFilter as the rest of the pipeline. The
-    # ContextVar is set once for the whole turn and is automatically
-    # scoped to this coroutine (no manual reset needed — asyncio
-    # propagates ContextVars per task).
-    try:
-        from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
-        ORCHESTRATE_CONVERSATION_ID.set(_conv_id)
-    except Exception as _orch_ctx_exc:  # noqa: BLE001
-        logger.debug("orchestrate ContextVar set skipped: %s", _orch_ctx_exc)
-
-    for tool_call in last_message.tool_calls:
-        tool_name = tool_call["name"]
-        # Deanonymize tool args BEFORE any other processing so HITL preview,
-        # logs, and the actual API call all see the real values.
-        args = _deanonymize_value(dict(tool_call["args"]))
-
-        # Inject hidden arguments — credentials are fetched from the server-side
-        # store (never stored in graph state) to prevent exposure in logs/events.
-        if tool_name in GOOGLE_TOOLS:
-            from app.services.credential_store import get_credential_store
-            _uid = state.get("user_id") or ""
-            _store = get_credential_store()
-            _creds = _store.get(_uid) or ""
-            # Fallback (audit 2026-05-07): if the in-process cache is empty
-            # — happens after a backend restart while the WebSocket is
-            # still alive but the 5-min refresh hasn't ticked yet, or after
-            # an OAuth re-consent that didn't propagate to the cache —
-            # refresh straight from the DB. Better to pay one query per
-            # tool call than to lie « Google non connecté » when the user
-            # is in fact connected.
-            if not _creds and _uid:
-                try:
-                    from app.database import async_session as _async_session
-                    from app.models.user import User as _U
-                    async with _async_session() as _db:
-                        _u = await _db.get(_U, _uid)
-                        if _u and _u.google_credentials:
-                            _creds = _u.google_credentials
-                            _store.set(_uid, _creds)
-                            logger.warning(
-                                "[creds] cache miss for user=%s — refreshed from DB",
-                                _uid,
-                            )
-                except Exception as _creds_exc:
-                    logger.warning("[creds] DB fallback failed: %s", _creds_exc)
-            args["user_google_credentials_json"] = _creds
-        if tool_name in USER_ID_TOOLS:
-            args["user_id"] = state.get("user_id") or ""
-
-        # Build display args — never expose tokens or injected IDs in UI/logs
-        _hidden = {"user_google_credentials_json", "user_id"}
-        display_args = {k: v for k, v in args.items() if k not in _hidden}
-        action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
-        tc_id = tool_call["id"]
-
-        # ── Vault: resolve vault://label references in args ───────────────
-        vault_refs_found = any(
-            isinstance(v, str) and v.startswith("vault://")
-            for v in args.values()
-        )
-        if vault_refs_found:
-            from app.services.vault_service import get_vault_service
-            vault = get_vault_service()
-            if vault.is_locked(user_id):
-                results.append(_tool_result(
-                    "⛔ Vault verrouillé — déverrouillez votre coffre-fort dans Paramètres > Vault "
-                    "pour utiliser ce secret.", tc_id
-                ))
-                continue
-            try:
-                args, _resolved = await vault.resolve_vault_refs(user_id, args)
-                if _resolved:
-                    logger.info("Resolved vault refs %s for tool %s", _resolved, tool_name)
-            except KeyError as exc:
-                results.append(_tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id))
-                continue
-
-        # HITL check
-        needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
-        # Per-user override (2026-05-23) — honour "Toujours autoriser"
-        # preference set by the user via the HITL panel ; mirrors what
-        # sub_agents/factory.py:806 already does. LOCKED_HITL_TOOLS still
-        # always require HITL (handled inside user_requires_hitl).
-        if needs_hitl and user_id:
-            try:
-                from app.services.hitl_preferences import user_requires_hitl
-                if not await user_requires_hitl(user_id, tool_name):
-                    logger.info(
-                        "HITL skipped (user preference) tool=%s user=%s",
-                        tool_name, user_id[:8],
-                    )
-                    needs_hitl = False
-            except Exception as _pref_exc:
-                logger.debug("HITL preference lookup failed: %s", _pref_exc)
-        if needs_hitl:
-            logger.info("HITL required for action: %s", action_desc)
-            decision, reason = await hitl.request_validation(
-                description=action_desc,
-                user_id=user_id,
-            )
-            if decision == "ban":
-                rule = f"INTERDICTION PERMANENTE: {action_desc}"
-                if reason:
-                    rule += f" — Raison: {reason}"
-                await memory.store_constraint(rule, user_id)
-                # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
-                try:
-                    from app.services.learning import record_hitl_refusal
-                    asyncio.create_task(record_hitl_refusal(
-                        user_id=user_id,
-                        conversation_id=_conv_id,
-                        tool_name=tool_name,
-                        args=args,
-                        action_description=action_desc,
-                        decision="ban",
-                        reason=reason or "user-provided",
-                    ))
-                except Exception as _sig_exc:
-                    logger.debug("HITL refusal signal skipped: %s", _sig_exc)
-                results.append(_tool_result(
-                    "Action interdite définitivement et règle de sécurité enregistrée.", tc_id
-                ))
-                continue
-            elif decision == "allow_always":
-                # Save user preference so future calls to the same tool by
-                # the same user skip the HITL prompt entirely. Then fall
-                # through to execute the tool this time. The frontend
-                # button "Toujours autoriser" sends this decision ; the
-                # backward-compatible "Toujours interdire" sends "ban".
-                try:
-                    from app.services.hitl_preferences import set_user_preference
-                    await set_user_preference(
-                        user_id, tool_name, requires_confirmation=False,
-                    )
-                    logger.info(
-                        "HITL: tool %s now always-allowed for user %s",
-                        tool_name, user_id[:8],
-                    )
-                except Exception as _save_exc:
-                    logger.debug("Could not save HITL preference: %s", _save_exc)
-                # Fall through to execute (same as plain "allow")
-            elif decision != "allow":
-                # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
-                try:
-                    from app.services.learning import record_hitl_refusal
-                    asyncio.create_task(record_hitl_refusal(
-                        user_id=user_id,
-                        conversation_id=_conv_id,
-                        tool_name=tool_name,
-                        args=args,
-                        action_description=action_desc,
-                        decision="deny",
-                        reason=reason or "user-provided",
-                    ))
-                except Exception as _sig_exc:
-                    logger.debug("HITL refusal signal skipped: %s", _sig_exc)
-                results.append(_tool_result(
-                    "Action refusée par l'utilisateur pour cette occurrence.", tc_id
-                ))
-                continue
-
-        tool = tool_map.get(tool_name)
-        if tool:
-            try:
-                import time as _tt
-                _ts = _tt.monotonic()
-                result = await tool.ainvoke(args)
-                logger.warning("⏱ TIMING[tool:%s] %.2fs", tool_name, _tt.monotonic() - _ts)
-                # Strip oversized base64 / binary payloads from the tool result
-                # BEFORE storing in LangGraph state. The frontend has already
-                # consumed the full payload via the on_tool_end event ; only
-                # the model's history view needs the trimmed version. Without
-                # this, browser_screenshot leaks ~200 KB of base64 into every
-                # subsequent turn's prompt.
-                _raw_result = str(result)
-                _safe_result = _sanitize_tool_result_for_history(_raw_result)
-                if len(_safe_result) < len(_raw_result):
-                    logger.info(
-                        "[tool_history_strip] %s: %d → %d chars",
-                        tool_name, len(_raw_result), len(_safe_result),
-                    )
-                results.append(_tool_result(_safe_result, tc_id))
-            except Exception as exc:
-                logger.warning("Tool %s failed: %s", tool_name, exc)
-                # Sprint 3.7 Jalon 2 — persist tool exception as learning signal
-                try:
-                    import traceback as _tb
-                    from app.services.learning import record_tool_error
-                    asyncio.create_task(record_tool_error(
-                        user_id=user_id,
-                        tool_name=tool_name,
-                        args=args,
-                        error_type=type(exc).__name__,
-                        error_msg=str(exc),
-                        traceback=_tb.format_exc(),
-                    ))
-                except Exception as _sig_exc:
-                    logger.debug("tool error signal skipped: %s", _sig_exc)
-                results.append(_tool_result(f"Erreur d'exécution: {exc}", tc_id))
-        else:
-            from langchain_core.messages import ToolMessage
-            results.append(ToolMessage(
-                content=f"Outil '{tool_name}' non disponible.",
-                tool_call_id=tc_id,
-            ))
-
-    return {"messages": results}
+# Moved to app/agent/tool_node.py (refactor 2026-05-25 Phase 3).
+from app.agent.tool_node import tool_node  # noqa: E402,F401
 
 
 # ------------------------------------------------------------------ #
 # Router                                                               #
 # ------------------------------------------------------------------ #
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Iteration budget — Hermes Chantier 9
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# Why
-# ---
-# On heavy multi-step tasks ("audit my last 30 days of mail and group by
-# category"), the agent can chain 25-50 tool calls. LangGraph's
-# ``recursion_limit=100`` (set in chat.py) caps the loop, but when it's hit
-# it raises a hard exception → the user sees a generic error and the
-# whole conversation context is lost.
-#
-# Hermes solution : count loops, and at ~80 iterations FORCE a final API
-# call without tools, asking the model "summarise what you did so far,
-# don't call any more tools". This guarantees the user always receives
-# textual output even on overrun tasks.
-#
-# Numbers
-# - ``MAX_AGENT_ITERATIONS = 80``  → trigger force_summary
-# - LangGraph ``recursion_limit = 100`` (in chat.py) → safety margin of 20
-#   iterations to let force_summary_node + tool_node + agent_node finish
-#   cleanly without hitting the hard cap.
-
-MAX_AGENT_ITERATIONS: int = 80
+# Moved to app/agent/routing.py (refactor 2026-05-25 Phase 2.1).
+from app.agent.routing import (  # noqa: E402,F401
+    MAX_AGENT_ITERATIONS,
+    should_continue,
+)
 
 
-def should_continue(state: AgentState) -> str:
-    """Routing decision after agent_node :
-    - "force_summary" if the iteration budget is exhausted (Chantier 9)
-    - "tools" if the model emitted tool_calls
-    - "end" otherwise (final textual answer)
-    """
-    last_message = state["messages"][-1]
-    iter_count = state.get("iteration_count", 0)
-
-    if (
-        isinstance(last_message, AIMessage)
-        and last_message.tool_calls
-        and iter_count >= MAX_AGENT_ITERATIONS
-    ):
-        logger.warning(
-            "[iteration_budget] count=%d ≥ %d — forcing final summary "
-            "without tools (Chantier 9)",
-            iter_count, MAX_AGENT_ITERATIONS,
-        )
-        return "force_summary"
-
-    if isinstance(last_message, AIMessage) and last_message.tool_calls:
-        return "tools"
-    return "end"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Force summary node — Hermes Chantier 9
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-async def force_summary_node(state: AgentState) -> dict:
-    """Final inference WITHOUT tools, prompting the model to summarise
-    what it has done so far. Reached when ``iteration_count`` crosses
-    ``MAX_AGENT_ITERATIONS``.
-
-    Strategy
-    --------
-    - Build the same system prompt + history as ``agent_node`` would, but
-      DO NOT call ``bind_tools`` — the LLM physically cannot emit tool_calls.
-    - Append a final user message that explicitly asks for a textual
-      summary of the work done.
-    - Return the resulting AIMessage as the conversation output.
-    """
-    messages = state["messages"]
-    user_id = state.get("user_id", "")
-    iter_count = state.get("iteration_count", 0)
-
-    logger.warning(
-        "[force_summary] entering : conv=%s iter=%d/%d, building summary…",
-        (state.get("conversation_id", "") or "")[:8],
-        iter_count,
-        MAX_AGENT_ITERATIONS,
-    )
-
-    # Re-derive the user's original query to pick the right tier
-    _last_human = next(
-        (m for m in reversed(messages) if isinstance(m, HumanMessage)),
-        None,
-    )
-    user_query = ""
-    if _last_human is not None:
-        _content = _last_human.content
-        if isinstance(_content, str):
-            user_query = _content
-        elif isinstance(_content, list):
-            user_query = " ".join(
-                b.get("text", "") if isinstance(b, dict) else str(b)
-                for b in _content
-            )
-
-    from app.services.llm_provider import (
-        ComplexityTier,
-        classify_complexity,
-        get_llm_for_tier,
-    )
-    _tier = classify_complexity(user_query) if user_query else ComplexityTier.MEDIUM
-    llm = get_llm_for_tier(_tier)
-
-    # Append a strict instruction. We use a HumanMessage rather than a
-    # SystemMessage to avoid Mistral's "single system message" constraint.
-    forcing_msg = HumanMessage(content=(
-        "[Système — limite d'itérations atteinte]\n\n"
-        "Tu as utilisé toutes les itérations disponibles pour cette demande "
-        f"({iter_count}/{MAX_AGENT_ITERATIONS} appels d'outils). N'appelle "
-        "AUCUN nouvel outil. Donne maintenant à l'utilisateur, en français "
-        "et en texte clair :\n"
-        "1. Ce que tu as fait jusqu'ici (étapes complétées)\n"
-        "2. Ce qu'il restait à faire\n"
-        "3. Ce que l'utilisateur peut faire pour reprendre (ex : reformuler "
-        "la demande de façon plus ciblée, scinder en plusieurs requêtes)\n\n"
-        "Ne PROMETS pas d'action future, ne génère AUCUN tool_call, "
-        "termine ta réponse par un point."
-    ))
-
-    _sanitized = _sanitize_messages_for_mistral(list(messages) + [forcing_msg])
-    try:
-        response = await llm.ainvoke(_sanitized)
-        logger.warning(
-            "[force_summary] success : produced %d chars of summary",
-            len(getattr(response, "content", "") or ""),
-        )
-    except Exception as exc:
-        # Even the summary call failed (network, billing…). Return a
-        # synthesised AIMessage so the graph terminates cleanly.
-        logger.error("[force_summary] failed (%s) — emitting fallback text", exc)
-        from langchain_core.messages import AIMessage as _AIMessage
-        response = _AIMessage(content=(
-            f"J'ai atteint la limite de {MAX_AGENT_ITERATIONS} appels "
-            "d'outils sur cette tâche et je n'ai pas pu produire de résumé "
-            "automatiquement. Reformule ta demande en plusieurs étapes plus "
-            "ciblées, ça aboutira plus rapidement."
-        ))
-    return {"messages": [response]}
+# Moved to app/agent/force_summary.py (refactor 2026-05-25 Phase 2.2).
+from app.agent.force_summary import force_summary_node  # noqa: E402,F401
