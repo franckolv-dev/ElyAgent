@@ -202,54 +202,20 @@ def create_agent_node():
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
 
-        # Current date/time in French (Europe/Paris)
-        from datetime import datetime
-        import zoneinfo
-        _tz = zoneinfo.ZoneInfo("Europe/Paris")
-        now = datetime.now(_tz)
-        _days_fr = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-        _months_fr = ["", "janvier", "février", "mars", "avril", "mai", "juin",
-                      "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
-        date_str = (
-            f"{_days_fr[now.weekday()]} {now.day} {_months_fr[now.month]} "
-            f"{now.year}, {now.strftime('%H:%M')}"
+        # Refactor 2026-05-25 Phase 4.2 — date / language / IMPORTANT note
+        # builders extracted to app/agent/builders/system_prompt.py.
+        from app.agent.builders.system_prompt import (
+            LLM_INTROSPECTION_NOTE,
+            compute_date_segment,
+            extract_email_block_addendum,
+            fetch_user_language,
         )
-
-        # Per-user language fetch — mirrors the logic in
-        # app/agent/sub_agents/factory.py so the general agent honours
-        # the UI language toggle even when the diag sub-agent isn't reached.
-        _user_language = "fr"
-        if user_id:
-            try:
-                from app.models.user import User as _U
-                from app.database import async_session as _async_session
-                from sqlalchemy import select as _select
-                async with _async_session() as _db:
-                    _row = await _db.execute(
-                        _select(_U.language).where(_U.id == user_id)
-                    )
-                    _user_language = (_row.scalar_one_or_none() or "fr")
-            except Exception:
-                pass
-        # Compact directives — see factory.py rationale (don't bloat xLAM 8B context)
-        if _user_language == "en":
-            _lang_directive = "REPLY LANGUAGE = English. Translate any tool output.\n\n"
-            _lang_reminder = "\n\n[reply in English]"
-        else:
-            _lang_directive = "LANGUE DE RÉPONSE = Français. Traduis si besoin.\n\n"
-            _lang_reminder = "\n\n[réponds en français]"
+        date_str, _date_segment = compute_date_segment()
+        _user_language, _lang_directive, _lang_reminder = await fetch_user_language(user_id)
         logger.info(
             "[general] lang=%s user=%s",
             _user_language,
             (user_id[:8] + "…") if user_id else "(none)",
-        )
-
-        # Date string segment — ALWAYS dynamic, never goes into the cacheable
-        # part. Provider prompt cache prefix matches up to the date and stops
-        # there. Same with the trailing emails block (added later).
-        _date_segment = (
-            f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-            "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
         )
 
         if use_slm:
@@ -340,20 +306,13 @@ def create_agent_node():
                 # Cacheable segment = lang_directive + base + IMPORTANT + snapshot.
                 # Concatenated in this order so the provider's prompt cache
                 # prefix can match every byte up to the dynamic date.
-                _llm_introspection_note = (
-                    "\n\nIMPORTANT : if the user asks which LLM/model/provider "
-                    "you are using, you MUST call `system_check_llm_providers` "
-                    "before answering. Never answer from your training memory.\n"
-                    "Si l'utilisateur te demande quel LLM/modèle/fournisseur tu "
-                    "utilises, tu DOIS appeler `system_check_llm_providers` "
-                    "avant de répondre. Ne réponds jamais depuis ta mémoire.\n"
-                )
-
+                # LLM_INTROSPECTION_NOTE imported from builders.system_prompt
+                # at the top of agent_node.
                 def _build_cacheable_prompt() -> str:
                     return (
                         _lang_directive
                         + _SYSTEM_PROMPT_BASE
-                        + _llm_introspection_note
+                        + LLM_INTROSPECTION_NOTE
                         + memory_snapshot
                     )
 
@@ -386,53 +345,8 @@ def create_agent_node():
 
         _sanitized = _sanitize_messages_for_mistral(messages)
 
-        # ── Extract user-provided emails / placeholders (audit 2026-05-07) ──
-        # Weak models (Ministral 3 8B observed) keep asking for an email
-        # already given in the conversation. We pre-scan the message stream
-        # and inject a sticky « EMAILS DÉJÀ FOURNIS » block in the system
-        # prompt. The PII filter has already replaced raw addresses with
-        # ``[EMAIL_N]`` placeholders, so we look for both shapes:
-        #   • bare address (rare — leak from filter or quoted text)
-        #   • ``[EMAIL_0]`` / ``[EMAIL_1]`` placeholders
-        try:
-            import re as _email_re
-            _email_pat = _email_re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-            _placeholder_pat = _email_re.compile(r"\[EMAIL_\d+\]")
-            _seen_addrs: list[str] = []
-            _seen_placeholders: list[str] = []
-            for _m in _sanitized[-12:]:  # last 12 messages is enough
-                _content = getattr(_m, "content", None)
-                if _content is None and isinstance(_m, dict):
-                    _content = _m.get("content")
-                if not isinstance(_content, str):
-                    continue
-                for _addr in _email_pat.findall(_content):
-                    if _addr not in _seen_addrs:
-                        _seen_addrs.append(_addr)
-                for _ph in _placeholder_pat.findall(_content):
-                    if _ph not in _seen_placeholders:
-                        _seen_placeholders.append(_ph)
-            if _seen_addrs or _seen_placeholders:
-                system += "\n\n📧 ADRESSES EMAIL DÉJÀ FOURNIES PAR L'UTILISATEUR :\n"
-                if _seen_addrs:
-                    system += "\n".join(f"- {a}" for a in _seen_addrs[:10]) + "\n"
-                if _seen_placeholders:
-                    system += (
-                        "Placeholders (anonymisation PII active) : "
-                        + ", ".join(_seen_placeholders[:10])
-                        + "\n"
-                        "→ Ces placeholders représentent de VRAIES adresses fournies par "
-                        "l'utilisateur. Utilise-les TELS QUELS comme paramètre ``to`` des "
-                        "outils gmail (ex: ``gmail_send_email(to='[EMAIL_0]', ...)``). "
-                        "Le backend remplace automatiquement le placeholder par la vraie "
-                        "adresse au moment de l'appel.\n"
-                    )
-                system += (
-                    "→ NE redemande PAS l'adresse à l'utilisateur, NE la cherche PAS dans "
-                    "contacts_search — elle est déjà fournie."
-                )
-        except Exception as _ext_exc:
-            logger.debug("email extraction skipped: %s", _ext_exc)
+        # Email / placeholder addendum — refactor Phase 4.2 (builders.system_prompt).
+        system += extract_email_block_addendum(_sanitized)
 
         # ── Inference ──────────────────────────────────────────────────────
         if use_slm:
@@ -497,25 +411,23 @@ def create_agent_node():
                 _fb_snapshot = await _frozen_mem.get_or_build(
                     _conv_id_fb, user_id, _fb_build_snapshot,
                 )
-                _fb_intro = (
-                    "\n\nIMPORTANT : if the user asks which LLM/model/provider "
-                    "you are using, you MUST call `system_check_llm_providers` "
-                    "before answering. Never answer from your training memory.\n"
-                )
-
+                # Use the same IMPORTANT note as the primary path
+                # (LLM_INTROSPECTION_NOTE imported from builders.system_prompt).
+                # Slight content drift between primary/fallback would have broken
+                # the prompt cache prefix mid-conversation — single constant
+                # avoids that whole class of bug.
                 def _fb_build_cacheable() -> str:
                     return (
                         _lang_directive
                         + _SYSTEM_PROMPT_BASE
-                        + _fb_intro
+                        + LLM_INTROSPECTION_NOTE
                         + _fb_snapshot
                     )
 
                 _fb_cacheable = _spc.get_or_build(_conv_id_fb, _fb_build_cacheable)
                 system = (
                     _fb_cacheable
-                    + f"\n\n📅 Date et heure actuelles : {date_str} (Europe/Paris)\n"
-                    + "Utilise toujours le fuseau Europe/Paris pour les dates et heures.\n"
+                    + _date_segment
                     + _lang_reminder
                 )
 
