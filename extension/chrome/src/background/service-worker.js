@@ -351,6 +351,118 @@ async function handleCommand(env) {
     return;
   }
 
+  // ── Sprint 0.7 — Chrome v2 read-only inspectors ──────────────────────
+  // These commands query Chrome's APIs directly (no tab targeting). The
+  // backend tool clamps `days_back ≤ 30` and `max_results ≤ 20` BEFORE
+  // we get here, and applies a domain blacklist on the response. The
+  // extension just executes the API and returns the rows.
+
+  // GET_HISTORY — visit history. Defaults: 7 days back, 50 max items
+  // (the backend will already have clamped max_results to ≤20).
+  if (env.type === CMD.GET_HISTORY) {
+    try {
+      const query = String(env.payload?.query ?? "");
+      // chrome.history.search wants `startTime` (epoch ms). Convert days
+      // back into a timestamp; cap at 30 days as a second line of
+      // defence even if the backend clamping is ever bypassed.
+      const daysBack = Math.min(Math.max(Number(env.payload?.days_back ?? 7), 1), 30);
+      const maxResults = Math.min(Math.max(Number(env.payload?.max_results ?? 50), 1), 100);
+      const startTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+      const items = await chrome.history.search({
+        text: query,
+        startTime,
+        maxResults,
+      });
+      const rows = items.map((it) => ({
+        url: it.url,
+        title: it.title || "",
+        visit_count: it.visitCount ?? 0,
+        last_visit_time: it.lastVisitTime ?? 0,
+        typed_count: it.typedCount ?? 0,
+      }));
+      ws?.send(JSON.stringify(makeResult(env.id, true, { items: rows })));
+    } catch (e) {
+      ws?.send(JSON.stringify(makeResult(env.id, false, null, String(e))));
+    }
+    return;
+  }
+
+  // GET_BOOKMARKS — search if a query is given, else the full tree.
+  // chrome.bookmarks.search returns a flat list; chrome.bookmarks.getTree
+  // gives the folder hierarchy. The backend asks for one or the other.
+  if (env.type === CMD.GET_BOOKMARKS) {
+    try {
+      const query = String(env.payload?.query ?? "").trim();
+      let items;
+      if (query) {
+        const hits = await chrome.bookmarks.search(query);
+        items = hits.map((b) => ({
+          id: b.id,
+          parent_id: b.parentId,
+          title: b.title || "",
+          url: b.url || null,                   // null for folders
+          date_added: b.dateAdded ?? 0,
+        }));
+      } else {
+        // Empty query → flatten the full tree to a list of bookmarks.
+        const tree = await chrome.bookmarks.getTree();
+        items = [];
+        const walk = (node, folderPath) => {
+          if (node.url) {
+            items.push({
+              id: node.id,
+              parent_id: node.parentId,
+              title: node.title || "",
+              url: node.url,
+              date_added: node.dateAdded ?? 0,
+              folder_path: folderPath,
+            });
+          }
+          if (node.children) {
+            const nextPath = node.title ? `${folderPath}/${node.title}` : folderPath;
+            for (const child of node.children) walk(child, nextPath);
+          }
+        };
+        for (const root of tree) walk(root, "");
+      }
+      ws?.send(JSON.stringify(makeResult(env.id, true, { items })));
+    } catch (e) {
+      ws?.send(JSON.stringify(makeResult(env.id, false, null, String(e))));
+    }
+    return;
+  }
+
+  // GET_DOWNLOADS — recent downloads. `state` filters to in_progress /
+  // interrupted / complete (default: any).
+  if (env.type === CMD.GET_DOWNLOADS) {
+    try {
+      const query = String(env.payload?.query ?? "").trim();
+      const state = env.payload?.state;  // undefined | "in_progress" | "interrupted" | "complete"
+      const maxResults = Math.min(Math.max(Number(env.payload?.max_results ?? 20), 1), 100);
+      const searchParams = { limit: maxResults, orderBy: ["-startTime"] };
+      if (query) searchParams.query = [query];
+      if (state) searchParams.state = state;
+      const items = await chrome.downloads.search(searchParams);
+      const rows = items.map((d) => ({
+        id: d.id,
+        url: d.url,
+        final_url: d.finalUrl || d.url,
+        filename: d.filename || "",
+        mime: d.mime || "",
+        state: d.state,
+        bytes_received: d.bytesReceived ?? 0,
+        total_bytes: d.totalBytes ?? 0,
+        start_time: d.startTime || "",
+        end_time: d.endTime || "",
+        exists: d.exists ?? false,
+      }));
+      ws?.send(JSON.stringify(makeResult(env.id, true, { items: rows })));
+    } catch (e) {
+      ws?.send(JSON.stringify(makeResult(env.id, false, null, String(e))));
+    }
+    return;
+  }
+
   const tab = await resolveTargetTab(env);
   if (!tab) {
     ws?.send(JSON.stringify(makeResult(env.id, false, null, "tab_not_found")));

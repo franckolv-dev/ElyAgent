@@ -36,6 +36,14 @@ export const CMD = Object.freeze({
   FILL: "fill",                  // fill(selector, value) — DESTRUCTIVE → HITL
   NAVIGATE: "navigate",          // load URL in target tab — DESTRUCTIVE → HITL
   WAIT_FOR: "wait_for",          // wait for selector to appear (read-only)
+  // ── Sprint 0.7 — Chrome v2: history / bookmarks / downloads ─────────
+  // All three are READ_ONLY. The backend tools clamp days_back ≤ 30 and
+  // max_results ≤ 20, and a domain blacklist (banking/health/adult) is
+  // applied server-side before the agent sees the results. The extension
+  // simply executes the chrome.* APIs and returns the raw rows.
+  GET_HISTORY: "get_history",      // chrome.history.search(query, days_back, max_results)
+  GET_BOOKMARKS: "get_bookmarks",  // chrome.bookmarks.search(query) — folder tree if empty
+  GET_DOWNLOADS: "get_downloads",  // chrome.downloads.search(query, state, max_results)
 });
 
 // ── Event types (extension → backend) ────────────────────────────────
@@ -53,6 +61,8 @@ export const EVT = Object.freeze({
 const READ_ONLY_CMDS = new Set([
   CMD.PING, CMD.LIST_TABS, CMD.OPEN_TAB, CMD.CLOSE_TAB, CMD.WAIT_LOADED,
   CMD.READ_DOM, CMD.READ_TEXT, CMD.GET_URL, CMD.SCREENSHOT, CMD.WAIT_FOR,
+  // Sprint 0.7 — Chrome v2 read-only inspectors
+  CMD.GET_HISTORY, CMD.GET_BOOKMARKS, CMD.GET_DOWNLOADS,
 ]);
 
 export function isDestructive(commandType) {
