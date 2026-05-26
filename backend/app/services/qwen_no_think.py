@@ -51,34 +51,99 @@ _GEMMA_CHANNEL_RE = re.compile(
 _HARMONY_TAG_RE = re.compile(r"<\|(?:start|end|header|channel|message|return)\|?>", flags=re.IGNORECASE)
 
 
+# ── Cloud model name markers ─────────────────────────────────────────
+# Used by ``is_local_openai_llm`` as a hard NO override : if the model
+# name explicitly identifies a known cloud LLM, we never treat it as
+# local — even if the base_url accidentally contains a private-IP
+# substring (e.g. a Docker bridge reverse-proxy in front of DeepSeek,
+# or a port number like ``:10080`` triggering the short ``"10."``
+# marker). Add 2026-05-26 after the observed false-positive that
+# bumped a conversation onto Claude Haiku for 1h+ (audit Gemini §1.3).
+_CLOUD_MODEL_MARKERS: tuple[str, ...] = (
+    # DeepSeek's flagship cloud models — never hosted locally
+    "deepseek-chat", "deepseek-coder", "deepseek-reasoner",
+    "deepseek-v3", "deepseek-v4",
+    # Anthropic — only available via cloud API
+    "claude-", "anthropic",
+    # OpenAI cloud-only model families
+    "gpt-4", "gpt-3.5", "gpt-4o", "o1-", "o3-", "openai/",
+    # Note: "gpt-oss" is open-source / often local — NOT a cloud marker
+    # Google Gemini API
+    "gemini-", "google/", "models/gemini",
+    # Moonshot / Kimi (cloud-only)
+    "kimi-k", "moonshot",
+    # Alibaba DashScope cloud models (their "open" weights would be
+    # served locally under different names like "qwen2.5-coder-7b")
+    "qwen3.6-", "qwen-max", "qwen-plus", "qwen-turbo",
+    "qwen-vl-plus", "qwen-vl-max", "qwen3-vl-plus",
+    # Zhipu cloud
+    "glm-4.5", "glm-4.6", "zhipu",
+    # Note: "mistral" / "ministral" / "gemma" / "llama" / "qwen-7b"
+    # are NOT in this list because they can all be hosted locally via
+    # LM Studio. The base_url heuristic handles those.
+)
+
+
+def _is_cloud_model_by_name(llm: Any) -> bool:
+    """Return True if the LLM's model name unambiguously identifies a
+    cloud provider's flagship model. Safety net for ``is_local_openai_llm``."""
+    for attr in ("model_name", "model", "deployment_name"):
+        name = getattr(llm, attr, None)
+        if not name:
+            continue
+        name_lc = str(name).lower()
+        if any(m in name_lc for m in _CLOUD_MODEL_MARKERS):
+            return True
+    return False
+
+
 def is_local_openai_llm(llm: Any) -> bool:
     """Return True if the LLM is a local OpenAI-compatible server (LM Studio,
     llama.cpp server, vLLM on localhost, etc.).
 
-    Used to gate the "compact prompt" mode — we skip the verbose ELY system
-    prompt (identity + 20 rules + user profile + memories + past_interactions)
-    and replace it with a minimal 200-token prompt, because small local
-    models (7B-14B) follow textual instructions literally and get confused
-    by the 15 000-token ELY prompt, preferring to respond in text rather
-    than tool-calling.
+    Used to gate the "compact prompt" mode AND the H-1 anti-hallucination
+    guard in agent_node. A false-positive here makes a perfectly working
+    cloud LLM get demoted to its fallback for no good reason — observed
+    2026-05-25 on conv e9b33b7d where DeepSeek-pro got incorrectly
+    flagged, switching the conversation to Claude Haiku for 1h+.
 
-    Detection: ChatOpenAI with a base_url pointing to a private host
-    (127.0.0.1 / localhost / *.local / 192.168.*.* / 10.*.*.* / host.docker.internal).
-    Cloud OpenAI / DeepSeek / OpenRouter / Zhipu all use public hostnames.
+    Detection logic (refined 2026-05-26)
+    -------------------------------------
+    1. ChatOpenAI instance only — other LangChain wrappers go to False.
+    2. **Model-name veto** : if the model name contains a known cloud
+       marker (deepseek, claude, gpt-4, gemini, mistral, kimi, glm-4,
+       qwen3.6-flash, …) → always False, regardless of base_url. This
+       guards against accidental matches when the URL goes through a
+       Docker bridge / nginx reverse-proxy.
+    3. **base_url markers** : private-IP-shape or known-local hostname
+       inside the base_url. The previous ``"10."`` short marker has
+       been tightened to ``"://10."`` to avoid matching port numbers
+       like ``:10080`` or path segments like ``/v10/``.
     """
     if llm is None:
         return False
     if type(llm).__name__ != "ChatOpenAI":
         return False
+    # Cloud-name veto wins over everything else
+    if _is_cloud_model_by_name(llm):
+        return False
     base_url = getattr(llm, "openai_api_base", None) or getattr(llm, "base_url", None) or ""
     base_url = str(base_url).lower()
+    if not base_url:
+        return False
     local_markers = (
         "localhost", "127.0.0.1", "::1",
         "host.docker.internal",
         ".local/", ".local:",
-        "192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
-        "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
-        "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+        # Private IP ranges, anchored to scheme to avoid matching ports
+        # / path segments. Examples that used to false-positive :
+        # - "https://api.x.com:10080/v1"  → "10." appeared in port
+        # - "https://example.com/v10/api" → "10." appeared in path
+        "://192.168.", "://10.",
+        "://172.16.", "://172.17.", "://172.18.", "://172.19.",
+        "://172.20.", "://172.21.", "://172.22.", "://172.23.",
+        "://172.24.", "://172.25.", "://172.26.", "://172.27.",
+        "://172.28.", "://172.29.", "://172.30.", "://172.31.",
     )
     return any(m in base_url for m in local_markers)
 

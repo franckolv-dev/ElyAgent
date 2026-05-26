@@ -806,7 +806,7 @@ def create_agent_node():
                 logger.warning("⏱ TIMING[general.infer] %.2fs — tier=%s, tool_calls=%d",
                     _t.monotonic() - _infer_t, _tier_key, len(getattr(response, 'tool_calls', []) or []))
 
-                # ── Audit H-1 fix (2026-05-06): garde anti-hallucination ──
+                # ── Audit H-1 fix (2026-05-06, refined 2026-05-26): garde anti-hallu ──
                 # Modèles locaux 7-14B (Qwen, Mistral, Llama small) ont
                 # tendance à émettre du TEXTE en plain "je vais faire X"
                 # au lieu d'un tool_call JSON, surtout sur des verbes
@@ -815,6 +815,13 @@ def create_agent_node():
                 # par mail" au lieu d'appeler gmail_send_with_attachment.
                 # Garde : si modèle LOCAL + 0 tool_calls + user query
                 # contient un verbe d'action → fallback cloud immédiat.
+                #
+                # 2026-05-26 : ajout d'un log détaillé AVANT la décision,
+                # suite à un faux-positif observé le 25/05 où DeepSeek-pro
+                # (cloud, base_url=api.deepseek.com) a été incorrectement
+                # flaggé comme local → conv stickée sur Haiku 1h+. Ce log
+                # permettra de diagnostiquer la prochaine occurrence sans
+                # reproduire le scénario en aveugle.
                 _has_tool_calls = bool(getattr(response, 'tool_calls', None))
                 from app.services.qwen_no_think import is_local_openai_llm as _is_local_oa
                 _is_local = _is_local_oa(_base_llm)
@@ -828,6 +835,24 @@ def create_agent_node():
                     "capture", "screenshot", "photographie",
                 )
                 _query_has_action = any(v in user_query.lower() for v in _action_verbs)
+                # Detailed log so any future false-positive is easy to debug
+                _h1_base_url = (
+                    getattr(_base_llm, "openai_api_base", None)
+                    or getattr(_base_llm, "base_url", None)
+                    or ""
+                )
+                _h1_model_name = (
+                    getattr(_base_llm, "model_name", None)
+                    or getattr(_base_llm, "model", None)
+                    or ""
+                )
+                if _query_has_action and _bind_tools_flag:
+                    logger.info(
+                        "[H-1.eval] tier=%s local=%s tool_calls=%d action=%s "
+                        "model=%r base_url=%r",
+                        _tier_key, _is_local, len(getattr(response, "tool_calls", []) or []),
+                        _query_has_action, _h1_model_name, _h1_base_url,
+                    )
                 if (
                     _is_local
                     and not _has_tool_calls
