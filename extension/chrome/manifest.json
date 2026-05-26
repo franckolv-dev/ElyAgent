@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ELY — Browser Companion",
   "short_name": "ELY",
-  "version": "0.1.0",
+  "version": "1.8.0",
   "description": "Let ELY act in your browser, on your tabs, with explicit approval. Self-hosted AI agent — your data never leaves your machine.",
   "homepage_url": "https://agent-ely.fr",
 
