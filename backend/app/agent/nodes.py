@@ -516,6 +516,21 @@ def create_agent_node():
                 r"notif|notifs|notification|notifications|"
                 # Sites de service souvent croisés
                 r"doctolib|sncf|booking|amazon|leboncoin"
+                # Sprint 0.7 (2026-05-26) — Chrome v2 read-only inspectors.
+                # Without these, « quels sites j'ai visité ? » /
+                # « cherche dans mon historique de navigation » /
+                # « mes téléchargements du jour » skipped bind_tools and
+                # the LLM said "I have no tool for that" while
+                # browser_history_search / _bookmarks_search /
+                # _downloads_search were sitting right there.
+                r"|historique|navigation|visit[eéès]?|"
+                r"signets?|favori|favoris|bookmark|bookmarks|"
+                r"t[ée]l[ée]charg\w*|download|downloads|"
+                r"chrome|navigateur|browser|"
+                # "site"/"sites" alone is too generic (matches "le site
+                # de la marque"). Require a navigation-y neighbour to
+                # avoid bind_tools on chitchat about brands' websites.
+                r"sites?\s+(visit|web|internet|consult|all[ée]s?|fr[ée]quent)"
                 r")\b",
                 re.IGNORECASE,
             )

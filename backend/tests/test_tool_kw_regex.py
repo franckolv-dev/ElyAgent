@@ -57,6 +57,12 @@ _CANONICAL_KEYWORDS = (
     "abonn", "follower", "notif", "post", "tweet",
     # Public services often visited via the Chrome extension
     "doctolib", "sncf", "amazon",
+    # Sprint 0.7 (2026-05-26) — Chrome v2 read-only inspectors. Without
+    # these, "quels sites j'ai visité", "cherche dans mon historique de
+    # navigation", "mes téléchargements du jour" skip bind_tools and the
+    # LLM says "I have no tool for that" while the tools sit registered.
+    "historique", "navigation", "visit", "signets", "favori", "bookmark",
+    "download", "chrome", "navigateur", "browser",
 )
 
 
@@ -99,6 +105,12 @@ _TOOL_KW_PATTERN = (
     r"post|posts|tweet|tweets|publication|publications|"
     r"notif|notifs|notification|notifications|"
     r"doctolib|sncf|booking|amazon|leboncoin"
+    # Sprint 0.7 — Chrome v2 read-only inspectors
+    r"|historique|navigation|visit[eéès]?|"
+    r"signets?|favori|favoris|bookmark|bookmarks|"
+    r"t[ée]l[ée]charg\w*|download|downloads|"
+    r"chrome|navigateur|browser|"
+    r"sites?\s+(visit|web|internet|consult|all[ée]s?|fr[ée]quent)"
     r")\b"
 )
 _TOOL_KW = re.compile(_TOOL_KW_PATTERN, re.IGNORECASE)
@@ -146,6 +158,17 @@ _MUST_MATCH_NEW_2026_05_26 = [
     "ouvre Doctolib",
     "résume mon feed",
     "lis ce post sur LinkedIn",
+    # Sprint 0.7 (2026-05-26) — Chrome v2 inspectors. These three were
+    # the exact prompts that failed in the post-deploy smoke (deepseek
+    # v4-pro tier C answered "Je n'ai pas d'outil direct" because the
+    # regex didn't match any keyword in the user query).
+    "Quels sites j'ai visité vendredi soir ?",
+    "cherche dans mon historique de navigation",
+    "qu'est-ce que j'ai visité aujourd'hui sur Chrome ?",
+    "mes téléchargements du jour",
+    "trouve-moi mes signets sur React",
+    "ouvre mon historique",
+    "tu peux regarder mes favoris",
 ]
 
 _MUST_MATCH_LEGACY = [
