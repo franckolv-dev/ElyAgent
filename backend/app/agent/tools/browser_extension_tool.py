@@ -47,6 +47,7 @@ from typing import Annotated
 from langchain_core.tools import tool, InjectedToolArg
 
 from app.services import browser_extension_registry as bext_registry
+from app.services.chrome_privacy_filter import filter_rows as _privacy_filter_rows
 
 logger = logging.getLogger(__name__)
 
@@ -587,6 +588,246 @@ async def browser_tab_navigate(
     )
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Sprint 0.7 — Chrome v2: history / bookmarks / downloads
+# ─────────────────────────────────────────────────────────────────────
+#
+# These three tools are READ-ONLY and never write to the user's browser.
+# Defence-in-depth privacy controls applied here (all server-side, the
+# agent cannot bypass them):
+#   1. Inputs are clamped:
+#        - days_back  ∈ [1, 30]
+#        - max_results ∈ [1, 20]
+#   2. URLs are passed through `chrome_privacy_filter.filter_rows()`
+#      which drops rows whose host matches the V2.0 hardcoded blacklist
+#      (banking / health / adult / sensitive gov).
+#   3. Result rows are formatted as compact text — no JSON dump that
+#      could exfiltrate fields the LLM didn't ask for.
+#
+# Why we clamp INSIDE the tool instead of trusting the SW: the SW
+# clamps too (cheap defence), but the cloud LLM provider only ever
+# sees what the tool returns — so the authoritative clamp must live
+# server-side, not in user-controlled JS.
+
+_MAX_DAYS_BACK = 30
+_MAX_RESULTS = 20
+
+
+def _clamp(value, lo: int, hi: int, default: int) -> int:
+    """Coerce value to int in [lo, hi]; fall back to default on garbage."""
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, v))
+
+
+def _format_ts(ms: float | int | None) -> str:
+    """Format epoch-ms timestamp as a short ISO string. Empty if 0/None."""
+    if not ms:
+        return ""
+    try:
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).strftime(
+            "%Y-%m-%d %H:%M"
+        )
+    except (OSError, ValueError, OverflowError):
+        return ""
+
+
+@tool
+async def browser_history_search(
+    query: str = "",
+    days_back: int = 7,
+    max_results: int = 20,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Search the user's Chrome visit history (READ-ONLY).
+
+    Use this when the user asks "what did I read about X yesterday?",
+    "give me my recent visits to GitHub", or "what was that article on
+    LLM evals I saw last week?". Requires the ELY Chrome extension to
+    be connected (extension/chrome/, Sprint 0.7).
+
+    Privacy:
+        Visits to banking, health, adult, and sensitive gov domains are
+        filtered out server-side before the agent sees them, regardless
+        of what the user asks. This is a hardcoded V2.0 list.
+
+    Args:
+        query: text search inside title/URL (empty = all recent visits).
+        days_back: how far back to look. Clamped to [1, 30].
+        max_results: cap on returned rows. Clamped to [1, 20].
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    days_back = _clamp(days_back, 1, _MAX_DAYS_BACK, 7)
+    max_results = _clamp(max_results, 1, _MAX_RESULTS, 20)
+    payload = {
+        "query": query or "",
+        "days_back": days_back,
+        "max_results": max_results,
+    }
+    res = await _send_and_wait(user_id, "get_history", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    raw = res.get("items") or []
+    items = _privacy_filter_rows(raw, url_key="url")
+    if not items:
+        if raw and not items:
+            return (
+                f"Aucun résultat publiable pour « {query} » sur les {days_back} "
+                "derniers jours (visites filtrées par le garde-fou privacy : "
+                "banking/santé/adulte/gov sensibles)."
+            )
+        return f"Aucune visite trouvée pour « {query} » sur les {days_back} derniers jours."
+    lines = [
+        f"{len(items)} visite(s) Chrome (≤ {days_back} jours, filtré privacy) :"
+    ]
+    for it in items:
+        ts = _format_ts(it.get("last_visit_time"))
+        vc = it.get("visit_count", 0)
+        title = (it.get("title") or "").strip()[:90]
+        lines.append(
+            f"  - {ts}  ({vc}×) {title}\n      {it.get('url', '')}"
+        )
+    return "\n".join(lines)
+
+
+@tool
+async def browser_bookmarks_search(
+    query: str = "",
+    max_results: int = 20,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Search the user's Chrome bookmarks (READ-ONLY).
+
+    Use this when the user asks "find me that React tutorial I bookmarked",
+    "what's in my Recettes folder?", or "list my dev bookmarks". An empty
+    query returns the first `max_results` bookmarks of the full tree.
+
+    Privacy:
+        Bookmarks on banking, health, adult, and sensitive gov domains
+        are filtered out server-side.
+
+    Args:
+        query: text search inside title or URL (empty = full bookmark list).
+        max_results: cap on returned rows. Clamped to [1, 20].
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    max_results = _clamp(max_results, 1, _MAX_RESULTS, 20)
+    payload = {"query": query or ""}
+    res = await _send_and_wait(user_id, "get_bookmarks", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    raw = res.get("items") or []
+    items = _privacy_filter_rows(raw, url_key="url")
+    # Drop folder-only entries (no url) when no query — keeps the output
+    # focused on actionable bookmarks. With a query, chrome.bookmarks.search
+    # already returns only matching leaves.
+    items = [it for it in items if it.get("url")]
+    items = items[:max_results]
+    if not items:
+        return f"Aucun signet trouvé pour « {query} »."
+    lines = [f"{len(items)} signet(s) Chrome :"]
+    for it in items:
+        title = (it.get("title") or "").strip()[:90]
+        folder = it.get("folder_path", "")
+        folder_hint = f"  [{folder.strip('/')}]" if folder and folder != "/" else ""
+        lines.append(f"  - {title}{folder_hint}\n      {it.get('url', '')}")
+    return "\n".join(lines)
+
+
+@tool
+async def browser_downloads_search(
+    query: str = "",
+    state: str = "",
+    max_results: int = 20,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """List the user's recent Chrome downloads (READ-ONLY).
+
+    Use this when the user asks "what did I download yesterday?", "find
+    my Excel files in downloads", or "show me my recent PDFs". By default
+    returns the most recent downloads first.
+
+    Privacy:
+        Downloads from banking, health, adult, and sensitive gov domains
+        are filtered out server-side (URL of the source page is checked,
+        not the local filename — sensitive content lands in the same
+        bucket regardless of where the file lives on disk).
+
+    Args:
+        query: text search inside filename/URL (empty = all recent).
+        state: filter by state — "" (any), "in_progress", "interrupted",
+            or "complete".
+        max_results: cap on returned rows. Clamped to [1, 20].
+    """
+    if not user_id:
+        return "Erreur : user_id manquant."
+    max_results = _clamp(max_results, 1, _MAX_RESULTS, 20)
+    payload: dict = {"query": query or "", "max_results": max_results}
+    if state in {"in_progress", "interrupted", "complete"}:
+        payload["state"] = state
+    res = await _send_and_wait(user_id, "get_downloads", payload)
+    if not res.get("ok"):
+        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+    raw = res.get("items") or []
+    # We check BOTH the source URL and the final URL — a redirect can
+    # bounce off a non-blacklisted host but still originate sensitive
+    # content. Either match drops the row.
+    items: list[dict] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        from app.services.chrome_privacy_filter import is_blacklisted_url
+        if is_blacklisted_url(row.get("url")) or is_blacklisted_url(row.get("final_url")):
+            continue
+        items.append(row)
+    items = items[:max_results]
+    if not items:
+        return f"Aucun téléchargement trouvé pour « {query} »."
+    lines = [f"{len(items)} téléchargement(s) Chrome (filtré privacy) :"]
+    for it in items:
+        ts = _format_ts(_parse_iso_to_ms(it.get("start_time", "")))
+        fname = (it.get("filename") or "").split("/")[-1][:80]
+        size = it.get("total_bytes") or it.get("bytes_received") or 0
+        size_hint = f" ({_human_size(size)})" if size else ""
+        st = it.get("state", "")
+        lines.append(
+            f"  - {ts}  [{st}] {fname}{size_hint}\n      {it.get('url', '')}"
+        )
+    return "\n".join(lines)
+
+
+def _parse_iso_to_ms(iso: str) -> int:
+    """Best-effort ISO-8601 → epoch ms. Returns 0 on parse failure."""
+    if not iso:
+        return 0
+    try:
+        from datetime import datetime
+        # chrome.downloads.search returns ISO with a trailing "Z" or offset.
+        if iso.endswith("Z"):
+            iso = iso[:-1] + "+00:00"
+        return int(datetime.fromisoformat(iso).timestamp() * 1000)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _human_size(n: int) -> str:
+    """Pretty byte size, e.g. 12.3 MB. Keep tight, the agent quotes verbatim."""
+    if n < 1024:
+        return f"{n} B"
+    units = ("KB", "MB", "GB", "TB")
+    v = float(n) / 1024.0
+    for u in units:
+        if v < 1024:
+            return f"{v:.1f} {u}"
+        v /= 1024
+    return f"{v:.1f} PB"
+
+
 BROWSER_EXTENSION_TOOLS = [
     browser_list_tabs,
     browser_open_tab,
@@ -600,4 +841,8 @@ BROWSER_EXTENSION_TOOLS = [
     browser_tab_fill,
     browser_tab_navigate,
     browser_close_tab,
+    # Sprint 0.7 — Chrome v2 read-only inspectors
+    browser_history_search,
+    browser_bookmarks_search,
+    browser_downloads_search,
 ]

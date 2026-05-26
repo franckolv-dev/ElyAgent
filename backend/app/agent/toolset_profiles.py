@@ -182,6 +182,13 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "browser_tab_fill",
     "browser_tab_navigate",
     "browser_close_tab",
+    # Sprint 0.7 (2026-05-26) — Chrome v2 read-only inspectors.
+    # Answer "what did I visit/bookmark/download?" without opening a tab.
+    # Server-side privacy filter drops banking/health/adult/gov domains
+    # before the agent sees the rows; inputs clamped to ≤30 days / ≤20 rows.
+    "browser_history_search",
+    "browser_bookmarks_search",
+    "browser_downloads_search",
     # Web search (DuckDuckGo / SerpAPI fallback path)
     "web_search",
     # Tasks (Google Tasks)
