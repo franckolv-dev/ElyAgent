@@ -54,7 +54,9 @@ _BLACKLIST: tuple[str, ...] = (
     "wise.com",
     "n26.com",
     "boursorama.com",
-    "bnpparibas.",
+    # BNP owns the `.bnpparibas` gTLD (e.g. `mabanque.bnpparibas`)
+    # so we match the bare brand, no trailing dot needed.
+    "bnpparibas",
     "creditmutuel.",
     "creditagricole.",
     "societegenerale.",
