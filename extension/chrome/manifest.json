@@ -14,6 +14,9 @@
 
   "permissions": [
     "activeTab",
+    "bookmarks",
+    "downloads",
+    "history",
     "scripting",
     "storage",
     "tabs"

@@ -108,6 +108,10 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "browser_tab_fill",
     "browser_tab_navigate",
     "browser_close_tab",
+    # Sprint 0.7 — Chrome v2 read-only inspectors (history/bookmarks/downloads)
+    "browser_history_search",
+    "browser_bookmarks_search",
+    "browser_downloads_search",
     # Watchdog tools
     "watchdog_add",
     "watchdog_list",
