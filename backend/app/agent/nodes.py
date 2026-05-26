@@ -479,14 +479,44 @@ def create_agent_node():
             # Bind tools only for COMPLEX queries OR when the query explicitly mentions
             # tool-related actions. SIMPLE/MEDIUM small-talk and quick facts skip binding.
             _tool_kw = re.compile(
+                # Mots-clés qui déclenchent bind_tools sur les tiers
+                # SIMPLE / MEDIUM (pour COMPLEX les tools sont toujours bound).
+                # Cette regex doit matcher au moins UN verbe / nom de domaine
+                # de la requête utilisateur pour que l'agent voie ses outils.
+                #
+                # Audit 2026-05-26 : enrichi avec verbes de lecture/navigation
+                # (regarde / vérifie / consulte / ouvre / navigue) +
+                # vocabulaire réseaux sociaux + apps grand public — sans ces
+                # ajouts, « regarde mes réseaux sociaux » échappait au
+                # bind_tools sur Gemma 4 et le LLM inventait qu'il ne
+                # pouvait rien faire (observé en prod sur conv réseau social).
+                #
                 # « rdv » / « rendez-vous » / « réunion » / « meeting » ajoutés
                 # (mai 2026) — sans eux, « Mes RDV cette semaine » échappait au
                 # bind_tools et le LLM hallucinait un agenda inventé.
-                r"\b(envoie|crée|liste|cherche|trouve|génère|exécute|lance|"
-                r"planifie|programme|note|enregistre|sauvegarde|"
-                r"mail|email|calendrier|agenda|rendez.?vous|rdvs?|réunions?|meetings?|"
-                r"drive|sheet|doc|tâche|rappel|note|"
-                r"fichier|capture|screenshot|météo|news|traduis)\b",
+                r"\b("
+                # Verbes d'action explicites
+                r"envoie|envoy|crée|liste|cherche|recherche|trouve|génère|"
+                r"exécute|lance|planifie|programme|enregistre|sauvegarde|"
+                r"supprime|archive|copie|déplace|renomme|partage|"
+                # Verbes de lecture / consultation / navigation
+                r"regarde|regard|consulte|vérifie|vérific|verifie|ouvre|navigue|"
+                r"affiche|montre|résume|résum|read|lis"
+                # Domaines métiers
+                r"|mail|email|courriel|calendrier|agenda|rendez.?vous|rdvs?|"
+                r"réunions?|meetings?|drive|sheet|doc|tâche|rappel|note|"
+                r"fichier|capture|screenshot|météo|news|traduis"
+                # Réseaux sociaux + apps grand public
+                r"|réseau(x)?\s*sociau(x)?|reseau(x)?\s*sociau(x)?|"
+                r"social[\s-]*media|profil|profile|"
+                r"linkedin|mastodon|twitter|x\.com|instagram|insta|"
+                r"facebook|threads|bluesky|tiktok|youtube|"
+                r"abonn[ée]s?|follower|followers|mention|mentions|"
+                r"post|posts|tweet|tweets|publication|publications|"
+                r"notif|notifs|notification|notifications|"
+                # Sites de service souvent croisés
+                r"doctolib|sncf|booking|amazon|leboncoin"
+                r")\b",
                 re.IGNORECASE,
             )
             # When a sticky toolset profile is defined for the conversation,
