@@ -458,6 +458,13 @@ def create_agent_node():
                 _chain = list(_tier_cfg_for_fb.get("providers", []) or [])
                 if _chain:
                     _fb_state = _fb.get_or_create(_conv_id_fb, _tier.value, _chain)
+                    # Retry hotfix (audit Gemini §1.3) — if a fallback has been
+                    # active long enough, give the primary a fresh chance. The
+                    # call is idempotent and cheap : it only mutates state when
+                    # the cool-down has elapsed AND a fallback is currently
+                    # active. See ``fallback_manager.should_retry_primary``.
+                    if _fb.should_retry_primary(_conv_id_fb):
+                        _fb.reset_to_primary(_conv_id_fb, reason="cooldown_elapsed")
                     logger.info(
                         "[chantier4] conv=%s tier=%s chain=%s active_idx=%d (provider=%r)",
                         _conv_id_fb[:8], _tier.value, _chain,

@@ -173,6 +173,11 @@ class _ConversationFallbackState:
     empty_count: int = 0            # consecutive empty responses
     # (reason, from_provider, to_provider, ts_unix) — diagnostic history
     reason_history: list[tuple[FailoverReason, str, str, float]] = field(default_factory=list)
+    # Unix timestamp at which we left the primary. Set by ``try_activate``
+    # every time the chain advances past index 0. Reset to ``None`` by
+    # ``reset_to_primary``. Used by ``should_retry_primary`` to decide when
+    # to give the primary a fresh chance (audit Gemini §1.3, retry hotfix).
+    fallback_activated_at: float | None = None
 
     @property
     def current_provider(self) -> str:
@@ -300,6 +305,10 @@ def try_activate(
     ts = time.time()
     state.reason_history.append((reason, old_provider, new_provider, ts))
     state.empty_count = 0
+    # Retry hotfix (audit Gemini §1.3) : remember when we left the primary
+    # so `should_retry_primary` can decide to give it another chance after
+    # the configured cool-down.
+    state.fallback_activated_at = ts
 
     _pending_events.setdefault(conversation_id, []).append({
         "type": "provider.switched",
@@ -363,6 +372,112 @@ def drain_events(conversation_id: str) -> list[dict]:
 def get_state(conversation_id: str) -> Optional[_ConversationFallbackState]:
     """Read-only access for tests and diagnostics. May return None."""
     return _states.get(conversation_id)
+
+
+# ── Retry-primary hotfix (audit Gemini 2026-05-25 §1.3) ──────────────────────
+#
+# Problem
+# -------
+# Without retry, a single transient failure on the primary (network blip,
+# rate limit, a faux-positive H-1 detection — observed 2026-05-25 on conv
+# e9b33b7d) sticks the WHOLE conversation on its fallback for the rest of
+# the session. That's expensive (cloud→cloud), denies souveraineté (cloud
+# instead of local), and ignores that the primary may have recovered
+# seconds later.
+#
+# Solution
+# --------
+# When a fallback is active and the cool-down elapsed (default 10 min),
+# `should_retry_primary` returns True. The caller (agent_node) then calls
+# `reset_to_primary` which puts ``current_index = 0`` so the next inference
+# tries the primary again. If the primary is still broken, the standard
+# chantier-4 machinery re-advances and ``fallback_activated_at`` is reset
+# to "now" — so the cool-down restarts. No risk of busy-looping.
+#
+# Kill-switch
+# -----------
+# ``FALLBACK_RETRY_PRIMARY_MINUTES`` env :
+#   - unset / >0  : retry after N minutes (default 10)
+#   - "0"         : never retry, legacy sticky-forever behaviour
+
+
+def _retry_threshold_seconds() -> float:
+    """Read the cool-down threshold from env (in seconds). 0 disables retry."""
+    import os
+    try:
+        minutes = float(os.getenv("FALLBACK_RETRY_PRIMARY_MINUTES", "10"))
+    except (ValueError, TypeError):
+        minutes = 10.0
+    return max(0.0, minutes) * 60.0
+
+
+def should_retry_primary(
+    conversation_id: str,
+    *,
+    now: Optional[float] = None,
+) -> bool:
+    """Return True if we should give the primary a fresh chance.
+
+    Conditions (all must hold):
+      - State exists for the conversation.
+      - A fallback is currently active (``is_active_fallback``).
+      - ``fallback_activated_at`` is set (sanity).
+      - At least ``FALLBACK_RETRY_PRIMARY_MINUTES`` minutes elapsed since
+        the activation (default 10).
+      - The kill-switch is not set to 0 / disabled.
+
+    Parameters
+    ----------
+    conversation_id :
+        Same key as the rest of the API.
+    now :
+        Override "current time" for tests. Defaults to ``time.time()``.
+    """
+    threshold = _retry_threshold_seconds()
+    if threshold <= 0:
+        return False
+    state = _states.get(conversation_id)
+    if state is None or not state.is_active_fallback:
+        return False
+    if state.fallback_activated_at is None:
+        return False
+    _now = time.time() if now is None else now
+    elapsed = _now - state.fallback_activated_at
+    return elapsed >= threshold
+
+
+def reset_to_primary(
+    conversation_id: str,
+    *,
+    reason: str = "cooldown_elapsed",
+) -> bool:
+    """Send the conversation back to the primary provider (index 0).
+
+    Used by ``should_retry_primary`` callers after the cool-down. Logs the
+    reset for ops visibility. Returns True if a reset actually happened,
+    False if the state was already on the primary or didn't exist.
+    """
+    state = _states.get(conversation_id)
+    if state is None or not state.is_active_fallback:
+        return False
+    old_provider = state.current_provider
+    state.current_index = 0
+    state.fallback_activated_at = None
+    state.empty_count = 0
+    new_provider = state.current_provider
+    ts = time.time()
+    _pending_events.setdefault(conversation_id, []).append({
+        "type": "provider.reset_to_primary",
+        "from": old_provider,
+        "to": new_provider,
+        "reason": reason,
+        "ts": ts,
+    })
+    logger.warning(
+        "[fallback] conv=%s reset_to_primary %r → %r (reason=%s)",
+        conversation_id, old_provider, new_provider, reason,
+    )
+    return True
 
 
 def state_count() -> int:
