@@ -43,17 +43,41 @@ logger = logging.getLogger(__name__)
 
 
 class _StdioConnection:
-    """Connexion stdio persistante vers un processus MCP (reconnexion auto)."""
+    """Connexion stdio persistante vers un processus MCP (reconnexion auto).
+
+    Lifecycle pattern (Sprint 4a J1.5b, 2026-05-27)
+    -----------------------------------------------
+    The MCP SDK uses anyio under the hood. ``stdio_client`` and
+    ``ClientSession`` open anyio TaskGroups whose CancelScopes are
+    **task-bound** — calling ``__aexit__`` from a different asyncio task
+    than ``__aenter__`` raises ``RuntimeError: Attempted to exit cancel
+    scope in a different task than it was entered in``.
+
+    Previously we entered the context managers from whichever task first
+    invoked ``call_tool`` and tried to exit them from whoever called
+    ``close`` (the admin router task, typically) — that crashed.
+
+    We now run the entire ``async with stdio_client(...) as ...: async
+    with ClientSession(...) as session: ... await _shutdown.wait()``
+    block inside a dedicated long-lived task (``_lifecycle``). External
+    callers operate on ``self._session`` via the session's anyio
+    memory object streams (which are safely task-shareable). The
+    lifecycle task owns enter and exit, so both run in the same task
+    and no cancel scope ever crosses a task boundary.
+    """
 
     def __init__(self, command: str, env: dict | None = None):
         self.command = command
         self.env = env
         self._lock = asyncio.Lock()
         self._session = None
-        self._read_ctx = None
-        self._session_ctx = None
+        self._task: asyncio.Task | None = None
+        self._ready = asyncio.Event()
+        self._shutdown = asyncio.Event()
+        self._init_error: BaseException | None = None
 
-    async def _connect(self) -> None:
+    async def _lifecycle(self) -> None:
+        """Own ``stdio_client`` + ``ClientSession`` entry+exit in one task."""
         try:
             from mcp import ClientSession, StdioServerParameters
             from mcp.client.stdio import stdio_client
@@ -64,27 +88,63 @@ class _StdioConnection:
                 args=parts[1:],
                 env=self.env,
             )
-            self._read_ctx = stdio_client(params)
-            read, write = await self._read_ctx.__aenter__()
-            self._session_ctx = ClientSession(read, write)
-            self._session = await self._session_ctx.__aenter__()
-            await self._session.initialize()
-        except Exception as exc:
-            logger.error("MCP stdio connect failed (%s): %s", self.command, exc)
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    self._session = session
+                    self._ready.set()
+                    # Park here until close() flips the shutdown event.
+                    # External tasks use `self._session` for I/O during
+                    # this window — that's safe because anyio memory
+                    # object streams are task-shareable for send/recv.
+                    await self._shutdown.wait()
+        except BaseException as exc:  # noqa: BLE001 — funnel all init failures
+            logger.error("MCP stdio lifecycle failed (%s): %s", self.command, exc)
+            self._init_error = exc
+            # Unblock any task waiting in _connect; it will re-raise.
+            self._ready.set()
+        finally:
             self._session = None
-            raise
+
+    async def _connect(self) -> None:
+        if self._task is not None and not self._task.done():
+            return
+        self._ready.clear()
+        self._shutdown.clear()
+        self._init_error = None
+        self._task = asyncio.create_task(
+            self._lifecycle(),
+            name=f"mcp-stdio:{self.command[:32]}",
+        )
+        await self._ready.wait()
+        if self._init_error is not None:
+            err = self._init_error
+            # Make sure the dead task is reaped before we re-raise.
+            await self._reap_task()
+            raise err
+
+    async def _reap_task(self) -> None:
+        """Best-effort awaits the lifecycle task without re-raising."""
+        if self._task is None:
+            return
+        try:
+            await asyncio.wait_for(self._task, timeout=5.0)
+        except asyncio.TimeoutError:
+            self._task.cancel()
+            try:
+                await self._task
+            except BaseException:  # noqa: BLE001
+                pass
+        except BaseException:  # noqa: BLE001
+            pass
+        finally:
+            self._task = None
 
     async def close(self) -> None:
-        try:
-            if self._session_ctx:
-                await self._session_ctx.__aexit__(None, None, None)
-            if self._read_ctx:
-                await self._read_ctx.__aexit__(None, None, None)
-        except Exception:
-            pass
+        """Idempotent shutdown — safe to call from any task."""
+        self._shutdown.set()
+        await self._reap_task()
         self._session = None
-        self._read_ctx = None
-        self._session_ctx = None
 
     async def call_tool(self, tool_name: str, arguments: dict):
         async with self._lock:
