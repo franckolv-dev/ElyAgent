@@ -24,8 +24,9 @@ import { Header } from "@/components/layout/Header";
 import { api } from "@/lib/api";
 import { authFetch } from "@/lib/auth";
 import type { AuditLog } from "@/lib/types";
-import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle, Send, UserPlus, KeyRound, Power, X } from "lucide-react";
+import { Shield, Users, Terminal, RefreshCw, Settings2, Eye, EyeOff, Save, Trash2, CheckCircle, Send, UserPlus, KeyRound, Power, X, Plug } from "lucide-react";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -423,6 +424,17 @@ export default function AdminPage() {
                 {error}
               </div>
             )}
+
+            {/* Quick links to dedicated admin pages */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/settings/mcp"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border-dim text-text-secondary hover:text-cyber-cyan hover:border-cyber-cyan/30 transition-all text-xs"
+              >
+                <Plug className="w-3.5 h-3.5" />
+                MCP servers
+              </Link>
+            </div>
 
             {/* Tabs */}
             <div className="flex rounded-lg bg-bg-primary border border-border-dim p-1 w-fit">

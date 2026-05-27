@@ -9,6 +9,8 @@ from app.agent.toolset_profiles import (
     list_profiles,
     resolve_profile_tools,
 )
+from app.skills.base import Skill
+from app.skills.registry import get_skill_registry
 
 
 # ── Profile registry ─────────────────────────────────────────────────────────
@@ -264,6 +266,94 @@ def test_resolve_unknown_profile_uses_default():
 
 def test_resolve_empty_input():
     assert resolve_profile_tools("default", []) == []
+
+
+# ── MCP wire-up (Sprint 4a J1.5a, 2026-05-27) ────────────────────────────────
+
+
+@pytest.fixture
+def _mcp_skill_in_registry():
+    """Register a fake MCP skill (scopes=["mcp"]) and clean up after the test.
+
+    The MCPClientManager registers skills with scopes=["mcp"] at runtime; the
+    static profile cannot enumerate them, so resolve_profile_tools must
+    discover them dynamically via the registry.
+    """
+    registry = get_skill_registry()
+    mcp_tool_a = _FakeTool("mcp_time_get_current_time")
+    mcp_tool_b = _FakeTool("mcp_time_convert_time")
+    skill = Skill(
+        name="mcp_time_test",
+        display_name="MCP Time (test)",
+        description="Fake MCP server for tests",
+        icon="🔌",
+        scopes=["mcp"],
+        tools=[mcp_tool_a, mcp_tool_b],
+        author="mcp",
+    )
+    registry.register_or_replace(skill)
+    try:
+        yield mcp_tool_a, mcp_tool_b
+    finally:
+        registry.unregister("mcp_time_test")
+
+
+def test_resolve_includes_mcp_tools_even_when_absent_from_default(_mcp_skill_in_registry):
+    """A tool from an MCP-scoped skill MUST pass the filter even when its
+    name is NOT in _DEFAULT_TOOLS — that's the whole point of dynamic MCP
+    discovery: the admin adds a server at runtime via the API, the tool
+    becomes bindable instantly without editing the static whitelist."""
+    mcp_a, mcp_b = _mcp_skill_in_registry
+    static = _FakeTool("knowledge_list")  # in default
+    out_of_default = _FakeTool("totally_not_in_default")
+    all_tools = [static, mcp_a, mcp_b, out_of_default]
+
+    resolved = resolve_profile_tools("default", all_tools)
+    names = {t.name for t in resolved}
+
+    assert "mcp_time_get_current_time" in names, "MCP tool A must be included"
+    assert "mcp_time_convert_time" in names, "MCP tool B must be included"
+    assert "knowledge_list" in names, "static whitelist still applies"
+    assert "totally_not_in_default" not in names, "non-MCP unlisted tool stays out"
+
+
+def test_resolve_only_includes_scope_mcp_not_other_scopes():
+    """Only the literal scope 'mcp' opts a skill into dynamic inclusion.
+    A skill with scopes=['gmail'] or scopes=[] must follow the static
+    whitelist like any other."""
+    registry = get_skill_registry()
+    not_mcp = Skill(
+        name="not_mcp_skill",
+        display_name="Not MCP",
+        description="Some skill with a different scope",
+        icon="🧪",
+        scopes=["other_service_api_key"],
+        tools=[_FakeTool("not_mcp_tool")],
+    )
+    registry.register_or_replace(not_mcp)
+    try:
+        all_tools = [_FakeTool("not_mcp_tool"), _FakeTool("knowledge_list")]
+        resolved = resolve_profile_tools("default", all_tools)
+        names = {t.name for t in resolved}
+        assert "not_mcp_tool" not in names, (
+            "scopes=['other_service_api_key'] must NOT trigger dynamic inclusion"
+        )
+        assert "knowledge_list" in names
+    finally:
+        registry.unregister("not_mcp_skill")
+
+
+def test_resolve_drops_mcp_skill_after_unload(_mcp_skill_in_registry):
+    """After an MCP server is unregistered (admin deletes it), its tools
+    must immediately stop being included — no stale binding."""
+    mcp_a, _ = _mcp_skill_in_registry
+    # Sanity: tool is currently bound
+    assert any(t.name == mcp_a.name for t in resolve_profile_tools("default", [mcp_a]))
+    # Simulate admin delete
+    get_skill_registry().unregister("mcp_time_test")
+    # Tool must no longer pass
+    resolved = resolve_profile_tools("default", [mcp_a])
+    assert not resolved, "MCP tool must vanish from binding after skill unregistered"
 
 
 # ── auto_detect_profile ──────────────────────────────────────────────────────

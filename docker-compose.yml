@@ -27,6 +27,12 @@ services:
       - JWT_ALGORITHM=HS256
       - PLAYWRIGHT_BROWSERS_PATH=/app/.cache/playwright
       - FASTEMBED_CACHE_DIR=/app/.cache/fastembed
+      # uv (Astral) workdirs — required so `uv tool run mcp-server-*`
+      # (Sprint 4a MCP client) doesn't fall back to /root/.local which
+      # is writable but not persisted across container rebuilds. Both
+      # under /tmp because the MCP servers are ephemeral by design.
+      - UV_TOOL_DIR=/tmp/uv-tools
+      - UV_CACHE_DIR=/tmp/uv-cache
       # ACCESS_TOKEN_EXPIRE_MINUTES + REFRESH_TOKEN_EXPIRE_DAYS purposely
       # NOT set here — let .env values win. Default is 60 min / 7 days,
       # see app/config.py. Setting them here would override .env silently.
