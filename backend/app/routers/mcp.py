@@ -75,8 +75,24 @@ class MCPServerOut(BaseModel):
     env_json: Optional[str]
     description: Optional[str]
     enabled: bool
+    # Live-state fields filled by the list endpoint (not stored in DB).
+    # None = unknown (skill not in registry, e.g. enabled=False).
+    tool_count: Optional[int] = None
+    tool_names: Optional[list[str]] = None
 
     model_config = {"from_attributes": True}
+
+
+def _decorate_with_runtime(srv: MCPServer) -> MCPServerOut:
+    """Build the response model by merging DB row + live skill registry."""
+    from app.skills.registry import get_skill_registry
+
+    skill = get_skill_registry().get_skill(f"mcp_{srv.slug}")
+    out = MCPServerOut.model_validate(srv)
+    if skill is not None:
+        out.tool_count = len(skill.tools)
+        out.tool_names = [t.name for t in skill.tools]
+    return out
 
 
 # ------------------------------------------------------------------ #
@@ -87,7 +103,8 @@ class MCPServerOut(BaseModel):
 async def list_mcp_servers(_=Depends(require_admin)):
     async with async_session() as db:
         result = await db.execute(select(MCPServer).order_by(MCPServer.name))
-        return result.scalars().all()
+        rows = result.scalars().all()
+    return [_decorate_with_runtime(s) for s in rows]
 
 
 @router.post("/mcp/servers", response_model=MCPServerOut)
@@ -113,7 +130,7 @@ async def create_mcp_server(body: MCPServerCreate, _=Depends(require_admin)):
         except Exception as exc:
             logger.warning("MCP server created but tools failed to load: %s", exc)
 
-    return srv
+    return _decorate_with_runtime(srv)
 
 
 @router.put("/mcp/servers/{server_id}", response_model=MCPServerOut)
@@ -140,7 +157,7 @@ async def update_mcp_server(server_id: str, body: MCPServerUpdate, _=Depends(req
         except Exception as exc:
             logger.warning("MCP reload failed after update: %s", exc)
 
-    return srv
+    return _decorate_with_runtime(srv)
 
 
 @router.delete("/mcp/servers/{server_id}")
@@ -169,10 +186,17 @@ async def reload_mcp_server(server_id: str, _=Depends(require_admin)):
             raise HTTPException(404, "Serveur MCP introuvable.")
 
     from app.services.mcp_client import get_mcp_client_manager
+    from app.skills.registry import get_skill_registry
+
     mgr = get_mcp_client_manager()
     await mgr.unload_server(srv.slug)
     try:
         await mgr.load_server(srv)
-        return {"status": "reloaded", "tools": [t.name for t in srv.tools if hasattr(srv, "tools")]}
+        # Read the freshly-registered skill from the registry — the DB row
+        # itself has no `.tools` attribute; tools live on the Skill object
+        # mcp_client built. Returning [] silently was a UX trap.
+        skill = get_skill_registry().get_skill(f"mcp_{srv.slug}")
+        tool_names = [t.name for t in skill.tools] if skill else []
+        return {"status": "reloaded", "tools": tool_names}
     except Exception as exc:
         raise HTTPException(500, f"Rechargement échoué : {exc}")

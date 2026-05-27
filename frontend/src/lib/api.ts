@@ -424,7 +424,63 @@ export const api = {
         source_conversation_id?: string;
       }
     >,
+
+  // ── MCP servers (Sprint 4a J2 — admin only) ─────────────────────────────
+  mcpServersList: () =>
+    fetchAPI("/admin/mcp/servers") as Promise<MCPServerOut[]>,
+
+  mcpServerCreate: (body: MCPServerCreateBody) =>
+    fetchAPI("/admin/mcp/servers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }) as Promise<MCPServerOut>,
+
+  mcpServerUpdate: (id: string, body: Partial<MCPServerCreateBody>) =>
+    fetchAPI(`/admin/mcp/servers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }) as Promise<MCPServerOut>,
+
+  mcpServerDelete: (id: string) =>
+    fetchAPI(`/admin/mcp/servers/${id}`, { method: "DELETE" }),
+
+  mcpServerReload: (id: string) =>
+    fetchAPI(`/admin/mcp/servers/${id}/reload`, { method: "POST" }) as Promise<{
+      status: string;
+      tools: string[];
+    }>,
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// MCP servers (Sprint 4a J2)
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface MCPServerOut {
+  id: string;
+  name: string;
+  slug: string;
+  transport: "stdio" | "sse";
+  command: string | null;
+  url: string | null;
+  env_json: string | null;
+  description: string | null;
+  enabled: boolean;
+  /** Filled by the backend from the live skill registry — null when the
+   *  server is disabled or has failed to load. */
+  tool_count: number | null;
+  tool_names: string[] | null;
+}
+
+export interface MCPServerCreateBody {
+  name: string;
+  slug: string;
+  transport: "stdio" | "sse";
+  command?: string | null;
+  url?: string | null;
+  env_json?: string | null;
+  description?: string | null;
+  enabled?: boolean;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Learning report — typed payload (Sprint 3.7 V1.5)
