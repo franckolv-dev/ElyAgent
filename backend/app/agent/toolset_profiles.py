@@ -254,11 +254,46 @@ def get_profile_tool_names(name: str) -> tuple[str, ...]:
     return _PROFILES[name]
 
 
+def _mcp_tool_names() -> set[str]:
+    """Tool names exposed by every currently-registered MCP skill.
+
+    Sprint 4a (2026-05-27) — MCP servers register themselves via
+    ``mcp_client.MCPClientManager.load_server`` which builds a ``Skill``
+    with ``scopes=["mcp"]``. Those skills are dynamic (added/removed at
+    runtime by the admin UI), so they cannot live in a static profile
+    whitelist. Instead, ``resolve_profile_tools`` unions the static
+    whitelist with the set returned here.
+
+    Wrapped in a broad except so a registry import failure or a partial
+    test harness never breaks tool binding — worst case we return an
+    empty set and only the static whitelist applies (i.e. legacy
+    behaviour).
+    """
+    try:
+        from app.skills.registry import get_skill_registry
+
+        names: set[str] = set()
+        for skill in get_skill_registry().list_skills():
+            if "mcp" in (skill.scopes or ()):
+                names.update(t.name for t in skill.tools)
+        return names
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.debug("toolset_profiles: MCP tool discovery failed (%s)", exc)
+        return set()
+
+
 def resolve_profile_tools(name: str, all_tools: Sequence) -> list:
     """Return the subset of ``all_tools`` belonging to profile ``name``.
 
     Tools listed in the profile but missing from the registry are dropped
     silently with a debug log (typo / disabled skill / etc.).
+
+    MCP tools (those belonging to a skill with ``scopes=["mcp"]``) are
+    **always included** on top of the static whitelist — MCP servers are
+    added at runtime via the admin UI, so it would be impossible to
+    enumerate them by name in a static tuple. The wire-up makes any tool
+    exposed by an MCP server immediately bindable by the LLM, without
+    having to edit ``_DEFAULT_TOOLS``.
 
     Parameters
     ----------
@@ -270,9 +305,10 @@ def resolve_profile_tools(name: str, all_tools: Sequence) -> list:
     Returns
     -------
     list
-        Tools in registration order, filtered to the profile's whitelist.
+        Tools in registration order, filtered to ``profile ∪ mcp-skills``.
     """
     wanted = set(get_profile_tool_names(name))
+    wanted |= _mcp_tool_names()
     have = {t.name for t in all_tools}
     missing = wanted - have
     if missing:
