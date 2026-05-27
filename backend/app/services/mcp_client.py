@@ -42,6 +42,69 @@ from functools import lru_cache
 logger = logging.getLogger(__name__)
 
 
+# ── Env scrubbing constants for the spawned MCP process ─────────────────────
+#
+# Same defense-in-depth model as orchestrate_runner: block every variable
+# whose name contains a secret substring, allow only whitelisted prefixes
+# through, then layer the per-server `env_json` overrides on top.
+#
+# MCP-specific additions vs the orchestrate list:
+#   - UV_  : uv (Astral) needs UV_TOOL_DIR / UV_CACHE_DIR / UV_PYTHON, all
+#            harmless and required to run `uv tool run mcp-server-*` from
+#            within the container (see J1.5d, docker-compose.yml).
+#   - NPM_ / NODE_ : npx / node based MCP servers (filesystem, fetch,
+#            puppeteer, …) need them to find their global install.
+#   - DEBIAN_FRONTEND : silences apt prompts in some servers' wrappers.
+_MCP_SAFE_ENV_PREFIXES: tuple[str, ...] = (
+    "PATH", "HOME", "USER", "LANG", "LC_", "TERM",
+    "TMPDIR", "TMP", "TEMP", "SHELL", "LOGNAME",
+    "XDG_", "TZ",
+    "ELY_",
+    "UV_",
+    "NPM_", "NODE_",
+    "DEBIAN_FRONTEND",
+)
+
+_MCP_SECRET_SUBSTRINGS: tuple[str, ...] = (
+    "KEY", "TOKEN", "SECRET", "PASSWORD",
+    "CREDENTIAL", "PASSWD", "AUTH",
+)
+
+
+def _build_mcp_env(env_json: str | None) -> dict[str, str]:
+    """Build the env passed to a stdio MCP server subprocess.
+
+    Step 1: filter ``os.environ`` through the prefix whitelist + secret
+    blocklist (so we never accidentally leak ``ANTHROPIC_API_KEY`` or
+    ``GITHUB_TOKEN`` into a 3rd-party MCP server).
+
+    Step 2: layer the admin-supplied JSON env on top — those are
+    explicit overrides chosen via the admin UI (e.g. setting a fresh
+    ``GITHUB_PERSONAL_ACCESS_TOKEN`` for an MCP-GitHub server). Admin
+    intent wins over the blocklist because if the admin types it into
+    the form, they know what they're doing.
+    """
+    from app.services.env_filter import filter_safe_env
+
+    env = filter_safe_env(
+        safe_prefixes=_MCP_SAFE_ENV_PREFIXES,
+        secret_substrings=_MCP_SECRET_SUBSTRINGS,
+    )
+    if env_json:
+        try:
+            overrides = json.loads(env_json)
+            if isinstance(overrides, dict):
+                # Only keep string values — MCP server env must be {str: str}.
+                for k, v in overrides.items():
+                    if isinstance(v, str):
+                        env[str(k)] = v
+            else:
+                logger.warning("MCP env_json is not a JSON object — ignoring")
+        except json.JSONDecodeError as exc:
+            logger.warning("MCP env_json parse failed (%s) — ignoring", exc)
+    return env
+
+
 class _StdioConnection:
     """Connexion stdio persistante vers un processus MCP (reconnexion auto).
 
@@ -83,6 +146,9 @@ class _StdioConnection:
             from mcp.client.stdio import stdio_client
 
             parts = shlex.split(self.command)
+            # `self.env` was already scrubbed by `_build_mcp_env` in the
+            # caller (`_build_tools`). Falls back to None for backward-
+            # compat callsites that pass a pre-scrubbed dict directly.
             params = StdioServerParameters(
                 command=parts[0],
                 args=parts[1:],
@@ -246,7 +312,7 @@ class MCPClientManager:
             from mcp.types import Tool as MCPTool
 
             if srv.transport == "stdio":
-                env = json.loads(srv.env_json) if srv.env_json else None
+                env = _build_mcp_env(srv.env_json)
                 conn = _StdioConnection(srv.command, env)
                 self._connections[srv.slug] = conn
                 result = await conn.list_tools()

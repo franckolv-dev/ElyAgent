@@ -583,15 +583,14 @@ def _build_scrubbed_env(
              is importable, preventing ``from app... import secret``)
            - ``PYTHONDONTWRITEBYTECODE = 1`` (no .pyc litter)
     """
-    child_env: dict[str, str] = {}
-    for key, value in os.environ.items():
-        upper = key.upper()
-        if any(s in upper for s in _SECRET_SUBSTRINGS):
-            continue
-        if any(key.startswith(p) for p in _SAFE_ENV_PREFIXES):
-            child_env[key] = value
+    from app.services.env_filter import filter_safe_env
 
-    # Hard overrides — must happen AFTER the loop so they win over any
+    child_env = filter_safe_env(
+        safe_prefixes=_SAFE_ENV_PREFIXES,
+        secret_substrings=_SECRET_SUBSTRINGS,
+    )
+
+    # Hard overrides — must happen AFTER the filter so they win over any
     # whitelist-derived inheritance (e.g. parent's HOME).
     child_env["ELY_RPC_SOCKET"] = str(socket_path)
     child_env["HOME"] = str(home_dir)
