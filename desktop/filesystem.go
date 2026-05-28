@@ -5,15 +5,16 @@
 //
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-// @license    PolyForm Strict License 1.0.0
-//             https://polyformproject.org/licenses/strict/1.0.0/
+// @license    Elastic License 2.0
+//            https://www.elastic.co/licensing/elastic-license
 // @version    1.1.0
 // @link       https://github.com/franckolv-dev/PhysicalAgent
 //
 // RÉSUMÉ DES CONDITIONS :
-//   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
-//   - INTERDIT : Toute utilisation commerciale sans accord préalable.
-//   - INTERDIT : Redistribution de versions modifiées de ce code.
+//   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
+//   - AUTORISÉ : Modification et redistribution avec attribution.
+//   - INTERDIT : Revente comme SaaS / service managé à des tiers.
+//   - INTERDIT : Suppression des notices de copyright ou de licence.
 // =============================================================================
 
 package main
@@ -87,41 +88,108 @@ func NewFSHandler(sandboxDirs []string) *FSHandler {
 	return &FSHandler{sandboxDirs: resolved}
 }
 
-// validatePath checks that path is inside one of the sandbox directories.
-// It resolves symlinks to prevent path-traversal attacks.
-func (h *FSHandler) validatePath(path string) (string, error) {
-	if path == "" {
-		return "", fmt.Errorf("path must not be empty")
-	}
-
-	// Expand a leading ~ first so callers (and the LLM) can use the
-	// natural « ~/Documents/foo » form. Same expansion as for sandbox
-	// dirs at boot — keeps semantics symmetrical.
-	path = expandHome(path)
-
-	// Resolve symlinks on the longest existing prefix to catch traversal attempts
-	// even when the full path doesn't exist yet (e.g. a file being written).
+// safeResolve fully resolves a path's canonical form, even when the
+// terminal components don't exist yet (e.g. a new file being created).
+//
+// HOTFIX 2026-05-28 — the original code only called
+// ``filepath.EvalSymlinks`` on either the path itself or its immediate
+// parent. If a deeper ancestor was missing (write to /sb/evil_link/a/b/c
+// where a/b/c don't exist), EvalSymlinks on the parent failed and the
+// fallback left ``resolved`` as the unresolved absolute path. An
+// attacker who controlled a symlink anywhere along the chain
+// (e.g. /sb/evil_link → /outside) could then pass the prefix check —
+// because the unresolved string still started with /sb/. ``os.MkdirAll``
+// would then follow the symlink and create the missing dirs OUTSIDE the
+// sandbox. Class : Zip Slip / symlink-write escape.
+//
+// The fix walks UP the path until it finds an existing ancestor,
+// resolves symlinks on that ancestor (which DOES exist so EvalSymlinks
+// succeeds), then re-joins the missing tail components and re-cleans.
+// The result is the canonical absolute path of where the candidate
+// would actually land if written.
+func safeResolve(path string) (string, error) {
 	abs := filepath.Clean(path)
 	if !filepath.IsAbs(abs) {
 		return "", fmt.Errorf("path must be absolute: %q", path)
 	}
+	cur := abs
+	var tail []string
+	for {
+		if _, err := os.Lstat(cur); err == nil {
+			resolved, err := filepath.EvalSymlinks(cur)
+			if err != nil {
+				return "", fmt.Errorf("cannot resolve %q: %w", cur, err)
+			}
+			// Re-join the tail components we walked past — LIFO since
+			// we collected them parent-first as we walked up.
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Reached the filesystem root and nothing along the chain
+			// exists. No symlinks could be involved on a tree that's
+			// entirely missing, so the cleaned abs is safe to use.
+			return abs, nil
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+	}
+}
 
-	// Try to resolve the real path; if the path doesn't exist, resolve the parent.
-	resolved := abs
-	if _, err := os.Lstat(abs); err == nil {
-		if r, err := filepath.EvalSymlinks(abs); err == nil {
-			resolved = r
-		}
-	} else {
-		if r, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
-			resolved = filepath.Join(r, filepath.Base(abs))
-		}
+// validatePath checks that path is inside one of the sandbox directories.
+// It fully resolves symlinks (including across missing intermediate dirs)
+// to prevent path-traversal attacks, then uses ``filepath.Rel`` for a
+// semantic containment check rather than a string-prefix one.
+//
+// HOTFIX 2026-05-28 — code review of 2026-05-28 flagged the original
+// validation as fragile. Two changes :
+//   1. Symlink resolution via ``safeResolve`` (handles missing
+//      intermediate dirs — the original prefix-only fallback was
+//      bypassable; see safeResolve's doc above).
+//   2. Containment check via ``filepath.Rel`` — if the relative path
+//      from sandbox to candidate starts with ``..`` (with separator),
+//      we're outside. More idiomatic and less error-prone than the
+//      previous ``strings.HasPrefix(resolved, sd+sep)`` heuristic,
+//      which historically misbehaved on edge cases like
+//      trailing-slash sandbox config and prefix-sibling dirs
+//      (``/sb`` vs ``/sb-evil``).
+func (h *FSHandler) validatePath(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("path must not be empty")
+	}
+	// Expand a leading ~ first so callers (and the LLM) can use the
+	// natural « ~/Documents/foo » form. Same expansion as for sandbox
+	// dirs at boot — keeps semantics symmetrical.
+	path = expandHome(path)
+	if !filepath.IsAbs(filepath.Clean(path)) {
+		return "", fmt.Errorf("path must be absolute: %q", path)
+	}
+
+	resolved, err := safeResolve(path)
+	if err != nil {
+		return "", err
 	}
 
 	for _, sd := range h.sandboxDirs {
-		if strings.HasPrefix(resolved, sd+string(os.PathSeparator)) || resolved == sd {
+		rel, relErr := filepath.Rel(sd, resolved)
+		if relErr != nil {
+			continue
+		}
+		// `rel == "."` → path equals the sandbox dir itself → OK
+		// `rel == ".."` or starts with `../` or `..\` → outside → SKIP
+		// Anything else (including weird names that happen to start with
+		// dots like `..hidden` are fine — only a leading `..` followed
+		// by a separator means real traversal).
+		if rel == "." {
 			return resolved, nil
 		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		return resolved, nil
 	}
 
 	return "", fmt.Errorf(

@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/memory/constraint_store.py
 # @brief      Security constraints — permanent rules learned from user refusals.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.3.0
 # =============================================================================
 """Constraint store — Qdrant `security_constraints` (no decay)."""

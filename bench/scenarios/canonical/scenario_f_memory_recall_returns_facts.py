@@ -6,7 +6,7 @@
 #             recalled via memory_recall(SEMANTIC_USER). The
 #             round-trip pins the BASE VIDE bug regression
 #             (2026-05-20) at the integration layer.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Canonical scenario F — memory recall round-trip."""
 from __future__ import annotations

@@ -4,7 +4,7 @@
 # @brief      Unit tests for the cross-conversation memory recall service.
 #             Sprint 1, Phase 2.
 #
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for session_search.py helpers.
 

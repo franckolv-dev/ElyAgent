@@ -5,7 +5,7 @@
 #             `prompt_version` propagates from the live _SYSTEM_PROMPT_BASE
 #             hash to every recorded signal. Catches drift if the helper
 #             is bypassed by a future writer.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Canonical scenario H — prompt_version chain."""
 from __future__ import annotations

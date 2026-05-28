@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/memory/semantic_user_store.py
 # @brief      Stable user knowledge — facts + preferences + communication style.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.3.0
 # =============================================================================
 """Semantic-user store — stable facts about the user.

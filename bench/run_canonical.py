@@ -7,7 +7,7 @@
 #             `bench/scenarios/canonical/`, executes them, writes a
 #             JSON + Markdown summary to `bench/results/<timestamp>/`.
 #
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Run the canonical scenarios + emit a results artefact.
 

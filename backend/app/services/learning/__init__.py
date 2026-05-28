@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/learning/__init__.py
 # @brief      Sprint 3.7 — auto-improvement subpackage.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.5.0
 # =============================================================================
 """Learning subpackage — Sprint 3.7.

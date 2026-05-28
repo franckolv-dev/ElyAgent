@@ -3,7 +3,7 @@
 # @file       backend/tests/test_memory_recall.py
 # @brief      Unit tests for Sprint 2.5 Jalon 3 — MemoryType, MemoryHit,
 #             MemoryRecallService.recall(), and the LangChain memory_recall tool.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Sprint 2.5 Jalon 3 — recall surface tests.
 

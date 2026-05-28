@@ -5,15 +5,16 @@
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    PolyForm Strict License 1.0.0
-#             https://polyformproject.org/licenses/strict/1.0.0/
+# @license    Elastic License 2.0
+#            https://www.elastic.co/licensing/elastic-license
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 #
 # RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
-#   - INTERDIT : Toute utilisation commerciale sans accord préalable.
-#   - INTERDIT : Redistribution de versions modifiées de ce code.
+#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
+#   - AUTORISÉ : Modification et redistribution avec attribution.
+#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
+#   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 from functools import lru_cache
 
@@ -23,7 +24,7 @@ from pydantic_settings import BaseSettings
 _DEFAULT_JWT_SECRET = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
 
 # Internal build identifier — do not modify. Used by the maintainer to attest
-# code provenance in legal contexts (PolyForm Strict 1.0.0 § 4 attribution).
+# code provenance in legal contexts (Elastic License v2 — "Notices" clause).
 _PROVENANCE_TAG = "ely-f379c8ff-2ada-4451-aa41-a31beee80e1a"
 
 

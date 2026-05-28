@@ -6,7 +6,7 @@
 #             regex (missing keywords or a stray `||` empty-alternation)
 #             made small local LLMs refuse legitimate requests because
 #             they couldn't see their tools.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for the `_tool_kw` regex in app/agent/nodes.py.
 

@@ -13,10 +13,10 @@ Conçu pour les particuliers, les familles et les PME qui ne peuvent pas se perm
 
 [**Site web**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
-[**Tarifs**](https://agent-ely.fr/pricing.html) ·
+[**Licence**](https://agent-ely.fr/pricing.html) ·
 [**Discussions**](https://github.com/franckolv-dev/ElyAgent/discussions)
 
-[![Source-available](https://img.shields.io/badge/source--available-PolyForm%20Strict%201.0-13bbc2?style=flat-square)](LICENSE)
+[![Elastic License v2](https://img.shields.io/badge/license-Elastic%20License%20v2-13bbc2?style=flat-square)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/franckolv-dev/ElyAgent/ci.yml?style=flat-square&label=tests)](https://github.com/franckolv-dev/ElyAgent/actions)
 [![Stars](https://img.shields.io/github/stars/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/stargazers)
@@ -30,7 +30,7 @@ Conçu pour les particuliers, les familles et les PME qui ne peuvent pas se perm
 
 </div>
 
-> **À propos de la licence.** ELY est **source-available**, et non open-source au sens OSI. Le code source est intégralement publié, auditable et gratuit pour un usage personnel, familial et éducatif. Tout déploiement commercial nécessite une [licence commerciale](https://agent-ely.fr/pricing.html). Ce modèle nous permet de pérenniser le projet sans capital-risque ni risque d'arrêt.
+> **À propos de la licence.** ELY est sous **[Elastic License v2](LICENSE)** — gratuit pour tout usage personnel ET tout usage professionnel interne, quelle que soit la taille de l'organisation. Vous pouvez exécuter, modifier, redistribuer. La seule restriction : pas de revente comme service hébergé / managé à des tiers (pas de SaaS). Code source intégralement publié et auditable.
 
 ---
 
@@ -57,7 +57,7 @@ ELY est la réponse pour les particuliers et les organisations qui ont besoin d'
 - Routage local-first — les tiers simples/moyens utilisent votre modèle local (Ollama, LM Studio MLX). Mistral privilégié pour le tier C cloud, données conservées dans l'UE.
 - RGPD natif par construction · DPA disponible · modèle d'AIPD fourni
 - Zéro télémétrie · zéro phone-home · aucune dépendance cloud forcée
-- Code source auditable (PolyForm Strict 1.0)
+- Code source auditable (Elastic License v2)
 
 </td>
 <td width="50%" valign="top">
@@ -115,7 +115,6 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 | Coffre chiffré (zero-knowledge) | ✅ AES-256-GCM | ❌ Rare | ❌ |
 | Interface française complète | ✅ | ⚠️ Souvent EN only | ⚠️ Partielle |
 | Licence | Source-available | Variable | Propriétaire |
-| Licence commerciale disponible | ✅ | Variable | N/A |
 
 > **Notre lecture honnête.** D'autres agents auto-hébergés ont des communautés plus larges et plus d'adaptateurs de canaux. **Si vous traitez des données que vous ne pouvez pas vous permettre de divulguer — les vôtres, celles de votre famille, celles de vos clients — le pipeline d'anonymisation et le HITL structurel d'ELY sont les raisons qui vous le feront choisir face aux alternatives.**
 
@@ -127,9 +126,9 @@ ELY est conçu pour deux audiences distinctes. Toutes deux exécutent le même c
 
 **Particuliers et familles soucieux de leur vie privée** — vous voulez un assistant IA puissant mais vous refusez d'envoyer votre boîte mail, vos relevés bancaires et votre historique médical à OpenAI ou Anthropic. Gratuit sous la licence personnelle. Jusqu'à 4 membres de la famille sur un déploiement.
 
-**PME en secteurs réglementés** *(licence commerciale)* — cabinets d'avocats, expertise comptable, cabinets médicaux, conseil RH, notaires, collectivités. Vous traitez des données couvertes par le secret professionnel ou le RGPD. Le pipeline d'anonymisation d'ELY fait la différence entre *« on a envisagé l'IA »* et *« on a déployé l'IA »*.
+**PME en secteurs réglementés** — cabinets d'avocats, expertise comptable, cabinets médicaux, conseil RH, notaires, collectivités. Vous traitez des données couvertes par le secret professionnel ou le RGPD. Le pipeline d'anonymisation d'ELY fait la différence entre *« on a envisagé l'IA »* et *« on a déployé l'IA »*. L'usage professionnel interne est entièrement couvert par la licence Elastic v2 — aucun contrat additionnel requis.
 
-→ Personas détaillés, scénarios de déploiement et tarifs sur **[agent-ely.fr](https://agent-ely.fr)**.
+→ Personas détaillés et scénarios de déploiement sur **[agent-ely.fr](https://agent-ely.fr)**.
 
 ---
 
@@ -326,25 +325,15 @@ ELY est source-available. Les contributions sont bienvenues dans le cadre de la 
 
 ---
 
-## Licence & usage commercial
+## Licence
 
-**Code source** — [PolyForm Strict License 1.0.0](LICENSE)
+**Code source** — [Elastic License v2](LICENSE)
 
-✅ **Gratuit pour :** usage personnel · usage familial · apprentissage · recherche non commerciale
-❌ **Nécessite une licence commerciale :** tout déploiement générant du revenu · intégration dans un produit payant · redistribution de versions modifiées · entraînement d'autres IA sur ce code
+ELY est gratuit pour tout usage personnel et tout usage professionnel interne, quelle que soit la taille de l'organisation. La seule restriction : pas de revente d'ELY comme service hébergé / managé à des tiers (pas de SaaS).
 
-Tarification annuelle transparente, par organisation, sans coût par utilisateur ni par appel LLM :
+→ [Résumé en langage clair sur le site officiel →](https://agent-ely.fr/pricing.html)
 
-| Palier | Périmètre | Tarif |
-|--------|-----------|-------|
-| **Personnel** | Famille, apprentissage, évaluation | **Gratuit** |
-| **Pro** | 1 organisation · jusqu'à 5 utilisateurs | **490 € / an** |
-| **Business** | 1 organisation · jusqu'à 25 utilisateurs · SSO inclus | **1 990 € / an** |
-| **Enterprise** | Multi-instance · utilisateurs illimités · SLA 4 h | Sur devis |
-
-→ [FAQ complète sur la licence + contrat type →](https://agent-ely.fr/pricing.html)
-
-**Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. [Politique de marques →]
+**Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code.
 
 **Contact :** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — réponse sous 48 h, toujours.
 

@@ -4,7 +4,7 @@
 # @brief      Tests for the @register decorator + auto-discovery scanner.
 #             Sprint 2 — Tool registry auto-discovery.
 #
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for the @register decorator and auto-discovery scanner.
 

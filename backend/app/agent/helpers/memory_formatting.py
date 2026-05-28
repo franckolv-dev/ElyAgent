@@ -3,7 +3,7 @@
 # @file       backend/app/agent/helpers/memory_formatting.py
 # @brief      Sprint refactor nodes.py Phase 1.5 — memory block formatter
 #             (Hermes Chantier 2, frozen snapshot section).
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.7.1
 # =============================================================================
 """Memory block formatter — Hermes Chantier 2.
