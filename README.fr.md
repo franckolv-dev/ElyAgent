@@ -329,11 +329,11 @@ ELY est source-available. Les contributions sont bienvenues dans le cadre de la 
 
 **Code source** — [Elastic License v2](LICENSE)
 
-ELY est gratuit pour tout usage personnel et tout usage professionnel interne, quelle que soit la taille de l'organisation. Modifiez-le, redistribuez-le, hébergez-le sur votre infra — c'est OK. La seule restriction : pas de revente d'ELY comme service hébergé / managé à des tiers (pas de SaaS).
+ELY est gratuit pour tout usage personnel et tout usage professionnel interne, quelle que soit la taille de l'organisation. La seule restriction : pas de revente d'ELY comme service hébergé / managé à des tiers (pas de SaaS).
 
 → [Résumé en langage clair sur le site officiel →](https://agent-ely.fr/pricing.html)
 
-**Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code. Forkez librement — choisissez votre propre nom et votre propre logo.
+**Marques.** Le nom **Ely** (acronyme de *« Exactly Like You »*, prononcé « Éli »), **agent-ely.fr**, l'avatar 3D et le logo éclair sont protégés indépendamment du code.
 
 **Contact :** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — réponse sous 48 h, toujours.
 

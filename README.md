@@ -335,11 +335,11 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 **Source code** — [Elastic License v2](LICENSE)
 
-ELY is free for any personal use and for any internal business use of any organisation, regardless of size. Modify it, redistribute it, run it on your hardware — go ahead. The single restriction is that you cannot offer ELY as a hosted or managed service to third parties (no SaaS resale).
+ELY is free for any personal use and for any internal business use of any organisation, regardless of size. The single restriction is that you cannot offer ELY as a hosted or managed service to third parties (no SaaS resale).
 
 → [Plain-language summary on the official site →](https://agent-ely.fr/pricing.html)
 
-**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. Fork freely — pick your own name and your own logo.
+**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code.
 
 📩 **Contact:** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.
 
