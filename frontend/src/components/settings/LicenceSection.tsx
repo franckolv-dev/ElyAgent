@@ -2,389 +2,143 @@
 /**
  * @project    ELY — Exactly Like You
  * @file       frontend/src/components/settings/LicenceSection.tsx
- * @brief      Licence activation + status panel (Phase 1)
+ * @brief      Licence information panel — Elastic License v2
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    PolyForm Strict License 1.0.0
+ * @license    Elastic License 2.0
+ *             https://www.elastic.co/licensing/elastic-license
  *
- * Two states :
- *   1. licence already provisioned → show summary + "Mettre à jour"
- *   2. no active licence → show the three activation choices
- *      (free / paid key).
+ * @summary
+ *   - Allowed   : personal use + internal business use (any org size)
+ *   - Allowed   : modify and redistribute (keeping notices)
+ *   - Forbidden : resell as a hosted / managed service (no SaaS)
+ *   - Forbidden : remove or obscure copyright / licence notices
  *
- * All POSTs require admin role on the backend (require_admin guard) — we
- * still render the form for non-admin users so they see what's available,
- * but they get a 403 if they try to submit.
+ * Simplified 2026-05-28 — Franck's licence pivot of 22 May 2026: ELY moved
+ * from PolyForm Strict + paid tiers (Pro €490/yr, Business €1,990/yr,
+ * Enterprise on quote) to a single Elastic License v2 with no tiers and
+ * no activation. The panel is now a static read-only info card that
+ * mirrors agent-ely.fr/pricing.html. The whole tier/key activation flow
+ * has been removed from the backend (see commit "chore: harmonise repo
+ * with site").
  */
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, KeyRound, Gift, Building2, ShieldCheck, AlertTriangle } from "lucide-react";
-import { useTranslations, useLocale } from "next-intl";
-import { api } from "@/lib/api";
-
-type Tier = "free" | "pro" | "business" | "enterprise";
-
-interface LicenceStatus {
-  tier: Tier | null;
-  max_users: number | null;
-  current_users: number;
-  customer_label: string | null;
-  valid_until: string | null;
-  days_remaining: number | null;
-  is_demo_expired: boolean;
-  is_provisioned: boolean;
-  consent_personal_use: boolean;
-  activated_at: string | null;
-}
-
-function formatDate(iso: string | null, locale: string): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString(locale === "fr" ? "fr-FR" : "en-GB");
-  } catch {
-    return iso;
-  }
-}
+import { ShieldCheck, ExternalLink } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export function LicenceSection() {
+  // Translations are nested under settings.licence.panel. We only need a
+  // small subset; fallbacks below cover environments where the locale
+  // hasn't been refreshed yet.
   const t = useTranslations("settings.licence.panel");
-  const locale = useLocale();
-  const TIER_LABEL: Record<Tier, string> = {
-    free: t("choiceFreeTitle"),
-    pro: t("tierPro"),
-    business: t("tierBusiness"),
-    enterprise: t("tierEnterprise"),
-  };
-  const [status, setStatus] = useState<LicenceStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"free" | "paid" | null>(null);
 
-  // Switch the panel from "summary" to "edit" when the user clicks
-  // "{t("btnUpdate")}" on an already-provisioned install.
-  const [editing, setEditing] = useState(false);
-
-  // Activation form state
-  const [choice, setChoice] = useState<"free" | "paid">("free");
-  const [consent, setConsent] = useState(false);
-  const [paidTier, setPaidTier] = useState<"pro" | "business" | "enterprise">("pro");
-  const [orgName, setOrgName] = useState("");
-  const [licenceKey, setLicenceKey] = useState("");
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  // Defensive fallback wrapper — older locale files may not have all
+  // the new keys yet. Returns the raw key (matching i18n's default) if
+  // translation is unavailable, which is acceptable for an info panel.
+  const safe = (key: string, fallback: string): string => {
     try {
-      const s = await api.licenceStatus();
-      setStatus(s);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("errLoadFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  const submitFree = async () => {
-    setBusy("free");
-    setError("");
-    try {
-      await api.activateFree(consent);
-      setEditing(false);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("errActivateFailed"));
-    } finally {
-      setBusy(null);
+      const v = t(key);
+      if (!v || v === key) return fallback;
+      return v;
+    } catch {
+      return fallback;
     }
   };
 
-  const submitPaid = async () => {
-    setBusy("paid");
-    setError("");
-    try {
-      await api.activatePaid(paidTier, licenceKey, orgName);
-      setEditing(false);
-      setLicenceKey("");
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("errActivateFailed"));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // ────────────────────────────────────────────────────────────────────────
-  // Render — loading / error states
-  // ────────────────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <section className="space-y-4">
-        <div className="flex items-center gap-2 text-xs text-text-muted">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          <span>{t("titleProvisioned")}…</span>
-        </div>
-      </section>
-    );
-  }
-
-  // ────────────────────────────────────────────────────────────────────────
-  // Render — provisioned summary
-  // ────────────────────────────────────────────────────────────────────────
-  const showSummary = status?.is_provisioned && !editing;
-
-  if (showSummary && status) {
-    const tierLabel = status.tier ? TIER_LABEL[status.tier] : "—";
-    const usage =
-      status.max_users === null
-        ? `${status.current_users} / ∞ utilisateurs`
-        : `${status.current_users} / ${status.max_users} utilisateurs`;
-
-    return (
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-cyber-cyan" />
-          <h2 className="text-sm font-medium text-text-primary">{t("titleProvisioned")}</h2>
-        </div>
-
-        <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-y-1 text-xs">
-            <div className="text-text-muted">{t("tierLabel")}</div>
-            <div className="text-text-primary font-medium">{tierLabel}</div>
-            <div className="text-text-muted">{t("limitLabel")}</div>
-            <div className="text-text-primary">{usage}</div>
-            <div className="text-text-muted">{t("customerLabel")}</div>
-            <div className="text-text-primary">{status.customer_label || "—"}</div>
-            <div className="text-text-muted">{t("expiryLabel")}</div>
-            <div className="text-text-primary">
-              {status.valid_until ? (
-                <>
-                  {formatDate(status.valid_until, locale)}
-                  {status.days_remaining !== null && (
-                    <span className="text-text-muted">
-                      {" "}
-                      {status.days_remaining === 1 ? "(in 1 day)" : "(in " + status.days_remaining + " days)"}
-                    </span>
-                  )}
-                </>
-              ) : (
-                t("expiryNever")
-              )}
-            </div>
-            <div className="text-text-muted">{t("expiryLabel")}</div>
-            <div className="text-text-primary">{formatDate(status.activated_at, locale)}</div>
-          </div>
-
-
-          <div className="flex gap-2 pt-3 border-t border-border-dim">
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(true);
-                setOrgName(status.customer_label || "");
-              }}
-              className="btn"
-            >
-              Mettre à jour la licence
-            </button>
-            <a
-              href="https://agent-ely.fr/legal/cgu"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn"
-            >
-              {t("consentLink")}
-            </a>
-          </div>
-        </div>
-
-        {error && (
-          <div className="text-xs text-cyber-red border border-cyber-red/30 bg-cyber-red/5 rounded px-3 py-2">
-            {error}
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  // ────────────────────────────────────────────────────────────────────────
-  // Render — activation flow
-  // ────────────────────────────────────────────────────────────────────────
   return (
-    <section className="space-y-4">
+    <section className="space-y-3">
       <div className="flex items-center gap-2">
-        <KeyRound className="w-4 h-4 text-cyber-cyan" />
+        <ShieldCheck className="w-4 h-4 text-cyber-cyan" />
         <h2 className="text-sm font-medium text-text-primary">
-          {status?.is_provisioned ? t("btnUpdate") : t("titleActivate")}
+          {safe("title", "Licence")}
         </h2>
       </div>
 
-      {!status?.is_provisioned && (
-        <p className="text-xs text-text-muted">
-          {t("intro")}
+      <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3 text-xs">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-text-muted">
+            {safe("licenseLabel", "Licence")}
+          </span>
+          <a
+            href="https://www.elastic.co/licensing/elastic-license"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-text-primary font-medium hover:text-cyber-cyan inline-flex items-center gap-1"
+          >
+            Elastic License v2
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+
+        <p className="text-text-secondary leading-relaxed">
+          {safe(
+            "summary",
+            "ELY est gratuit pour tout usage personnel et professionnel interne. " +
+            "Modification et redistribution autorisées. Revente comme service " +
+            "hébergé (SaaS) à des tiers interdite."
+          )}
         </p>
-      )}
 
-      {error && (
-        <div className="text-xs text-cyber-red border border-cyber-red/30 bg-cyber-red/5 rounded px-3 py-2">
-          {error}
+        <ul className="space-y-1 text-text-muted">
+          <li>
+            <span className="text-cyber-green">✓</span>{" "}
+            {safe(
+              "allowPersonal",
+              "Usage personnel et familial — sans limite"
+            )}
+          </li>
+          <li>
+            <span className="text-cyber-green">✓</span>{" "}
+            {safe(
+              "allowBusiness",
+              "Usage professionnel interne — quelle que soit la taille de l'organisation"
+            )}
+          </li>
+          <li>
+            <span className="text-cyber-green">✓</span>{" "}
+            {safe(
+              "allowModify",
+              "Modification du code, redistribution (en gardant les notices)"
+            )}
+          </li>
+          <li>
+            <span className="text-cyber-red">✗</span>{" "}
+            {safe(
+              "forbidSaas",
+              "Revente comme SaaS ou service managé à des tiers"
+            )}
+          </li>
+          <li>
+            <span className="text-cyber-red">✗</span>{" "}
+            {safe(
+              "forbidNotice",
+              "Suppression des notices de copyright ou de licence"
+            )}
+          </li>
+        </ul>
+
+        <div className="pt-3 border-t border-border-dim flex flex-wrap items-center gap-3 text-[11px]">
+          <a
+            href="https://agent-ely.fr/pricing.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-cyber-cyan hover:underline inline-flex items-center gap-1"
+          >
+            {safe("officialPage", "Page officielle")}
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <span className="text-text-muted">·</span>
+          <a
+            href="https://github.com/franckolv-dev/ElyAgent/blob/main/LICENSE"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-cyber-cyan hover:underline inline-flex items-center gap-1"
+          >
+            {safe("fullText", "Texte intégral (GitHub)")}
+            <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
-      )}
-
-      <div className="bg-bg-secondary border border-border-dim rounded-lg divide-y divide-border-dim">
-        {/* ─── Free tier ────────────────────────────────────────────────── */}
-        <div className="p-4 space-y-3">
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="licence-choice"
-              checked={choice === "free"}
-              onChange={() => setChoice("free")}
-              className="mt-0.5"
-            />
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <Gift className="w-3.5 h-3.5 text-cyber-cyan" />
-                <span className="text-sm font-medium text-text-primary">
-                  {t("choiceFreeTitle")}
-                </span>
-              </div>
-              <p className="text-[11px] text-text-muted mt-1">
-                {t("choiceFreeBlurb")}
-              </p>
-            </div>
-          </label>
-          {choice === "free" && (
-            <div className="pl-6 space-y-2">
-              <label className="flex items-start gap-2 text-xs text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>
-                  {t("consentRequired")}{" "}
-                  <a
-                    href="https://agent-ely.fr/legal/cgu"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-cyber-cyan hover:underline"
-                  >
-                    {t("consentLink")}
-                  </a>
-                </span>
-              </label>
-              <button
-                type="button"
-                onClick={submitFree}
-                disabled={!consent || busy !== null}
-                className="btn primary"
-              >
-                {busy === "free" ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />
-                    Activation…
-                  </>
-                ) : (
-                  t("choiceFreeBtn")
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ─── Paid tier ────────────────────────────────────────────────── */}
-        <div className="p-4 space-y-3">
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="licence-choice"
-              checked={choice === "paid"}
-              onChange={() => setChoice("paid")}
-              className="mt-0.5"
-            />
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-3.5 h-3.5 text-cyber-cyan" />
-                <span className="text-sm font-medium text-text-primary">
-                  {t("choicePaidTitle")}
-                </span>
-              </div>
-              <p className="text-[11px] text-text-muted mt-1">
-                {t("choicePaidBlurb")}
-              </p>
-            </div>
-          </label>
-          {choice === "paid" && (
-            <div className="pl-6 space-y-2">
-              <label className="block text-xs text-text-secondary">
-                {t("tierField")}
-                <select
-                  value={paidTier}
-                  onChange={(e) => setPaidTier(e.target.value as "pro" | "business" | "enterprise")}
-                  className="block mt-1 w-full bg-bg-tertiary border border-border-dim rounded px-2 py-1 text-xs text-text-primary"
-                >
-                  <option value="pro">Pro (5 utilisateurs — 490 €/an)</option>
-                  <option value="business">Business (25 utilisateurs — 1 990 €/an)</option>
-                  <option value="enterprise">Enterprise (illimité — sur devis)</option>
-                </select>
-              </label>
-              <label className="block text-xs text-text-secondary">
-                {t("orgField")}
-                <input
-                  type="text"
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  placeholder={t("orgPlaceholder")}
-                  className="block mt-1 w-full bg-bg-tertiary border border-border-dim rounded px-2 py-1 text-xs text-text-primary"
-                />
-              </label>
-              <label className="block text-xs text-text-secondary">
-                {t("keyField")}
-                <textarea
-                  value={licenceKey}
-                  onChange={(e) => setLicenceKey(e.target.value)}
-                  placeholder={t("keyPlaceholder")}
-                  rows={3}
-                  className="block mt-1 w-full bg-bg-tertiary border border-border-dim rounded px-2 py-1 text-xs font-mono text-text-primary"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={submitPaid}
-                disabled={
-                  !licenceKey.trim() || !orgName.trim() || busy !== null
-                }
-                className="btn primary"
-              >
-                {busy === "paid" ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />
-                    Activation…
-                  </>
-                ) : (
-                  t("btnActivatePaid")
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-
       </div>
-
-      {status?.is_provisioned && editing && (
-        <button
-          type="button"
-          onClick={() => setEditing(false)}
-          className="text-xs text-text-muted hover:text-text-primary underline"
-        >
-          {locale === "fr" ? "Annuler" : "Cancel"}
-        </button>
-      )}
     </section>
   );
 }

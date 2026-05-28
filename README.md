@@ -12,11 +12,11 @@ Self-hosted · GDPR-native · multi-user · multi-LLM · 10 channels · 148 tool
 
 [**Website**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
-[**Pricing**](https://agent-ely.fr/pricing.html) ·
+[**Licence**](https://agent-ely.fr/pricing.html) ·
 [**Roadmap**](https://agent-ely.fr/roadmap.html) ·
 [**Discussions**](https://github.com/franckolv-dev/ElyAgent/discussions)
 
-[![Source-available](https://img.shields.io/badge/source--available-PolyForm%20Strict%201.0-13bbc2?style=flat-square)](LICENSE)
+[![Elastic License v2](https://img.shields.io/badge/license-Elastic%20License%20v2-13bbc2?style=flat-square)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/franckolv-dev/ElyAgent/ci.yml?style=flat-square&label=tests)](https://github.com/franckolv-dev/ElyAgent/actions)
 [![Stars](https://img.shields.io/github/stars/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/stargazers)
@@ -29,7 +29,7 @@ Self-hosted · GDPR-native · multi-user · multi-LLM · 10 channels · 148 tool
 
 </div>
 
-> **Note on licensing.** ELY is **source-available**, not open-source in the OSI sense. The full source is published, auditable and free for personal, family and educational use. Commercial deployment requires a [commercial licence](https://agent-ely.fr/pricing.html). We chose this model so the project can be sustained long-term without venture capital or shutdown risk.
+> **Note on licensing.** ELY is licensed under the **[Elastic License v2](LICENSE)** — free for any personal use AND any internal business use, regardless of organisation size. You can run it, modify it, distribute it. The only restriction: you cannot offer ELY as a hosted or managed service to third parties (no SaaS resale). Full source published and auditable.
 
 ---
 
@@ -64,7 +64,7 @@ ELY is the answer for the people and organisations who need an AI agent **that r
 - Local-first routing — simple/medium tiers run on your local model (Ollama, LM Studio MLX). Mistral preferred for cloud tier C, keeping data inside the EU.
 - GDPR-native by construction · DPA available · DPIA template provided
 - Zero telemetry · zero phone-home · zero forced cloud dependency
-- Source code auditable (PolyForm Strict 1.0)
+- Source code auditable (Elastic License v2)
 
 </td>
 <td width="50%" valign="top">
@@ -121,8 +121,7 @@ We respect what other projects do well. We are explicit about what sets us apart
 | Native Mobile Apps (iOS + Android) | ✅ | ❌ Rare | ✅ |
 | Encrypted Vault (Zero-Knowledge) | ✅ AES-256-GCM | ❌ Rare | ❌ |
 | Full French Interface | ✅ | ⚠️ Often EN Only | ⚠️ Partial |
-| License | Source-Available | Variable | Proprietary |
-| Commercial License Available | ✅ | Variable | N/A |
+| License | Elastic v2 (free internal use, no SaaS resale) | Variable | Proprietary |
 
 > **Our Honest Read.** Other self-hosted agents have larger communities and more channel adapters. **If you handle data that you cannot afford to leak—yours, your family's, your clients'—ELY's anonymization pipeline and structural HITL are the reasons why you should choose it over the alternatives.**
 
@@ -130,11 +129,11 @@ We respect what other projects do well. We are explicit about what sets us apart
 
 ## Who ELY is for
 
-**Privacy-conscious individuals & families** — you want a powerful AI assistant but you refuse to send your inbox, banking details and medical history to OpenAI, Google or Anthropic. Free under the personal licence. Up to 5 family members on one deployment.
+**Privacy-conscious individuals & families** — you want a powerful AI assistant but you refuse to send your inbox, banking details and medical history to OpenAI, Google or Anthropic. Run ELY on your own hardware. Free under the Elastic License v2.
 
-**SMBs in regulated sectors** *(commercial licence)* — law firms, accounting practices, medical practices, HR consultancies, notaries, local government. You handle data covered by professional secrecy or GDPR. ELY's anonymisation pipeline is the difference between *"we considered AI"* and *"we deployed AI."*
+**SMBs in regulated sectors** — law firms, accounting practices, medical practices, HR consultancies, notaries, local government. You handle data covered by professional secrecy or GDPR. ELY's anonymisation pipeline is the difference between *"we considered AI"* and *"we deployed AI."* Internal business use is fully covered by the licence — no extra agreement needed.
 
-→ Detailed personas, deployment scenarios and pricing on **[agent-ely.fr](https://agent-ely.fr)**.
+→ Detailed personas and deployment scenarios on **[agent-ely.fr](https://agent-ely.fr)**.
 
 ---
 
@@ -332,20 +331,15 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 ---
 
-## Licence & commercial use
+## Licence
 
-**Source code** — [PolyForm Strict License 1.0.0](LICENSE)
+**Source code** — [Elastic License v2](LICENSE)
 
-| Tier | Scope | Price |
-|------|-------|-------|
-| **Personal** | Family, learning, evaluation | **Free** |
-| **Pro** | 1 organisation · up to 5 users | **€490 / year** |
-| **Business** | 1 organisation · up to 25 users · SSO | **€1,990 / year** |
-| **Enterprise** | Multi-instance · unlimited · 4h SLA | On quote |
+ELY is free for any personal use and for any internal business use of any organisation, regardless of size. Modify it, redistribute it, run it on your hardware — go ahead. The single restriction is that you cannot offer ELY as a hosted or managed service to third parties (no SaaS resale).
 
-→ [Full licensing FAQ + sample contract →](https://agent-ely.fr/pricing.html)
+→ [Plain-language summary on the official site →](https://agent-ely.fr/pricing.html)
 
-**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. Fork freely — pick your own name and your own logo. 
+**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code. Fork freely — pick your own name and your own logo.
 
 📩 **Contact:** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.
 
@@ -353,7 +347,7 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 ## Contributing
 
-ELY is source-available. ✅ Bug fixes · documentation · translations · channel adapters · performance · tests · ⚠️ Architectural changes — open an issue first · ❌ Forks for commercial use without prior agreement.
+ELY is open source under the Elastic License v2. ✅ Bug fixes · documentation · translations · channel adapters · performance · tests · ⚠️ Architectural changes — open an issue first.
 
 [Full contribution guide →](./CONTRIBUTING.md) · [Code of Conduct →](./CODE_OF_CONDUCT.md) · [Security policy →](./SECURITY.md)
 
