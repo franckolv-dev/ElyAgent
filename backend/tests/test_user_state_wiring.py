@@ -6,7 +6,7 @@
 #             - _refresh_user_state invalidates frozen_memory
 #             - USER_STATE_DISABLED kill-switch is honoured at call time
 #             - exceptions in compute_user_state never escape the hook
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for the Sprint 3 Jalon 2 wiring (maintenance hook + invalidation)."""
 from __future__ import annotations

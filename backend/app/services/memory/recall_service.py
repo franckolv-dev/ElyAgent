@@ -3,7 +3,7 @@
 # @file       backend/app/services/memory/recall_service.py
 # @brief      MemoryRecallService — unified `recall(type, query)` API over
 #             the 5 typed stores.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.3.0
 # =============================================================================
 """Unified `memory_recall(type, query)` — Sprint 2.5 §3.

@@ -91,9 +91,9 @@ class Licence(Base):
     # this with the JSON decoded from the signed envelope.
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # Click-wrap : the user must explicitly tick the "I confirm strictly
-    # private, non-commercial use" checkbox before activate_free_tier
-    # provisions the row.  Required by PolyForm Strict 1.0.
+    # Legacy click-wrap flag — required by the pre-pivot PolyForm Strict
+    # licence for the free tier. Elastic License v2 has no consent
+    # requirement; the column is kept so historic rows still load.
     consent_personal_use: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(

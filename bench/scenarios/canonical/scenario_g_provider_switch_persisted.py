@@ -3,7 +3,7 @@
 # @file       bench/scenarios/canonical/scenario_g_provider_switch_persisted.py
 # @brief      Sprint 3.7 V1.5 Jalon 7 — canonical scenario G : ensure a
 #             fallback chain provider switch lands in `provider_switches`.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Canonical scenario G — provider switch persistence."""
 from __future__ import annotations

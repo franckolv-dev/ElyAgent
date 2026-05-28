@@ -4,7 +4,7 @@
 # @brief      Tests for the GitHub tools (read-only stats / traffic /
 #             notifications). Sprint screencast prep, 2026-05-17.
 #
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for ``app.agent.tools.github_tool``.
 

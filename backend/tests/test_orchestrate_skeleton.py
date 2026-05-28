@@ -5,7 +5,7 @@
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Vérifications structurelles du squelette ``orchestrate`` (Sprint 2.7).
 

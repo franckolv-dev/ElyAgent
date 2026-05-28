@@ -14,7 +14,7 @@
 #                  and in the active toolset profile (otherwise the
 #                  runtime drops user_id silently and the tools return
 #                  "user_id manquant" forever).
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Functional tests for `browser_history_search`, `browser_bookmarks_search`,
 and `browser_downloads_search`."""

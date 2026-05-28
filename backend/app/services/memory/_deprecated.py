@@ -3,7 +3,7 @@
 # @file       backend/app/services/memory/_deprecated.py
 # @brief      Sprint 2.5 Jalon 7 — helper for tools wrapped as legacy aliases
 #             of `memory_recall`. Logs a one-shot deprecation per process.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """One-shot deprecation logger for legacy memory tools.
 

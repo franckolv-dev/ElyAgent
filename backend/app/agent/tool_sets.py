@@ -5,8 +5,8 @@
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    PolyForm Strict License 1.0.0
-#             https://polyformproject.org/licenses/strict/1.0.0/
+# @license    Elastic License 2.0
+#            https://www.elastic.co/licensing/elastic-license
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 #

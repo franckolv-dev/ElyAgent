@@ -3,7 +3,7 @@
 # @file       backend/tests/test_extension_tokens.py
 # @brief      Pure-function coverage for the extension-token helpers.
 #
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Sanity tests for the Sprint 0.5 extension-token helpers.
 

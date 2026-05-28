@@ -4,7 +4,7 @@
 # @brief      Sprint refactor nodes.py Phase 2.2 — final inference node
 #             without tools, used when the iteration budget is exhausted
 #             (Hermes Chantier 9).
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.7.1
 # =============================================================================
 """Force summary node — Hermes Chantier 9.

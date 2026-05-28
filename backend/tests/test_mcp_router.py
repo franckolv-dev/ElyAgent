@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_router.py
 # @brief      Tests for the /admin/mcp/servers REST router (Sprint 4a J2)
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for ``app/routers/mcp.py`` — direct-handler style (no TestClient).
 

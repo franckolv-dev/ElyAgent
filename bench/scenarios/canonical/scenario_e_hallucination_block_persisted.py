@@ -5,7 +5,7 @@
 #             completion_guard hallucination block recorded via
 #             record_hallucination_block lands in the
 #             `hallucination_blocks` table with JSON-decoded patterns.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Canonical scenario E — hallucination block persistence."""
 from __future__ import annotations

@@ -4,7 +4,7 @@
 # @brief      Sprint 2.5 Jalon 4 — pin the explicit write routing of every
 #             memory-writing LangChain tool. Catches accidental drift back to
 #             the legacy `MemoryManager.store_*` API.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Pin every memory write tool to its declared target store.
 

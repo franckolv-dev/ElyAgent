@@ -3,7 +3,7 @@
 # @file       backend/tests/test_legacy_memory_tools_deprecated.py
 # @brief      Sprint 2.5 Jalon 7 — pin the deprecation contract of the
 #             legacy memory tools.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Deprecation contract for the legacy memory tools.
 

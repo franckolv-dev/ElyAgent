@@ -4,7 +4,7 @@
 # @brief      Sprint 3.7 Jalon 5 — pin select_variant determinism, the
 #             composite ab_score formula, and the score_variants
 #             aggregation contract.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for app/services/learning/ab_testing.py — Sprint 3.7 Jalon 5."""
 from __future__ import annotations

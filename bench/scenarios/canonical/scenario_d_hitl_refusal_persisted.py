@@ -4,7 +4,7 @@
 # @brief      Sprint 3.7 V1.5 Jalon 7 — canonical scenario D : ensure a
 #             HITL refusal recorded via the learning signals service
 #             lands in the `hitl_refusals` table with the expected shape.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Canonical scenario D — HITL refusal persistence.
 

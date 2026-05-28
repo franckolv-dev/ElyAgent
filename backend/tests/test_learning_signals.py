@@ -5,7 +5,7 @@
 #             (record_hitl_refusal, record_hallucination_block,
 #             record_tool_error, record_provider_switch) + verify the 4
 #             call sites are actually wired in nodes.py / chat.py.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for app/services/learning/signals.py — Sprint 3.7 Jalon 2.
 
