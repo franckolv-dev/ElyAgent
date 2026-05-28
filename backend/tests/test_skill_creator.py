@@ -39,6 +39,7 @@ from app.services.learning.skill_creator import (
 async def _seeded_user():
     await init_db()
     from app.models.user import User
+    from app.models.usage_log import UsageLog
     async with async_session() as db:
         existing = (await db.execute(
             select(User).where(User.id == "sc1")
@@ -51,11 +52,31 @@ async def _seeded_user():
                 hashed_password="x",
             ))
             await db.commit()
-        # Wipe pre-existing failure_cases + learned_skills for this user
+        # Wipe pre-existing failure_cases + learned_skills + tier-S
+        # usage_log rows for this user. The tier-S wipe matters because
+        # `get_monthly_spend_usd` sums across ALL users (Phase 2 design
+        # is admin-global, not per-user) — leaving rows behind would
+        # pollute the tier_s.py test suite.
         await db.execute(delete(FailureCase).where(FailureCase.user_id == "sc1"))
         await db.execute(delete(LearnedSkill).where(LearnedSkill.user_id == "sc1"))
+        await db.execute(
+            delete(UsageLog).where(
+                UsageLog.user_id == "sc1",
+                UsageLog.skill_used.like("tier_s.%"),
+            )
+        )
         await db.commit()
     yield "sc1"
+    # Teardown: wipe tier-S usage rows we created during the test so
+    # tier_s test suite isolation holds.
+    async with async_session() as db:
+        await db.execute(
+            delete(UsageLog).where(
+                UsageLog.user_id == "sc1",
+                UsageLog.skill_used.like("tier_s.%"),
+            )
+        )
+        await db.commit()
 
 
 async def _seed_failure_case(
