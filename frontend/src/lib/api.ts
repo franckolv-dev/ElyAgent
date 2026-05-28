@@ -344,35 +344,17 @@ export const api = {
       body: JSON.stringify(patch),
     }) as Promise<{ tts_auto_enabled: boolean }>,
 
-  // ── Licence enforcement (Phase 1) ────────────────────────────────────────
-  /** Current licence state — drives the LicenceSection panel and global banner. */
+  // ── Licence (Elastic License v2 — info only since 2026-05-28 pivot) ──────
+  /** Static licence-info payload. Replaces the old tier-aware status. */
   licenceStatus: () =>
     fetchAPI("/api/licence/status") as Promise<{
-      tier: "free" | "pro" | "business" | "enterprise" | null;
-      max_users: number | null;
-      current_users: number;
-      customer_label: string | null;
-      valid_until: string | null;
-      days_remaining: number | null;
-      is_demo_expired: boolean;
-      is_provisioned: boolean;
-      consent_personal_use: boolean;
-      activated_at: string | null;
+      license: string;       // always "elastic-license-v2"
+      name: string;          // "Elastic License v2"
+      url: string;           // canonical text
+      summary_url: string;   // agent-ely.fr/pricing.html
+      free_for: string[];
+      forbidden: string[];
     }>,
-
-  /** Admin only — provision the free tier (max 4 users). Requires consent=true. */
-  activateFree: (consent: boolean) =>
-    fetchAPI("/api/licence/activate-free", {
-      method: "POST",
-      body: JSON.stringify({ consent }),
-    }),
-
-  /** Admin only — activate a paid tier with a licence key (raw string in Phase 1). */
-  activatePaid: (tier: "pro" | "business" | "enterprise", licence_key: string, customer_label: string) =>
-    fetchAPI("/api/licence/activate-paid", {
-      method: "POST",
-      body: JSON.stringify({ tier, licence_key, customer_label }),
-    }),
 
   // ── Browser-extension long-lived tokens (Sprint 0.5) ────────────────────
   extensionTokensList: () =>

@@ -1,30 +1,30 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/app/models/licence.py
-# @brief      Licence model — tier-aware enforcement (Phase 1)
+# @brief      Licence table — DEPRECATED, kept for DB compatibility only
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    PolyForm Strict License 1.0.0
-#             https://polyformproject.org/licenses/strict/1.0.0/
+# @license    Elastic License 2.0
+#             https://www.elastic.co/licensing/elastic-license
 # =============================================================================
-"""Licence row — single source of truth for tier enforcement.
+"""Licence table — DEPRECATED after the 22 May 2026 pivot.
 
-Phase 1 (this file) :
-  - stores the tier, the customer label, the raw licence_key string,
-    optional validity window, and a click-wrap consent flag for the
-    free tier.
-  - the actual cryptographic verification of the key is *out of scope* —
-    Phase 2 will introduce Ed25519 signing/verification in
-    `licence_service.activate_paid_tier`.
+ELY no longer has tiered licensing. The current licence is Elastic
+License v2 and applies uniformly to every installation. This table is
+kept around because :
 
-Invariant (enforced in the service layer, not the DB) :
-  - exactly one row should have `is_active=True` at any time.
-  - activating a new licence flips the previous active row to inactive.
+  1. Existing installations may already have rows in it — dropping the
+     table would force a migration with risk of data loss on legacy
+     audit history.
+  2. The shape of the table is harmless. No production code writes to
+     it anymore (see ``services/licence_service.py``) and the row
+     count remains whatever it was at the time of the pivot.
 
-Schema is created via `Base.metadata.create_all` at startup — Alembic is
-not configured in this project (mirrors the convention used by Mission,
-Conversation, etc.).
+DO NOT add new functionality on top of this table. If you need to
+record licence-related state in the future (e.g. a usage telemetry
+counter for an Elastic-v2-compliant feature), introduce a new table
+with a clear purpose and leave this one as forensic history.
 """
 from __future__ import annotations
 
