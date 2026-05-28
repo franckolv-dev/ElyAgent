@@ -3,7 +3,7 @@
 # @file       backend/app/agent/helpers/tool_history.py
 # @brief      Sprint refactor nodes.py Phase 1.3 — heavy-payload stripper
 #             for tool results stored in the LangGraph state.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.7.1
 # =============================================================================
 """Heavy-payload stripping for tool messages.

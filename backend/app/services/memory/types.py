@@ -3,7 +3,7 @@
 # @file       backend/app/services/memory/types.py
 # @brief      Public types for the typed memory subpackage —
 #             `MemoryType` enum + `MemoryHit` dataclass.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.3.0
 # =============================================================================
 """Public types — Sprint 2.5 §3, §9.

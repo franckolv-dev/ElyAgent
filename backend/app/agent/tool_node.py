@@ -5,7 +5,7 @@
 #             node. Handles PII deanonymisation, vault refs, HITL gating
 #             (allow / deny / ban / allow_always), credentials injection,
 #             learning-signal recording, and result sanitisation.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.7.1
 # =============================================================================
 """Tool node — executes the tool_calls emitted by ``agent_node``.

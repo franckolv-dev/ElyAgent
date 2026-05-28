@@ -6,7 +6,7 @@
 #             own home (single Responsibility Principle). Modifying these
 #             constants is also where the LLM-as-judge A/B variants will
 #             be plugged via `ab_testing.register_variant`.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # @version    1.7.1
 # =============================================================================
 """System prompt constants for ELY's agent nodes.

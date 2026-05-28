@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_client_stdio_lifecycle.py
 # @brief      Tests for _StdioConnection lifecycle (Sprint 4a J1.5b)
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for ``_StdioConnection`` lifecycle (Sprint 4a J1.5b, 2026-05-27).
 

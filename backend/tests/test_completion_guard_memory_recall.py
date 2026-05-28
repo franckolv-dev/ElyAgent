@@ -4,7 +4,7 @@
 # @brief      2026-05-23 — pin the memory-recall question bypass in
 #             completion_guard so the assistant's honest reply to "qu'as-tu
 #             enregistré sur X ?" doesn't trigger the false positive.
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Regression for completion_guard false positive on memory-recall questions.
 

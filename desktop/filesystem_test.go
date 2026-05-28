@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       desktop/filesystem_test.go
 // @brief      Security tests for FSHandler.validatePath
-// @license    PolyForm Strict License 1.0.0
+// @license    Elastic License 2.0
 // =============================================================================
 //
 // Hotfix 2026-05-28 — code-review-2026_05_28.md flagged validatePath as

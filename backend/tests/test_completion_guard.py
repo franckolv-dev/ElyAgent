@@ -3,7 +3,7 @@
 # @file       backend/tests/test_completion_guard.py
 # @brief      Tests for the anti-hallucination completion guard.
 #
-# @license    PolyForm Strict License 1.0.0
+# @license    Elastic License 2.0
 # =============================================================================
 """Tests for ``app.services.completion_guard``.
 
