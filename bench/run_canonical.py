@@ -2,45 +2,52 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       bench/run_canonical.py
-# @brief      Sprint 3.7 V1.5 Jalon 7 — canonical bench harness runner.
-#             Discovers every async scenario module in
-#             `bench/scenarios/canonical/`, executes them, writes a
-#             JSON + Markdown summary to `bench/results/<timestamp>/`.
+# @brief      Sprint 3.7 V1.5 J7 + Sprint 3.7.3 J1 — canonical bench runner.
+#             Discovers async scenarios in `bench/scenarios/canonical/`,
+#             filters by --tag (shallow / medium / deep), executes them,
+#             writes JSON + Markdown summary to `bench/results/<ts>/`.
 #
+# @author     Franck OLLIVIER <contact@agent-ely.fr>
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 # @license    Elastic License 2.0
 # =============================================================================
 """Run the canonical scenarios + emit a results artefact.
 
 Usage (from the project root) ::
 
-    cd backend && uv run python -m bench.run_canonical
+    # Run every shallow scenario (CI nocturne default)
+    cd backend && uv run python -m bench.run_canonical --tag shallow
 
-What gets run :
-  Every module in ``bench/scenarios/canonical/`` whose name starts with
-  ``scenario_`` and which exposes an async ``run()`` callable that
-  returns a dict ``{"pass": bool, ...}``.
+    # Run shallow + medium together
+    cd backend && uv run python -m bench.run_canonical --tag shallow,medium
 
-What gets written :
-  ``bench/results/<YYYY-MM-DD-HH-MM>/``
-    - ``results.json``  : raw structured data per scenario
-    - ``summary.md``    : human-readable digest (pass/fail counts,
-                          per-scenario detail, failed checks)
+    # Run absolutely everything (incl. real LLM calls — costs money)
+    cd backend && uv run python -m bench.run_canonical --tag all
+
+    # List scenarios + their tags without running anything
+    cd backend && uv run python -m bench.run_canonical --list
+
+Default when ``--tag`` is omitted : ``all`` (back-compat with the v1.5.0
+behaviour, before the tag taxonomy existed).
 
 Exit code :
-  ``0`` if every scenario passed, ``1`` otherwise. Suitable for CI.
+  ``0`` if every selected scenario passed, ``1`` otherwise. Suitable for CI.
 
-This runner is **independent of pytest** — the scenarios touch the
-real DB and real services, which is exactly what we want for a
-"canonical missions" harness. The pytest suite covers the unit layer ;
-this harness covers the integration layer that pytest fixtures can't
-reach without setting up the full agent stack.
+Discovery contract — see ``bench/scenarios/_base.py`` :
+  - module name : ``scenario_*.py`` under ``bench/scenarios/canonical/``
+  - exposes : ``NAME``, ``DESCRIPTION``, optional ``TAGS``, ``async def run() -> dict``
+  - ``run()`` returns ``{"pass": bool, "checks": {...}, ...}``
+
+The runner is independent of pytest — scenarios touch the real DB /
+real services. That's the integration layer pytest fixtures can't
+realistically cover.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import importlib
 import json
-import pkgutil
 import sys
 import time
 import traceback
@@ -73,6 +80,28 @@ def _discover() -> list[str]:
     return sorted(names)
 
 
+def _scenario_tags(mod: Any) -> list[str]:
+    """Read a scenario's ``TAGS`` attribute, normalised against the
+    canonical taxonomy. Missing or empty → ``["shallow"]``."""
+    from bench.scenarios._base import normalise_tags
+    return normalise_tags(getattr(mod, "TAGS", None))
+
+
+def _parse_tag_arg(raw: str | None) -> set[str] | None:
+    """Convert ``--tag shallow,medium`` → ``{"shallow", "medium"}``.
+
+    Special values :
+      ``None``  (arg omitted)  → returns ``None`` meaning "run everything"
+      ``"all"``                → returns ``None`` (same as omitted)
+    """
+    if raw is None:
+        return None
+    raw = raw.strip().lower()
+    if raw == "all":
+        return None
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
 async def _run_one(module_name: str) -> dict[str, Any]:
     full = f"bench.scenarios.canonical.{module_name}"
     started = time.monotonic()
@@ -82,16 +111,20 @@ async def _run_one(module_name: str) -> dict[str, Any]:
         return {
             "scenario": module_name,
             "name": module_name,
+            "tags": ["shallow"],
             "status": "import_error",
             "error": f"{type(exc).__name__}: {exc}",
             "traceback": traceback.format_exc(),
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
 
+    tags = _scenario_tags(mod)
+
     if not hasattr(mod, "run") or not asyncio.iscoroutinefunction(mod.run):
         return {
             "scenario": module_name,
             "name": getattr(mod, "NAME", module_name),
+            "tags": tags,
             "status": "no_async_run",
             "error": "Module must expose `async def run() -> dict`.",
             "duration_ms": int((time.monotonic() - started) * 1000),
@@ -103,6 +136,7 @@ async def _run_one(module_name: str) -> dict[str, Any]:
         return {
             "scenario": module_name,
             "name": getattr(mod, "NAME", module_name),
+            "tags": tags,
             "status": "exception",
             "error": f"{type(exc).__name__}: {exc}",
             "traceback": traceback.format_exc(),
@@ -113,24 +147,30 @@ async def _run_one(module_name: str) -> dict[str, Any]:
         "scenario": module_name,
         "name": getattr(mod, "NAME", module_name),
         "description": getattr(mod, "DESCRIPTION", ""),
+        "tags": tags,
         "status": "pass" if result.get("pass") else "fail",
         "duration_ms": int((time.monotonic() - started) * 1000),
         "result": result,
     }
 
 
-def _render_summary(results: list[dict]) -> str:
+def _render_summary(
+    results: list[dict], selected_tags: set[str] | None = None,
+) -> str:
     total = len(results)
     passed = sum(1 for r in results if r["status"] == "pass")
     failed = total - passed
     badge = "✅" if failed == 0 else "❌"
 
+    tag_label = ",".join(sorted(selected_tags)) if selected_tags else "all"
+
     lines: list[str] = [
-        f"# {badge} Canonical bench — {passed}/{total} passed",
+        f"# {badge} Canonical bench — {passed}/{total} passed (tags: {tag_label})",
         "",
         f"- Total scenarios : {total}",
         f"- Passed : {passed}",
         f"- Failed : {failed}",
+        f"- Tag selection : {tag_label}",
         f"- Generated : {time.strftime('%Y-%m-%d %H:%M:%S')}",
         "",
         "## Per-scenario detail",
@@ -138,7 +178,8 @@ def _render_summary(results: list[dict]) -> str:
     ]
     for r in results:
         status_icon = "✅" if r["status"] == "pass" else "❌"
-        lines.append(f"### {status_icon} {r['name']} (`{r['scenario']}`)")
+        tag_chip = " ".join(f"`{t}`" for t in r.get("tags", []))
+        lines.append(f"### {status_icon} {r['name']} (`{r['scenario']}`) — {tag_chip}")
         lines.append("")
         if r.get("description"):
             lines.append(f"_{r['description']}_")
@@ -158,7 +199,43 @@ def _render_summary(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _print_list(scenarios: list[str]) -> None:
+    """Print discovered scenarios + their tags to stdout, no run."""
+    _ensure_backend_importable()
+    rows: list[tuple[str, str, str]] = []
+    for s in scenarios:
+        full = f"bench.scenarios.canonical.{s}"
+        try:
+            mod = importlib.import_module(full)
+            name = getattr(mod, "NAME", s)
+            tags = ",".join(_scenario_tags(mod))
+        except Exception as exc:
+            name = s
+            tags = f"!import_error {type(exc).__name__}"
+        rows.append((s, name, tags))
+    name_w = max(len(r[0]) for r in rows) if rows else 0
+    print(f"Discovered {len(rows)} scenario(s) :\n")
+    for s, name, tags in rows:
+        print(f"  {s.ljust(name_w)}  [{tags}]  {name}")
+
+
 async def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m bench.run_canonical",
+        description="Run ELY canonical bench scenarios.",
+    )
+    parser.add_argument(
+        "--tag", "-t",
+        help="Comma-separated tag list: shallow, medium, deep, all. "
+             "Default: all (everything).",
+    )
+    parser.add_argument(
+        "--list", "-l",
+        action="store_true",
+        help="List discovered scenarios + their tags, then exit.",
+    )
+    args = parser.parse_args(argv or [])
+
     _ensure_backend_importable()
 
     scenarios = _discover()
@@ -166,28 +243,62 @@ async def main(argv: list[str] | None = None) -> int:
         print("No canonical scenarios found in bench/scenarios/canonical/")
         return 1
 
-    print(f"Discovered {len(scenarios)} canonical scenario(s) — running …")
+    if args.list:
+        _print_list(scenarios)
+        return 0
+
+    selected = _parse_tag_arg(args.tag)
+    tag_label = ",".join(sorted(selected)) if selected else "all"
+    print(f"Discovered {len(scenarios)} canonical scenario(s) — filter: {tag_label}")
+    print("Running …")
+
     results: list[dict] = []
+    skipped: list[str] = []
     for s in scenarios:
-        print(f"  ▶ {s} …", end="", flush=True)
+        full = f"bench.scenarios.canonical.{s}"
+        try:
+            mod = importlib.import_module(full)
+            tags = _scenario_tags(mod)
+        except Exception:
+            tags = ["shallow"]
+
+        if selected is not None and not (set(tags) & selected):
+            skipped.append(s)
+            continue
+
+        print(f"  ▶ {s} [{','.join(tags)}] …", end="", flush=True)
         r = await _run_one(s)
         results.append(r)
         suffix = "OK" if r["status"] == "pass" else r["status"].upper()
         print(f" {suffix} ({r['duration_ms']} ms)")
+
+    if not results:
+        print(f"\nNo scenarios matched tag filter '{tag_label}' "
+              f"({len(skipped)} skipped). Try --list to see available tags.")
+        return 1
 
     # Persist
     ts = time.strftime("%Y-%m-%d-%H-%M")
     out_dir = _RESULTS_DIR / ts
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "results.json").write_text(
-        json.dumps(results, indent=2, ensure_ascii=False, default=str),
+        json.dumps(
+            {
+                "selected_tags": sorted(selected) if selected else ["all"],
+                "skipped_count": len(skipped),
+                "results": results,
+            },
+            indent=2, ensure_ascii=False, default=str,
+        ),
         encoding="utf-8",
     )
-    summary = _render_summary(results)
+    summary = _render_summary(results, selected)
     (out_dir / "summary.md").write_text(summary, encoding="utf-8")
 
     print()
     print(summary.splitlines()[0])  # title line
+    if skipped:
+        print(f"(skipped {len(skipped)} scenario(s) outside the tag filter)")
     print(f"Results → {out_dir.relative_to(_REPO_ROOT)}/")
 
     return 0 if all(r["status"] == "pass" for r in results) else 1

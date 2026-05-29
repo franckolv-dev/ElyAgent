@@ -23,6 +23,8 @@ DESCRIPTION = (
 )
 
 
+TAGS = ["shallow"]
+
 async def run() -> dict:
     from app.database import async_session, init_db
     from app.models.hallucination_block import HallucinationBlock

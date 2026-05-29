@@ -21,6 +21,8 @@ DESCRIPTION = (
 )
 
 
+TAGS = ["shallow"]
+
 async def run() -> dict:
     from sqlalchemy import select
 
