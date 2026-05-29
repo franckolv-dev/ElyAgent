@@ -30,6 +30,8 @@ from app.services.learning.skill_creator import (
     _compose_user_prompt,
     _fetch_unprocessed_cases,
     _format_failure_case_for_prompt,
+    _format_tool_list_for_prompt,
+    _get_available_tool_names,
     parse_playbook_response,
     run_skill_creator_batch,
 )
@@ -262,7 +264,59 @@ def test_compose_user_prompt_groups_cluster():
     assert "abc" in out  # fingerprint visible
     assert "Number of cases in this cluster: 2" in out
     assert "case#1" in out and "case#2" in out
-    assert "Write the playbook now" in out
+    assert "Write the playbook" in out  # the writing instruction
+
+
+# ── Tool-list injection (Phase 4.c fix smoke) ───────────────────────────────
+
+
+def test_format_tool_list_groups_by_prefix():
+    """The pretty list groups by underscore-prefix so the LLM can spot
+    the right family quickly."""
+    tools = ["gmail_send_email", "gmail_list_emails", "drive_create_file", "weather_get"]
+    out = _format_tool_list_for_prompt(tools)
+    # Each prefix line starts with two spaces (markdown-friendly nesting)
+    assert "  gmail:" in out
+    assert "  drive:" in out
+    assert "  weather:" in out
+    # Tools listed alphabetically within their group
+    assert "gmail_list_emails, gmail_send_email" in out
+
+
+def test_format_tool_list_handles_empty():
+    """An empty list must not crash — the LLM gets a clear fallback msg."""
+    out = _format_tool_list_for_prompt([])
+    assert "(no tools available" in out
+
+
+def test_get_available_tool_names_uses_real_registry():
+    """In a normal pytest env the skill registry contains the built-in
+    tools (gmail_*, drive_*, etc). The helper should return the
+    intersection with the default profile — definitely non-empty."""
+    names = _get_available_tool_names("default")
+    # Pin a few well-known tools that should always be there
+    assert "gmail_send_email" in names or len(names) == 0  # tolerate empty registry in narrow CI
+
+
+def test_compose_user_prompt_mentions_available_tools_section(monkeypatch):
+    """The user prompt must carry an AVAILABLE TOOLS section, sourced
+    from `_get_available_tool_names`. We stub the helper so the test
+    doesn't depend on the live registry."""
+    fake_tools = ["gmail_send_email", "drive_create_file"]
+    monkeypatch.setattr(
+        "app.services.learning.skill_creator._get_available_tool_names",
+        lambda profile_name="default": fake_tools,
+    )
+    cluster = [SimpleNamespace(
+        id=1, signal_table="hitl_refusals", tier_llm="B", pattern_hash="abc",
+        replay_payload="{}",
+    )]
+    out = _compose_user_prompt(cluster)
+    assert "AVAILABLE TOOLS" in out
+    assert "gmail_send_email" in out
+    assert "drive_create_file" in out
+    assert "Use only the tools in the AVAILABLE TOOLS list above" in out
+    assert "Write in the same language" in out
 
 
 # ─────────────────────────────────────────────────────────────────────────

@@ -109,11 +109,16 @@ Bullets of forbidden moves (the actual failure modes from the cases).
 
 Quality bar
 -----------
-- Concrete and actionable: name the actual tools (gmail_trash_emails,
-  drive_create_file, etc.), not vague verbs.
+- Concrete and actionable: name the EXACT tools from the AVAILABLE
+  TOOLS list at the end of the user prompt. NEVER invent a tool name.
+  If a needed tool is not in the list, write the procedure without it
+  (e.g. "ask the user to do X manually") rather than inventing one.
 - Defensive: when in doubt, propose asking the user before acting.
 - Tight: < 300 words total. Token economy matters.
 - Cite the failure modes verbatim when useful (1 short quote max).
+- **Write the playbook in the SAME LANGUAGE as the source failure
+  cases (look at quoted user-facing strings in the cases). The agent
+  speaks both — match the user's working language.**
 """
 
 
@@ -151,17 +156,69 @@ def _format_failure_case_for_prompt(fc: FailureCase) -> str:
     return f"- [case#{fc.id}] {head}\n" + "\n".join(extras)
 
 
+def _get_available_tool_names(profile_name: str = "default") -> list[str]:
+    """Return the names of every tool that's actually registered AND in
+    the given toolset profile. Used to inject a ground-truth list into
+    the writer/patcher prompts so the LLM doesn't invent tool names.
+
+    Defensive: any import failure or registry hiccup returns an empty
+    list — the writer prompt copes (it'll fall back to vague verbs,
+    not crash).
+    """
+    try:
+        from app.agent.toolset_profiles import (
+            get_profile_tool_names,
+            DEFAULT_PROFILE,
+        )
+        from app.skills.registry import get_skill_registry
+
+        profile_names = set(get_profile_tool_names(profile_name or DEFAULT_PROFILE))
+        registered_names = get_skill_registry().all_tool_names()
+        # Intersection: only tools that are BOTH in the profile AND
+        # actually registered. Sorted for prompt stability (cacheable).
+        return sorted(profile_names & registered_names)
+    except Exception as exc:
+        logger.debug("skill_creator: tool names lookup failed (%s)", exc)
+        return []
+
+
+def _format_tool_list_for_prompt(tools: list[str]) -> str:
+    """Render the tool names as a compact comma-separated list with a
+    rough grouping by prefix so the LLM can spot the right family fast."""
+    if not tools:
+        return "(no tools available — the agent runs without bindable tools right now)"
+    # Group by the first underscore-separated token (gmail_, drive_, etc.)
+    groups: dict[str, list[str]] = {}
+    for name in tools:
+        prefix = name.split("_", 1)[0] if "_" in name else "misc"
+        groups.setdefault(prefix, []).append(name)
+    lines = [
+        f"  {prefix}: {', '.join(sorted(names))}"
+        for prefix, names in sorted(groups.items())
+    ]
+    return "\n".join(lines)
+
+
 def _compose_user_prompt(cluster: list[FailureCase]) -> str:
     """User message for one cluster of similar failures."""
     head = f"Failure pattern (cluster fingerprint = {cluster[0].pattern_hash})\n"
     head += f"Number of cases in this cluster: {len(cluster)}\n\n"
     head += "Cases:\n"
     body = "\n\n".join(_format_failure_case_for_prompt(fc) for fc in cluster)
-    tail = (
-        "\n\nWrite the playbook now. Remember: ONLY the fenced markdown block "
-        "with YAML frontmatter, no other text."
+
+    tools = _get_available_tool_names()
+    tool_section = (
+        "\n\nAVAILABLE TOOLS (use ONLY these names in the playbook; "
+        "inventing tool names is forbidden):\n"
+        + _format_tool_list_for_prompt(tools)
     )
-    return head + body + tail
+    tail = (
+        "\n\nWrite the playbook now. Remember: ONLY the fenced markdown "
+        "block with YAML frontmatter, no other text. Use only the tools "
+        "in the AVAILABLE TOOLS list above. Write in the same language "
+        "as the quoted strings in the failure cases."
+    )
+    return head + body + tool_section + tail
 
 
 # ── Output parser ───────────────────────────────────────────────────────────

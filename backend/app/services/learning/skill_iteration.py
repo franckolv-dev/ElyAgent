@@ -37,6 +37,8 @@ from app.models.failure_case import FailureCase
 from app.models.learned_skill import LearnedSkill, SkillStatus
 from app.services.learning.skill_creator import (
     _format_failure_case_for_prompt,
+    _format_tool_list_for_prompt,
+    _get_available_tool_names,
     parse_playbook_response,
 )
 from app.services.learning.tier_s import (
@@ -99,6 +101,11 @@ How to patch
 - KEEP the same `name` slug (so downstream linking stays stable).
 - BIAS for shorter and more concrete over longer and more general.
 - Tight: < 300 words total.
+- Use ONLY the tools listed in AVAILABLE TOOLS at the end of the
+  user prompt. NEVER invent a tool name (a frequent failure of the
+  original draft is the patcher's chance to fix it).
+- Write the patched playbook in the SAME LANGUAGE as the source
+  failure cases.
 """
 
 
@@ -115,9 +122,17 @@ def _compose_patch_prompt(
     head += "\n\nSOURCE FAILURE CASES (unchanged from the original draft)\n"
     head += "========================================================\n"
     head += "\n\n".join(_format_failure_case_for_prompt(fc) for fc in cases[:5])
+
+    tools = _get_available_tool_names()
     head += (
-        "\n\nNow output the patched playbook. ONLY the fenced markdown block "
-        "with YAML frontmatter — no prose, no fences around the whole block."
+        "\n\nAVAILABLE TOOLS (use ONLY these names in the patched playbook):\n"
+        + _format_tool_list_for_prompt(tools)
+    )
+    head += (
+        "\n\nNow output the patched playbook. ONLY the fenced markdown "
+        "block with YAML frontmatter — no prose around it. Use only "
+        "the tools listed above. Write in the same language as the "
+        "quoted strings in the failure cases."
     )
     return head
 
