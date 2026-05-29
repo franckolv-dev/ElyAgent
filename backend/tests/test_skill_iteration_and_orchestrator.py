@@ -572,3 +572,233 @@ async def test_run_skill_creator_endpoint_passes_kwargs(_seeded_user, monkeypatc
         "max_iterations": 2,
     }
     assert result["totals"]["passed"] == 1
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Phase 4.a — lifecycle endpoints (promote / archive / restore / delete)
+# ────────────────────────────────────────────────────────────────────────
+
+
+from types import SimpleNamespace
+
+
+def _fake_admin() -> SimpleNamespace:
+    """Stand-in for the `User` ORM row require_admin would inject."""
+    return SimpleNamespace(id="fake-admin-id")
+
+
+@pytest.mark.asyncio
+async def test_promote_candidate_to_active(_seeded_user):
+    """Happy path : candidate → active."""
+    from app.routers.learning_skills import promote_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        out = await promote_skill(skill_id, admin=_fake_admin(), db=db)
+    assert out.status == SkillStatus.ACTIVE
+
+    # Persisted
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+        assert skill.status == SkillStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_promote_is_idempotent_on_already_active(_seeded_user):
+    """Promoting an active skill must NOT raise — it's a no-op."""
+    from app.routers.learning_skills import promote_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        await promote_skill(skill_id, admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        out = await promote_skill(skill_id, admin=_fake_admin(), db=db)
+    assert out.status == SkillStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_promote_rejected_is_forbidden(_seeded_user):
+    """A rejected skill is terminal — promoting must 409, not silently
+    transition to active."""
+    from fastapi import HTTPException
+    from app.routers.learning_skills import promote_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    # Mark rejected first
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+        skill.status = SkillStatus.REJECTED
+        await db.commit()
+
+    async with async_session() as db:
+        with pytest.raises(HTTPException) as exc:
+            await promote_skill(skill_id, admin=_fake_admin(), db=db)
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_promote_unknown_id_404(_seeded_user):
+    from fastapi import HTTPException
+    from app.routers.learning_skills import promote_skill
+
+    async with async_session() as db:
+        with pytest.raises(HTTPException) as exc:
+            await promote_skill("does-not-exist", admin=_fake_admin(), db=db)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_archive_active_skill(_seeded_user):
+    from app.routers.learning_skills import archive_skill, promote_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        await promote_skill(skill_id, admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        out = await archive_skill(skill_id, admin=_fake_admin(), db=db)
+    assert out.status == SkillStatus.ARCHIVED
+
+
+@pytest.mark.asyncio
+async def test_archive_candidate_is_allowed(_seeded_user):
+    """Even a fresh candidate can be archived (admin decides it's a bad
+    draft and wants it out of the review queue without rejecting it)."""
+    from app.routers.learning_skills import archive_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        out = await archive_skill(skill_id, admin=_fake_admin(), db=db)
+    assert out.status == SkillStatus.ARCHIVED
+
+
+@pytest.mark.asyncio
+async def test_restore_archived_back_to_candidate(_seeded_user):
+    """Archive then restore = back to candidate, not back to active."""
+    from app.routers.learning_skills import archive_skill, restore_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        await archive_skill(skill_id, admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        out = await restore_skill(skill_id, admin=_fake_admin(), db=db)
+    # Restored skills go back to CANDIDATE, must be re-promoted explicitly
+    assert out.status == SkillStatus.CANDIDATE
+
+
+@pytest.mark.asyncio
+async def test_restore_active_is_forbidden(_seeded_user):
+    """Can't restore an active skill — it would mean 'demote to
+    candidate', which isn't in our transition map (use /archive then
+    /restore if you really want that)."""
+    from fastapi import HTTPException
+    from app.routers.learning_skills import promote_skill, restore_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        await promote_skill(skill_id, admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        with pytest.raises(HTTPException) as exc:
+            await restore_skill(skill_id, admin=_fake_admin(), db=db)
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_delete_rejected_skill(_seeded_user):
+    """Rejected skills can be deleted permanently."""
+    from app.routers.learning_skills import delete_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+        skill.status = SkillStatus.REJECTED
+        await db.commit()
+
+    async with async_session() as db:
+        result = await delete_skill(skill_id, admin=_fake_admin(), db=db)
+    assert result == {"status": "deleted", "skill_id": skill_id}
+
+    # Row gone
+    async with async_session() as db:
+        row = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one_or_none()
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_delete_archived_skill(_seeded_user):
+    from app.routers.learning_skills import archive_skill, delete_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        await archive_skill(skill_id, admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        await delete_skill(skill_id, admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        row = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one_or_none()
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_delete_active_is_forbidden(_seeded_user):
+    """Can't delete an active skill — must archive first. Prevents
+    accidental deletion of a skill in use."""
+    from fastapi import HTTPException
+    from app.routers.learning_skills import delete_skill, promote_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        await promote_skill(skill_id, admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        with pytest.raises(HTTPException) as exc:
+            await delete_skill(skill_id, admin=_fake_admin(), db=db)
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_delete_candidate_is_forbidden(_seeded_user):
+    """Same safeguard for candidates — admin must explicitly archive
+    or reject before deletion."""
+    from fastapi import HTTPException
+    from app.routers.learning_skills import delete_skill
+
+    skill_id = await _seed_candidate(_seeded_user)
+    async with async_session() as db:
+        with pytest.raises(HTTPException) as exc:
+            await delete_skill(skill_id, admin=_fake_admin(), db=db)
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_delete_does_not_touch_failure_cases(_seeded_user):
+    """Deleting a skill must NOT cascade-delete its source
+    failure_cases — we keep them for audit / future re-processing."""
+    from app.routers.learning_skills import delete_skill
+
+    skill_id = await _seed_candidate(_seeded_user, n_cases=2)
+    # Read the linked failure_case ids
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+        case_ids = json.loads(skill.from_failure_case_ids)
+        skill.status = SkillStatus.REJECTED
+        await db.commit()
+    async with async_session() as db:
+        await delete_skill(skill_id, admin=_fake_admin(), db=db)
+    # failure_cases must still be there
+    async with async_session() as db:
+        cases = (await db.execute(
+            select(FailureCase).where(FailureCase.id.in_(case_ids))
+        )).scalars().all()
+    assert len(cases) == len(case_ids), (
+        "delete_skill must NOT cascade-delete failure_cases — audit trail must survive"
+    )

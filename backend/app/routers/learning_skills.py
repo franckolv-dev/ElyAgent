@@ -10,25 +10,42 @@
 # =============================================================================
 """Admin endpoints for the autonomous skill-creation loop.
 
-Two endpoints, both admin-only (`require_admin`) :
+Admin-only (`require_admin`) endpoints :
 
-  - `POST /admin/learning/skill-creator/run`
-        Trigger one full batch of create → eval → iterate for a given user.
-        Returns the orchestrator's structured summary.
+  - `POST   /admin/learning/skill-creator/run`         (3.c)
+        Trigger one full batch of create → eval → iterate for a user.
 
-  - `GET  /admin/learning/skills/candidates`
-        List candidate `LearnedSkill` rows with their iteration count,
-        last eval score, and rationale. Lets the admin review before
-        promoting to `active` (Phase 4 will add the promotion endpoint).
+  - `GET    /admin/learning/skills/candidates`         (3.c)
+        List candidate skills, filterable by status / user.
+
+Phase 4.a — skill lifecycle :
+
+  - `POST   /admin/learning/skills/{skill_id}/promote`
+        Move a `candidate` skill to `active` (HITL promotion).
+        Active skills get injected into the agent prompt (Phase 4.b).
+
+  - `POST   /admin/learning/skills/{skill_id}/archive`
+        Move an `active` or `stale` skill to `archived`. Recoverable.
+        The curator (Phase 5) flips skills automatically too.
+
+  - `POST   /admin/learning/skills/{skill_id}/restore`
+        Move an `archived` skill back to `candidate` for re-review.
+
+  - `DELETE /admin/learning/skills/{skill_id}`
+        Permanently delete a `rejected` or `archived` skill. The
+        underlying `failure_cases` rows are untouched (kept for
+        forensic / future re-processing).
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Optional
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
@@ -173,3 +190,171 @@ async def list_candidates(
         )
         for r in rows
     ]
+
+
+# ── Phase 4.a — lifecycle endpoints ────────────────────────────────────────
+
+
+# Allowed status transitions. Anything not in here returns 409 Conflict.
+# We model lifecycle on top of the enum so a future Phase 5 curator can
+# transition active→stale and stale→archived without bypassing this map.
+_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    SkillStatus.CANDIDATE: {SkillStatus.ACTIVE, SkillStatus.ARCHIVED},
+    SkillStatus.ACTIVE:    {SkillStatus.ARCHIVED, SkillStatus.STALE},
+    SkillStatus.STALE:     {SkillStatus.ACTIVE, SkillStatus.ARCHIVED},
+    SkillStatus.ARCHIVED:  {SkillStatus.CANDIDATE},  # restore back to review
+    SkillStatus.REJECTED:  set(),                    # terminal, only DELETE
+}
+
+
+async def _load_skill_or_404(db: AsyncSession, skill_id: str) -> LearnedSkill:
+    row = (await db.execute(
+        select(LearnedSkill).where(LearnedSkill.id == skill_id)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(404, f"Skill {skill_id!r} not found.")
+    return row
+
+
+async def _transition_status(
+    db: AsyncSession,
+    skill: LearnedSkill,
+    new_status: str,
+    *,
+    admin_id: str,
+) -> LearnedSkill:
+    """Apply a status transition with the allowed-transitions check.
+
+    Sets ``updated_at = now`` and persists. Does NOT commit — caller
+    commits + reads ``skill`` back. Raises HTTPException 409 if the
+    transition isn't allowed.
+    """
+    allowed = _ALLOWED_TRANSITIONS.get(skill.status, set())
+    if new_status not in allowed:
+        raise HTTPException(
+            409,
+            f"Transition {skill.status!r} → {new_status!r} not allowed. "
+            f"Valid from {skill.status!r}: {sorted(allowed) or '(none — terminal)'}",
+        )
+    skill.status = new_status
+    skill.updated_at = datetime.now(timezone.utc)
+    return skill
+
+
+@router.post("/skills/{skill_id}/promote", response_model=CandidateOut)
+async def promote_skill(
+    skill_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> CandidateOut:
+    """HITL admin promotion : `candidate` → `active`.
+
+    Active skills get injected into the agent's system prompt at next
+    turn (Phase 4.b wires the injection). This is the one moment a
+    human reviews what the autonomous loop produced before it goes
+    live for the user.
+    """
+    skill = await _load_skill_or_404(db, skill_id)
+    if skill.status == SkillStatus.ACTIVE:
+        # Idempotent — promoting an already-active skill is a no-op.
+        return _to_candidate_out(skill)
+    await _transition_status(db, skill, SkillStatus.ACTIVE, admin_id=admin.id)
+    await db.commit()
+    await db.refresh(skill)
+    logger.info(
+        "skill_promoted: id=%s name=%s by_admin=%s",
+        skill.id, skill.name, admin.id[:8] if admin.id else "?",
+    )
+    return _to_candidate_out(skill)
+
+
+@router.post("/skills/{skill_id}/archive", response_model=CandidateOut)
+async def archive_skill(
+    skill_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> CandidateOut:
+    """Move an `active` or `stale` skill to `archived`.
+
+    Archived skills are hidden from the system prompt injection but
+    kept in DB — restorable via `/restore`. The curator (Phase 5) does
+    this automatically for skills unused too long.
+    """
+    skill = await _load_skill_or_404(db, skill_id)
+    if skill.status == SkillStatus.ARCHIVED:
+        return _to_candidate_out(skill)
+    await _transition_status(db, skill, SkillStatus.ARCHIVED, admin_id=admin.id)
+    await db.commit()
+    await db.refresh(skill)
+    logger.info(
+        "skill_archived: id=%s name=%s by_admin=%s",
+        skill.id, skill.name, admin.id[:8] if admin.id else "?",
+    )
+    return _to_candidate_out(skill)
+
+
+@router.post("/skills/{skill_id}/restore", response_model=CandidateOut)
+async def restore_skill(
+    skill_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> CandidateOut:
+    """Move an `archived` skill back to `candidate` for re-review.
+
+    Doesn't go straight to active — the admin must re-evaluate
+    (possibly with fresh eyes) and explicitly re-promote.
+    """
+    skill = await _load_skill_or_404(db, skill_id)
+    await _transition_status(db, skill, SkillStatus.CANDIDATE, admin_id=admin.id)
+    await db.commit()
+    await db.refresh(skill)
+    logger.info(
+        "skill_restored: id=%s name=%s by_admin=%s",
+        skill.id, skill.name, admin.id[:8] if admin.id else "?",
+    )
+    return _to_candidate_out(skill)
+
+
+@router.delete("/skills/{skill_id}")
+async def delete_skill(
+    skill_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Permanently delete a `rejected` or `archived` skill.
+
+    Active / candidate / stale skills must be archived first — this
+    prevents accidental deletion of skills in use. The underlying
+    `failure_cases` rows are NOT deleted (audit trail kept).
+    """
+    skill = await _load_skill_or_404(db, skill_id)
+    if skill.status not in {SkillStatus.REJECTED, SkillStatus.ARCHIVED}:
+        raise HTTPException(
+            409,
+            f"Cannot delete skill in status {skill.status!r}. "
+            "Archive it first (active/stale → archived → delete).",
+        )
+    await db.execute(
+        delete(LearnedSkill).where(LearnedSkill.id == skill_id)
+    )
+    await db.commit()
+    logger.info(
+        "skill_deleted: id=%s name=%s status_was=%s by_admin=%s",
+        skill_id, skill.name, skill.status, admin.id[:8] if admin.id else "?",
+    )
+    return {"status": "deleted", "skill_id": skill_id}
+
+
+def _to_candidate_out(skill: LearnedSkill) -> CandidateOut:
+    return CandidateOut(
+        id=skill.id,
+        user_id=skill.user_id,
+        name=skill.name,
+        description=skill.description,
+        status=skill.status,
+        iteration_count=skill.iteration_count,
+        last_eval_score=skill.last_eval_score,
+        rationale=skill.rationale,
+        from_failure_case_ids=skill.from_failure_case_ids,
+        created_at=skill.created_at.isoformat() if skill.created_at else "",
+    )
