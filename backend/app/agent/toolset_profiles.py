@@ -221,6 +221,14 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # TIER_C_ONLY_TOOLS filter in nodes.py still removes it from tier
     # A/B bindings — the entry here only makes it eligible at tier C.
     "orchestrate",
+    # Sprint 4b Phase 4.b (2026-05-29) — progressive disclosure on the
+    # autonomous learned playbooks. The system prompt already lists each
+    # active LearnedSkill's name + description (~50 tokens per skill,
+    # see memory_snapshot.build_memory_snapshot). When the agent
+    # decides a playbook is relevant, it calls `skill_view(name)` to
+    # pull the full body. user_id is auto-injected (USER_ID_TOOLS)
+    # so the lookup is always user-scoped.
+    "skill_view",
 )
 
 

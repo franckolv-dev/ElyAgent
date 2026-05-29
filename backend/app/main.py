@@ -94,6 +94,8 @@ from app.routers.browser_extension import ws_router as bext_ws_router, api_route
 from app.routers import extension_tokens as extension_tokens_router
 from app.routers import learning_report as learning_report_router
 from app.routers import user_state as user_state_router
+# Sprint 4b Phase 3 — autonomous skill_creator admin endpoints
+from app.routers import learning_skills as learning_skills_router
 from app.middleware.rate_limit import setup_rate_limiter
 from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
@@ -455,6 +457,9 @@ app.include_router(feedback_router.router)
 app.include_router(learning_report_router.router, tags=["learning"])
 # Sprint 3 Jalon 3 — `/api/me/state` + `/api/me/state/recompute`
 app.include_router(user_state_router.router, tags=["learning"])
+# Sprint 4b Phase 3 — admin endpoints for the autonomous skill_creator loop.
+# Carries its own /admin/learning prefix.
+app.include_router(learning_skills_router.router, tags=["learning"])
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)

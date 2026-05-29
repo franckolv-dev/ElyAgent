@@ -35,6 +35,9 @@ from app.models.hallucination_block import HallucinationBlock
 from app.models.provider_switch import ProviderSwitch
 from app.models.mission_critique import MissionCritique
 from app.models.user_state import UserState
+# Sprint 4b Phase 1 — auto-amélioration par création de skills (Hermes-style)
+from app.models.failure_case import FailureCase
+from app.models.learned_skill import LearnedSkill, SkillStatus, SkillSource
 # Models that were registered with Base.metadata only by side-effect of being
 # imported from other parts of the codebase. Listing them here makes the
 # dependency explicit so ``Base.metadata.create_all`` sees their tables on a
@@ -62,6 +65,7 @@ __all__ = [
     "Procedure", "ErrorLog",
     "HitlRefusal", "HallucinationBlock", "ProviderSwitch", "MissionCritique",
     "UserState",
+    "FailureCase", "LearnedSkill", "SkillStatus", "SkillSource",
     # Newly explicit (side-effect imports promoted to first-class)
     "ArenaMatch", "ArenaElo", "CommunitySkill", "Feedback", "LLMInstance",
     "MCPServer", "Note", "ScheduledTask", "SkillPreference", "SystemConfig",

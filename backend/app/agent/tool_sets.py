@@ -164,6 +164,10 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     # New tool replacing memory_search/notes_search/... incrementally;
     # injects user_id so the LLM cannot tamper with the scope.
     "memory_recall",
+    # Sprint 4b Phase 4.b (2026-05-29) — progressive disclosure on
+    # auto-learned playbooks. user_id injected so the LLM can NEVER
+    # read another user's playbooks across the multi-user instance.
+    "skill_view",
     # Sprint 1 (2026-05-15) — cross-conversation memory recall.
     # Different from memory_search (structured fact store) and
     # knowledge_search (uploaded documents). Searches the literal

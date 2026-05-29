@@ -368,6 +368,28 @@ async def critique_mission(mission_id: str) -> int | None:
                 mission_id, model_name, verdict["quality_score"],
                 verdict["honest_completion"], verdict["wasted_effort"],
             )
+            # Sprint 4b Phase 1 — capture low-quality / dishonest critiques as
+            # failure_cases for the skill_creator. The helper filters out
+            # high-score honest completions itself, so wiring is unconditional.
+            try:
+                from app.services.learning.failure_capture import capture_from_mission_critique
+                await capture_from_mission_critique(
+                    signal_id=row.id,
+                    user_id=mission.user_id,
+                    mission_id=mission_id,
+                    critic_model=model_name,
+                    quality_score=verdict["quality_score"],
+                    honest_completion=verdict["honest_completion"],
+                    wasted_effort=verdict["wasted_effort"],
+                    user_should_have_been_warned=verdict["user_should_have_been_warned"],
+                    main_issue=verdict["main_issue"],
+                    prompt_version=critic_prompt_hash,
+                    conversation_id=getattr(mission, "conversation_id", None),
+                )
+            except Exception as exc:
+                logger.debug(
+                    "mission_critique failure_case capture skipped (swallowed): %s", exc
+                )
             return row.id
         except Exception as exc:
             # Most likely UNIQUE collision because of concurrent cron run

@@ -120,6 +120,25 @@ async def record_hitl_refusal(
         async with async_session() as db:
             db.add(row)
             await db.commit()
+        # Sprint 4b Phase 1 — capture into failure_cases for the skill_creator.
+        # Best-effort hook, never blocks the signal itself.
+        try:
+            from app.services.learning.failure_capture import capture_from_hitl_refusal
+            await capture_from_hitl_refusal(
+                signal_id=row.id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                tool_name=tool_name,
+                args_redacted=row.args_redacted,
+                action_description=action_description,
+                decision=decision,
+                reason=reason,
+                mission_id=mission_id,
+                tier_llm=tier_llm,
+                prompt_version=prompt_version,
+            )
+        except Exception as exc:
+            logger.debug("hitl_refusal failure_case capture skipped (swallowed): %s", exc)
         return row.id
     except Exception as exc:
         logger.debug("record_hitl_refusal failed (swallowed): %s", exc)
@@ -170,6 +189,25 @@ async def record_hallucination_block(
         async with async_session() as db:
             db.add(row)
             await db.commit()
+        # Sprint 4b Phase 1 — capture into failure_cases for the skill_creator.
+        try:
+            from app.services.learning.failure_capture import capture_from_hallucination_block
+            await capture_from_hallucination_block(
+                signal_id=row.id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                model_used=model_used,
+                matched_patterns=list(matched_patterns),
+                tools_invoked=list(tools_invoked),
+                destructive_tools_invoked=list(destructive_tools_invoked),
+                reason=reason,
+                original_response=str(original_response),
+                tier_llm=tier_llm,
+                mission_id=mission_id,
+                prompt_version=prompt_version,
+            )
+        except Exception as exc:
+            logger.debug("hallucination_block failure_case capture skipped (swallowed): %s", exc)
         return row.id
     except Exception as exc:
         logger.debug("record_hallucination_block failed (swallowed): %s", exc)
