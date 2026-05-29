@@ -311,11 +311,17 @@ async def test_record_hitl_refusal_creates_matching_failure_case(_seeded_user):
         )).scalar_one()
         assert sig.tool_name == "gmail_trash_emails"
 
-        # Matching failure_case row
+        # Matching failure_case row. Filter by user_id too — other tests
+        # in the same suite (test_skill_creator) seed FailureCase rows
+        # with random signal_ids that can occasionally collide with
+        # the autoincrement id assigned to our HitlRefusal in CI's
+        # accumulated DB. Without the user_id filter we hit
+        # MultipleResultsFound in CI even though local runs pass.
         fc = (await db.execute(
             select(FailureCase).where(
                 FailureCase.signal_table == SIGNAL_HITL_REFUSAL,
                 FailureCase.signal_id == signal_id,
+                FailureCase.user_id == _seeded_user,
             )
         )).scalar_one_or_none()
         assert fc is not None, "record_hitl_refusal must create a failure_case row"
@@ -343,10 +349,12 @@ async def test_record_hallucination_creates_matching_failure_case(_seeded_user):
             select(HallucinationBlock).where(HallucinationBlock.id == signal_id)
         )).scalar_one()
         assert sig is not None
+        # Same user_id filter rationale as the HITL test above.
         fc = (await db.execute(
             select(FailureCase).where(
                 FailureCase.signal_table == SIGNAL_HALLUCINATION,
                 FailureCase.signal_id == signal_id,
+                FailureCase.user_id == _seeded_user,
             )
         )).scalar_one_or_none()
         assert fc is not None
