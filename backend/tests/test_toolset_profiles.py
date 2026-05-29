@@ -44,10 +44,13 @@ def test_default_profile_has_reasonable_size():
     even though the static profile is now 59.
     Bumped to 75 in 2026-05-20 to make room for orchestrate (Sprint 2.7,
     Programmatic Tool Calling sandbox — see toolset_profiles.py).
-    DeepSeek / Mistral Small / Mistral Large handle 50-75 tools
+    Bumped to 80 in 2026-05-29 for Sprint 4b Phase 4.b (skill_view +
+    progressive-disclosure room for one or two more tools landing soon
+    without re-bumping the cap on every commit).
+    DeepSeek / Mistral Small / Mistral Large handle 50-80 tools
     comfortably; xLAM-style fragile FC-tunes are no longer in the chain."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 75, f"default has {len(tools)} tools (target 25-75)"
+    assert 25 <= len(tools) <= 80, f"default has {len(tools)} tools (target 25-80)"
 
 
 def test_default_profile_no_duplicates():

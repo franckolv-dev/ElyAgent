@@ -129,7 +129,23 @@ async def build_memory_snapshot(
     except Exception:
         _us_block = ""
 
-    snapshot_text = (_us_block + _mem_block) if _us_block else _mem_block
+    # Sprint 4b Phase 4.b — inject the active LearnedSkills block (tier 1
+    # of the progressive disclosure : name + description only, the
+    # agent calls skill_view(name) to load the full body on demand).
+    # Same frozen_memory cache treatment as the rest, empty when the
+    # user has no active playbook → no prompt pollution for first-time
+    # or unpromoted users. Best-effort — DB outage returns "".
+    try:
+        from app.services.learning.active_skills import (
+            format_active_skills_block,
+            get_active_skills_for_user,
+        )
+        _active_skills = await get_active_skills_for_user(user_id)
+        _skills_block = format_active_skills_block(_active_skills)
+    except Exception:
+        _skills_block = ""
+
+    snapshot_text = _us_block + _skills_block + _mem_block
     return snapshot_text, compact_pieces
 
 
