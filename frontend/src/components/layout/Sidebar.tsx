@@ -16,6 +16,7 @@ import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
   Download, X, ChevronDown, Swords, BookOpen, Target, Brain, Compass,
+  Sparkles,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -36,6 +37,7 @@ const BASE_NAV = [
   { href: "/arena",      labelKey: "navArena",      icon: Swords         },
   { href: "/dashboard",  labelKey: "navDashboard",  icon: LayoutDashboard },
   { href: "/me/learning",labelKey: "navLearning",   icon: Brain          },
+  { href: "/me/learning/skills", labelKey: "navLearningSkills", icon: Sparkles },
   { href: "/me/state",   labelKey: "navUserState",  icon: Compass        },
   { href: "/settings",   labelKey: "navSettings",   icon: Settings       },
 ];

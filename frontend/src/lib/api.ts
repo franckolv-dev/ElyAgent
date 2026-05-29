@@ -432,6 +432,30 @@ export const api = {
       status: string;
       tools: string[];
     }>,
+
+  // ── My learned skills (Sprint 4b Phase 5.b) ─────────────────────────────
+  /** List every LearnedSkill the caller owns, across all statuses. The
+   *  backend orders by status then use_count so the UI can render the
+   *  list as-is (most relevant first). */
+  myLearningSkillsList: () =>
+    fetchAPI("/api/me/learning-skills") as Promise<MeLearnedSkill[]>,
+
+  /** Toggle the `pinned` flag on one of the caller's skills. A pinned
+   *  skill bypasses the auto-curator so it never drifts to stale /
+   *  archived even when unused for months. */
+  myLearningSkillPin: (id: string, pinned: boolean) =>
+    fetchAPI(`/api/me/learning-skills/${id}/pin`, {
+      method: "POST",
+      body: JSON.stringify({ pinned }),
+    }) as Promise<MeLearnedSkill>,
+
+  /** "Forget" the skill — flips status to `archived`, hidden from the
+   *  prompt injection layer. Reversible by an admin (no permanent
+   *  delete from the user surface). No-op on already-archived rows. */
+  myLearningSkillForget: (id: string) =>
+    fetchAPI(`/api/me/learning-skills/${id}/forget`, {
+      method: "POST",
+    }) as Promise<MeLearnedSkill>,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -542,4 +566,29 @@ export interface UserStateResponse {
   updated_at: string | null;
   prompt_version: string | null;
   disabled: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// My learned skills (Sprint 4b Phase 5.b)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** A single LearnedSkill row from the user-facing surface. Mirrors
+ *  `MeSkillOut` in `backend/app/routers/me_learning_skills.py`. */
+export interface MeLearnedSkill {
+  id: string;
+  name: string;
+  description: string;
+  /** Full Markdown body, frontmatter stripped. Shown in the expand panel. */
+  content: string;
+  /** One of: `candidate`, `active`, `stale`, `archived`, `rejected`. */
+  status: string;
+  /** `auto_generated`, `user_added`, `imported_marketplace`. */
+  source: string;
+  iteration_count: number;
+  last_eval_score: number | null;
+  pinned: boolean;
+  use_count: number;
+  last_used_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
