@@ -347,6 +347,21 @@ async def lifespan(app: FastAPI):
         id="purge_revoked_tokens",
     )
 
+    # Sprint 4b Phase 5.a — weekly curator for auto-generated learned
+    # skills. Transitions active→stale (30j default), stale→archived
+    # (90j default). Never deletes. Respects `pinned` opt-out. Runs
+    # Monday 03:00 UTC, the calmest cron window in our existing
+    # schedule. Disabled by env LEARNED_SKILLS_CURATOR_DISABLED=true.
+    from app.services.learning.skill_curator import run_curator_cycle as _sc_run
+    _memory_scheduler.add_job(
+        _sc_run,
+        trigger="cron",
+        day_of_week="mon",
+        hour=3,
+        minute=0,
+        id="learned_skills_curator",
+    )
+
     # Mission heartbeat — ticks active missions periodically.
     # See app/services/mission_heartbeat.py for the loop logic.
     from app.services.mission_heartbeat import (
