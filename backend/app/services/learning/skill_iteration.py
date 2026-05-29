@@ -233,7 +233,8 @@ async def patch_skill(skill_id: str, judge_rationale: str) -> dict[str, Any]:
         await record_tier_s_usage(
             user_id=skill.user_id,
             model=model_name,
-            provider="anthropic" if pick == "primary" else "deepseek",
+            # Backlog #19 : pick is canonical provider name now.
+            provider=pick,
             input_tokens=in_tokens,
             output_tokens=out_tokens,
             purpose="skill_iteration",

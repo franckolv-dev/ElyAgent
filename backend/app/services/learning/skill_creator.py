@@ -395,7 +395,9 @@ async def _draft_skill_for_cluster(
         await record_tier_s_usage(
             user_id=user_id,
             model=model_name,
-            provider="anthropic" if pick == "primary" else "deepseek",
+            # Backlog #19 : `pick` is now the canonical provider name
+            # ("anthropic" / "mistral" / "deepseek"), pass through.
+            provider=pick,
             input_tokens=in_tokens,
             output_tokens=out_tokens,
             purpose="skill_creator",
