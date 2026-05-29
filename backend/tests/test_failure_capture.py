@@ -40,6 +40,7 @@ from app.services.learning.failure_capture import (
 async def _seeded_user():
     await init_db()
     from app.models.user import User
+    from sqlalchemy import delete as _delete
     async with async_session() as db:
         existing = (await db.execute(select(User).where(User.id == "fc1"))).scalar_one_or_none()
         if existing is None:
@@ -50,6 +51,14 @@ async def _seeded_user():
                 hashed_password="x",
             ))
             await db.commit()
+        # Wipe any prior FailureCase rows for fc1 — without this, the
+        # hardcoded `signal_id=1` in earlier tests of this file collides
+        # with the autoincrement `signal_id=1` the wire-up test would
+        # produce (fresh CI DB → first hitl_refusal gets id=1 → capture
+        # writes failure_case with signal_id=1, user_id=fc1) → causes
+        # MultipleResultsFound on the user-filtered query.
+        await db.execute(_delete(FailureCase).where(FailureCase.user_id == "fc1"))
+        await db.commit()
     yield "fc1"
 
 
