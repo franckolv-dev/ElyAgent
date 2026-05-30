@@ -841,6 +841,15 @@ def create_agent_node():
                 _has_tool_calls = bool(getattr(response, 'tool_calls', None))
                 from app.services.qwen_no_think import is_local_openai_llm as _is_local_oa
                 _is_local = _is_local_oa(_base_llm)
+                # Kill-switch (2026-05-31) : H-1 forces a cloud fallback when a
+                # LOCAL model returns plain text instead of a tool_call on an
+                # action query. That's the right default, but it makes
+                # benchmarking a new local model painful (every tool query
+                # silently escapes to DeepSeek). HALLUCINATION_GUARD_DISABLED
+                # truthy = let the local response stand, no forced fallback.
+                _h1_disabled = (os.getenv("HALLUCINATION_GUARD_DISABLED") or "").strip().lower() in {
+                    "1", "true", "yes", "on",
+                }
                 _action_verbs = (
                     "envoie", "envoy", "supprime", "delete", "send",
                     "crée", "creer", "create", "écris", "ecris", "write",
@@ -874,6 +883,7 @@ def create_agent_node():
                     and not _has_tool_calls
                     and _query_has_action
                     and _bind_tools_flag
+                    and not _h1_disabled
                 ):
                     logger.warning(
                         "[H-1] Local LLM (tier=%s) returned PLAIN TEXT instead of "
