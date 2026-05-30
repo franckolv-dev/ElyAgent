@@ -67,6 +67,15 @@ def _clean_state():
     ("400 Bad Request — invalid_argument",         FailoverReason.BAD_REQUEST),
     # H1 synthetic
     ("h1_fallback: local LLM hallucinated",        FailoverReason.H1_HALLUCINATION),
+    # Local-model failure modes (hotfix v1.11.1) — none contain "400" yet
+    # must be recoverable so the chain falls back instead of crashing.
+    ('Error rendering prompt with jinja template: got UndefinedValue',
+                                                   FailoverReason.UNAVAILABLE),
+    ("The number of tokens to keep from the initial prompt is greater "
+     "than the context length",                    FailoverReason.UNAVAILABLE),
+    ("exceeds the context window",                 FailoverReason.UNAVAILABLE),
+    ("maximum context length is 4096",             FailoverReason.UNAVAILABLE),
+    ("prompt template rendering failed",           FailoverReason.UNAVAILABLE),
 ])
 def test_classify_exception_recognised(msg, expected):
     """All known operational failures map to the right reason."""
