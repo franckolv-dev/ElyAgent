@@ -87,6 +87,15 @@ class Mission(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     deadline: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Sprint 3.7 Jalon 4 — set by the LLM-as-judge cron (mission_critic.py)
+    # once a terminal mission has been critiqued, so subsequent ticks skip
+    # it (`run_pending_critiques` filters WHERE critic_run_at IS NULL).
+    # The column was created at startup via database.py's ALTER TABLE and
+    # is queried/written by mission_critic.py, but was never declared on
+    # this model — so `Mission.critic_run_at` raised AttributeError on
+    # every cron tick (every 5 min). Declaring it here closes the gap.
+    critic_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # ── Guard rails (enforced by the loop) ──
     budget_tokens: Mapped[int] = mapped_column(Integer, default=50_000)
     budget_iterations: Mapped[int] = mapped_column(Integer, default=30)
