@@ -219,6 +219,71 @@ _ALL_PATTERNS = _FR_COMPLETION_PATTERNS + _EN_COMPLETION_PATTERNS
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Negation guard (2026-05-30 fix — false-positive on negated claims)
+# ──────────────────────────────────────────────────────────────────────
+#
+# The completion patterns above match the VERB of a state-change
+# ("a été créé", "supprimé"…) but are blind to a leading negation.
+#
+# Real incident : a perfectly correct read-only answer
+#     « Le projet a 0 fork. Aucun fork n'a été créé pour l'instant. »
+# tripped `fr.passive_past` on "a été créé" (inside "n'a été créé") and
+# got BLOCKED as a hallucinated completion — even though the sentence
+# asserts the OPPOSITE (nothing was created) and called no destructive
+# tool (it's a github_repo_stats read).
+#
+# Fix : for every pattern hit, scan a short window BEFORE the match for
+# a negation marker. A negated completion phrase is not a "I did X"
+# assertion — it's a "X did not happen / there is no X" report, which is
+# legitimate and tool-backing-agnostic. Negated hits are skipped.
+#
+# Per-match (not per-response) so a mixed sentence like
+#     « Je n'ai pas supprimé les mails, mais j'ai envoyé le rapport. »
+# still flags the real "j'ai envoyé" claim while ignoring the negated
+# "supprimé".
+
+# How many characters before a match to inspect for a negation marker.
+# 48 covers "aucun <noun> n'a été …" / "rien n'a été …" / "ne … pas …".
+_NEGATION_WINDOW = 48
+
+_FR_NEGATION_RE = re.compile(
+    r"(?:\bne\s|\bn['']|\baucun(?:e)?\b|\brien\b|\bpas\s+(?:de|d['']|encore)\b|"
+    r"\bjamais\b|\bplus\s+(?:de|d['']|aucun)\b|\bsans\b|\bni\b)",
+    re.IGNORECASE,
+)
+_EN_NEGATION_RE = re.compile(
+    r"(?:\bno\b|\bnot\b|\bn['']t\b|\bnone\b|\bnothing\b|\bnever\b|"
+    r"\bwithout\b|\bno\s+longer\b|\bdidn['']?t\b|\bhaven['']?t\b|\bhasn['']?t\b)",
+    re.IGNORECASE,
+)
+
+
+# Clause boundaries — a negation only scopes the clause it lives in.
+# Without this, "je n'ai pas supprimé, mais j'ai envoyé" would let the
+# first clause's "n'" suppress the genuine "j'ai envoyé" claim.
+_CLAUSE_BREAK_RE = re.compile(
+    r"[.;,!?]|\bmais\b|\bpuis\b|\bensuite\b|\bbut\b|\bhowever\b|\bthen\b",
+    re.IGNORECASE,
+)
+
+
+def _is_negated_match(text: str, match_start: int, window: int = _NEGATION_WINDOW) -> bool:
+    """True if a negation marker scopes the completion-claim match —
+    meaning the claim is denied, not asserted.
+
+    Only the clause immediately preceding the match is considered: we
+    cut the look-back window at the last clause boundary so a negation
+    belonging to an earlier clause doesn't bleed over the match.
+    """
+    prefix = text[max(0, match_start - window):match_start]
+    last_break = 0
+    for m in _CLAUSE_BREAK_RE.finditer(prefix):
+        last_break = m.end()
+    clause = prefix[last_break:]
+    return bool(_FR_NEGATION_RE.search(clause) or _EN_NEGATION_RE.search(clause))
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Verdict
 # ──────────────────────────────────────────────────────────────────────
 
@@ -427,8 +492,15 @@ def detect_unbacked_completion_claim(
 
     matched: list[str] = []
     for pattern, label in _ALL_PATTERNS:
-        if pattern.search(ai_content):
+        # Per-match negation check : a hit inside "aucun X n'a été créé"
+        # or "I didn't send …" is a DENIAL, not a completion assertion.
+        # Skip negated hits ; keep scanning so a mixed sentence still
+        # surfaces a genuine non-negated claim elsewhere.
+        for m in pattern.finditer(ai_content):
+            if _is_negated_match(ai_content, m.start()):
+                continue
             matched.append(label)
+            break  # one genuine hit per pattern is enough
 
     if not matched:
         return GuardVerdict(
