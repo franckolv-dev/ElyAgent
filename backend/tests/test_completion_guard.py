@@ -226,6 +226,60 @@ def test_en_backed_by_tool():
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Negation guard (2026-05-30 fix) — a DENIED completion is not a claim
+# ──────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("text", [
+    # The real incident : read-only github stats answer got blocked.
+    "Le projet ElyAgent a 0 fork et 2 stars. Aucun fork n'a été créé pour l'instant.",
+    "Aucun email n'a été supprimé.",
+    "Rien n'a été envoyé.",
+    "Aucune tâche n'a été créée.",
+    "La corbeille n'a pas été vidée.",
+    "Plus aucun fichier n'a été déplacé.",
+    "Je n'ai pas supprimé les emails, je te les montre d'abord.",
+])
+def test_negated_fr_claim_is_not_hallucination(text):
+    """A negated completion phrase asserts the OPPOSITE of an action —
+    it must never be flagged as a hallucinated completion."""
+    v = detect_unbacked_completion_claim(text, [])
+    assert v.is_hallucination is False, (
+        f"negated phrase wrongly flagged: {text!r} (matched={v.matched_patterns})"
+    )
+
+
+@pytest.mark.parametrize("text", [
+    "No emails have been deleted.",
+    "Nothing was sent.",
+    "I haven't created the event yet.",
+    "No file has been moved.",
+    "I didn't delete anything.",
+])
+def test_negated_en_claim_is_not_hallucination(text):
+    v = detect_unbacked_completion_claim(text, [])
+    assert v.is_hallucination is False, (
+        f"negated phrase wrongly flagged: {text!r} (matched={v.matched_patterns})"
+    )
+
+
+def test_mixed_sentence_flags_real_claim_despite_negated_clause():
+    """Denies one action but asserts another (no tool) → still caught on
+    the asserted clause. The negation must not bleed past the boundary."""
+    text = "Je n'ai pas supprimé les mails, mais j'ai envoyé le rapport."
+    v = detect_unbacked_completion_claim(text, [])
+    assert v.is_hallucination is True
+    assert "fr.first_person_past" in v.matched_patterns
+
+
+def test_negation_does_not_swallow_genuine_positive_claim():
+    """Over-correction guard : a plain positive claim with NO negation
+    anywhere must still be flagged."""
+    v = detect_unbacked_completion_claim("Les emails ont été supprimés.", [])
+    assert v.is_hallucination is True
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Verdict shape — used by the chat router & UI
 # ──────────────────────────────────────────────────────────────────────
 
