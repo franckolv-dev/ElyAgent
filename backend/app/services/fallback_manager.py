@@ -133,6 +133,29 @@ _REASON_KEYWORDS: Final[tuple[tuple[str, FailoverReason], ...]] = (
     ("timeout",       FailoverReason.TIMEOUT),
     ("timed out",     FailoverReason.TIMEOUT),
     ("read timeout",  FailoverReason.TIMEOUT),
+    # ── Local-model failure modes (2026-05-31) ──────────────────────────
+    # A LOCAL model (LM Studio / Ollama / mlx) often fails on inputs a
+    # CLOUD provider handles fine. Before this, these crashed the
+    # WebSocket ("Requête invalide") because their messages contain
+    # NEITHER "400" NOR any other keyword above → classify returned None
+    # → exception propagated. They ARE recoverable : the next provider in
+    # the chain (DeepSeek, big context, working template) resolves them.
+    # Placed BEFORE the generic "400" so telemetry gets the precise reason.
+    #
+    # 1) Context overflow — small local context can't hold the system
+    #    prompt + 70 tool schemas. A big-context provider can.
+    ("context length",   FailoverReason.UNAVAILABLE),
+    ("context_length",   FailoverReason.UNAVAILABLE),
+    ("tokens to keep",   FailoverReason.UNAVAILABLE),
+    ("maximum context",  FailoverReason.UNAVAILABLE),
+    ("context window",   FailoverReason.UNAVAILABLE),
+    # 2) Chat-template rendering — a broken/incompatible jinja template
+    #    (e.g. after an LM Studio update) breaks tool-call rendering.
+    #    Another provider's template works.
+    ("jinja",            FailoverReason.UNAVAILABLE),
+    ("rendering prompt", FailoverReason.UNAVAILABLE),
+    ("prompt template",  FailoverReason.UNAVAILABLE),
+    ("undefinedvalue",   FailoverReason.UNAVAILABLE),
     # Bad request — model returns a structural error (often a schema mismatch)
     ("400",           FailoverReason.BAD_REQUEST),
     ("invalid_argument", FailoverReason.BAD_REQUEST),
