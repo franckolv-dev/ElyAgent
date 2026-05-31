@@ -381,3 +381,32 @@ async def test_is_actionable_predicts_real_capture_outcome() -> None:
                 f"score={score} honest={honest}: expected "
                 f"{'capture' if expect else 'skip'}"
             )
+
+
+@pytest.mark.asyncio
+async def test_throwaway_user_cleans_hitl_preference() -> None:
+    """J3 added ``HitlPreference`` to the cleanup list (scenario I writes
+    one). Verify a preference row is reclaimed on context exit so re-runs
+    stay idempotent on the shared SQLite file."""
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.hitl_preference import HitlPreference
+    from app.services.hitl_preferences import set_user_preference
+    from bench.scenarios._base import throwaway_user
+
+    async with throwaway_user(prefix="bench_pref") as uid:
+        ok = await set_user_preference(
+            uid, "gmail_list_emails", requires_confirmation=False
+        )
+        assert ok is True
+        async with async_session() as db:
+            rows = (await db.execute(
+                select(HitlPreference).where(HitlPreference.user_id == uid)
+            )).scalars().all()
+            assert len(rows) == 1
+
+    async with async_session() as db:
+        rows = (await db.execute(
+            select(HitlPreference).where(HitlPreference.user_id == uid)
+        )).scalars().all()
+        assert rows == [], "hitl_preferences must be wiped on context exit"

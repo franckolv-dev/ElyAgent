@@ -127,6 +127,7 @@ _CLEANUP_MODELS: tuple[tuple[str, str], ...] = (
     ("app.models.learned_skill",      "LearnedSkill"),
     ("app.models.failure_case",       "FailureCase"),
     ("app.models.hitl_refusal",       "HitlRefusal"),
+    ("app.models.hitl_preference",    "HitlPreference"),
     ("app.models.hallucination_block","HallucinationBlock"),
     ("app.models.provider_switch",    "ProviderSwitch"),
     ("app.models.user_state",         "UserState"),
