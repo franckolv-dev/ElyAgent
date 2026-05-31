@@ -19,10 +19,32 @@ for the record_* call-site guards in test_learning_signals.py.
 """
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
 _NODES_SRC = (_REPO / "app" / "agent" / "nodes.py").read_text(encoding="utf-8")
+
+
+def test_nodes_module_has_os_in_scope() -> None:
+    """Regression (2026-05-31 prod outage) : the H-1 kill-switch reads
+    ``os.getenv(...)`` inline in ``agent_node``, but ``import os`` was
+    missing from nodes.py — every action query raised ``NameError: name
+    'os' is not defined`` and the whole chat returned "erreur interne".
+
+    The existing source-string assertions below could not catch it (they
+    never import/execute the module). This one imports nodes.py and asserts
+    every module-level name its ``os.`` references resolve to is actually
+    bound — i.e. ``os`` is the stdlib module in the module's namespace.
+    """
+    import os as _stdlib_os
+
+    nodes = importlib.import_module("app.agent.nodes")
+    assert getattr(nodes, "os", None) is _stdlib_os, (
+        "app.agent.nodes must `import os` — the H-1 kill-switch calls "
+        "os.getenv() inline in agent_node, which NameErrors at runtime "
+        "without the module-level import."
+    )
 
 
 def test_h1_kill_switch_env_var_is_read() -> None:
