@@ -211,3 +211,173 @@ async def test_throwaway_user_cleans_user_scoped_artefacts() -> None:
             select(HitlRefusal).where(HitlRefusal.user_id == uid)
         )).scalars().all()
         assert rows == []
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# seed_mission_with_critique + mission cleanup (J2)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_seed_mission_with_critique_creates_both_rows() -> None:
+    """The J2 seeder must insert a Mission AND its MissionCritique, linked
+    on mission_id, both reclaimed by throwaway_user on exit (no user_id on
+    MissionCritique, so this exercises _cleanup_missions)."""
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.mission import Mission
+    from app.models.mission_critique import MissionCritique
+    from bench.scenarios._base import (
+        seed_mission_with_critique,
+        throwaway_user,
+    )
+
+    async with throwaway_user(prefix="bench_seed") as uid:
+        mission_id, critique_id = await seed_mission_with_critique(
+            uid,
+            status="completed",
+            goal="Tâche de test",
+            critic_model="deepseek-v4-pro",
+            quality_score=20,
+            honest_completion=False,
+            wasted_effort=False,
+            user_should_have_been_warned=True,
+            main_issue="prétend avoir fini sans appel d'outil",
+        )
+        assert mission_id and critique_id is not None
+        async with async_session() as db:
+            mission = (await db.execute(
+                select(Mission).where(Mission.id == mission_id)
+            )).scalar_one_or_none()
+            critique = (await db.execute(
+                select(MissionCritique).where(
+                    MissionCritique.id == critique_id
+                )
+            )).scalar_one_or_none()
+        assert mission is not None and mission.user_id == uid
+        assert mission.critic_run_at is not None  # mirrors the real cron
+        assert critique is not None
+        assert critique.mission_id == mission_id
+        assert critique.quality_score == 20
+
+    # After exit, BOTH mission + critique must be gone (FK-aware cleanup).
+    async with async_session() as db:
+        mission = (await db.execute(
+            select(Mission).where(Mission.id == mission_id)
+        )).scalar_one_or_none()
+        critique = (await db.execute(
+            select(MissionCritique).where(MissionCritique.id == critique_id)
+        )).scalar_one_or_none()
+    assert mission is None, "mission should be wiped on context exit"
+    assert critique is None, "critique should be wiped on context exit"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# gen_critique_scenarios catalogue invariants (J2)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_catalogue_has_30_unique_slugs() -> None:
+    from bench.gen_critique_scenarios import CATALOGUE
+    slugs = [p["slug"] for p in CATALOGUE]
+    assert len(slugs) == 30
+    assert len(set(slugs)) == 30
+
+
+def test_catalogue_validates_clean() -> None:
+    from bench.gen_critique_scenarios import _validate_catalogue
+    assert _validate_catalogue() == []
+
+
+def test_catalogue_covers_status_and_score_spread() -> None:
+    """Regression net needs breadth: all 3 terminal statuses, both honesty
+    values, and the capture/fingerprint boundaries present."""
+    from bench.gen_critique_scenarios import CATALOGUE
+    statuses = {p["status"] for p in CATALOGUE}
+    assert statuses == {"completed", "failed", "aborted"}
+    assert any(not p["honest_completion"] for p in CATALOGUE)
+    assert any(p["honest_completion"] for p in CATALOGUE)
+    scores = {p["quality_score"] for p in CATALOGUE}
+    assert 59 in scores and 60 in scores      # capture boundary, both sides
+    assert any(s < 30 for s in scores)        # fingerprint boundary
+    assert any(s >= 80 for s in scores)       # high-quality end
+
+
+def test_is_actionable_matches_capture_filter() -> None:
+    """is_actionable() must mirror capture_from_mission_critique's filter:
+    captured iff quality_score < 60 OR dishonest."""
+    from bench.gen_critique_scenarios import is_actionable
+    assert is_actionable({"quality_score": 59, "honest_completion": True})
+    assert not is_actionable({"quality_score": 60, "honest_completion": True})
+    assert is_actionable({"quality_score": 85, "honest_completion": False})
+    assert not is_actionable({"quality_score": 95, "honest_completion": True})
+
+
+def test_catalogue_actionable_split_is_balanced() -> None:
+    """Both branches of the filter must be exercised — a net that only
+    tests 'captured' would miss a tool wrongly capturing good missions."""
+    from bench.gen_critique_scenarios import CATALOGUE, is_actionable
+    actionable = [p for p in CATALOGUE if is_actionable(p)]
+    skipped = [p for p in CATALOGUE if not is_actionable(p)]
+    assert len(actionable) >= 15
+    assert len(skipped) >= 5
+
+
+def test_rendered_scenario_compiles_and_has_contract() -> None:
+    """Every generated module must be valid Python exposing the runner
+    contract (NAME / TAGS / async def run)."""
+    from bench.gen_critique_scenarios import CATALOGUE, _render_scenario
+    src = _render_scenario(1, CATALOGUE[0])
+    compile(src, "<scenario_critique_01>", "exec")  # raises on syntax error
+    assert "async def run()" in src
+    assert 'TAGS = ["shallow"]' in src
+    assert "AUTO-GENERATED" in src
+
+
+@pytest.mark.asyncio
+async def test_is_actionable_predicts_real_capture_outcome() -> None:
+    """Tie the catalogue's actionability label to the REAL failure_capture
+    function on the 59/60 boundary + dishonest-high-score — so a drift in
+    the production filter breaks this test, not just the bench."""
+    from app.services.learning.failure_capture import (
+        capture_from_mission_critique,
+    )
+    from bench.scenarios._base import (
+        seed_mission_with_critique,
+        throwaway_user,
+    )
+
+    cases = [
+        # (quality_score, honest, expect_failure_case)
+        (59, True, True),    # just under threshold → captured
+        (60, True, False),   # at threshold + honest → skipped
+        (85, False, True),   # dishonest high score → captured
+    ]
+    async with throwaway_user(prefix="bench_pred") as uid:
+        for score, honest, expect in cases:
+            mission_id, critique_id = await seed_mission_with_critique(
+                uid,
+                status="completed",
+                goal=f"case {score}/{honest}",
+                critic_model="deepseek-v4-pro",
+                quality_score=score,
+                honest_completion=honest,
+                wasted_effort=False,
+                user_should_have_been_warned=False,
+                main_issue=None if honest and score >= 60 else "souci",
+            )
+            fc_id = await capture_from_mission_critique(
+                signal_id=critique_id,
+                user_id=uid,
+                mission_id=mission_id,
+                critic_model="deepseek-v4-pro",
+                quality_score=score,
+                honest_completion=honest,
+                wasted_effort=False,
+                user_should_have_been_warned=False,
+                main_issue=None if honest and score >= 60 else "souci",
+            )
+            assert (fc_id is not None) is expect, (
+                f"score={score} honest={honest}: expected "
+                f"{'capture' if expect else 'skip'}"
+            )

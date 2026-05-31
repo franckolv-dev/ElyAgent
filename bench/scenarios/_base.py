@@ -118,16 +118,58 @@ async def throwaway_user(prefix: str = "bench") -> AsyncIterator[str]:
 # crashed mid-run. Conversations come LAST because most other tables
 # hold a ``conversation_id`` FK that's NOT a real SQL FK in SQLite —
 # we just want to leave it in a coherent state for debug.
+#
+# NOTE: ``MissionCritique`` is NOT in this list — it has no ``user_id``
+# column (only ``mission_id``), so the generic ``user_id == uid`` delete
+# could never match it. Missions + their critiques are handled by
+# ``_cleanup_missions`` below, keyed on ``Mission.user_id``.
 _CLEANUP_MODELS: tuple[tuple[str, str], ...] = (
     ("app.models.learned_skill",      "LearnedSkill"),
     ("app.models.failure_case",       "FailureCase"),
     ("app.models.hitl_refusal",       "HitlRefusal"),
     ("app.models.hallucination_block","HallucinationBlock"),
     ("app.models.provider_switch",    "ProviderSwitch"),
-    ("app.models.mission_critique",   "MissionCritique"),
     ("app.models.user_state",         "UserState"),
     ("app.models.conversation",       "Conversation"),
 )
+
+
+async def _cleanup_missions(uid: str) -> None:
+    """Drop a user's missions + their critiques (FK-aware).
+
+    ``MissionCritique`` references ``missions.id`` with an ``ondelete=
+    CASCADE`` clause, but SQLite does NOT enforce FKs unless
+    ``PRAGMA foreign_keys=ON`` is set per-connection — which we don't
+    rely on here. So we delete the children explicitly first, then the
+    missions. Both are scoped to the throw-away user, so no other data
+    is touched. Best-effort: a schema mismatch on either table is
+    swallowed rather than stranding the rest of the cleanup.
+    """
+    from app.database import async_session
+    from sqlalchemy import delete, select
+
+    try:
+        from app.models.mission import Mission
+        from app.models.mission_critique import MissionCritique
+    except Exception:
+        return  # missions not present in this build — nothing to clean
+
+    try:
+        async with async_session() as db:
+            mission_ids = (await db.execute(
+                select(Mission.id).where(Mission.user_id == uid)
+            )).scalars().all()
+            if mission_ids:
+                await db.execute(
+                    delete(MissionCritique).where(
+                        MissionCritique.mission_id.in_(mission_ids)
+                    )
+                )
+                await db.execute(delete(Mission).where(Mission.user_id == uid))
+                await db.commit()
+    except Exception:
+        # Schema mismatch / partial state — best effort, keep going.
+        return
 
 
 async def _cleanup_user(uid: str) -> None:
@@ -141,6 +183,9 @@ async def _cleanup_user(uid: str) -> None:
     from app.database import async_session
     from app.models.user import User
     from sqlalchemy import delete, select
+
+    # Missions + critiques first (FK-aware, keyed on Mission.user_id).
+    await _cleanup_missions(uid)
 
     for mod_name, cls_name in _CLEANUP_MODELS:
         try:
@@ -221,3 +266,71 @@ def from_checks(checks: dict[str, bool], **extra) -> dict:
     if not all_pass:
         payload["failed_checks"] = [k for k, v in checks.items() if not v]
     return payload
+
+
+# ── Mission + critique seeding (for critique-replay scenarios) ─────────────
+async def seed_mission_with_critique(
+    uid: str,
+    *,
+    status: str,
+    goal: str,
+    critic_model: str,
+    quality_score: int,
+    honest_completion: bool,
+    wasted_effort: bool,
+    user_should_have_been_warned: bool,
+    main_issue: str | None,
+    tier_llm: str | None = None,
+    prompt_version: str = "benchv1",
+) -> tuple[str, int]:
+    """Insert a terminal ``Mission`` + its ``MissionCritique`` for ``uid``.
+
+    Returns ``(mission_id, critique_id)``. Both rows are reclaimed by
+    ``throwaway_user`` on context exit (see ``_cleanup_missions``), so a
+    scenario doesn't need its own teardown.
+
+    Mirrors how the real ``mission_critic.py`` cron writes a critique
+    (``critic_run_at`` stamped on the mission, one critique row, terminal
+    status). ``main_issue`` is passed through ``anonymise_text`` defensively
+    even though synthetic catalogue issues carry no real PII — so the
+    helper stays safe if a caller ever feeds it a mined string.
+    """
+    from datetime import datetime, timezone
+
+    from app.database import async_session
+    from app.models.mission import Mission
+    from app.models.mission_critique import MissionCritique
+
+    now = datetime.now(timezone.utc)
+    terminal = status in ("completed", "failed", "aborted")
+    async with async_session() as db:
+        mission = Mission(
+            user_id=uid,
+            title=(goal or "bench mission")[:120],
+            goal=goal,
+            status=status,
+            source="autonomous",
+            started_at=now,
+            completed_at=now if terminal else None,
+            critic_run_at=now,
+        )
+        db.add(mission)
+        await db.flush()          # populate the uuid PK
+        mission_id = mission.id
+
+        critique = MissionCritique(
+            mission_id=mission_id,
+            critic_model=critic_model,
+            quality_score=quality_score,
+            honest_completion=honest_completion,
+            wasted_effort=wasted_effort,
+            user_should_have_been_warned=user_should_have_been_warned,
+            main_issue=anonymise_text(main_issue) if main_issue else None,
+            prompt_version=prompt_version,
+        )
+        db.add(critique)
+        await db.flush()          # populate the autoincrement PK
+        critique_id = critique.id
+
+        await db.commit()
+        return mission_id, critique_id
