@@ -199,7 +199,10 @@ def create_agent_node():
         from app.services.intent_router import ModelTier
         use_slm = False
         decision = None
-        if _slm_with_tools is not None:
+        # Scheduled / automated runs must use the reliable cloud tier — the
+        # local SLM is too weak for unattended multi-tool prompts and would
+        # also bypass the named-tool binding below.
+        if _slm_with_tools is not None and not state.get("automated_task"):
             decision = intent_router.route(user_query, history=messages[:-1])
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
@@ -544,6 +547,7 @@ def create_agent_node():
             _has_profile = bool(state.get("toolset_profile") or "")
             _bind_tools_flag = (
                 _has_profile or
+                bool(state.get("automated_task")) or
                 _tier == ComplexityTier.COMPLEX or
                 bool(_tool_kw.search(user_query))
             )
@@ -626,6 +630,30 @@ def create_agent_node():
                         len(_filtered_tools),
                         sorted(t.name for t in _filtered_tools),
                     )
+
+                # Automated / scheduled tasks run a FIXED, multi-domain prompt
+                # with no human to clarify with. The keyword filter above —
+                # tuned to keep local-model prompts short — is accent/word-
+                # boundary fragile and silently drops tools the prompt
+                # explicitly names (prod « Briefing quotidien 9h » lost
+                # calendar_list_events + system_list_scheduled_tasks, keeping
+                # only the matched gmail_ tools). Union in every registered
+                # tool whose exact name appears in the prompt so the agent
+                # binds the tools it was told to call. Cheap: runs once per
+                # scheduled task on the cloud tier where prompt processing
+                # is not the bottleneck.
+                if state.get("automated_task"):
+                    from app.agent.tool_filter import tools_named_in_text
+                    _named = tools_named_in_text(registry.all_tools, user_query)
+                    _have = {t.name for t in _filtered_tools}
+                    _extra = [t for t in _named if t.name not in _have]
+                    if _extra:
+                        _filtered_tools = list(_filtered_tools) + _extra
+                        logger.warning(
+                            "[automated_task] +%d named tool(s) bound: %s",
+                            len(_extra), sorted(t.name for t in _extra),
+                        )
+
                 # When the user's ELY Chrome extension is connected, hide
                 # the server-side Playwright tools entirely. They live in
                 # a separate, cookie-less context that always lands on

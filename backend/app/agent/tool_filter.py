@@ -181,6 +181,44 @@ ALWAYS_KEEP: tuple[str, ...] = (
 )
 
 
+def tools_named_in_text(tools: Sequence, text: str) -> list:
+    """Return every tool whose *exact* name appears as a token in ``text``.
+
+    Motivation (2026-05-31, scheduled-task multi-domain bug)
+    -------------------------------------------------------
+    ``filter_tools_by_query`` is keyword-based and tuned to keep local-model
+    prompts short. It is accent- and word-boundary-fragile: on the prod
+    « Briefing quotidien 9h » prompt it bound ``gmail_list_emails`` (matched
+    via "mails") but silently dropped ``calendar_list_events`` (``\\bcalendar\\b``
+    never matches inside ``calendar_list_events``, and "événements" ≠ the
+    accent-less "evenements" the prompt used) and ``system_list_scheduled_tasks``.
+
+    Automated/scheduled prompts are fixed and routinely name the exact tools
+    they want called. Matching those literal names guarantees a multi-domain
+    prompt binds every tool it explicitly asks for, regardless of accents or
+    phrasing. Tool names contain underscores, so a normal ``\\b`` boundary is
+    wrong (``_`` is a word char) — we use a custom ``[a-z0-9_]`` boundary so
+    ``calendar_list_events`` does not also match a hypothetical
+    ``calendar_list`` prefix.
+
+    Returns an empty list when ``text`` is falsy or names nothing.
+    """
+    if not text:
+        return []
+    low = text.lower()
+    matched = []
+    for t in tools:
+        name = getattr(t, "name", "") or ""
+        if not name:
+            continue
+        if re.search(
+            r"(?<![a-z0-9_])" + re.escape(name.lower()) + r"(?![a-z0-9_])",
+            low,
+        ):
+            matched.append(t)
+    return matched
+
+
 def filter_tools_by_query(
     tools: Sequence,
     user_query: str,

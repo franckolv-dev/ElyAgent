@@ -49,3 +49,15 @@ class AgentState(TypedDict):
     # ONE final API call WITHOUT tools and produces a textual summary so
     # the user always gets something even on tasks that exhaust the budget.
     iteration_count: int
+    # Scheduled / automated execution flag (2026-05-31).
+    # Set to True by the scheduler when it runs a task prompt on the FLAT
+    # (non-supervisor) graph. The supervisor routes a whole prompt to ONE
+    # sub-agent, so a multi-domain scheduled prompt (e.g. a daily briefing
+    # touching calendar + gmail + system) lost every tool outside the chosen
+    # sub-agent's domain. When this flag is set, ``create_agent_node`` :
+    #   - skips the local SLM (unattended runs need the reliable cloud tier),
+    #   - always binds tools (no keyword gate), and
+    #   - unions in every tool whose exact name appears in the prompt, so the
+    #     agent binds all the tools it was explicitly told to call.
+    # Absent / False for every interactive chat turn — no behaviour change there.
+    automated_task: bool

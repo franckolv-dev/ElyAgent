@@ -52,7 +52,7 @@ def get_scheduler() -> AsyncIOScheduler:
 
 async def _execute_task(task_id: str) -> None:
     """Execute a scheduled task: invoke agent and deliver result."""
-    from app.agent.graph import build_agent_graph
+    from app.agent.graph import build_simple_agent_graph
     from langchain_core.messages import HumanMessage
 
     try:
@@ -83,14 +83,26 @@ async def _execute_task(task_id: str) -> None:
             db.add(Message(conversation_id=conv_id, role="user", content=task.prompt))
             await db.commit()
 
-        # Invoke agent
-        agent = build_agent_graph()
-        invoke_result = await agent.ainvoke({
-            "messages": [HumanMessage(content=task.prompt)],
-            "user_id": task.user_id,
-            "conversation_id": conv_id,
-            "google_credentials": google_credentials or "",
-        })
+        # Invoke agent. Scheduled tasks run on the FLAT (non-supervisor) graph
+        # with ``automated_task=True``. Rationale (2026-05-31) : the supervisor
+        # routes a whole prompt to ONE sub-agent, so a multi-domain prompt —
+        # e.g. a daily briefing that needs calendar + gmail + system tools —
+        # lost every tool outside the chosen sub-agent's domain and reported
+        # « outil X non disponible pour cet agent » for the rest. The flat
+        # graph binds every tool the prompt names (see create_agent_node's
+        # automated_task branch). recursion_limit mirrors the sub-agent
+        # dispatch value used previously.
+        agent = build_simple_agent_graph()
+        invoke_result = await agent.ainvoke(
+            {
+                "messages": [HumanMessage(content=task.prompt)],
+                "user_id": task.user_id,
+                "conversation_id": conv_id,
+                "google_credentials": google_credentials or "",
+                "automated_task": True,
+            },
+            config={"recursion_limit": 25},
+        )
 
         # `content` can be str OR list[dict] (multimodal blocks). Coerce
         # to string for DB persistence — saving a list to a Text column
