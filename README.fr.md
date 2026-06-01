@@ -78,10 +78,10 @@ ELY est la réponse pour les particuliers et les organisations qui ont besoin d'
 ### Intégration
 **Branché sur les outils que vos équipes utilisent déjà.**
 
-- **Google Workspace complet** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (76 outils, lecture/écriture intégrale avec HITL sur chaque action destructive)
+- **Google Workspace complet** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (75 outils, lecture/écriture intégrale avec HITL sur chaque action destructive)
 - 10 canaux — Web · Voix (mot-clé « Éli ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy
 - Notifications push natives pour les validations HITL (FCM + APNs) — la plupart des concurrents ne proposent qu'un proxy via bot de messagerie
-- 148 outils sur web automation, système, RAG, coffre, missions
+- 181 outils sur web automation, système, RAG, coffre, missions, auto-amélioration
 
 </td>
 <td width="50%" valign="top">
@@ -97,6 +97,19 @@ ELY est la réponse pour les particuliers et les organisations qui ont besoin d'
 </td>
 </tr>
 </table>
+
+---
+
+## Ce qui rend ELY différent : elle s'améliore toute seule
+
+La plupart des agents sont statiques. **ELY observe ses propres échecs et progresse — en toute transparence, avec vous aux commandes.**
+
+- **Agent auto-développant (compétences auto-apprises).** Quand ELY refuse, hallucine ou rate une tâche de façon répétée, une boucle en arrière-plan analyse l'échec, rédige un *playbook* réutilisable en Markdown, et un LLM externe le note. Les meilleurs deviennent des **candidates que vous validez et promouvez** depuis l'UI admin — rien ne pilote l'agent tant qu'un humain n'a pas approuvé. *(C'est la fondation de la V2 : ELY écrivant et validant ses propres outils Python.)*
+- **Auto-critique par LLM-juge.** Chaque mission autonome est notée *a posteriori* par un modèle séparé qui lit toute la trace d'étapes et détecte le **« succès en façade »** — quand l'agent prétend avoir réussi alors que les étapes montrent le contraire. Le verdict alimente la boucle d'apprentissage.
+- **Transparence radicale.** Deux tableaux de bord — `/me/learning` et `/me/state` — vous montrent exactement ce qu'ELY a appris de vous et le modèle qu'elle se fait de vous (humeur, focus, dossiers ouverts). Lisibles, modifiables, supprimables, jamais cachés.
+- **Mémoire cognitive typée.** Cinq types de mémoire (épisodique · sémantique · procédurale · erreur · contrainte) au lieu d'un blob opaque — rappelés par type, entre conversations, 100 % en local.
+- **Client MCP.** Consommez n'importe quel serveur Model Context Protocol — l'outillage d'ELY s'étend sans changement de code.
+- **Banc de régression 50 scénarios + CI nocturne.** L'auto-amélioration ne ship en sécurité que parce que chaque sous-système est verrouillé par un banc déterministe qui tourne chaque nuit.
 
 ---
 
@@ -211,7 +224,21 @@ Configurez les fournisseurs dans **Réglages → Modèles IA**. Assignez chaque 
 
 Donnez un objectif à ELY — elle le décompose en étapes, choisit les outils, exécute, évalue, replanifie en cas d'échec et vous notifie quand c'est terminé. Survit aux redémarrages backend (checkpointer LangGraph SQLite).
 
-Cinq garde-fous : budget de tokens · budget d'itérations · deadline optionnelle · HITL sur outils critiques · anti-boucle après 3 échecs consécutifs. Notifications en parallèle : web · DM Telegram · push ntfy.
+Cinq garde-fous : budget de tokens · budget d'itérations · deadline optionnelle · HITL sur outils critiques · anti-boucle après 3 échecs consécutifs. Notifications en parallèle : web · DM Telegram · push ntfy. Chaque mission terminée est notée par un **LLM-juge** externe qui détecte le « succès en façade ».
+
+</details>
+
+<details>
+<summary><strong>Auto-amélioration & compétences apprises</strong> — ELY transforme ses échecs en playbooks que vous validez</summary>
+
+Les signaux d'échec (refus HITL, blocages d'hallucination, critiques de mission) alimentent une boucle d'apprentissage. Un modèle Tier-S rédige un **playbook** Markdown réutilisable, un juge externe le note, et les meilleurs deviennent des **candidates** que vous promouvez depuis l'UI admin (`/admin/learning/candidates`). Seules les compétences promues (actives) sont injectées dans le prompt de l'agent — l'humain est toujours le garde-fou. Un banc de régression 50 scénarios + CI nocturne garde toute la boucle honnête. C'est la fondation de la **V2** : ELY générant et validant ses propres outils Python.
+
+</details>
+
+<details>
+<summary><strong>Transparence radicale</strong> — voyez ce qu'ELY a appris de vous, et changez-le</summary>
+
+`/me/learning` montre les signaux d'échec + verdicts qu'ELY a enregistrés ; `/me/state` montre le modèle vivant qu'elle a de vous (humeur, focus, sujets récents, dossiers ouverts, énergie). Tout est lisible, modifiable et supprimable par l'utilisateur — aucun profilage caché.
 
 </details>
 
@@ -265,7 +292,7 @@ Détection de doublons exacts par MD5 (élagage par taille), doublons visuels pa
 │                                              ┌───────────┼─────────┐ │
 │                                              ▼           ▼         ▼ │
 │                                          LLM local    Outils     Cloud│
-│                                          (Ollama)     (148)    (PII- │
+│                                          (Ollama)     (181)    (PII- │
 │                                                                masqué)│
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -297,15 +324,17 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 
 ## Roadmap
 
-**Sprint 0** *Mai 2026* — Ouverture du dépôt public. Refonte UI, routage multi-domaines, bascule mono-agent, garde-fous anti-hallucination, 92/92 tests verts.
+**Livré** *(mai–juin 2026)*
+- **Mémoire cognitive typée** — 5 types de mémoire, rappel transversal entre conversations
+- **Transparence radicale** — tableaux de bord `/me/learning` + `/me/state`
+- **Boucle d'auto-amélioration mesurée** — signaux d'échec, mission-critic LLM-juge, playbooks de compétences auto-apprises avec revue/promotion admin
+- **Client MCP** — consommer n'importe quel serveur Model Context Protocol
+- **Banc de régression 50 scénarios** + CI nocturne
+- Registre d'outils auto-découvert · routage multi-domaines des tâches planifiées · garde-fous anti-hallucination durcis
 
-**Sprint 1** *Juin 2026* — Mémoire transversale entre conversations (FTS5 + résumé LLM à la demande). Le sprint avec le meilleur ratio valeur perçue / effort de l'année.
-
-**Sprint 2** *Juin 2026* — Registre d'outils auto-découvert (décorateur `@register` avec analyse AST).
-
-**Sprint 3** *Juillet 2026* — Vecteur d'état utilisateur (humeur · focus actuel · dossiers ouverts · budget d'attention) — équivalent fonctionnel le plus proche d'un World Model transparent.
-
-**Sprint 4** *Août 2026* — MCP client + serveur. Consommer n'importe quel serveur MCP (Claude Desktop, Cursor, Zed). Exposer ELY comme serveur MCP également.
+**Suivant**
+- **V2 — Agent auto-développant.** ELY génère et valide ses *propres* outils Python : whitelist AST → ruff/mypy → sandbox eval → régression banc → HITL admin avant toute mise en service.
+- **Serveur MCP** — exposer ELY elle-même comme serveur MCP.
 
 → [Roadmap publique complète avec efforts annoncés →](https://agent-ely.fr/roadmap.html)
 
@@ -329,7 +358,11 @@ ELY est source-available. Les contributions sont bienvenues dans le cadre de la 
 
 **Code source** — [Elastic License v2](LICENSE)
 
-ELY est gratuit pour tout usage personnel et tout usage professionnel interne, quelle que soit la taille de l'organisation. La seule restriction : pas de revente d'ELY comme service hébergé / managé à des tiers (pas de SaaS).
+En langage clair (informatif — le fichier [LICENSE](LICENSE) fait foi) :
+
+**Vous êtes libre de** — utiliser ELY pour tout usage personnel (foyer, famille) · l'utiliser pour tout usage professionnel interne, quelle que soit la taille de l'organisation · modifier le code source et exécuter votre version · le redistribuer (modifié ou non) en conservant le LICENSE + les notices de copyright.
+
+**Vous ne pouvez pas** — proposer ELY comme service hébergé / managé à des tiers (pas de revente SaaS) · retirer ou masquer les notices de copyright / licence · désactiver ou contourner un éventuel mécanisme de clé de licence.
 
 → [Résumé en langage clair sur le site officiel →](https://agent-ely.fr/pricing.html)
 

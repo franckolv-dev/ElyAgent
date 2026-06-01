@@ -8,7 +8,7 @@
 
 ### The sovereign AI agent for people and organisations that can't afford to leak data.
 
-Self-hosted · GDPR-native · multi-user · multi-LLM · 10 channels · 148 tools.
+Self-hosted · GDPR-native · multi-user · multi-LLM · self-improving · 10 channels · 181 tools.
 
 [**Website**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
@@ -85,10 +85,10 @@ ELY is the answer for the people and organisations who need an AI agent **that r
 ### Integration
 **Plugged into the tools your team already uses.**
 
-- **Full Google Workspace** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (76 tools, full read/write with HITL on every destructive action)
+- **Full Google Workspace** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (75 tools, full read/write with HITL on every destructive action)
 - 10 channels — Web · Voice (wake-word "Éli") · PWA · iOS native · Android native · Telegram · WhatsApp · Slack · Discord · ntfy push
 - Native push notifications for HITL approvals (FCM + APNs) — most competitors only proxy via messaging bots
-- 148 tools across web automation, system, RAG, vault, missions
+- 181 tools across web automation, system, RAG, vault, missions, self-improvement
 
 </td>
 <td width="50%" valign="top">
@@ -104,6 +104,19 @@ ELY is the answer for the people and organisations who need an AI agent **that r
 </td>
 </tr>
 </table>
+
+---
+
+## What makes ELY different: it improves itself
+
+Most agents are static. **ELY watches its own failures and gets better — transparently, with you in control.**
+
+- **Self-developing agent (auto-learned skills).** When ELY repeatedly refuses, hallucinates, or botches a task, a background loop mines the failure, drafts a reusable *playbook* in plain Markdown, and an external LLM scores it. High-quality playbooks land as **candidates you review and promote** from the admin UI — nothing steers the agent until a human approves it. *(This is the foundation for V2: ELY writing and validating its own Python tools.)*
+- **LLM-as-judge self-critique.** Every autonomous mission is graded *post-mortem* by a separate model that reads the full step trace and flags **"façade success"** — when the agent claims it succeeded but the steps show it didn't. The verdict feeds the learning loop.
+- **Radical transparency.** Two dashboards — `/me/learning` and `/me/state` — show you exactly what ELY learned from you and the model it holds of you (mood, focus, open loops). Editable, killable, never hidden.
+- **Cognitive typed memory.** Five memory types (episodic · semantic · procedural · error · constraint) instead of one opaque blob — recalled per-type, across conversations, all local.
+- **MCP client.** Consume any Model Context Protocol server — ELY's toolset extends without a code change.
+- **50-scenario regression bench + nightly CI.** Self-improvement ships safely because every subsystem is pinned by a deterministic harness that runs every night.
 
 ---
 
@@ -240,7 +253,7 @@ Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/S
 </details>
 
 <details>
-<summary><strong>Google Workspace integration</strong> — 76 tools, full read/write with HITL</summary>
+<summary><strong>Google Workspace integration</strong> — 75 tools, full read/write with HITL</summary>
 
 Gmail · Calendar · Drive · Docs · Sheets · Tasks · Contacts. High-level tools, batch operations, and a `raw_api_call` escape hatch for any method of the official Google Python client. Critical raw calls still trigger HITL. Multi-Google-account support — link several mailboxes to one ELY user.
 
@@ -249,7 +262,21 @@ Gmail · Calendar · Drive · Docs · Sheets · Tasks · Contacts. High-level to
 <details>
 <summary><strong>Missions</strong> — goal-driven loop that survives restarts</summary>
 
-Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures.
+Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures. Every terminal mission is graded by an external **LLM-as-judge** that flags "façade success".
+
+</details>
+
+<details>
+<summary><strong>Self-improvement & learned skills</strong> — ELY turns its own failures into playbooks you approve</summary>
+
+Failure signals (HITL refusals, hallucination blocks, mission critiques) feed a learning loop. A Tier-S model drafts a reusable Markdown **playbook**, an external judge scores it, and high-quality ones become **candidates** you promote from the admin UI (`/admin/learning/candidates`). Only promoted (active) skills are injected into the agent's prompt — the human is always the gate. A 50-scenario regression bench + nightly CI keeps the whole loop honest. This is the foundation for **V2**: ELY generating and validating its own Python tools.
+
+</details>
+
+<details>
+<summary><strong>Radical transparency</strong> — see what ELY learned about you, and change it</summary>
+
+`/me/learning` shows the failure signals + verdicts ELY recorded; `/me/state` shows the live model it holds of you (mood, focus, recent topics, open loops, energy). Both are user-readable, editable, and killable — no hidden profiling.
 
 </details>
 
@@ -289,7 +316,7 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 │                                              ┌───────────┼─────────┐ │
 │                                              ▼           ▼         ▼ │
 │                                         Local LLM     Tools     Cloud│
-│                                         (Ollama,      (148)    (PII-│
+│                                         (Ollama,      (181)    (PII-│
 │                                         LM Studio)             masked)│
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -317,15 +344,17 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 ## Roadmap
 
-**Sprint 0** *May 2026* — Public launch. UI refresh, multi-domain routing, Mistral as default cloud tier, mono-agent toggle, anti-hallucination guards, 92/92 tests green.
+**Shipped** *(May–June 2026)*
+- **Cognitive typed memory** — 5 memory types, cross-conversation recall
+- **Radical transparency** — `/me/learning` + `/me/state` dashboards
+- **Measured self-improvement loop** — failure signals, LLM-as-judge mission critic, auto-learned skill playbooks with admin review/promotion
+- **MCP client** — consume any Model Context Protocol server
+- **50-scenario regression bench** + nightly CI
+- Auto-discovery tool registry · multi-domain scheduled-task routing · hardened anti-hallucination guards
 
-**Sprint 1** *June 2026* — Cross-conversation memory recall.
-
-**Sprint 2** *June 2026* — Auto-discovery tool registry.
-
-**Sprint 3** *July 2026* — User State Vector (transparent user model).
-
-**Sprint 4** *August 2026* — MCP client + server. Consume any MCP server, expose ELY as MCP server too.
+**Next**
+- **V2 — Auto-Developing Agent.** ELY generates and validates its *own* Python tools: AST whitelist → ruff/mypy → sandbox eval → bench regression → admin HITL before anything goes live.
+- **MCP server** — expose ELY itself as an MCP server.
 
 → [Full public roadmap →](https://agent-ely.fr/roadmap.html)
 
@@ -335,7 +364,11 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 
 **Source code** — [Elastic License v2](LICENSE)
 
-ELY is free for any personal use and for any internal business use of any organisation, regardless of size. The single restriction is that you cannot offer ELY as a hosted or managed service to third parties (no SaaS resale).
+In plain language (informative — the [LICENSE](LICENSE) file is the legal text):
+
+**You are free to** — use ELY for any personal use (household, family) · use it for any internal business use, any organisation size · modify the source and run your version · distribute it (modified or not) keeping the LICENSE + copyright notices.
+
+**You may not** — offer ELY as a hosted or managed service to third parties (no SaaS resale) · remove or hide the copyright/licence notices · disable or circumvent any licence-key mechanism.
 
 → [Plain-language summary on the official site →](https://agent-ely.fr/pricing.html)
 
