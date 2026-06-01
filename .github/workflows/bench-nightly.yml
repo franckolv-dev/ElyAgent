@@ -1,0 +1,87 @@
+name: Bench Nightly
+
+# Sprint 3.7.3 J5 — runs the canonical bench harness every night so a
+# regression in any subsystem (failure_capture, cognitive memory, HITL,
+# learned skills, MCP, …) is caught within 24h instead of at the next
+# manual run. The `deep` tag (real LLM calls, costs money) is EXCLUDED —
+# run it by hand before a release with `--tag deep`.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily (~05:00 Europe/Paris)
+  workflow_dispatch: {}    # allow a manual run from the Actions tab
+
+# A new run supersedes an in-flight one (nightly + a manual trigger).
+concurrency:
+  group: bench-nightly
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: Canonical bench (shallow,medium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      # Run from the repo ROOT (the `bench` package lives there; the runner
+      # adds `backend/` to sys.path itself). A FILE-based SQLite DB is
+      # required — `:memory:` is per-connection, so a scenario that writes
+      # in one session and reads in another would see an empty DB.
+      - name: Run canonical bench
+        id: bench
+        env:
+          JWT_SECRET_KEY: ci-runner-ephemeral-jwt-secret-not-for-production-use-only
+          DATABASE_URL: "sqlite+aiosqlite:///./bench_nightly.db"
+          QDRANT_URL: "http://localhost:6333"
+          ENVIRONMENT: test
+        run: PYTHONPATH=. backend/.venv/bin/python -m bench.run_canonical --tag shallow,medium
+
+      # Surface the per-scenario table in the run page, pass or fail.
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "## 🌙 Nightly canonical bench"
+            echo ""
+            if compgen -G "bench/results/*/summary.md" > /dev/null; then
+              cat bench/results/*/summary.md
+            else
+              echo "_No summary produced — the runner crashed before writing results._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/
+          retention-days: 14
+
+  # A failed `bench` job marks the whole run red; GitHub emails the repo
+  # owner on a scheduled-workflow failure (built-in). This explicit gate
+  # keeps the failure obvious in the Actions list and is the hook to wire
+  # a richer alert (issue comment / SMTP) onto later if needed.
+  notify-on-failure:
+    name: Alert on regression
+    needs: bench
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flag the failure
+        run: |
+          echo "::error title=Nightly bench regression::One or more canonical scenarios failed — see the 'Canonical bench' job + its bench-results artifact."
+          exit 1

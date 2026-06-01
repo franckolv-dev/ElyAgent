@@ -21,6 +21,8 @@ DESCRIPTION = (
 )
 
 
+TAGS = ["shallow"]
+
 async def run() -> dict:
     # The stores hit Qdrant in production. For the canonical bench we
     # monkeypatch the SemanticUserStore methods to an in-memory dict
