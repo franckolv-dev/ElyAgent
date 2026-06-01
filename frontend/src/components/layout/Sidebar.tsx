@@ -16,7 +16,7 @@ import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
   Download, X, ChevronDown, Swords, BookOpen, Target, Brain, Compass,
-  Sparkles,
+  Sparkles, ClipboardCheck,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -45,6 +45,7 @@ const BASE_NAV = [
 const ADMIN_NAV = [
   { href: "/security",  labelKey: "navSecurity",  icon: ShieldCheck },
   { href: "/admin",     labelKey: "navAdmin",     icon: Shield      },
+  { href: "/admin/learning/candidates", labelKey: "navLearningCandidates", icon: ClipboardCheck },
 ];
 
 export function Sidebar() {

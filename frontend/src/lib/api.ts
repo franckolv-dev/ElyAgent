@@ -456,6 +456,35 @@ export const api = {
     fetchAPI(`/api/me/learning-skills/${id}/forget`, {
       method: "POST",
     }) as Promise<MeLearnedSkill>,
+
+  // ── Admin: learned-skill candidate review (Sprint 4b Phase 4.a) ─────────
+  /** List learned skills awaiting HITL review. Defaults to `candidate`
+   *  (the promotion queue); pass another status to audit what's live,
+   *  archived or rejected. Admin-only — backed by require_admin. */
+  adminLearningCandidates: (status?: string) =>
+    fetchAPI(
+      `/admin/learning/skills/candidates${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ) as Promise<LearnedSkillCandidate[]>,
+
+  /** Promote a `candidate` (or reactivate a `stale`) skill to `active`.
+   *  Active skills get injected into the agent prompt at the next turn. */
+  adminLearningPromote: (id: string) =>
+    fetchAPI(`/admin/learning/skills/${id}/promote`, {
+      method: "POST",
+    }) as Promise<LearnedSkillCandidate>,
+
+  /** Archive a skill (reject a candidate, or retire an active/stale one).
+   *  Hidden from prompt injection, restorable. */
+  adminLearningArchive: (id: string) =>
+    fetchAPI(`/admin/learning/skills/${id}/archive`, {
+      method: "POST",
+    }) as Promise<LearnedSkillCandidate>,
+
+  /** Restore an `archived` skill back to `candidate` for re-review. */
+  adminLearningRestore: (id: string) =>
+    fetchAPI(`/admin/learning/skills/${id}/restore`, {
+      method: "POST",
+    }) as Promise<LearnedSkillCandidate>,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -591,4 +620,30 @@ export interface MeLearnedSkill {
   last_used_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Admin: learned-skill candidate review (Sprint 4b Phase 4.a)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** A LearnedSkill row from the admin review surface. Mirrors
+ *  `CandidateOut` in `backend/app/routers/learning_skills.py`. Unlike the
+ *  user-facing `MeLearnedSkill` this includes `user_id`, `rationale` and
+ *  `from_failure_case_ids` (the provenance an admin needs to judge it). */
+export interface LearnedSkillCandidate {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  /** Full Markdown playbook body, frontmatter stripped. */
+  content: string;
+  /** One of: `candidate`, `active`, `stale`, `archived`, `rejected`. */
+  status: string;
+  iteration_count: number;
+  last_eval_score: number | null;
+  /** Why the loop created this skill (free text). May be empty. */
+  rationale: string | null;
+  /** JSON-encoded list of failure_case ids this skill addresses. */
+  from_failure_case_ids: string;
+  created_at: string;
 }
