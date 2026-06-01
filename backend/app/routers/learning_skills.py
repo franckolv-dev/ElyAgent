@@ -96,6 +96,10 @@ class CandidateOut(BaseModel):
     user_id: str
     name: str
     description: str
+    # Full Markdown playbook body. The admin reviews this before promoting —
+    # promoting on name+score alone would be flying blind. Capped server-side
+    # by the candidates `limit`, so payload size stays bounded.
+    content: str
     status: str
     iteration_count: int
     last_eval_score: Optional[int]
@@ -181,6 +185,7 @@ async def list_candidates(
             user_id=r.user_id,
             name=r.name,
             description=r.description,
+            content=r.content,
             status=r.status,
             iteration_count=r.iteration_count,
             last_eval_score=r.last_eval_score,
@@ -351,6 +356,7 @@ def _to_candidate_out(skill: LearnedSkill) -> CandidateOut:
         user_id=skill.user_id,
         name=skill.name,
         description=skill.description,
+        content=skill.content,
         status=skill.status,
         iteration_count=skill.iteration_count,
         last_eval_score=skill.last_eval_score,

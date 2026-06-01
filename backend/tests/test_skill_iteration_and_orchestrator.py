@@ -547,6 +547,38 @@ async def test_list_candidates_invalid_status_400(_seeded_user):
 
 
 @pytest.mark.asyncio
+async def test_list_candidates_returns_full_playbook_content(_seeded_user):
+    """The admin review UI promotes on the playbook body, not just the
+    name/score — so the candidates response must carry `content`."""
+    from app.routers.learning_skills import list_candidates
+
+    body = "# Trigger\nWhen X, do Y then Z.\n\n## Steps\n1. a\n2. b"
+    async with async_session() as db:
+        db.add(LearnedSkill(
+            user_id=_seeded_user,
+            name="with_body",
+            description="has a real playbook",
+            content=body,
+            frontmatter_json="{}",
+            status=SkillStatus.CANDIDATE,
+            source=SkillSource.AUTO_GENERATED,
+            iteration_count=1,
+            from_failure_case_ids="[]",
+        ))
+        await db.commit()
+        rows = await list_candidates(
+            user_id=_seeded_user,
+            status=None,
+            limit=50,
+            _admin=None,
+            db=db,
+        )
+
+    match = next(r for r in rows if r.name == "with_body")
+    assert match.content == body
+
+
+@pytest.mark.asyncio
 async def test_run_skill_creator_endpoint_passes_kwargs(_seeded_user, monkeypatch):
     """The endpoint must thread user_id / batch_size / max_iterations
     into the orchestrator without dropping any arg."""

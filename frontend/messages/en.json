@@ -47,7 +47,8 @@
     "navLearningSkills": "Learned skills",
     "navUserState": "My state",
     "navSecurity": "Security",
-    "navAdmin": "Admin"
+    "navAdmin": "Admin",
+    "navLearningCandidates": "Skills to review"
   },
   "knowledge": {
     "title": "Knowledge base",
@@ -239,6 +240,38 @@
     "actionPin": "Pin",
     "actionUnpin": "Unpin",
     "privacyNote": "These playbooks describe how ELY adapts its behaviour for YOU. They are never shared with another user."
+  },
+  "learningCandidates": {
+    "title": "Skills to review",
+    "subtitle": "HITL review of playbooks produced by self-improvement",
+    "refreshTooltip": "Refresh",
+    "adminNote": "Promoting a skill injects it into the agent's prompt on the next turn. It's a deliberate human action — the safety gate for self-improvement.",
+    "errorLoad": "Couldn't load the list.",
+    "actionError": "The action failed.",
+    "loading": "Loading…",
+    "empty": "No skills in this status.",
+    "emptyCandidate": "No skills awaiting review. When self-improvement generates a playbook, it shows up here for review.",
+    "scoreLabel": "Score {score}/100",
+    "noScore": "Not evaluated yet",
+    "iterationsLabel": "{n} iteration(s)",
+    "createdLabel": "Created {date}",
+    "userLabel": "User {id}",
+    "rationaleLabel": "Rationale",
+    "expand": "View playbook",
+    "collapse": "Collapse",
+    "terminal": "Terminal state",
+    "promote": "Promote",
+    "promoteHint": "Move to active — injected into the agent's prompt on the next turn.",
+    "reject": "Reject",
+    "rejectHint": "Archive the candidate without promoting. Restorable.",
+    "archive": "Archive",
+    "archiveHint": "Hide from the agent's prompt. Restorable.",
+    "restore": "Restore",
+    "restoreHint": "Send back to candidate for re-review.",
+    "flash_promote": "“{name}” promoted — active on the next turn.",
+    "flash_reject": "“{name}” rejected (archived).",
+    "flash_archive": "“{name}” archived.",
+    "flash_restore": "“{name}” restored to candidate."
   },
   "userState": {
     "title": "My state, as ELY sees it",

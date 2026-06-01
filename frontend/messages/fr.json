@@ -47,7 +47,8 @@
     "navLearningSkills": "Compétences apprises",
     "navUserState": "Mon état",
     "navSecurity": "Sécurité",
-    "navAdmin": "Admin"
+    "navAdmin": "Admin",
+    "navLearningCandidates": "Compétences à valider"
   },
   "knowledge": {
     "title": "Base de connaissances",
@@ -239,6 +240,38 @@
     "actionPin": "Pin",
     "actionUnpin": "Unpin",
     "privacyNote": "Ces playbooks décrivent comment ELY adapte son comportement pour TOI. Ils ne sont jamais partagés avec un autre utilisateur."
+  },
+  "learningCandidates": {
+    "title": "Compétences à valider",
+    "subtitle": "Revue HITL des playbooks générés par l'auto-apprentissage",
+    "refreshTooltip": "Rafraîchir",
+    "adminNote": "Promouvoir une compétence l'injecte dans le prompt de l'agent au tour suivant. C'est un acte humain volontaire — le garde-fou de l'auto-apprentissage.",
+    "errorLoad": "Impossible de charger la liste.",
+    "actionError": "L'action a échoué.",
+    "loading": "Chargement…",
+    "empty": "Aucune compétence dans ce statut.",
+    "emptyCandidate": "Aucune compétence en attente de validation. Quand l'auto-apprentissage génère un playbook, il apparaît ici pour revue.",
+    "scoreLabel": "Score {score}/100",
+    "noScore": "Pas encore évaluée",
+    "iterationsLabel": "{n} itération(s)",
+    "createdLabel": "Créée le {date}",
+    "userLabel": "Utilisateur {id}",
+    "rationaleLabel": "Raison",
+    "expand": "Voir le playbook",
+    "collapse": "Réduire",
+    "terminal": "État terminal",
+    "promote": "Promouvoir",
+    "promoteHint": "Passer en active — injectée dans le prompt de l'agent au prochain tour.",
+    "reject": "Rejeter",
+    "rejectHint": "Archiver la candidate sans la promouvoir. Restaurable.",
+    "archive": "Archiver",
+    "archiveHint": "Retirer du prompt de l'agent. Restaurable.",
+    "restore": "Restaurer",
+    "restoreHint": "Repasser en candidate pour une nouvelle revue.",
+    "flash_promote": "« {name} » promue — active au prochain tour.",
+    "flash_reject": "« {name} » rejetée (archivée).",
+    "flash_archive": "« {name} » archivée.",
+    "flash_restore": "« {name} » restaurée en candidate."
   },
   "userState": {
     "title": "Mon état selon ELY",
