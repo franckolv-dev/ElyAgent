@@ -23,10 +23,18 @@ textual output even on overrun tasks.
 
 Numbers
 -------
-- ``MAX_AGENT_ITERATIONS = 80``  → trigger force_summary
-- LangGraph ``recursion_limit = 100`` (in chat.py) → safety margin of 20
-  iterations to let force_summary_node + tool_node + agent_node finish
-  cleanly without hitting the hard cap.
+- ``MAX_AGENT_ITERATIONS = 80``  → trigger force_summary (counted in
+  tool-calling *iterations*).
+- ``CHAT_RECURSION_LIMIT`` → LangGraph hard cap, counted in *super-steps*.
+  One iteration = agent_node + tool_node = 2 super-steps, so the cap is
+  derived as ``MAX_AGENT_ITERATIONS * 2 + margin`` to guarantee
+  force_summary fires BEFORE the cap raises GraphRecursionError.
+
+  Bug fixed 2026-06-01 : the cap was hardcoded to 100 in chat.py while
+  MAX_AGENT_ITERATIONS was 80. Since 80 iterations ≈ 160 super-steps, the
+  100-step cap tripped at ~iteration 50 — long before force_summary's 80.
+  A long web-research loop therefore crashed with « Une erreur interne est
+  survenue » instead of degrading gracefully into a final summary.
 """
 from __future__ import annotations
 
@@ -40,6 +48,13 @@ logger = logging.getLogger(__name__)
 
 
 MAX_AGENT_ITERATIONS: int = 80
+
+# LangGraph's recursion_limit counts GRAPH SUPER-STEPS, not iterations.
+# Derive it so force_summary (which fires at MAX_AGENT_ITERATIONS
+# *iterations* ≈ 2× that in super-steps) is always reachable before the
+# hard cap. See the module docstring for the 2026-06-01 incident.
+_RECURSION_SAFETY_MARGIN: int = 20
+CHAT_RECURSION_LIMIT: int = MAX_AGENT_ITERATIONS * 2 + _RECURSION_SAFETY_MARGIN
 
 
 def should_continue(state: AgentState) -> str:

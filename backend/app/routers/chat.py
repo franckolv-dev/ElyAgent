@@ -40,6 +40,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy import select
 
 from app.agent.graph import build_agent_graph
+from app.agent.routing import CHAT_RECURSION_LIMIT
 from app.auth.jwt import decode_token
 from app.database import async_session
 from app.models.conversation import Conversation, Message
@@ -401,7 +402,9 @@ async def websocket_chat(websocket: WebSocket):
                     # in credential_store, looked up by user_id at tool exec (SEC-1)
                 },
                 version="v2",
-                config={"recursion_limit": 100},
+                # Derived from MAX_AGENT_ITERATIONS so force_summary always
+                # fires before this hard cap (2026-06-01 fix — see routing.py).
+                config={"recursion_limit": CHAT_RECURSION_LIMIT},
               ):
                 if stop_event.is_set():
                     break
