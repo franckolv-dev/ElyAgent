@@ -26,6 +26,16 @@ Why Markdown rather than Python code (Hermes-style, see design note §1):
     Sprint 8 lands ELY can both import community skills and export its
     learned ones.
 
+V2 (Sprint 4b — @tool Python génération, design note J0):
+  The "never executed" boundary above holds for ``markdown_playbook``
+  skills. V2 adds a second ``content_format`` — ``python_tool`` — where
+  ``content`` is Python ``@tool`` source that IS compiled and bound to
+  the LLM, but only after the validation pipeline (AST allow-list →
+  ruff → mypy → smoke sandbox → regression bench) AND HITL admin. V2 is
+  deliberately scoped to *composition of existing tools + pure-compute
+  stdlib (zero I/O)* — genuine new-I/O extension (new APIs) is V3-behind-
+  Docker. See ``SkillContentFormat`` and design note J0 §3.
+
 Pattern d'inspiration : Hermes ``tools/skill_manager_tool.py`` + ``agent/curator.py``
 voir docs/external-references/hermes-skills-self-improvement.md
 Implémentation : code maison, adapté au modèle multi-tier ELY (tier S dédié
@@ -92,6 +102,34 @@ class SkillSource:
     CURATOR_MUTABLE = {AUTO_GENERATED}
 
 
+# ── Content format enum (V2, Sprint 4b) ─────────────────────────────────────
+class SkillContentFormat:
+    """How ``LearnedSkill.content`` is interpreted.
+
+    ``markdown_playbook``  V1 — content is a Markdown SKILL.md body,
+                           injected into the system prompt as text and
+                           **never executed**. The original, default
+                           format; every pre-V2 row is this.
+    ``python_tool``        V2 — content is Python ``@tool`` source code
+                           (a composition of already-registered ELY
+                           tools + pure-computation stdlib, **zero
+                           I/O**). Compiled and bound to the LLM only
+                           after the validation pipeline (AST allow-list
+                           → ruff → mypy → smoke sandbox → regression
+                           bench) AND HITL admin promotion.
+
+    ``python_tool`` is exactly the frontier the LearnedSkill V1 docstring
+    called "never executed". V2 crosses it on purpose — design note J0 §3
+    carries the threat model that makes the non-sandboxed runtime
+    defensible (composition-only + AST allow-list + HITL).
+    """
+
+    MARKDOWN_PLAYBOOK = "markdown_playbook"
+    PYTHON_TOOL = "python_tool"
+
+    ALL = {MARKDOWN_PLAYBOOK, PYTHON_TOOL}
+
+
 class LearnedSkill(Base):
     """One Markdown playbook + metadata, user-scoped."""
 
@@ -116,6 +154,19 @@ class LearnedSkill(Base):
     # platforms…) stored as JSON for forward compatibility with
     # agentskills.io evolutions. Empty dict {} at minimum.
     frontmatter_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    # V2 (Sprint 4b) — how `content` is interpreted: markdown_playbook
+    # (V1, injected as text, never executed) vs python_tool (V2, compiled
+    # + bound after the validation pipeline + HITL). Default keeps every
+    # existing row a playbook. See SkillContentFormat + design note J0.
+    content_format: Mapped[str] = mapped_column(
+        String(20),
+        default=SkillContentFormat.MARKDOWN_PLAYBOOK,
+    )
+    # V2 — JSON report of the 5-stage validation pipeline (ast / ruff /
+    # mypy / smoke / bench), one entry per stage. "{}" for markdown
+    # playbooks and for python_tool skills not yet validated.
+    validation_report_json: Mapped[str] = mapped_column(Text, default="{}")
 
     # Lifecycle + provenance (see enums above).
     status: Mapped[str] = mapped_column(

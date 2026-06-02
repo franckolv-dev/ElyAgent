@@ -115,6 +115,12 @@ async def init_db():
             # Sprint 3.7 Jalon 4 — LLM-as-judge bookkeeping : timestamp when
             # the post-mortem critic last ran for this mission. NULL = not yet.
             ("missions", "critic_run_at", "DATETIME"),
+            # Sprint 4b V2 J1 — @tool Python generation. content_format
+            # distinguishes V1 markdown playbooks from V2 python_tool source;
+            # validation_report_json holds the 5-stage pipeline report.
+            # Existing rows backfill to 'markdown_playbook' / '{}' via DEFAULT.
+            ("learned_skills", "content_format", "VARCHAR(20) NOT NULL DEFAULT 'markdown_playbook'"),
+            ("learned_skills", "validation_report_json", "TEXT NOT NULL DEFAULT '{}'"),
         ]
         for _table, _col, _ddl in _safe_columns:
             try:
