@@ -81,14 +81,14 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [hitlAction, setHitlAction] = useState<{ id: string; description: string } | null>(null);
   const [hitlPending, setHitlPending] = useState<
-    "allow" | "allow_always" | "deny" | "ban" | null
+    "allow" | "allow_for_task" | "allow_always" | "deny" | "ban" | null
   >(null);
   const [hitlError, setHitlError] = useState<string | null>(null);
   const ttsRef = useRef<TTSPlayer | null>(null);
 
   // ── Resolve HITL via web — hits the same endpoint as the Android app ──
   const resolveHitl = async (
-    decision: "allow" | "allow_always" | "deny" | "ban",
+    decision: "allow" | "allow_for_task" | "allow_always" | "deny" | "ban",
   ) => {
     if (!hitlAction || hitlPending) return;
     setHitlPending(decision);
@@ -351,6 +351,18 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
             >
               <Check size={11} />
               {hitlPending === "allow" ? t("hitlSending") : t("hitlApprove")}
+            </button>
+            <button
+              onClick={() => resolveHitl("allow_for_task")}
+              disabled={hitlPending !== null}
+              className="btn primary"
+              style={{ justifyContent: "center", padding: "5px 8px", fontSize: 11 }}
+              title={t("hitlAllowForTaskTitle")}
+            >
+              <Check size={11} />
+              {hitlPending === "allow_for_task"
+                ? t("hitlSending")
+                : t("hitlAllowForTask")}
             </button>
             <button
               onClick={() => resolveHitl("allow_always")}

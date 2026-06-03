@@ -324,7 +324,7 @@ export const api = {
 
   hitlResolve: (
     actionId: string,
-    decision: "allow" | "allow_always" | "deny" | "ban",
+    decision: "allow" | "allow_for_task" | "allow_always" | "deny" | "ban",
     reason?: string,
   ) =>
     fetchAPI(`/api/validation/${actionId}/${decision}`, {

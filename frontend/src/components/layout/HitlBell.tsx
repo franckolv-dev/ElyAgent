@@ -77,7 +77,7 @@ export default function HitlBell() {
 
   const resolve = async (
     actionId: string,
-    decision: "allow" | "allow_always" | "deny" | "ban"
+    decision: "allow" | "allow_for_task" | "allow_always" | "deny" | "ban"
   ) => {
     setBusy(actionId);
     try {
@@ -153,6 +153,14 @@ export default function HitlBell() {
                       title="Autoriser cette action une fois"
                     >
                       <Check size={12} /> Autoriser
+                    </button>
+                    <button
+                      className="hitl-act hitl-act-allow"
+                      disabled={busy === a.action_id}
+                      onClick={() => resolve(a.action_id, "allow_for_task")}
+                      title="Autoriser ce type d'action pour le reste de cette tâche, sans redemander (éphémère, non permanent)"
+                    >
+                      <Check size={12} /> Pour cette tâche
                     </button>
                     <button
                       className="hitl-act hitl-act-allow"

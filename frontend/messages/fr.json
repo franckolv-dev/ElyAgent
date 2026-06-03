@@ -145,6 +145,8 @@
     "validationRequired": "VALIDATION REQUISE",
     "replyViaApp": "Approuve ici, sur l'app Android ou via Telegram.",
     "hitlApprove": "Autoriser",
+    "hitlAllowForTask": "Pour cette tâche",
+    "hitlAllowForTaskTitle": "Autoriser ce type d'action pour le reste de cette tâche, sans redemander (éphémère, non permanent)",
     "hitlAllowAlways": "Toujours autoriser",
     "hitlDeny": "Refuser",
     "hitlBan": "Toujours interdire",

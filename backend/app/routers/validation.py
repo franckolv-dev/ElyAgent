@@ -180,6 +180,25 @@ async def allow_always_action(
     )
 
 
+@router.post("/{action_id}/allow_for_task")
+async def allow_for_task_action(
+    action_id: str,
+    t: str | None = Query(default=None, description="Signed action token (ntfy channel)"),
+    current_user: User | None = Depends(get_optional_user),
+):
+    """Authorize this occurrence AND skip HITL for the same tool for the
+    rest of the CURRENT conversation/task — args-agnostic, ephemeral, and
+    NOT persisted (unlike ``allow_always``). Works even for locked tools.
+
+    The conversation-scoped registration happens in ``tool_node`` when it
+    handles the ``allow_for_task`` decision (it has the conversation_id).
+    """
+    channel = "ntfy" if t else "web"
+    return await _resolve_with_auth_or_token(
+        action_id, "allow_for_task", None, current_user, t, channel,
+    )
+
+
 @router.post("/{action_id}/deny")
 async def deny_action(
     action_id: str,
