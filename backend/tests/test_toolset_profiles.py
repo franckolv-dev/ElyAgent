@@ -158,6 +158,22 @@ def test_default_profile_exposes_drive_delete_file():
     )
 
 
+def test_default_profile_exposes_drive_organisation_tools():
+    """« Organise mes fichiers Drive par année » needs to create real
+    folders and move files into them. A Drive-reorg session (2026-06-03)
+    failed because the default profile only had drive_create_file: the
+    agent created "folders" as text/plain files and then truthfully said
+    it had no way to make folders or move files. These tools exist in
+    drive_tool.py + GOOGLE_TOOLS but were missing from the default profile
+    (the "tool invisible" trap). They are non-destructive (no HITL)."""
+    tools = set(get_profile_tool_names("default"))
+    for name in ("drive_create_folder", "drive_move_file", "drive_copy_file", "drive_rename_file"):
+        assert name in tools, (
+            f"{name} missing from default profile — Drive organisation "
+            "workflows (create folders + move files) will fail"
+        )
+
+
 def test_default_profile_exposes_desktop_filesystem_tools():
     """ELY Desktop = local filesystem access via the Go daemon. Without
     these in the profile, asking « lis ce fichier sur mon Mac » makes the

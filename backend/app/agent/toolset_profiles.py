@@ -125,10 +125,22 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "calendar_create_event",
     "calendar_list_events",
     "calendar_quick_add",
-    # Drive — create text files + list + read + find duplicates + trash
+    # Drive — create text files + list + read + organise + find duplicates + trash
     "drive_create_file",
     "drive_list_files",
     "drive_read_file",
+    # Organisation tools (added 2026-06-03 after a Drive-reorg session failed:
+    # the agent only had drive_create_file, so it created "folders" as
+    # text/plain files and concluded — truthfully, from its bound toolset —
+    # that it had no way to make folders or move files. These existed in
+    # drive_tool.py + GOOGLE_TOOLS but were never in the default profile
+    # (the "tool invisible" trap, docs/ADDING_A_TOOL.md). All non-destructive
+    # (move relocates via addParents/removeParents, no data loss) → NOT
+    # HITL-locked, so bulk reorg flows without a prompt per file.
+    "drive_create_folder",
+    "drive_move_file",
+    "drive_copy_file",
+    "drive_rename_file",
     # Server-side duplicate detection (added 2026-05-09 after observing
     # Ministral 14B OOM Metal trying to do it manually with 30+ tool calls).
     # Compresses recursive walk + md5 grouping into 1 tool call → tractable
