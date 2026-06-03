@@ -21,10 +21,13 @@ Responsibilities (in execution order, per tool_call)
    the decrypted secret. Locked vault → polite refusal.
 4. **HITL gating** — request human approval for critical tools. Decisions
    handled :
-     - ``allow``         → execute this once
-     - ``allow_always``  → persist user preference + execute this once
-     - ``deny``          → skip, record learning signal
-     - ``ban``           → store permanent constraint + record signal
+     - ``allow``          → execute this once
+     - ``allow_for_task`` → approve this tool (args-agnostic) for the rest
+                            of THIS conversation only — ephemeral, not
+                            persisted, bypasses LOCKED_HITL_TOOLS
+     - ``allow_always``   → persist user preference + execute this once
+     - ``deny``           → skip, record learning signal
+     - ``ban``            → store permanent constraint + record signal
 5. **Tool execution** — await ``tool.ainvoke(args)``, log timing.
 6. **Result sanitisation** — strip oversized base64 payloads before
    storing in the LangGraph state (see helpers.tool_history).
@@ -170,6 +173,23 @@ async def tool_node(state: AgentState) -> dict:
 
         # HITL check
         needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
+        # Task-scoped approval (2026-06-03) — checked FIRST so it bypasses
+        # even LOCKED_HITL_TOOLS: it's the user's explicit, ephemeral,
+        # per-conversation "allow for this task" consent. Keyed by tool_name
+        # only (args ignored) so one click covers every later call of this
+        # tool in the conversation — fixes the "11 deletes, 11 clicks because
+        # each file_id re-prompted" friction. NOT persisted across tasks.
+        if needs_hitl and _conv_id:
+            try:
+                from app.services.task_approvals import is_tool_approved_for_task
+                if is_tool_approved_for_task(_conv_id, tool_name):
+                    logger.info(
+                        "HITL skipped (task-scoped allow) tool=%s conv=%s",
+                        tool_name, _conv_id[:8],
+                    )
+                    needs_hitl = False
+            except Exception as _ta_exc:
+                logger.debug("task-approval lookup failed: %s", _ta_exc)
         # Per-user override (2026-05-23) — honour "Toujours autoriser"
         # preference set by the user via the HITL panel ; mirrors what
         # sub_agents/factory.py:806 already does. LOCKED_HITL_TOOLS still
@@ -231,6 +251,20 @@ async def tool_node(state: AgentState) -> dict:
                     )
                 except Exception as _save_exc:
                     logger.debug("Could not save HITL preference: %s", _save_exc)
+                # Fall through to execute (same as plain "allow")
+            elif decision == "allow_for_task":
+                # Approve this tool (action) for the REST OF THIS CONVERSATION
+                # only — args-agnostic, ephemeral, NOT persisted. Works even
+                # for LOCKED tools. Then fall through to execute this time.
+                try:
+                    from app.services.task_approvals import approve_tool_for_task
+                    approve_tool_for_task(_conv_id, tool_name)
+                    logger.info(
+                        "HITL: tool %s allowed for the rest of conv %s (task-scoped)",
+                        tool_name, (_conv_id or "")[:8],
+                    )
+                except Exception as _ta_exc:
+                    logger.debug("Could not register task-scoped approval: %s", _ta_exc)
                 # Fall through to execute (same as plain "allow")
             elif decision != "allow":
                 # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
