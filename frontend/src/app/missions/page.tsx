@@ -270,6 +270,14 @@ function MissionCard({ mission, onChanged, onEdit }: { mission: Mission; onChang
         {mission.tick_interval_seconds && (
           <span title={t("tickIntervalTooltip")}>{t("tickEvery", { seconds: mission.tick_interval_seconds })}</span>
         )}
+        {mission.autonomous && (
+          <span
+            title={t("autonomousHint")}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan"
+          >
+            🤖 {t("autonomousBadge")}
+          </span>
+        )}
       </div>
 
       {/* Progress bar */}
@@ -340,6 +348,7 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
   const [goal, setGoal]     = useState(mission?.goal ?? "");
   const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 15);
   const [budgetTok, setBudgetTok]   = useState(mission?.budget_tokens ?? 50_000);
+  const [autonomous, setAutonomous] = useState(mission?.autonomous ?? false);
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState<string | null>(null);
 
@@ -355,6 +364,7 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
       goal: goal.trim(),
       budget_iterations: budgetIter,
       budget_tokens: budgetTok,
+      autonomous,
     };
     try {
       if (isEdit) {
@@ -423,6 +433,22 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
               />
             </div>
           </div>
+
+          {/* Autonomous mode — auto-approve safe HITL so scheduled/overnight
+              runs don't stall (dangerous actions still require a human). */}
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={autonomous}
+              onChange={(e) => setAutonomous(e.target.checked)}
+              className="mt-0.5 accent-cyber-cyan"
+            />
+            <span className="text-[11px] text-text-muted">
+              <span className="text-text-primary">{t("autonomousLabel")}</span>
+              <br />
+              {t("autonomousHint")}
+            </span>
+          </label>
 
           {err && (
             <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5">

@@ -48,6 +48,7 @@ class MissionCreate(BaseModel):
     budget_iterations: int = Field(30, ge=1, le=200)
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None
+    autonomous: bool = False
 
 
 class MissionUpdate(BaseModel):
@@ -66,6 +67,7 @@ class MissionUpdate(BaseModel):
     budget_iterations: Optional[int] = Field(None, ge=1, le=200)
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None
+    autonomous: Optional[bool] = None
 
 
 class MissionOut(BaseModel):
@@ -86,6 +88,7 @@ class MissionOut(BaseModel):
     iterations_used: int
     tick_interval_seconds: Optional[int]
     next_tick_at: Optional[datetime]
+    autonomous: bool
     final_summary: Optional[str]
     failure_reason: Optional[str]
 
@@ -142,6 +145,7 @@ async def create_mission(
         budget_iterations=body.budget_iterations,
         tick_interval_seconds=body.tick_interval_seconds,
         deadline=body.deadline,
+        autonomous=body.autonomous,
     )
     return MissionOut.model_validate(m)
 

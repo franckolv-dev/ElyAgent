@@ -104,6 +104,34 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "drive_share_file",
 })
 
+
+# Tools that an AUTONOMOUS mission must NEVER auto-approve (the "security
+# floor"). Even with the mission's `autonomous` flag on, these still require
+# a human: they are irreversible, leave the building (3rd-party), or touch
+# security/system state. In an autonomous run they are SKIPPED (the step
+# fails, the mission keeps going) rather than executed blind at 3 a.m.
+# Non-floor HITL-gated tools (labels, Drive/Sheets writes, self-mail) ARE
+# auto-approved. Note: an explicit user pre-approval (Toujours autoriser /
+# Pour cette tâche) still lets a floor tool through — it's checked first.
+NEVER_AUTONOMOUS_TOOLS: frozenset[str] = frozenset({
+    # Irreversible / mass-destructive
+    "gmail_empty_trash", "gmail_trash_emails", "gmail_trash_by_query",
+    "gmail_trash_by_category", "gmail_batch_modify",
+    "drive_delete_file", "desktop_delete_file",
+    "calendar_delete_event", "tasks_delete",
+    "contacts_delete", "contacts_batch_operations",
+    # Leaves the building / third party
+    "gmail_send_email", "gmail_reply_email", "gmail_send_with_attachment",
+    "whatsapp_send", "whatsapp_send_template", "drive_share_file",
+    # Security / system / unrestricted escape hatches
+    "ssh_execute", "vault_unlock", "vault_set_secret", "save_constraint",
+    "mcp_validate_and_deploy", "gmail_update_settings",
+    "gmail_raw_api_call", "calendar_raw_api_call", "drive_raw_api_call",
+    "docs_raw_api_call", "sheets_raw_api_call", "tasks_raw_api_call",
+    "contacts_raw_api_call",
+    "os_click", "os_type_text", "os_hotkey", "os_mouse_move",
+})
+
 # Keywords in TOOL ARGUMENTS (not tool name) that flag an action as needing validation
 # These are checked against the display_args JSON, not the tool name.
 # Kept minimal — "remove" removed (too broad), added financial transfer terms.

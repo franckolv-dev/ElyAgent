@@ -35,6 +35,7 @@ export interface Mission {
   iterations_used: number;
   tick_interval_seconds: number | null;
   next_tick_at: string | null;
+  autonomous: boolean;
   final_summary: string | null;
   failure_reason: string | null;
 }
@@ -72,6 +73,7 @@ export interface CreateMissionBody {
   budget_iterations?: number;
   tick_interval_seconds?: number | null;
   deadline?: string | null;
+  autonomous?: boolean;
 }
 
 /** Editable subset for PATCH — all optional, only sent fields change. */
