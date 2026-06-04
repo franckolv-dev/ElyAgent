@@ -79,6 +79,7 @@ _TOOL_DESCRIPTIONS_FR: dict[str, str] = {
     "gmail_trash_emails": "Mettre des emails à la corbeille",
     "gmail_move_emails": "Déplacer des emails entre labels",
     "gmail_update_settings": "Modifier les réglages Gmail (signature, vacation, filtres, transfert)",
+    "save_constraint": "Enregistrer une contrainte permanente (affecte toutes les conversations futures)",
     "calendar_create_event": "Créer un événement dans Google Calendar",
     "calendar_update_event": "Modifier un événement Calendar",
     "calendar_delete_event": "Supprimer un événement Calendar",
@@ -122,6 +123,7 @@ _TOOL_DESCRIPTIONS_EN: dict[str, str] = {
     "gmail_trash_emails": "Move emails to Trash",
     "gmail_move_emails": "Move emails between labels",
     "gmail_update_settings": "Update Gmail settings (signature, vacation, filters, forwarding)",
+    "save_constraint": "Save a permanent constraint (affects all future conversations)",
     "calendar_create_event": "Create an event in Google Calendar",
     "calendar_update_event": "Update a Calendar event",
     "calendar_delete_event": "Delete a Calendar event",
@@ -174,7 +176,13 @@ async def list_preferences(
     current_user: User = Depends(get_current_user),
     accept_language: str | None = Header(default=None),
 ) -> list[HitlPrefOut]:
-    """Return one entry per tool in ALWAYS_CRITICAL_TOOLS with its HITL state.
+    """Return one entry per HITL-gated tool with its current state.
+
+    The set is the UNION of ALWAYS_CRITICAL_TOOLS and LOCKED_HITL_TOOLS — so
+    a tool that is LOCKED but not "always critical" (e.g. gmail_move_emails,
+    gmail_batch_modify) still shows up (previously it iterated only
+    ALWAYS_CRITICAL_TOOLS, so those LOCKED-only tools were invisible — bug
+    found 2026-06-04).
 
     The default is "HITL on" — overrides come from ``hitl_preferences`` rows.
     Tools listed in ``LOCKED_HITL_TOOLS`` are always returned with
@@ -194,7 +202,7 @@ async def list_preferences(
         overrides = dict(rows.all())
 
     out: list[HitlPrefOut] = []
-    for tool_name in sorted(ALWAYS_CRITICAL_TOOLS):
+    for tool_name in sorted(ALWAYS_CRITICAL_TOOLS | LOCKED_HITL_TOOLS):
         is_locked = tool_name in LOCKED_HITL_TOOLS
         # Locked tools ignore overrides
         if is_locked:

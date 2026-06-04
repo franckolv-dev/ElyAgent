@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Lock, Loader2, ShieldCheck, Bell } from "lucide-react";
+import { Lock, Loader2, ShieldCheck, Bell, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface HitlPref {
@@ -41,6 +41,9 @@ export function HitlPreferencesSection() {
   const [error, setError] = useState("");
   const [savingTool, setSavingTool] = useState<string | null>(null);
   const [savingChannel, setSavingChannel] = useState(false);
+  // Collapsible category accordions — default collapsed so the page is a short
+  // list of headers (no scrolling to reach "Bureau / fichiers locaux").
+  const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -115,7 +118,7 @@ export function HitlPreferencesSection() {
     const prefix = p.tool_name.split("_")[0];
     (grouped[prefix] = grouped[prefix] || []).push(p);
   }
-  const groupOrder = ["gmail", "calendar", "drive", "docs", "sheets", "tasks", "contacts", "ssh", "desktop", "vault"];
+  const groupOrder = ["gmail", "calendar", "drive", "docs", "sheets", "tasks", "contacts", "ssh", "desktop", "os", "whatsapp", "mcp", "vault", "save"];
   const groupLabels: Record<string, string> = {
     gmail: "Gmail",
     calendar: "Google Calendar",
@@ -126,8 +129,19 @@ export function HitlPreferencesSection() {
     contacts: "Google Contacts",
     ssh: "SSH",
     desktop: "Bureau / fichiers locaux",
+    os: "Contrôle OS",
+    whatsapp: "WhatsApp",
+    mcp: "MCP",
     vault: "Coffre-fort",
+    save: "Mémoire / contraintes",
   };
+  // Render EVERY present category — known ones in groupOrder, then any extra
+  // prefix appended (so no tool is silently dropped, as os_/whatsapp_/mcp_/
+  // save_ were before — bug found 2026-06-04).
+  const orderedGroups = [
+    ...groupOrder.filter((g) => grouped[g]?.length),
+    ...Object.keys(grouped).filter((g) => !groupOrder.includes(g)).sort(),
+  ];
 
   return (
     <section className="space-y-4">
@@ -209,14 +223,24 @@ export function HitlPreferencesSection() {
         </div>
       ) : (
         <div className="space-y-5">
-          {groupOrder
-            .filter((g) => grouped[g] && grouped[g].length > 0)
-            .map((g) => (
+          {orderedGroups.map((g) => {
+            const catOpen = openCats[g] ?? false;
+            return (
               <div key={g}>
-                <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-                  {groupLabels[g] ?? g}
-                </h3>
-                <div className="bg-bg-secondary border border-border-dim rounded-lg divide-y divide-border-dim">
+                <button
+                  type="button"
+                  onClick={() => setOpenCats((s) => ({ ...s, [g]: !catOpen }))}
+                  aria-expanded={catOpen}
+                  className="w-full flex items-center gap-2 text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2"
+                >
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform ${catOpen ? "" : "-rotate-90"}`}
+                  />
+                  <span className="flex-1 text-left">{groupLabels[g] ?? g}</span>
+                  <span className="normal-case text-text-muted/60">{grouped[g].length}</span>
+                </button>
+                {catOpen && (
+                <div className="bg-bg-secondary border border-border-dim rounded-lg divide-y divide-border-dim mb-2">
                   {grouped[g].map((p) => (
                     <div
                       key={p.tool_name}
@@ -273,8 +297,10 @@ export function HitlPreferencesSection() {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
-            ))}
+            );
+          })}
         </div>
       )}
 
