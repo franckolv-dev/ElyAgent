@@ -1,7 +1,12 @@
 "use client";
 /**
  * @project    ELY — Exactly Like You
- * @file       frontend/src/app/admin/learning/candidates/page.tsx
+ * @file       frontend/src/app/me/learning/candidates/page.tsx
+ *             (moved out of /admin/learning/* on 2026-06-04 — that path is a
+ *              backend API namespace [learning_skills router prefix
+ *              "/admin/learning"], and next.config rewrites /admin/* to the
+ *              backend, so the page 404'd with {"detail":"Not Found"} whenever
+ *              the build didn't win the afterFiles race. /me/* is frontend-owned.)
  * @brief      Sprint 4b Phase 4.a — admin HITL review of learned-skill
  *             candidates. The skill_creator loop emits playbooks in
  *             `candidate` status and, by design, never promotes them

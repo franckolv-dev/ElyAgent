@@ -48,7 +48,10 @@
     "navUserState": "Mon état",
     "navSecurity": "Sécurité",
     "navAdmin": "Admin",
-    "navLearningCandidates": "Compétences à valider"
+    "navLearningCandidates": "Compétences à valider",
+    "navGroupSkills": "Compétences",
+    "navGroupAnalysis": "Analyse",
+    "navGroupAdmin": "Admin"
   },
   "knowledge": {
     "title": "Base de connaissances",

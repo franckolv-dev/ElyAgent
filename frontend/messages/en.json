@@ -48,7 +48,10 @@
     "navUserState": "My state",
     "navSecurity": "Security",
     "navAdmin": "Admin",
-    "navLearningCandidates": "Skills to review"
+    "navLearningCandidates": "Skills to review",
+    "navGroupSkills": "Skills",
+    "navGroupAnalysis": "Analytics",
+    "navGroupAdmin": "Admin"
   },
   "knowledge": {
     "title": "Knowledge base",
