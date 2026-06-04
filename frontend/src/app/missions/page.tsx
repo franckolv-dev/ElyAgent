@@ -15,7 +15,7 @@ import { useTranslations } from "next-intl";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
-import { Target, Plus, Loader2, AlertCircle, X, RefreshCw, Trash2 } from "lucide-react";
+import { Target, Plus, Loader2, AlertCircle, X, RefreshCw, Trash2, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   missionsApi, type Mission, type MissionStatus, STATUS_META,
@@ -30,6 +30,7 @@ export default function MissionsPage() {
   const [error, setError]       = useState<string | null>(null);
   const [filter, setFilter]     = useState<FilterTab>("all");
   const [showCreate, setShowCreate] = useState(false);
+  const [editMission, setEditMission] = useState<Mission | null>(null);
 
   const fetchAll = useCallback(async () => {
     setError(null);
@@ -129,7 +130,7 @@ export default function MissionsPage() {
             ) : (
               <div className="space-y-2">
                 {filtered.map((m) => (
-                  <MissionCard key={m.id} mission={m} onChanged={fetchAll} />
+                  <MissionCard key={m.id} mission={m} onChanged={fetchAll} onEdit={setEditMission} />
                 ))}
               </div>
             )}
@@ -138,6 +139,13 @@ export default function MissionsPage() {
             <CreateMissionModal
               onClose={() => setShowCreate(false)}
               onCreated={() => { setShowCreate(false); fetchAll(); }}
+            />
+          )}
+          {editMission && (
+            <CreateMissionModal
+              mission={editMission}
+              onClose={() => setEditMission(null)}
+              onCreated={() => { setEditMission(null); fetchAll(); }}
             />
           )}
           </main>
@@ -149,7 +157,7 @@ export default function MissionsPage() {
 
 // ── Mission card ────────────────────────────────────────────────────────────
 
-function MissionCard({ mission, onChanged }: { mission: Mission; onChanged: () => void }) {
+function MissionCard({ mission, onChanged, onEdit }: { mission: Mission; onChanged: () => void; onEdit: (m: Mission) => void }) {
   const t = useTranslations("missions");
   const router = useRouter();
   const meta = STATUS_META[mission.status];
@@ -214,6 +222,15 @@ function MissionCard({ mission, onChanged }: { mission: Mission; onChanged: () =
             page can offer a "force-stop then delete" flow later. */}
         {isTerminal && (
           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(mission); }}
+              disabled={busy !== null}
+              title={t("editTooltip")}
+              className="p-1.5 text-text-muted hover:text-cyber-cyan hover:bg-cyber-cyan/10 rounded transition-colors disabled:opacity-50"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
             <button
               type="button"
               onClick={handleRestart}
@@ -316,12 +333,13 @@ function MissionCard({ mission, onChanged }: { mission: Mission; onChanged: () =
 
 // ── Create modal ────────────────────────────────────────────────────────────
 
-function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => void; onCreated: () => void; mission?: Mission }) {
   const t = useTranslations("missions");
-  const [title, setTitle]   = useState("");
-  const [goal, setGoal]     = useState("");
-  const [budgetIter, setBudgetIter] = useState(15);
-  const [budgetTok, setBudgetTok]   = useState(50_000);
+  const isEdit = !!mission;
+  const [title, setTitle]   = useState(mission?.title ?? "");
+  const [goal, setGoal]     = useState(mission?.goal ?? "");
+  const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 15);
+  const [budgetTok, setBudgetTok]   = useState(mission?.budget_tokens ?? 50_000);
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState<string | null>(null);
 
@@ -332,13 +350,18 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
     }
     setBusy(true);
     setErr(null);
+    const body = {
+      title: title.trim(),
+      goal: goal.trim(),
+      budget_iterations: budgetIter,
+      budget_tokens: budgetTok,
+    };
     try {
-      await missionsApi.create({
-        title: title.trim(),
-        goal: goal.trim(),
-        budget_iterations: budgetIter,
-        budget_tokens: budgetTok,
-      });
+      if (isEdit) {
+        await missionsApi.update(mission!.id, body);
+      } else {
+        await missionsApi.create(body);
+      }
       onCreated();
     } catch (e) {
       setErr(e instanceof Error ? e.message : t("createError"));
@@ -351,7 +374,7 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-bg-primary border border-border-dim rounded-lg w-full max-w-xl shadow-xl">
         <div className="flex items-center justify-between p-4 border-b border-border-dim">
-          <h2 className="text-sm font-medium text-text-primary">{t("newMission")}</h2>
+          <h2 className="text-sm font-medium text-text-primary">{isEdit ? t("editMission") : t("newMission")}</h2>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X className="w-4 h-4" /></button>
         </div>
 
@@ -426,7 +449,9 @@ function CreateMissionModal({ onClose, onCreated }: { onClose: () => void; onCre
             disabled={busy || !title.trim() || goal.trim().length < 5}
             className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 disabled:opacity-50"
           >
-            {busy ? t("creating") : t("createMission")}
+            {busy
+              ? (isEdit ? t("saving") : t("creating"))
+              : (isEdit ? t("saveMission") : t("createMission"))}
           </button>
         </div>
       </div>

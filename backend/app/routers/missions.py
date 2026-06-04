@@ -50,6 +50,24 @@ class MissionCreate(BaseModel):
     deadline: Optional[datetime] = None
 
 
+class MissionUpdate(BaseModel):
+    """Editable mission fields — all optional, only provided ones change.
+
+    Allowed only when the mission is NOT actively executing (see
+    ``_EDIT_BLOCKED_STATES``). Lets the user fix the goal, bump the
+    iteration budget, change the tick schedule, etc. and re-run, instead
+    of delete + recreate.
+    """
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    goal: Optional[str] = Field(None, min_length=5)
+    priority: Optional[int] = Field(None, ge=1, le=10)
+    budget_tokens: Optional[int] = Field(None, ge=1000, le=500_000)
+    budget_iterations: Optional[int] = Field(None, ge=1, le=200)
+    tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
+    deadline: Optional[datetime] = None
+
+
 class MissionOut(BaseModel):
     id: str
     title: str
@@ -126,6 +144,62 @@ async def create_mission(
         deadline=body.deadline,
     )
     return MissionOut.model_validate(m)
+
+
+# Mission states where editing parameters is unsafe (it's actively running).
+_EDIT_BLOCKED_STATES = {"planning", "running"}
+
+
+@router.patch("/{mission_id}", response_model=MissionOut)
+async def update_mission(
+    mission_id: str,
+    body: MissionUpdate,
+    current_user: User = Depends(get_current_user),
+) -> MissionOut:
+    """Edit a mission's parameters (goal, budgets, tick schedule, …) without
+    deleting + recreating it.
+
+    Blocked while the mission is actively executing (planning/running) —
+    pause it or wait for it to finish first (409). Only the fields present
+    in the request body change. After editing, /restart (resets counters)
+    then /start to re-run with the new params.
+    """
+    m = await _own_or_404(mission_id, current_user)
+    if m.status in _EDIT_BLOCKED_STATES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Mission en cours ({m.status}) — mets-la en pause ou attends "
+                "la fin avant de l'éditer."
+            ),
+        )
+
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        return MissionOut.model_validate(m)
+
+    from datetime import datetime as _dt, timezone as _tz
+
+    from app.database import async_session
+    from app.models.mission import Mission
+
+    async with async_session() as db:
+        fresh = await db.get(Mission, mission_id)
+        if fresh is None:
+            raise HTTPException(status_code=404, detail="Mission introuvable")
+        for key, value in fields.items():
+            setattr(fresh, key, value)
+        fresh.updated_at = _dt.now(_tz.utc)
+        await db.commit()
+        await db.refresh(fresh)
+        result = MissionOut.model_validate(fresh)
+
+    from app.services.audit_log import audit
+    await audit(
+        current_user.id, "mission_edit",
+        details=",".join(fields.keys())[:200], command=mission_id, channel="web",
+    )
+    return result
 
 
 @router.get("", response_model=list[MissionOut])
