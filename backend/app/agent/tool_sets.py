@@ -40,6 +40,7 @@ from __future__ import annotations
 GOOGLE_TOOLS: frozenset[str] = frozenset({
     # Gmail
     "gmail_list_emails", "gmail_read_email", "gmail_send_email",
+    "gmail_save_attachments_to_drive",
     "gmail_reply_email", "gmail_send_with_attachment",
     "gmail_send_with_local_attachment",   # FIX 2026-05-07 — oubli initial
     "gmail_mark_read", "gmail_mark_unread",

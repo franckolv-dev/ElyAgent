@@ -295,6 +295,113 @@ async def gmail_read_email(
 
 
 @tool
+async def gmail_save_attachments_to_drive(
+    message_id: str,
+    drive_folder_id: str,
+    filename_filter: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Download a Gmail message's attachments and SAVE them to a Drive folder.
+
+    THE tool for "save the invoice/email attachments to Drive". gmail_read_email
+    only reads TEXT — it cannot download files. This fetches each attachment's
+    bytes from Gmail and uploads them to Drive as real binary files, server-side,
+    in a single call.
+
+    Args:
+        message_id: the Gmail message id (from gmail_list_emails).
+        drive_folder_id: destination Drive folder id (from drive_create_folder
+            or drive_list_files).
+        filename_filter: optional — only save attachments whose name CONTAINS
+            this substring, case-insensitive (e.g. ".pdf"). Empty = all.
+
+    Idempotent: an attachment whose filename already exists in the folder is
+    skipped (no duplicates when a recurring mission re-runs).
+    """
+    import io
+    from googleapiclient.http import MediaIoBaseUpload
+
+    gmail = await _get_gmail_service(user_google_credentials_json)
+    if not gmail:
+        return "Google non connecté."
+    from app.agent.tools.drive_tool import _get_drive_service
+    drive = await _get_drive_service(user_google_credentials_json)
+    if not drive:
+        return "Google Drive non connecté."
+
+    try:
+        msg = gmail.users().messages().get(
+            userId="me", id=message_id, format="full",
+        ).execute()
+    except Exception as e:
+        return f"Erreur lecture du message {message_id}: {e}"
+
+    # Walk the MIME tree collecting attachment parts (filename + attachmentId).
+    attachments: list[tuple[str, str, str]] = []  # (filename, attachment_id, mime)
+
+    def _walk(part: dict) -> None:
+        fn = part.get("filename") or ""
+        body = part.get("body", {}) or {}
+        if fn and body.get("attachmentId"):
+            attachments.append(
+                (fn, body["attachmentId"], part.get("mimeType", "application/octet-stream"))
+            )
+        for sub in part.get("parts", []) or []:
+            _walk(sub)
+
+    _walk(msg.get("payload", {}) or {})
+
+    if filename_filter:
+        flt = filename_filter.lower()
+        attachments = [a for a in attachments if flt in a[0].lower()]
+
+    if not attachments:
+        suffix = f" correspondant à {filename_filter!r}" if filename_filter else ""
+        return f"Aucune pièce jointe{suffix} dans ce message."
+
+    # Existing filenames in the folder → idempotence (skip duplicates).
+    try:
+        listing = drive.files().list(
+            q=f"'{drive_folder_id}' in parents and trashed = false",
+            spaces="drive", fields="files(name)", pageSize=1000,
+        ).execute()
+        existing_names = {f["name"] for f in listing.get("files", [])}
+    except Exception:
+        existing_names = set()
+
+    saved: list[str] = []
+    skipped: list[str] = []
+    errors: list[str] = []
+    for fn, att_id, mime in attachments:
+        if fn in existing_names:
+            skipped.append(fn)
+            continue
+        try:
+            att = gmail.users().messages().attachments().get(
+                userId="me", messageId=message_id, id=att_id,
+            ).execute()
+            data = base64.urlsafe_b64decode(att["data"])
+            media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime, resumable=False)
+            drive.files().create(
+                body={"name": fn, "parents": [drive_folder_id]},
+                media_body=media, fields="id,name",
+            ).execute()
+            saved.append(fn)
+        except Exception as e:
+            errors.append(f"{fn}: {e}")
+
+    lines = [f"Pièces jointes du message {message_id} → dossier {drive_folder_id} :"]
+    if saved:
+        lines.append(f"  ✓ Enregistrées ({len(saved)}) : {', '.join(saved)}")
+    if skipped:
+        lines.append(f"  ⏭ Déjà présentes, ignorées ({len(skipped)}) : {', '.join(skipped)}")
+    if errors:
+        lines.append(f"  ✗ Erreurs ({len(errors)}) : {'; '.join(errors)}")
+    return "\n".join(lines)
+
+
+@tool
 async def gmail_send_email(
     to: str,
     subject: str,
