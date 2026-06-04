@@ -126,7 +126,8 @@ async def drive_create_folder(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Create a folder in Google Drive.
+    """Create a folder in Google Drive (idempotent — reuses an existing
+    same-name folder in the same parent instead of creating a duplicate).
 
     Args:
         name: Folder name
@@ -136,6 +137,32 @@ async def drive_create_folder(
     if not service:
         return "Google non connecté."
     try:
+        # Idempotence (2026-06-04): Google Drive ALLOWS several folders with
+        # the same name in the same parent. A recurring mission that
+        # "creates" its monthly folder on every run therefore spawned a new
+        # duplicate (e.g. a second "06_2026") each time. Before creating,
+        # look for an existing non-trashed folder of the same name in the
+        # same parent and reuse it.
+        safe_name = name.replace("\\", "\\\\").replace("'", "\\'")
+        query = (
+            "mimeType = 'application/vnd.google-apps.folder' "
+            f"and name = '{safe_name}' and trashed = false "
+            f"and '{parent_id or 'root'}' in parents"
+        )
+        existing = service.files().list(
+            q=query,
+            spaces="drive",
+            fields="files(id,name,webViewLink)",
+            pageSize=1,
+        ).execute()
+        found = existing.get("files") or []
+        if found:
+            f = found[0]
+            return (
+                "Dossier déjà existant (réutilisé, pas de doublon créé) : "
+                f"'{f['name']}'\nID : {f['id']}\nLien : {f.get('webViewLink', '—')}"
+            )
+
         metadata: dict = {
             "name": name,
             "mimeType": "application/vnd.google-apps.folder",
