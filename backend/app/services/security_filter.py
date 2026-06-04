@@ -150,6 +150,16 @@ _CRITICAL_KEYWORDS: frozenset[str] = frozenset({
     "amazon.", "cdiscount.", "fnac.", "leboncoin.",
 })
 
+# Argument keys holding a DEFERRED / free-text instruction — what a tool will
+# run *later* or *elsewhere*, not what it does right now. The HITL keyword
+# heuristic must NOT scan these: a scheduled task « Supprimer mes vieux mails »
+# is a harmless CREATION now (scheduler_create_task), and the actual deletion
+# is HITL-gated when the task runs. Scanning the instruction text false-fired
+# HITL on creation (Franck, scheduler_create_task anomaly, 2026-06-04). The
+# tool's real criticality comes from its NAME (ALWAYS_CRITICAL_TOOLS) + its
+# structured args, never from the wording of a deferred instruction.
+INSTRUCTION_ARG_KEYS: frozenset[str] = frozenset({"prompt", "code", "instruction"})
+
 
 @dataclass
 class SecurityFilter:

@@ -46,7 +46,11 @@ from app.agent.state import AgentState
 from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
-from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
+from app.services.security_filter import (
+    ALWAYS_CRITICAL_TOOLS,
+    INSTRUCTION_ARG_KEYS,
+    SecurityFilter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,8 +175,13 @@ async def tool_node(state: AgentState) -> dict:
                 results.append(_tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id))
                 continue
 
-        # HITL check
-        needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
+        # HITL check. The is_critical keyword scan EXCLUDES deferred-instruction
+        # args (prompt/code) — a keyword in "what to run later" (e.g. a
+        # scheduled task « supprimer … ») must not gate the harmless CURRENT
+        # call. action_desc stays full for the HITL prompt + logs.
+        _crit_args = {k: v for k, v in display_args.items() if k not in INSTRUCTION_ARG_KEYS}
+        _crit_desc = f"Outil: {tool_name} | Arguments: {json.dumps(_crit_args, ensure_ascii=False)}"
+        needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
         # Task-scoped approval (2026-06-03) — checked FIRST so it bypasses
         # even LOCKED_HITL_TOOLS: it's the user's explicit, ephemeral,
         # per-conversation "allow for this task" consent. Keyed by tool_name

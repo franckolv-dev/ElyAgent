@@ -159,7 +159,11 @@ async def dispatch_tool(
     """
     from app.skills import get_skill_registry
     from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS
-    from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
+    from app.services.security_filter import (
+        ALWAYS_CRITICAL_TOOLS,
+        INSTRUCTION_ARG_KEYS,
+        SecurityFilter,
+    )
     from app.services.hitl_manager import get_hitl_manager
     from app.services.memory_manager import get_memory_manager
 
@@ -233,9 +237,16 @@ async def dispatch_tool(
         except KeyError as exc:
             return f"⛔ Secret introuvable dans le Vault : {exc}", False
 
-    # HITL gate for sensitive tools
+    # HITL gate for sensitive tools. The is_critical keyword scan EXCLUDES
+    # deferred-instruction args (prompt/code): a keyword in a SCHEDULED task's
+    # prompt (e.g. « supprimer … » in scheduler_create_task) must not gate the
+    # harmless act of CREATING it — the real action is HITL-gated when it runs.
+    # (Franck, scheduler_create_task anomaly, 2026-06-04.) action_desc stays
+    # full for the HITL prompt + logs.
     sf = SecurityFilter()
-    needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(action_desc)
+    _crit_args = {k: v for k, v in display_args.items() if k not in INSTRUCTION_ARG_KEYS}
+    _crit_desc = f"Outil: {tool_name} | Arguments: {json.dumps(_crit_args, ensure_ascii=False)}"
+    needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
 
     # ── Self-mail auto-approve ────────────────────────────────────────
     # Sending an email to the calling user's own address carries near-zero
