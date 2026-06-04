@@ -58,6 +58,7 @@ async def create_mission(
     budget_iterations: int = 30,
     tick_interval_seconds: Optional[int] = None,
     deadline: Optional[datetime] = None,
+    autonomous: bool = False,
 ) -> Mission:
     """Create a new mission in `draft` status."""
     if source not in MISSION_SOURCES:
@@ -75,6 +76,7 @@ async def create_mission(
         budget_iterations=budget_iterations,
         tick_interval_seconds=tick_interval_seconds,
         deadline=deadline,
+        autonomous=autonomous,
     )
     async with async_session() as db:
         db.add(mission)

@@ -107,6 +107,13 @@ class Mission(Base):
     tick_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     next_tick_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
+    # ── Autonomous mode (2026-06-04) ──
+    # When True the loop auto-approves HITL for NON-floor tools so an
+    # unattended (e.g. 3 a.m.) run doesn't stall waiting for a confirmation
+    # nobody answers. Floor tools (irreversible / external / security —
+    # security_filter.NEVER_AUTONOMOUS_TOOLS) are still NOT auto-approved.
+    autonomous: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # ── Final state ──
     final_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

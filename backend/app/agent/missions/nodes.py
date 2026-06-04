@@ -305,6 +305,42 @@ async def dispatch_tool(
         except Exception as _pref_exc:
             logger.debug("Mission HITL preference lookup failed: %s", _pref_exc)
 
+    # ── Autonomous mission auto-approval (plancher de sécurité, 2026-06-04) ──
+    # Checked LAST (after explicit user pre-approvals above). If the mission
+    # is flagged autonomous, auto-approve HITL for NON-floor tools so an
+    # unattended 3 a.m. run doesn't stall. Floor tools
+    # (security_filter.NEVER_AUTONOMOUS_TOOLS — irreversible / external /
+    # security) are NOT auto-approved: they're SKIPPED immediately (no 5-min
+    # timeout wait), the step fails, and the mission keeps going. The flag is
+    # fetched here (not threaded through the graph) — one cheap query, only
+    # when a HITL-gated tool is about to prompt.
+    if needs_hitl and mission_id:
+        try:
+            from app.services import mission_service
+            _m = await mission_service.get_mission(mission_id)
+            _autonomous = bool(getattr(_m, "autonomous", False))
+        except Exception as _auto_exc:
+            logger.debug("Mission autonomous-flag lookup failed: %s", _auto_exc)
+            _autonomous = False
+        if _autonomous:
+            from app.services.security_filter import NEVER_AUTONOMOUS_TOOLS
+            if tool_name in NEVER_AUTONOMOUS_TOOLS:
+                logger.info(
+                    "Mission autonomous: floor tool %s skipped (manual approval required)",
+                    tool_name,
+                )
+                return (
+                    f"Action « {tool_name} » non exécutée : en mode autonome, cette "
+                    "action sensible (irréversible / externe / sécurité) n'est PAS "
+                    "auto-approuvée. Lance-la via un Tick supervisé, ou pré-autorise "
+                    "l'outil (« Toujours autoriser »).",
+                    False,
+                )
+            logger.info(
+                "Mission HITL auto-approved (autonomous, non-floor) tool=%s", tool_name,
+            )
+            needs_hitl = False
+
     if needs_hitl:
         # Replace the technical action_desc with a human-readable version
         # that includes pre-count, the user's original request, and any

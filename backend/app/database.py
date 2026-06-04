@@ -121,6 +121,9 @@ async def init_db():
             # Existing rows backfill to 'markdown_playbook' / '{}' via DEFAULT.
             ("learned_skills", "content_format", "VARCHAR(20) NOT NULL DEFAULT 'markdown_playbook'"),
             ("learned_skills", "validation_report_json", "TEXT NOT NULL DEFAULT '{}'"),
+            # Mission autonomous mode (2026-06-04) — auto-approve non-floor HITL
+            # for unattended runs. Existing missions stay non-autonomous (0).
+            ("missions", "autonomous", "BOOLEAN NOT NULL DEFAULT 0"),
         ]
         for _table, _col, _ddl in _safe_columns:
             try:
