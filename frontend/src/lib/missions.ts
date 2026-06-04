@@ -74,6 +74,9 @@ export interface CreateMissionBody {
   deadline?: string | null;
 }
 
+/** Editable subset for PATCH — all optional, only sent fields change. */
+export type UpdateMissionBody = Partial<CreateMissionBody>;
+
 async function call<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const res = await authFetch(`${API_URL}${path}`, {
     ...opts,
@@ -110,6 +113,10 @@ export const missionsApi = {
   get: (id: string): Promise<Mission> => call(`/api/missions/${id}`),
   create: (body: CreateMissionBody): Promise<Mission> =>
     call("/api/missions", { method: "POST", body: JSON.stringify(body) }),
+  /** Edit a mission's params (goal, budgets, schedule) in place instead of
+   *  delete+recreate. Backend rejects edits while running/planning (409). */
+  update: (id: string, body: UpdateMissionBody): Promise<Mission> =>
+    call(`/api/missions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   steps: (id: string): Promise<MissionStep[]> => call(`/api/missions/${id}/steps`),
   plan: (id: string): Promise<MissionPlan | null> => call(`/api/missions/${id}/plan`),
   start: (id: string): Promise<Mission> => call(`/api/missions/${id}/start`, { method: "POST" }),
