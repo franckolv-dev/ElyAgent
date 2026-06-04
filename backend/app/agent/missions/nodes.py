@@ -146,6 +146,7 @@ async def dispatch_tool(
     tool_call_id: str,
     user_id: str,
     user_request: str = "",
+    mission_id: str = "",
 ) -> tuple[str, bool]:
     """Run a single tool call with HITL + vault + credential injection.
 
@@ -276,6 +277,34 @@ async def dispatch_tool(
         except Exception as _exc:
             logger.debug("Mission self-mail check failed: %s", _exc)
 
+    # ── Task-scoped approval (allow_for_task) ─────────────────────────
+    # Once approved for THIS mission, the same tool stops prompting for the
+    # rest of the run. Bypasses even LOCKED tools (explicit mission-scoped
+    # consent). Mission_id is the task key.
+    if needs_hitl and mission_id:
+        try:
+            from app.services.task_approvals import is_tool_approved_for_task
+            if is_tool_approved_for_task(mission_id, tool_name):
+                logger.info("Mission HITL skipped (task-scoped allow) tool=%s", tool_name)
+                needs_hitl = False
+        except Exception as _ta_exc:
+            logger.debug("Mission task-approval lookup failed: %s", _ta_exc)
+    # ── Persistent "Toujours autoriser" preference ────────────────────
+    # CRUCIAL for unattended missions: clicking it once (e.g. on a manual
+    # tick while you're awake) lets ALL future scheduled runs of this tool
+    # skip HITL — so a 3 a.m. run doesn't stall on a prompt nobody answers.
+    # LOCKED_HITL_TOOLS still always require HITL (enforced inside the call).
+    # Until now this check was MISSING from the mission path (it existed in
+    # chat's tool_node) — so missions ignored the preference entirely.
+    if needs_hitl and user_id:
+        try:
+            from app.services.hitl_preferences import user_requires_hitl
+            if not await user_requires_hitl(user_id, tool_name):
+                logger.info("Mission HITL skipped (user preference) tool=%s", tool_name)
+                needs_hitl = False
+        except Exception as _pref_exc:
+            logger.debug("Mission HITL preference lookup failed: %s", _pref_exc)
+
     if needs_hitl:
         # Replace the technical action_desc with a human-readable version
         # that includes pre-count, the user's original request, and any
@@ -301,7 +330,28 @@ async def dispatch_tool(
                 rule += f" — Raison: {reason}"
             await get_memory_manager().store_constraint(rule, user_id)
             return "Action interdite définitivement et règle de sécurité enregistrée.", False
-        if decision != "allow":
+        elif decision == "allow_always":
+            # Persist the preference so future runs (incl. unattended
+            # scheduled ones) skip HITL for this tool — then execute now.
+            # (Before this fix the mission path treated allow_always as a
+            # refusal — bug reported 2026-06-04.)
+            try:
+                from app.services.hitl_preferences import set_user_preference
+                await set_user_preference(user_id, tool_name, requires_confirmation=False)
+            except Exception as _save_exc:
+                logger.debug("Mission: could not save HITL preference: %s", _save_exc)
+            # fall through to execute
+        elif decision == "allow_for_task":
+            # Approve this tool for the rest of THIS mission — then execute.
+            # (Was also wrongly treated as a refusal before this fix.)
+            try:
+                from app.services.task_approvals import approve_tool_for_task
+                if mission_id:
+                    approve_tool_for_task(mission_id, tool_name)
+            except Exception as _ta_exc:
+                logger.debug("Mission: could not register task approval: %s", _ta_exc)
+            # fall through to execute
+        elif decision != "allow":
             return "Action refusée par l'utilisateur pour cette occurrence.", False
 
     # Actually run the tool
@@ -915,6 +965,7 @@ async def act_node(state: MissionState) -> dict:
     output, ok = await dispatch_tool(
         tool_name, tool_args, tool_id, user_id,
         user_request=state.get("goal", ""),
+        mission_id=mission_id,
     )
 
     # Persist audit row
