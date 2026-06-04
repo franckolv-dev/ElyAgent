@@ -81,6 +81,10 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # Gmail — read + send + reply (the 80% of email work)
     "gmail_list_emails",
     "gmail_read_email",
+    # Download a message's attachments → Drive folder (binary, server-side).
+    # The only path to "save invoice PDFs to Drive" — drive_create_file is
+    # text-only and gmail_read_email can't fetch files (gap found 2026-06-04).
+    "gmail_save_attachments_to_drive",
     "gmail_send_email",
     "gmail_send_with_local_attachment",
     "gmail_reply_email",

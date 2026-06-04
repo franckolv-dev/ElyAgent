@@ -21,6 +21,7 @@ from app.skills.registry import get_skill_registry
 from app.agent.tools.gmail_tool import (
     gmail_list_emails,
     gmail_read_email,
+    gmail_save_attachments_to_drive,
     gmail_send_email,
     gmail_list_labels,
     gmail_create_label,
@@ -55,6 +56,7 @@ get_skill_registry().register(Skill(
     tools=[
         gmail_list_emails,
         gmail_read_email,
+        gmail_save_attachments_to_drive,
         gmail_send_email,
         gmail_reply_email,
         gmail_send_with_attachment,
