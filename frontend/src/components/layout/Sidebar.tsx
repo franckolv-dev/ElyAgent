@@ -15,8 +15,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
-  Download, X, ChevronDown, Swords, BookOpen, Target, Brain, Compass,
-  Sparkles, ClipboardCheck,
+  Download, X, ChevronDown, BookOpen, Target, Brain, Compass,
+  Sparkles, ClipboardCheck, type LucideIcon,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -30,23 +30,56 @@ interface RecentConv {
 
 const PAGE_SIZE = 50;
 
-const BASE_NAV = [
-  { href: "/chat",       labelKey: "navChat",       icon: MessageSquare  },
-  { href: "/missions",   labelKey: "navMissions",   icon: Target         },
-  { href: "/knowledge",  labelKey: "navKnowledge",  icon: BookOpen       },
-  { href: "/arena",      labelKey: "navArena",      icon: Swords         },
-  { href: "/dashboard",  labelKey: "navDashboard",  icon: LayoutDashboard },
-  { href: "/me/learning",labelKey: "navLearning",   icon: Brain          },
-  { href: "/me/learning/skills", labelKey: "navLearningSkills", icon: Sparkles },
-  { href: "/me/state",   labelKey: "navUserState",  icon: Compass        },
-  { href: "/settings",   labelKey: "navSettings",   icon: Settings       },
+type NavLeaf = { href: string; labelKey: string; icon: LucideIcon; admin?: boolean };
+type NavGroup = { groupKey: string; labelKey: string; icon: LucideIcon; admin?: boolean; children: NavLeaf[] };
+type NavEntry = NavLeaf | NavGroup;
+
+const isGroup = (e: NavEntry): e is NavGroup => "children" in e;
+
+// Sidebar nav (refonte 2026-06-04) — flat top-level + collapsible accordion
+// groups, so the list stays short and "Admin" is reachable without scrolling.
+// Arena dropped (unused). Candidates moved to /me/learning/* (was 404ing under
+// the backend-owned /admin/learning/* namespace — see that page's header).
+const NAV: NavEntry[] = [
+  { href: "/chat",      labelKey: "navChat",      icon: MessageSquare },
+  { href: "/missions",  labelKey: "navMissions",  icon: Target },
+  { href: "/knowledge", labelKey: "navKnowledge", icon: BookOpen },
+  {
+    groupKey: "skills", labelKey: "navGroupSkills", icon: Sparkles,
+    children: [
+      { href: "/me/learning",            labelKey: "navLearning",           icon: Brain },
+      { href: "/me/learning/skills",     labelKey: "navLearningSkills",     icon: Sparkles },
+      { href: "/me/learning/candidates", labelKey: "navLearningCandidates", icon: ClipboardCheck, admin: true },
+    ],
+  },
+  {
+    groupKey: "analysis", labelKey: "navGroupAnalysis", icon: LayoutDashboard,
+    children: [
+      { href: "/dashboard", labelKey: "navDashboard",  icon: LayoutDashboard },
+      { href: "/me/state",  labelKey: "navUserState",  icon: Compass },
+    ],
+  },
+  { href: "/settings", labelKey: "navSettings", icon: Settings },
+  {
+    groupKey: "admin", labelKey: "navGroupAdmin", icon: Shield, admin: true,
+    children: [
+      { href: "/security", labelKey: "navSecurity", icon: ShieldCheck },
+      { href: "/admin",    labelKey: "navAdmin",    icon: Shield },
+    ],
+  },
 ];
 
-const ADMIN_NAV = [
-  { href: "/security",  labelKey: "navSecurity",  icon: ShieldCheck },
-  { href: "/admin",     labelKey: "navAdmin",     icon: Shield      },
-  { href: "/admin/learning/candidates", labelKey: "navLearningCandidates", icon: ClipboardCheck },
-];
+// Longest-prefix match so nested routes (e.g. /me/learning vs
+// /me/learning/skills) highlight exactly one item.
+function activeHrefFor(pathname: string, hrefs: string[]): string | null {
+  let best: string | null = null;
+  for (const h of hrefs) {
+    if (pathname === h || pathname.startsWith(h + "/") || pathname.startsWith(h + "?")) {
+      if (best === null || h.length > best.length) best = h;
+    }
+  }
+  return best;
+}
 
 export function Sidebar() {
   const t        = useTranslations("sidebar");
@@ -88,7 +121,11 @@ export function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
-  const navItems = admin ? [...BASE_NAV, ...ADMIN_NAV] : BASE_NAV;
+  // Accordion open-state: undefined = follow the active child (auto-open the
+  // group you're currently in); true/false = explicit user toggle.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const allHrefs = NAV.flatMap((e) => (isGroup(e) ? e.children.map((c) => c.href) : [e.href]));
+  const activeHref = activeHrefFor(pathname, allHrefs);
 
   // ── Conversations fetching ──
   const fetchConversations = useCallback(async (opts: { offset?: number; query?: string; reset?: boolean } = {}) => {
@@ -204,21 +241,68 @@ export function Sidebar() {
         aria-hidden="true"
       />
       <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
-      {/* Main nav */}
+      {/* Main nav — flat items + collapsible accordion groups */}
       <nav className="nav">
-        {navItems.map(({ href, labelKey, icon: Icon }) => {
-          const isActive =
-            pathname === href ||
-            pathname.startsWith(href + "/") ||
-            pathname.startsWith(href + "?");
+        {NAV.map((entry) => {
+          // ── Accordion group ──
+          if (isGroup(entry)) {
+            if (entry.admin && !admin) return null;
+            const children = entry.children.filter((c) => !c.admin || admin);
+            if (children.length === 0) return null;
+            const hasActive = children.some((c) => c.href === activeHref);
+            const open = openGroups[entry.groupKey] ?? hasActive;
+            const GIcon = entry.icon;
+            return (
+              <div key={entry.groupKey}>
+                <button
+                  type="button"
+                  className={`nav-item ${hasActive ? "active" : ""}`}
+                  style={{ width: "100%" }}
+                  aria-expanded={open}
+                  onClick={() =>
+                    setOpenGroups((s) => ({ ...s, [entry.groupKey]: !open }))
+                  }
+                >
+                  <span className="nav-icon"><GIcon size={15} /></span>
+                  <span style={{ flex: 1, textAlign: "left" }}>{t(entry.labelKey)}</span>
+                  <ChevronDown
+                    size={13}
+                    style={{
+                      transform: open ? "rotate(180deg)" : "none",
+                      transition: "transform .15s",
+                      opacity: 0.6,
+                    }}
+                  />
+                </button>
+                {open &&
+                  children.map((c) => {
+                    const CIcon = c.icon;
+                    return (
+                      <Link
+                        key={c.href}
+                        href={c.href}
+                        className={`nav-item ${c.href === activeHref ? "active" : ""}`}
+                        style={{ paddingLeft: 30 }}
+                      >
+                        <span className="nav-icon"><CIcon size={14} /></span>
+                        <span>{t(c.labelKey)}</span>
+                      </Link>
+                    );
+                  })}
+              </div>
+            );
+          }
+          // ── Flat leaf ──
+          if (entry.admin && !admin) return null;
+          const Icon = entry.icon;
           return (
             <Link
-              key={href}
-              href={href}
-              className={`nav-item ${isActive ? "active" : ""}`}
+              key={entry.href}
+              href={entry.href}
+              className={`nav-item ${entry.href === activeHref ? "active" : ""}`}
             >
               <span className="nav-icon"><Icon size={15} /></span>
-              <span>{t(labelKey)}</span>
+              <span>{t(entry.labelKey)}</span>
             </Link>
           );
         })}
