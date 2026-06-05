@@ -63,6 +63,12 @@ async def tool_node(state: AgentState) -> dict:
     results = []
 
     tool_map = {t.name: t for t in get_skill_registry().all_tools}
+    # Sprint 4b V2 J7b.2 — make the user's promoted python_tool skills
+    # dispatchable. They're bound in agent_node but aren't in the global
+    # registry (per-user, by design), so without this the invoke would miss
+    # them. Merged WITHOUT shadowing a builtin. No-op when the flag is off.
+    from app.services.learning.learned_tools_runtime import merge_into_tool_map
+    await merge_into_tool_map(tool_map, user_id)
     sf = SecurityFilter()
     hitl = get_hitl_manager()
     memory = get_memory_manager()

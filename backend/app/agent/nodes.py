@@ -700,6 +700,18 @@ def create_agent_node():
                             _tier_key, _before_tc - len(_filtered_tools),
                         )
 
+                # Sprint 4b V2 J7b.2 — bind the user's promoted python_tool
+                # skills alongside the built-in toolset. They live per-user in
+                # the DB (not the global registry), so this is where they enter
+                # the LLM's view. No-op unless LEARNED_PYTHON_TOOLS_ENABLED is on
+                # (loader returns []); a learned tool never shadows a builtin.
+                # Added after all builtin filtering so it survives untouched
+                # and is reused by the fallback re-binds below (same list).
+                from app.services.learning.learned_tools_runtime import (
+                    append_learned_tools,
+                )
+                _filtered_tools = await append_learned_tools(_filtered_tools, user_id)
+
                 # Mini-chantier A — apply parallel_tool_calls policy by
                 # model family. Permissive models (Qwen, Mistral…) and OpenAI
                 # family invent downstream args (e.g. fake local_path) when
