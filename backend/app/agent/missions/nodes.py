@@ -168,6 +168,11 @@ async def dispatch_tool(
     from app.services.memory_manager import get_memory_manager
 
     tool_map = {t.name: t for t in get_skill_registry().all_tools}
+    # Sprint 4b V2 J7b.2 — make the user's promoted python_tool skills
+    # dispatchable in missions too (parity with chat tool_node). No-op when
+    # the flag is off; never shadows a builtin.
+    from app.services.learning.learned_tools_runtime import merge_into_tool_map
+    await merge_into_tool_map(tool_map, user_id)
     tool = tool_map.get(tool_name)
     if not tool:
         return f"Outil inconnu : {tool_name!r}", False
@@ -610,7 +615,7 @@ def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str,
     return candidates[:15] if candidates else all_tools[:15]
 
 
-def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
+async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
     """Return (primary_llm_bound, [(label, fallback_llm_bound)], raw_tools).
 
     `primary` is the local model (xLAM-2-8B or Gemma 4 21B REAP) — fast
@@ -632,6 +637,11 @@ def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_ste
 
     all_tools = get_skill_registry().all_tools
     tools = _filter_tools_for_step(all_tools, tool_hint, goal, current_step_desc)
+    # Sprint 4b V2 J7b.2 — append the user's promoted python_tool skills so
+    # missions see them too (parity with the chat path). No-op unless
+    # LEARNED_PYTHON_TOOLS_ENABLED is on; never shadows a builtin.
+    from app.services.learning.learned_tools_runtime import append_learned_tools
+    tools = await append_learned_tools(tools, user_id)
     logger.info("act: filtered %d → %d tools (hint=%s, step=%r)",
                 len(all_tools), len(tools), tool_hint, current_step_desc[:60])
 
@@ -922,10 +932,11 @@ async def act_node(state: MissionState) -> dict:
     # Build prompt and invoke primary tool-bound LLM, with fallback.
     # Tool list is pre-filtered to ~15 tools max (smaller models choke on
     # 76 simultaneous tool schemas — payload too big for LM Studio etc.)
-    primary_llm, fallbacks, _tools = _get_actor_llms(
+    primary_llm, fallbacks, _tools = await _get_actor_llms(
         tool_hint=current_tool_hint,
         goal=state.get("goal", ""),
         current_step_desc=current_step_desc,
+        user_id=user_id,
     )
 
     # Load outputs of previous successful tool invocations so the LLM can

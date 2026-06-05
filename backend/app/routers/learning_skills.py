@@ -50,7 +50,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
 from app.database import get_db
-from app.models.learned_skill import LearnedSkill, SkillStatus
+from app.models.learned_skill import (
+    LearnedSkill,
+    SkillContentFormat,
+    SkillStatus,
+)
 from app.models.user import User
 from app.services.learning.skill_iteration import MAX_ITERATIONS
 from app.services.learning.skill_orchestrator import run_full_loop
@@ -246,6 +250,19 @@ async def _transition_status(
     return skill
 
 
+def _invalidate_python_tool_cache(skill: LearnedSkill) -> None:
+    """Sprint 4b V2 J7c — drop the per-user runtime cache after a status
+    change that alters the user's *active* python_tool set (promote = now
+    bindable, archive = no longer bindable). The cache never self-expires,
+    so without this an archived tool would stay bound until restart. No-op
+    for markdown playbooks (they don't go through the runtime loader).
+    """
+    if skill.content_format != SkillContentFormat.PYTHON_TOOL:
+        return
+    from app.services.learning import learned_tools_runtime
+    learned_tools_runtime.invalidate(skill.user_id)
+
+
 @router.post("/skills/{skill_id}/promote", response_model=CandidateOut)
 async def promote_skill(
     skill_id: str,
@@ -266,6 +283,7 @@ async def promote_skill(
     await _transition_status(db, skill, SkillStatus.ACTIVE, admin_id=admin.id)
     await db.commit()
     await db.refresh(skill)
+    _invalidate_python_tool_cache(skill)
     logger.info(
         "skill_promoted: id=%s name=%s by_admin=%s",
         skill.id, skill.name, admin.id[:8] if admin.id else "?",
@@ -291,6 +309,7 @@ async def archive_skill(
     await _transition_status(db, skill, SkillStatus.ARCHIVED, admin_id=admin.id)
     await db.commit()
     await db.refresh(skill)
+    _invalidate_python_tool_cache(skill)
     logger.info(
         "skill_archived: id=%s name=%s by_admin=%s",
         skill.id, skill.name, admin.id[:8] if admin.id else "?",

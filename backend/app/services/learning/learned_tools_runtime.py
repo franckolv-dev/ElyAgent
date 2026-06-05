@@ -137,3 +137,35 @@ def invalidate(user_id: str | None = None) -> None:
             _cache.clear()
         else:
             _cache.pop(user_id, None)
+
+
+# ── J7b.2 wiring helpers ─────────────────────────────────────────────────────
+# Two seams, shared by BOTH execution paths (chat: agent_node + tool_node ;
+# mission: _get_actor_llms + dispatch_tool) so the wiring stays in sync.
+
+
+async def append_learned_tools(tools: list[Any], user_id: str) -> list[Any]:
+    """Return ``tools`` with the user's active python_tool skills appended.
+
+    Used at BIND time. A learned tool NEVER shadows a builtin: a tool already
+    present with the same name wins (defence in depth — registration_gate
+    already rejects name collisions at promotion). Returns a list copy of
+    ``tools`` unchanged when the feature flag is off (no learned tools).
+    """
+    learned = await load_active_python_tools(user_id)
+    if not learned:
+        return list(tools)
+    have = {t.name for t in tools}
+    return list(tools) + [t for t in learned if t.name not in have]
+
+
+async def merge_into_tool_map(tool_map: dict[str, Any], user_id: str) -> None:
+    """Add the user's active python_tool skills to a dispatch ``tool_map``
+    IN PLACE, without shadowing a builtin (``setdefault`` → registry wins).
+
+    Used at DISPATCH time. python_tools aren't in the global skill registry
+    (per-user, by design), so tool_node / dispatch_tool wouldn't find them at
+    invoke without this. No-op when the feature flag is off.
+    """
+    for t in await load_active_python_tools(user_id):
+        tool_map.setdefault(t.name, t)
