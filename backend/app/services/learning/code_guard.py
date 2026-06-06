@@ -74,6 +74,10 @@ ALLOWED_IMPORT_EXACT: frozenset[str] = frozenset({
     "langchain_core.tools",
     "app.skills.decorator",
     "app.skills.base",
+    # Sprint 4b V2 composition (N1): the bridge a generated tool uses to call
+    # other ELY tools. `call_tool` itself refuses critical/HITL tools, so this
+    # import grants only the SAFE composition surface — defence in depth.
+    "app.services.learning.learned_tool_dispatch",
 })
 
 # Builtins that are escape hatches or perform I/O. Flagged when called as a

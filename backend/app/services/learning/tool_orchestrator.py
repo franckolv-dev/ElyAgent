@@ -33,6 +33,7 @@ sandbox's network safety relies on guard-passed source (J0 §3.2).
 """
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import dataclass, field
 
@@ -85,6 +86,22 @@ class ToolValidationReport:
 STAGE_ORDER = ("ast", "ruff", "mypy", "smoke", "registration")
 
 
+def _composes_tools(source: str) -> bool:
+    """True if ``source`` calls ``call_tool(...)`` — i.e. it composes other
+    ELY tools (vs a pure-computation tool). Used to skip the smoke stage,
+    which can't reach the real tools in the sandbox."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return "call_tool" in source
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "call_tool"
+        for node in ast.walk(tree)
+    )
+
+
 def validate_tool_source(
     source: str,
     *,
@@ -126,8 +143,16 @@ def validate_tool_source(
     if not mypy.ok:
         return _finish("mypy")
 
-    # [4] smoke (dynamic) — optional when no sample input is available.
-    if run_smoke:
+    # [4] smoke (dynamic) — optional when no sample input is available, and
+    # SKIPPED for composition tools: the sandbox has no access to the real
+    # ELY tools call_tool dispatches to, so a stubbed run can't validate the
+    # composition logic. Composition tools are exercised live (the 4 static
+    # stages + registration + HITL review + the runtime path cover them).
+    if _composes_tools(source):
+        stages.append(
+            StageResult("smoke", True, "skipped: composition tool (validated live, not in sandbox)")
+        )
+    elif run_smoke:
         smoke = smoke_run(source, kwargs=smoke_kwargs or {})
         stages.append(
             StageResult("smoke", smoke.ok, f"{smoke.outcome}: {smoke.detail}".strip(": "))

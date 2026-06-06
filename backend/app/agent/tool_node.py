@@ -114,6 +114,15 @@ async def tool_node(state: AgentState) -> dict:
     except Exception as _orch_ctx_exc:  # noqa: BLE001
         logger.debug("orchestrate ContextVar set skipped: %s", _orch_ctx_exc)
 
+    # Sprint 4b V2 (composition) — expose the current user to call_tool so a
+    # composition python_tool can re-inject Google creds / user_id when it
+    # invokes another tool. Set once for the turn (ContextVars are per-task).
+    try:
+        from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
+        LEARNED_TOOL_USER_ID.set(user_id)
+    except Exception as _lt_ctx_exc:  # noqa: BLE001
+        logger.debug("learned-tool ContextVar set skipped: %s", _lt_ctx_exc)
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
         # Deanonymize tool args BEFORE any other processing so HITL preview,

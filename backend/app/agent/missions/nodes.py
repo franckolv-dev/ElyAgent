@@ -173,6 +173,13 @@ async def dispatch_tool(
     # the flag is off; never shadows a builtin.
     from app.services.learning.learned_tools_runtime import merge_into_tool_map
     await merge_into_tool_map(tool_map, user_id)
+    # Sprint 4b V2 (composition) — expose the user to call_tool so a
+    # composition python_tool can re-inject creds/user_id when composing.
+    try:
+        from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
+        LEARNED_TOOL_USER_ID.set(user_id)
+    except Exception as _lt_ctx_exc:  # noqa: BLE001
+        logger.debug("learned-tool ContextVar set skipped: %s", _lt_ctx_exc)
     tool = tool_map.get(tool_name)
     if not tool:
         return f"Outil inconnu : {tool_name!r}", False
