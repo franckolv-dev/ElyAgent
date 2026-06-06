@@ -15,6 +15,10 @@ Admin-only (`require_admin`) endpoints :
   - `POST   /admin/learning/skill-creator/run`         (3.c)
         Trigger one full batch of create → eval → iterate for a user.
 
+  - `POST   /admin/learning/tool-creator/run`          (Sprint 4b V2)
+        Trigger one python_tool generate → validate (5 stages) → persist
+        loop. The V2 analogue of skill-creator/run (Markdown playbooks).
+
   - `GET    /admin/learning/skills/candidates`         (3.c)
         List candidate skills, filterable by status / user.
 
@@ -58,6 +62,8 @@ from app.models.learned_skill import (
 from app.models.user import User
 from app.services.learning.skill_iteration import MAX_ITERATIONS
 from app.services.learning.skill_orchestrator import run_full_loop
+from app.services.learning.learned_tools_runtime import python_tools_enabled
+from app.services.learning.tool_creator import generate_and_persist_tool
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +97,44 @@ class SkillCreatorRunRequest(BaseModel):
         description=(
             "Cap on patch attempts per candidate before marking it "
             "rejected. Default = MAX_ITERATIONS (5)."
+        ),
+    )
+
+
+class ToolCreatorRunRequest(BaseModel):
+    """Sprint 4b V2 — trigger one python_tool generation loop."""
+
+    task_description: str = Field(
+        ...,
+        min_length=8,
+        description=(
+            "Plain-language description of the tool to generate. Be explicit "
+            "about the signature when it matters, e.g. 'compute the n-th "
+            "Fibonacci number — fibonacci(n: int) -> int'."
+        ),
+    )
+    user_id: str = Field(
+        ...,
+        description=(
+            "User the generated python_tool is scoped to "
+            "(every LearnedSkill is user-scoped)."
+        ),
+    )
+    smoke_kwargs: Optional[dict[str, Any]] = Field(
+        None,
+        description=(
+            "Optional sample kwargs to exercise the function in the smoke "
+            "sandbox stage (e.g. {\"n\": 10}). Omit to skip smoke — the other "
+            "4 validation stages still run."
+        ),
+    )
+    max_iterations: int = Field(
+        3,
+        ge=1,
+        le=5,
+        description=(
+            "Cap on generate→validate retries; the failing stage's error is "
+            "fed back into the next generation. Default 3."
         ),
     )
 
@@ -152,6 +196,41 @@ async def run_skill_creator(
             "skill_creator run crashed for user_id=%s", body.user_id,
         )
         raise HTTPException(500, f"skill_creator orchestrator crashed: {exc}")
+    return summary
+
+
+@router.post("/tool-creator/run")
+async def run_tool_creator(
+    body: ToolCreatorRunRequest,
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Sprint 4b V2 — trigger one python_tool generate→validate→persist loop.
+
+    The V2 analogue of `/skill-creator/run` (which produces V1 Markdown
+    playbooks). Admin-only. Calls the tier-S LLM (`LLM_TIER_S_CHAIN`) to
+    write a PURE python_tool, runs the 5-stage validation pipeline
+    (ast → ruff → mypy → smoke → registration), and on success persists a
+    `candidate` LearnedSkill (`content_format=python_tool`) for review on the
+    candidates page and HITL promotion.
+
+    NEVER auto-activates — promotion stays a human gate, and the tool only
+    becomes bindable once promoted AND `LEARNED_PYTHON_TOOLS_ENABLED` is on.
+    The response echoes `python_tools_enabled` so the caller knows whether a
+    promoted tool would actually go live.
+    """
+    try:
+        summary = await generate_and_persist_tool(
+            task_description=body.task_description,
+            user_id=body.user_id,
+            smoke_kwargs=body.smoke_kwargs,
+            max_iterations=body.max_iterations,
+        )
+    except Exception as exc:
+        # generate_and_persist_tool is built to never raise; this is
+        # belt-and-braces so a surprise still yields a clean 500.
+        logger.exception("tool_creator run crashed for user_id=%s", body.user_id)
+        raise HTTPException(500, f"tool_creator orchestrator crashed: {exc}")
+    summary["python_tools_enabled"] = python_tools_enabled()
     return summary
 
 
