@@ -54,14 +54,38 @@ new reusable Python `@tool` that packages that workflow into one call.
 V2 SCOPE — read carefully, the validator WILL reject violations
 ================================================================
 The tool you write is COMPOSITION + PURE COMPUTATION only:
-  - It MAY call other already-registered ELY tools (listed below) and
-    combine/transform their results.
+  - It MAY call other already-registered ELY tools — ONLY those in the
+    AVAILABLE TOOLS list — via the provided `call_tool` helper (see
+    "Composing other tools" below), and combine/transform their results.
   - It MAY use pure-compute stdlib: math, json, re, datetime, statistics,
     itertools, collections, decimal, functools, string, typing.
   - It MUST NOT do any I/O of its own: NO os, sys, subprocess, socket,
     shutil, pathlib, urllib, requests, http, open(), eval/exec/compile,
     __import__, getattr/setattr, or dunder attribute access. (New external
     integrations are a future capability behind a sandbox — not now.)
+
+Composing other tools
+---------------------
+To call another ELY tool, import the helper and make your function ASYNC:
+
+    from app.services.learning.learned_tool_dispatch import call_tool
+
+    @tool
+    async def my_tool(query: str) -> int:
+        \"\"\"…\"\"\"
+        emails = await call_tool("gmail_list_emails", {"query": query})
+        return len(emails)
+
+Rules:
+  - `call_tool(name, args)` is the ONLY way to reach another tool. NEVER
+    import a tool function directly, and never invent a tool name.
+  - Compose ONLY tools from the AVAILABLE TOOLS list — it already excludes
+    destructive / sensitive tools (delete, send, share, ssh…), which CANNOT
+    be composed and will raise at runtime.
+  - A tool that uses `call_tool` MUST be `async def` and `await` every call.
+  - A PURE computation tool (no `call_tool`) stays a normal sync `def`.
+  - You don't know each tool's exact argument names — pass the obvious ones;
+    if a call is wrong, the validation feedback tells you what to fix.
 
 Output contract
 ---------------
@@ -73,6 +97,7 @@ from __future__ import annotations
 
 # allowed imports only (see scope above) + the scaffolding:
 from langchain_core.tools import tool
+# from app.services.learning.learned_tool_dispatch import call_tool  # only if you compose tools
 # from typing import Annotated         # if you need injected args
 # from langchain_core.tools import InjectedToolArg
 
@@ -105,6 +130,8 @@ Hard requirements (the validator checks every one)
 - A non-empty docstring describing WHEN to call the tool.
 - Serialisable return value (str / int / list / dict of primitives).
 - Use ONLY tool names from the AVAILABLE TOOLS list — never invent one.
+- To call another tool: `async def` + `await call_tool("name", {...})` —
+  never call a tool function by its name directly.
 - Keep it small and single-purpose.
 """
 
@@ -186,13 +213,17 @@ def parse_tool_response(raw: str) -> str | None:
 
 
 def get_available_tool_names() -> list[str]:
-    """Names of tools both registered and in the default profile — the
-    composition surface offered to the generator. Best-effort: returns []
-    on any registry hiccup (the prompt copes)."""
+    """Names of tools both registered and in the default profile, RESTRICTED
+    to the composable (safe) subset — the composition surface offered to the
+    generator. Destructive / HITL-gated tools are excluded (call_tool refuses
+    them at runtime, so never invite them). Best-effort: returns [] on any
+    registry hiccup (the prompt copes)."""
     try:
+        from app.services.learning.learned_tool_dispatch import composable_tool_names
         from app.services.learning.skill_creator import _get_available_tool_names
 
-        return _get_available_tool_names()
+        composable = composable_tool_names()
+        return [n for n in _get_available_tool_names() if n in composable]
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("tool_generator: tool names lookup failed (%s)", exc)
         return []
