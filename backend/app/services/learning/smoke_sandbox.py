@@ -155,10 +155,23 @@ sys.modules["langchain_core.tools"] = _stub(
     "langchain_core.tools",
     {"tool": _identity, "InjectedToolArg": object, "StructuredTool": object},
 )
+async def _async_stub(*args, **kwargs):
+    # Composition tools do `await call_tool(...)`; the sandbox has no real
+    # registry, so this returns a benign placeholder. (The validation
+    # orchestrator SKIPS smoke for composition tools anyway — this just keeps
+    # a direct smoke_run from ImportError/NameError on the call_tool import.)
+    return {}
+
+
 sys.modules["app"] = types.ModuleType("app")
 sys.modules["app.skills"] = types.ModuleType("app.skills")
 sys.modules["app.skills.decorator"] = _stub("app.skills.decorator", {"register": _identity})
 sys.modules["app.skills.base"] = _stub("app.skills.base", {"Domain": _Domain()})
+sys.modules["app.services"] = types.ModuleType("app.services")
+sys.modules["app.services.learning"] = types.ModuleType("app.services.learning")
+sys.modules["app.services.learning.learned_tool_dispatch"] = _stub(
+    "app.services.learning.learned_tool_dispatch", {"call_tool": _async_stub}
+)
 
 with open("smoke_in.json", encoding="utf-8") as fh:
     spec = json.load(fh)
