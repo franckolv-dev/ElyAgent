@@ -13,7 +13,7 @@
 
 // Bump this on any sw.js change so browsers fetch the new file and the
 // activate handler purges the old caches.
-const VERSION = "ely-sw-v8";
+const VERSION = "ely-sw-v9";
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const SHELL_CACHE = `${VERSION}-shell`;
 
