@@ -330,6 +330,18 @@ async def tool_node(state: AgentState) -> dict:
                         "[tool_history_strip] %s: %d → %d chars",
                         tool_name, len(_raw_result), len(_safe_result),
                     )
+                # ── PII boundary (sovereignty) ────────────────────────────
+                # Anonymize PII the TOOL fetched (email bodies, contacts,
+                # calendar, drive content…) BEFORE it goes back to the LLM —
+                # which on tier B/C is a CLOUD model. The SecurityFilter only
+                # covered user-TYPED PII; without this, agent-fetched personal
+                # data reached the model in clear. Same per-conversation filter
+                # instance as chat.py, so: the model sees [EMAIL_5], the
+                # response is deanonymized for display there, and if the model
+                # passes [EMAIL_5] back as a tool arg it's deanonymized above
+                # (line ~130). Capped at the filter's 50k ReDoS guard.
+                if _vault_sf is not None:
+                    _safe_result = _vault_sf.anonymize(_safe_result)
                 results.append(_tool_result(_safe_result, tc_id))
             except Exception as exc:
                 logger.warning("Tool %s failed: %s", tool_name, exc)
@@ -347,7 +359,11 @@ async def tool_node(state: AgentState) -> dict:
                     ))
                 except Exception as _sig_exc:
                     logger.debug("tool error signal skipped: %s", _sig_exc)
-                results.append(_tool_result(f"Erreur d'exécution: {exc}", tc_id))
+                # Error strings can echo PII-bearing args → anonymize too.
+                _err = f"Erreur d'exécution: {exc}"
+                if _vault_sf is not None:
+                    _err = _vault_sf.anonymize(_err)
+                results.append(_tool_result(_err, tc_id))
         else:
             from langchain_core.messages import ToolMessage
             results.append(ToolMessage(

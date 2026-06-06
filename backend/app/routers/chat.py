@@ -353,7 +353,12 @@ async def websocket_chat(websocket: WebSocket):
                 if row.role == "user":
                     history_msgs.append(HumanMessage(content=sf.anonymize(row.content)))
                 elif row.role == "assistant":
-                    history_msgs.append(AIMessage(content=row.content))
+                    # Assistant messages are STORED deanonymized (real values,
+                    # for display) — so re-anonymize before feeding them back to
+                    # the LLM, exactly like the user history above. Without this,
+                    # any PII the assistant restated leaked to the model (cloud
+                    # incl.) on every subsequent turn.
+                    history_msgs.append(AIMessage(content=sf.anonymize(row.content)))
             # Keep only last _MAX_HISTORY messages to stay within context limits
             history_msgs = history_msgs[-_MAX_HISTORY:]
             history_msgs.append(HumanMessage(content=clean_content))
