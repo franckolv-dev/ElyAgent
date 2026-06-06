@@ -31,6 +31,7 @@ import remarkGfm from "remark-gfm";
 import {
   Sparkles, Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   CheckCircle2, XCircle, Archive, RotateCcw, ShieldCheck, CheckCircle,
+  Code2, FileText,
 } from "lucide-react";
 
 import { AdminGuard } from "@/components/layout/AuthGuard";
@@ -97,6 +98,77 @@ function actionsFor(status: string): ActionKind[] {
     default: // rejected — terminal
       return [];
   }
+}
+
+// Sprint 4b V2 J8 — a python_tool candidate is generated code, not a
+// playbook: render its source + the 5-stage validation report so the human
+// gate is informed, not a blind click.
+const PYTHON_FORMAT = "python_tool";
+
+type ValidationStage = { stage: string; ok: boolean; detail?: string };
+type ValidationReportShape = {
+  ok?: boolean;
+  failed_stage?: string | null;
+  stages?: ValidationStage[];
+};
+
+function parseValidationReport(raw: string): ValidationReportShape | null {
+  try {
+    const parsed = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// Per-stage verdicts from the validation pipeline (ast → ruff → mypy →
+// smoke → registration). Fail-fast, so a failed run lists only the stages
+// that actually ran. Empty / unparseable → a plain "no report" note.
+function ValidationReport({ raw }: { raw: string }) {
+  const t = useTranslations("learningCandidates");
+  const report = parseValidationReport(raw);
+  const stages = report?.stages ?? [];
+
+  if (!report || stages.length === 0) {
+    return (
+      <p className="mb-3 text-[11px] text-text-muted italic">
+        {t("noValidation")}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mb-3 rounded border border-border-dim bg-bg-secondary p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <ShieldCheck className="w-3.5 h-3.5 text-cyber-cyan" />
+        <span className="text-[11px] font-medium text-text-secondary">
+          {t("validationReport")}
+        </span>
+        <span
+          className={`ml-auto text-[10px] font-mono ${
+            report.ok ? "text-emerald-300" : "text-red-300"
+          }`}
+        >
+          {report.ok
+            ? t("validationPassed", { n: stages.length })
+            : t("validationFailed", { stage: report.failed_stage ?? "?" })}
+        </span>
+      </div>
+      <ul className="space-y-1">
+        {stages.map((s) => (
+          <li key={s.stage} className="flex items-start gap-2 text-[11px]">
+            {s.ok ? (
+              <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
+            ) : (
+              <XCircle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+            )}
+            <code className="font-mono text-text-secondary w-24 shrink-0">{s.stage}</code>
+            {s.detail && <span className="text-text-muted break-words">{s.detail}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export default function AdminLearningCandidatesPage() {
@@ -298,6 +370,7 @@ function CandidateRow({
 }) {
   const t = useTranslations("learningCandidates");
   const actions = actionsFor(skill.status);
+  const isPython = skill.content_format === PYTHON_FORMAT;
 
   return (
     <li className="px-4 py-3">
@@ -306,7 +379,7 @@ function CandidateRow({
         <button
           onClick={onToggleExpand}
           className="mt-0.5 text-text-muted hover:text-cyber-cyan transition-colors"
-          title={expanded ? t("collapse") : t("expand")}
+          title={expanded ? t("collapse") : t(isPython ? "expandCode" : "expand")}
         >
           {expanded ? (
             <ChevronDown className="w-4 h-4" />
@@ -321,6 +394,17 @@ function CandidateRow({
             <code className="text-sm font-medium text-text-primary truncate">
               {skill.name}
             </code>
+            <span
+              className={`px-1.5 py-0.5 text-[10px] font-mono rounded border inline-flex items-center gap-1 ${
+                isPython
+                  ? "bg-violet-500/10 text-violet-300 border-violet-500/30"
+                  : "bg-bg-primary text-text-muted border-border-dim"
+              }`}
+              title={isPython ? t("formatPythonHint") : t("formatPlaybookHint")}
+            >
+              {isPython ? <Code2 className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+              {isPython ? t("formatPython") : t("formatPlaybook")}
+            </span>
             {skill.last_eval_score !== null ? (
               <span className={`px-1.5 py-0.5 text-[10px] font-mono rounded border ${scoreBadgeClass(skill.last_eval_score)}`}>
                 {t("scoreLabel", { score: skill.last_eval_score })}
@@ -403,13 +487,25 @@ function CandidateRow({
         </div>
       </div>
 
-      {/* Expanded body — the playbook itself */}
+      {/* Expanded body — playbook Markdown, OR generated Python source +
+          validation report (Sprint 4b V2 J8). */}
       {expanded && (
-        <article className="mt-3 ml-7 bg-bg-primary border border-border-dim rounded p-4 prose prose-invert prose-sm max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {skill.content}
-          </ReactMarkdown>
-        </article>
+        isPython ? (
+          <div className="mt-3 ml-7">
+            <ValidationReport raw={skill.validation_report_json} />
+            <pre className="overflow-x-auto rounded bg-bg-primary border border-border-dim p-3 text-[11px] leading-relaxed">
+              <code className="font-mono text-text-secondary whitespace-pre">
+                {skill.content}
+              </code>
+            </pre>
+          </div>
+        ) : (
+          <article className="mt-3 ml-7 bg-bg-primary border border-border-dim rounded p-4 prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {skill.content}
+            </ReactMarkdown>
+          </article>
+        )
       )}
     </li>
   );

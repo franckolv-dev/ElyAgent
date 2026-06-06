@@ -635,8 +635,12 @@ export interface LearnedSkillCandidate {
   user_id: string;
   name: string;
   description: string;
-  /** Full Markdown playbook body, frontmatter stripped. */
+  /** Body to review: Markdown playbook OR generated Python source (see content_format). */
   content: string;
+  /** `markdown_playbook` (render as Markdown) or `python_tool` (render as code + validation report). */
+  content_format: string;
+  /** JSON report from the 5-stage validation pipeline. "{}" for markdown playbooks. */
+  validation_report_json: string;
   /** One of: `candidate`, `active`, `stale`, `archived`, `rejected`. */
   status: string;
   iteration_count: number;

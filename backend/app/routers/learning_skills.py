@@ -100,10 +100,19 @@ class CandidateOut(BaseModel):
     user_id: str
     name: str
     description: str
-    # Full Markdown playbook body. The admin reviews this before promoting —
-    # promoting on name+score alone would be flying blind. Capped server-side
-    # by the candidates `limit`, so payload size stays bounded.
+    # The body the admin reviews before promoting — promoting on name+score
+    # alone would be flying blind. For a markdown_playbook it's the Markdown
+    # body; for a python_tool (Sprint 4b V2) it's the generated Python source.
+    # Capped server-side by the candidates `limit`, so payload size stays bounded.
     content: str
+    # Sprint 4b V2 J8 — tells the review UI how to render `content`
+    # (markdown_playbook → ReactMarkdown ; python_tool → code + validation report).
+    content_format: str
+    # Sprint 4b V2 J8 — JSON report from the 5-stage validation pipeline
+    # (ast/ruff/mypy/smoke/registration). "{}" for markdown playbooks (they
+    # don't go through it). The UI surfaces per-stage verdicts so the human
+    # gate is informed, not a blind click.
+    validation_report_json: str
     status: str
     iteration_count: int
     last_eval_score: Optional[int]
@@ -190,6 +199,8 @@ async def list_candidates(
             name=r.name,
             description=r.description,
             content=r.content,
+            content_format=r.content_format,
+            validation_report_json=r.validation_report_json,
             status=r.status,
             iteration_count=r.iteration_count,
             last_eval_score=r.last_eval_score,
@@ -376,6 +387,8 @@ def _to_candidate_out(skill: LearnedSkill) -> CandidateOut:
         name=skill.name,
         description=skill.description,
         content=skill.content,
+        content_format=skill.content_format,
+        validation_report_json=skill.validation_report_json,
         status=skill.status,
         iteration_count=skill.iteration_count,
         last_eval_score=skill.last_eval_score,

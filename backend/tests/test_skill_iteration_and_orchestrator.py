@@ -29,7 +29,12 @@ from sqlalchemy import delete, select
 
 from app.database import async_session, init_db
 from app.models.failure_case import FailureCase
-from app.models.learned_skill import LearnedSkill, SkillSource, SkillStatus
+from app.models.learned_skill import (
+    LearnedSkill,
+    SkillContentFormat,
+    SkillSource,
+    SkillStatus,
+)
 from app.services.learning import (
     skill_creator,
     skill_eval,
@@ -576,6 +581,44 @@ async def test_list_candidates_returns_full_playbook_content(_seeded_user):
 
     match = next(r for r in rows if r.name == "with_body")
     assert match.content == body
+
+
+@pytest.mark.asyncio
+async def test_list_candidates_exposes_format_and_validation_report(_seeded_user):
+    """Sprint 4b V2 J8 — a python_tool candidate must round-trip its
+    content_format AND validation_report_json so the review UI can render
+    code + the per-stage validation verdicts (not a blind promote)."""
+    from app.routers.learning_skills import list_candidates
+
+    report = (
+        '{"ok": true, "failed_stage": null, "tool_name": "double_it", '
+        '"stages": [{"stage": "ast", "ok": true, "detail": "ok"}, '
+        '{"stage": "ruff", "ok": true, "detail": "ok"}]}'
+    )
+    source = "@tool\ndef double_it(x: int) -> int:\n    \"\"\"x2.\"\"\"\n    return x * 2\n"
+    async with async_session() as db:
+        db.add(LearnedSkill(
+            user_id=_seeded_user,
+            name="double_it",
+            description="generated python tool",
+            content=source,
+            content_format=SkillContentFormat.PYTHON_TOOL,
+            validation_report_json=report,
+            frontmatter_json="{}",
+            status=SkillStatus.CANDIDATE,
+            source=SkillSource.AUTO_GENERATED,
+            iteration_count=1,
+            from_failure_case_ids="[]",
+        ))
+        await db.commit()
+        rows = await list_candidates(
+            user_id=_seeded_user, status=None, limit=50, _admin=None, db=db,
+        )
+
+    match = next(r for r in rows if r.name == "double_it")
+    assert match.content == source
+    assert match.content_format == SkillContentFormat.PYTHON_TOOL
+    assert match.validation_report_json == report
 
 
 @pytest.mark.asyncio
