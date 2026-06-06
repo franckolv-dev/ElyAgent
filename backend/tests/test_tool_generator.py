@@ -74,6 +74,34 @@ def test_prompt_includes_task_and_tools() -> None:
     assert "AVAILABLE TOOLS" in p
 
 
+# ── composition convention (PR-B) ───────────────────────────────────────────────
+
+
+def test_system_prompt_teaches_call_tool_convention() -> None:
+    """The generator must know the EXACT composition mechanism, else it can't
+    produce a working composition tool (it would invent a calling pattern)."""
+    sp = tool_generator._SYSTEM_PROMPT
+    assert "call_tool" in sp
+    assert "async def" in sp
+    assert "learned_tool_dispatch" in sp  # the import path it must use
+    assert "Composing other tools" in sp
+
+
+def test_available_tool_names_excludes_critical(monkeypatch) -> None:
+    """The composition surface offered to the generator must drop destructive
+    tools — call_tool refuses them at runtime, so never invite them."""
+    monkeypatch.setattr(
+        "app.services.learning.skill_creator._get_available_tool_names",
+        lambda: ["gmail_list_emails", "gmail_send_email", "ssh_execute"],
+    )
+    monkeypatch.setattr(
+        "app.services.learning.learned_tool_dispatch.composable_tool_names",
+        lambda: {"gmail_list_emails"},  # the safe subset
+    )
+    names = tool_generator.get_available_tool_names()
+    assert names == ["gmail_list_emails"]
+
+
 def test_prompt_includes_prior_errors_on_retry() -> None:
     p = compose_user_prompt(
         "do x", available_tools=[], prior_errors="failed at mypy: bad return type"
