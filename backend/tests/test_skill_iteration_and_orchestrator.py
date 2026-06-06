@@ -649,6 +649,86 @@ async def test_run_skill_creator_endpoint_passes_kwargs(_seeded_user, monkeypatc
     assert result["totals"]["passed"] == 1
 
 
+@pytest.mark.asyncio
+async def test_run_tool_creator_endpoint_creates_candidate(_seeded_user, monkeypatch):
+    """Sprint 4b V2 — the /tool-creator/run endpoint generates (LLM mocked),
+    runs the real 5-stage validation, persists a python_tool candidate, and
+    echoes the feature-flag state."""
+    import textwrap
+
+    from app.routers.learning_skills import ToolCreatorRunRequest, run_tool_creator
+    from app.services.learning import tool_creator
+
+    source = textwrap.dedent(
+        '''
+        from langchain_core.tools import tool
+
+
+        @tool
+        def double_it(x: int) -> int:
+            """Double the integer x."""
+            return x * 2
+        '''
+    ).strip()
+
+    async def _fake_gen(*, task_description, user_id, prior_errors=None):  # noqa: ARG001
+        return source, {"status": "generated", "provider_pick": "deepseek"}
+
+    monkeypatch.setattr(tool_creator, "generate_tool_source", _fake_gen)
+    monkeypatch.delenv("LEARNED_PYTHON_TOOLS_ENABLED", raising=False)
+
+    body = ToolCreatorRunRequest(
+        task_description="double a number — double_it(x: int) -> int",
+        user_id=_seeded_user,
+        smoke_kwargs={"x": 21},
+    )
+    result = await run_tool_creator(body, _admin=None)
+
+    assert result["status"] == "created"
+    assert result["tool_name"] == "double_it"
+    assert result["python_tools_enabled"] is False  # flag off by default
+
+    async with async_session() as db:
+        row = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == result["learned_skill_id"])
+        )).scalar_one()
+    assert row.content_format == SkillContentFormat.PYTHON_TOOL
+    assert row.status == SkillStatus.CANDIDATE
+
+
+@pytest.mark.asyncio
+async def test_run_tool_creator_endpoint_threads_params_and_echoes_flag(_seeded_user, monkeypatch):
+    """The endpoint threads every param into generate_and_persist_tool and
+    echoes python_tools_enabled (True when the flag is on)."""
+    from app.routers.learning_skills import ToolCreatorRunRequest, run_tool_creator
+
+    captured: dict[str, Any] = {}
+
+    async def _fake(**kwargs):
+        captured.update(kwargs)
+        return {"status": "created", "tool_name": "x", "learned_skill_id": "id1"}
+
+    monkeypatch.setattr("app.routers.learning_skills.generate_and_persist_tool", _fake)
+    monkeypatch.setenv("LEARNED_PYTHON_TOOLS_ENABLED", "1")
+    monkeypatch.delenv("LEARNED_PYTHON_TOOLS_DISABLED", raising=False)
+
+    body = ToolCreatorRunRequest(
+        task_description="compute something useful",
+        user_id=_seeded_user,
+        smoke_kwargs={"n": 10},
+        max_iterations=2,
+    )
+    result = await run_tool_creator(body, _admin=None)
+
+    assert captured == {
+        "task_description": "compute something useful",
+        "user_id": _seeded_user,
+        "smoke_kwargs": {"n": 10},
+        "max_iterations": 2,
+    }
+    assert result["python_tools_enabled"] is True
+
+
 # ────────────────────────────────────────────────────────────────────────
 # Phase 4.a — lifecycle endpoints (promote / archive / restore / delete)
 # ────────────────────────────────────────────────────────────────────────
