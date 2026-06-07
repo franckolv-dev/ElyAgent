@@ -161,11 +161,26 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     ranked = sorted(((_score(n), n) for n in candidates), reverse=True)
     top = [name for score, name in ranked[:k] if score > 0.0]
     if not top:
-        # Nothing matched → genuine capability gap (Phase 2: this is the clean
-        # tool_absent_acknowledged signal that will trigger tool generation).
+        # Nothing matched the FULL catalog → genuine capability gap (not a
+        # binding gap). Record the tool_absent_acknowledged signal: a
+        # FailureCase the auto-dev pipeline (V3) / a human can act on. Phase 1
+        # records only; generation is deliberate (manual /tool-creator/run for
+        # composable gaps now, auto once V3 enables new I/O tools).
+        try:
+            from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+            from app.services.learning.failure_capture import record_tool_absent
+            from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
+
+            await record_tool_absent(
+                user_id=LEARNED_TOOL_USER_ID.get(),
+                capability=capability,
+                conversation_id=ORCHESTRATE_CONVERSATION_ID.get() or None,
+            )
+        except Exception as exc:  # noqa: BLE001 — recording must never break the turn
+            logger.debug("find_tool: gap recording skipped: %s", exc)
         return (
             f"Aucun outil existant ne correspond à « {capability} ». "
-            "C'est peut-être une capacité réellement absente."
+            "C'est peut-être une capacité réellement absente — je l'ai consignée."
         )
 
     # Record discoveries so agent_node binds them on the next turn (sticky).

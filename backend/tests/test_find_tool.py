@@ -10,9 +10,30 @@ from __future__ import annotations
 import uuid
 
 import pytest
+import pytest_asyncio
+from sqlalchemy import delete, select
 
 from app.agent import discovered_tools as dt
+from app.database import async_session, init_db
 from app.skills.builtin import find_tool_skill as fts
+
+
+@pytest_asyncio.fixture
+async def _user():
+    await init_db()
+    from app.models.user import User
+
+    uid = f"ft-{uuid.uuid4().hex[:8]}"
+    async with async_session() as db:
+        db.add(User(id=uid, username=f"ft_{uid}", email=f"{uid}@t.local", hashed_password="x"))
+        await db.commit()
+    yield uid
+    from app.models.failure_case import FailureCase
+
+    async with async_session() as db:
+        await db.execute(delete(FailureCase).where(FailureCase.user_id == uid))
+        await db.execute(delete(User).where(User.id == uid))
+        await db.commit()
 
 
 # ── per-conversation discovered-tools registry ───────────────────────────────
@@ -132,3 +153,60 @@ async def test_find_tool_real_catalog_surfaces_sheets():
         f"expected a sheets_* tool surfaced, got: {sorted(discovered)}"
     )
     assert "sheets_" in out
+
+
+# ── Phase 2 — genuine gap is recorded (tool_absent_acknowledged) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_record_tool_absent_persists_and_dedups(_user):
+    from app.models.failure_case import FailureCase
+    from app.services.learning.failure_capture import SIGNAL_TOOL_ABSENT, record_tool_absent
+
+    assert await record_tool_absent(user_id="", capability="x") is None        # no user
+    assert await record_tool_absent(user_id=_user, capability="  ") is None     # empty cap
+
+    id1 = await record_tool_absent(user_id=_user, capability="poster un message sur Slack")
+    assert id1 is not None
+    id2 = await record_tool_absent(user_id=_user, capability="poster un message sur Slack")
+    assert id2 == id1  # deduped while unprocessed — no duplicate row
+
+    async with async_session() as db:
+        rows = (await db.execute(select(FailureCase).where(
+            FailureCase.user_id == _user,
+            FailureCase.signal_table == SIGNAL_TOOL_ABSENT,
+        ))).scalars().all()
+    assert len(rows) == 1
+    assert "Slack" in (rows[0].expected_outcome or "")
+
+
+@pytest.mark.asyncio
+async def test_find_tool_no_match_records_gap(_user, monkeypatch):
+    _mock_catalog(monkeypatch)
+
+    # Override the query embed to be orthogonal → no semantic match either.
+    class _ZeroInfra:
+        async def embed(self, text):  # noqa: ARG002
+            return [0.0, 0.0, 0.0]
+
+    monkeypatch.setattr("app.services.memory.get_memory_infra", lambda: _ZeroInfra())
+
+    from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+    from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
+
+    ORCHESTRATE_CONVERSATION_ID.set(f"c-{uuid.uuid4().hex}")
+    LEARNED_TOOL_USER_ID.set(_user)
+
+    # Query with no lexical overlap with alpha/beta/gamma + no semantic → no match.
+    out = await fts.find_tool.ainvoke({"capability": "zzz qqq wxy", "top_k": 3})
+    assert "consign" in out.lower() or "réellement absente" in out
+
+    from app.models.failure_case import FailureCase
+    from app.services.learning.failure_capture import SIGNAL_TOOL_ABSENT
+
+    async with async_session() as db:
+        rows = (await db.execute(select(FailureCase).where(
+            FailureCase.user_id == _user,
+            FailureCase.signal_table == SIGNAL_TOOL_ABSENT,
+        ))).scalars().all()
+    assert any("zzz" in (r.expected_outcome or "") for r in rows)
