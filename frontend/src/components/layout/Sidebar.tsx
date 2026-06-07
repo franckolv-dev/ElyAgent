@@ -50,6 +50,7 @@ const NAV: NavEntry[] = [
       { href: "/me/learning",            labelKey: "navLearning",           icon: Brain },
       { href: "/me/learning/skills",     labelKey: "navLearningSkills",     icon: Sparkles },
       { href: "/me/learning/candidates", labelKey: "navLearningCandidates", icon: ClipboardCheck, admin: true },
+      { href: "/me/learning/tool-gaps",  labelKey: "navLearningToolGaps",   icon: Search, admin: true },
     ],
   },
   {

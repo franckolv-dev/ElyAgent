@@ -42,6 +42,7 @@ Phase 4.a — skill lifecycle :
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -165,6 +166,28 @@ class CandidateOut(BaseModel):
     created_at: str
 
     model_config = {"from_attributes": True}
+
+
+class ToolGapOut(BaseModel):
+    """A capability ELY's `find_tool` searched for but couldn't surface — the
+    `tool_absent_acknowledged` signal (find_tool Phase 2). The admin reviews
+    these, decides if it's worth generating a new tool (→ /tool-creator/run)
+    or marks it processed to clear the queue."""
+
+    id: int
+    user_id: str
+    # The natural-language capability the user/model asked for (extracted from
+    # the FailureCase replay_payload).
+    capability: str
+    conversation_id: Optional[str]
+    mission_id: Optional[str]
+    created_at: str
+    # ISO timestamp when an admin (or the auto-pipeline, later) marked this
+    # gap as handled. None while the gap is still open.
+    processed_at: Optional[str]
+    # If the gap was resolved by generating a learned skill, its id is kept
+    # here so the UI can link to the candidate page.
+    learned_skill_id: Optional[str]
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
@@ -475,3 +498,111 @@ def _to_candidate_out(skill: LearnedSkill) -> CandidateOut:
         from_failure_case_ids=skill.from_failure_case_ids,
         created_at=skill.created_at.isoformat() if skill.created_at else "",
     )
+
+
+# ── tool_absent gaps — find_tool Phase 2 outcomes ──────────────────────────
+
+
+def _tool_gap_to_out(row) -> ToolGapOut:
+    """Build a ToolGapOut from a FailureCase row (signal_table=tool_absent).
+
+    `capability` is extracted from the replay_payload JSON (where Phase 2 puts
+    it). Falls back to `expected_outcome` (the truncated capability also kept
+    in a dedicated column for indexing).
+    """
+    capability = row.expected_outcome or ""
+    try:
+        payload = json.loads(row.replay_payload or "{}")
+        capability = payload.get("capability") or capability
+    except (ValueError, TypeError):
+        pass
+    return ToolGapOut(
+        id=row.id,
+        user_id=row.user_id,
+        capability=capability,
+        conversation_id=row.conversation_id,
+        mission_id=row.mission_id,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        processed_at=row.processed_at.isoformat() if row.processed_at else None,
+        learned_skill_id=row.learned_skill_id,
+    )
+
+
+@router.get("/tool-gaps")
+async def list_tool_gaps(
+    status: str = Query(
+        "open",
+        description="Filter: 'open' (default — unprocessed gaps) or 'all'.",
+    ),
+    user_id: Optional[str] = Query(None, description="Filter to one user."),
+    limit: int = Query(100, ge=1, le=500),
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[ToolGapOut]:
+    """List capability gaps recorded by find_tool Phase 2.
+
+    Each row is a unique capability the user/model asked for but the catalog
+    couldn't satisfy (record_tool_absent dedupes on the capability fingerprint
+    while still unprocessed, so no row inflation).
+    """
+    if status not in {"open", "all"}:
+        raise HTTPException(400, f"Unknown status {status!r}. Valid: open, all")
+
+    from app.models.failure_case import FailureCase
+
+    query = select(FailureCase).where(FailureCase.signal_table == "tool_absent")
+    if status == "open":
+        query = query.where(FailureCase.processed_at.is_(None))
+    if user_id:
+        query = query.where(FailureCase.user_id == user_id)
+    query = query.order_by(FailureCase.created_at.desc()).limit(limit)
+
+    rows = (await db.execute(query)).scalars().all()
+    return [_tool_gap_to_out(r) for r in rows]
+
+
+class ToolGapMarkProcessedRequest(BaseModel):
+    """Optional body for /tool-gaps/{id}/mark-processed.
+
+    Both fields are optional: pass `learned_skill_id` to record which skill
+    resolved this gap (links gap → candidate in the UI). `reason` is a free
+    note (e.g. "out of scope", "duplicate") kept for auditability.
+    """
+
+    learned_skill_id: Optional[str] = None
+    reason: Optional[str] = None
+
+
+@router.post("/tool-gaps/{gap_id}/mark-processed", response_model=ToolGapOut)
+async def mark_tool_gap_processed(
+    gap_id: int,
+    body: Optional[ToolGapMarkProcessedRequest] = None,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ToolGapOut:
+    """Mark a `tool_absent` gap as handled — sets processed_at=now().
+
+    Idempotent: a gap already processed simply returns its current state.
+    Pass `learned_skill_id` if the gap was resolved by generating a candidate
+    (links the gap to the candidate page).
+    """
+    from app.models.failure_case import FailureCase
+
+    row = (await db.execute(
+        select(FailureCase).where(
+            FailureCase.id == gap_id,
+            FailureCase.signal_table == "tool_absent",
+        )
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(404, f"tool_absent gap {gap_id} not found")
+    if row.processed_at is None:
+        row.processed_at = datetime.now(timezone.utc)
+        if body and body.learned_skill_id:
+            row.learned_skill_id = body.learned_skill_id
+        await db.commit()
+        await db.refresh(row)
+        logger.info("tool_gap_processed: id=%s by_admin=%s skill=%s",
+                    row.id, _admin.id[:8] if _admin.id else "?",
+                    row.learned_skill_id or "—")
+    return _tool_gap_to_out(row)
