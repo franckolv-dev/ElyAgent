@@ -485,6 +485,34 @@ export const api = {
     fetchAPI(`/admin/learning/skills/${id}/restore`, {
       method: "POST",
     }) as Promise<LearnedSkillCandidate>,
+
+  /** List capability gaps recorded by find_tool Phase 2 (tool_absent signals). */
+  adminLearningToolGaps: (status: "open" | "all" = "open") =>
+    fetchAPI(
+      `/admin/learning/tool-gaps?status=${status}`,
+    ) as Promise<ToolGap[]>,
+
+  /** Mark a tool-gap as processed (admin acknowledges or links to a candidate). */
+  adminLearningToolGapMarkProcessed: (id: number, learned_skill_id?: string) =>
+    fetchAPI(`/admin/learning/tool-gaps/${id}/mark-processed`, {
+      method: "POST",
+      body: JSON.stringify(learned_skill_id ? { learned_skill_id } : {}),
+      headers: { "Content-Type": "application/json" },
+    }) as Promise<ToolGap>,
+
+  /** Generate a python_tool from a free-text capability description.
+   *  Used from the tool-gaps UI to escalate a gap into the generation pipeline. */
+  adminLearningToolCreatorRun: (params: {
+    task_description: string;
+    user_id: string;
+    smoke_kwargs?: Record<string, unknown>;
+    max_iterations?: number;
+  }) =>
+    fetchAPI(`/admin/learning/tool-creator/run`, {
+      method: "POST",
+      body: JSON.stringify(params),
+      headers: { "Content-Type": "application/json" },
+    }) as Promise<{ status: string; tool_name?: string; learned_skill_id?: string; python_tools_enabled: boolean }>,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -650,4 +678,21 @@ export interface LearnedSkillCandidate {
   /** JSON-encoded list of failure_case ids this skill addresses. */
   from_failure_case_ids: string;
   created_at: string;
+}
+
+/** A capability ELY's `find_tool` searched for but couldn't surface — the
+ *  `tool_absent_acknowledged` signal. Backed by a FailureCase row with
+ *  signal_table='tool_absent'. */
+export interface ToolGap {
+  id: number;
+  user_id: string;
+  /** The natural-language capability the user/model needed. */
+  capability: string;
+  conversation_id: string | null;
+  mission_id: string | null;
+  created_at: string;
+  /** ISO timestamp when an admin marked this gap as handled (null = open). */
+  processed_at: string | null;
+  /** If resolved by generating a candidate, the candidate's id. */
+  learned_skill_id: string | null;
 }
