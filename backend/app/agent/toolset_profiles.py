@@ -60,6 +60,9 @@ DEFAULT_PROFILE = "default"
 # every profile so cross-session context still works.
 
 _DEFAULT_TOOLS: tuple[str, ...] = (
+    # Universal — tool discovery (the safety net: lets the model pull in any
+    # catalog tool it doesn't currently see, instead of giving up).
+    "find_tool",
     # Universal — memory, preferences, knowledge (always present)
     "knowledge_list",
     "knowledge_search",

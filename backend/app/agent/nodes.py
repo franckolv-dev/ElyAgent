@@ -712,6 +712,27 @@ def create_agent_node():
                 )
                 _filtered_tools = await append_learned_tools(_filtered_tools, user_id)
 
+                # find_tool discovery — union the tools the model surfaced via
+                # find_tool earlier in THIS conversation (sticky), so it can
+                # actually call them. The lean profile stays cache-stable; the
+                # cache re-warms once when a tool is first discovered. No-op
+                # until find_tool is used. (The recurring "tool invisible" bug
+                # becomes self-healing — cf Sheets/Drive #37.)
+                from app.agent.discovered_tools import get_discovered
+                _discovered = get_discovered(str(state.get("conversation_id") or ""))
+                if _discovered:
+                    _have_d = {t.name for t in _filtered_tools}
+                    _extra_d = [
+                        t for t in registry.all_tools
+                        if t.name in _discovered and t.name not in _have_d
+                    ]
+                    if _extra_d:
+                        _filtered_tools = list(_filtered_tools) + _extra_d
+                        logger.warning(
+                            "[find_tool] +%d discovered tool(s) bound: %s",
+                            len(_extra_d), sorted(t.name for t in _extra_d),
+                        )
+
                 # Mini-chantier A — apply parallel_tool_calls policy by
                 # model family. Permissive models (Qwen, Mistral…) and OpenAI
                 # family invent downstream args (e.g. fake local_path) when

@@ -48,9 +48,14 @@ def test_default_profile_has_reasonable_size():
     progressive-disclosure room for one or two more tools landing soon
     without re-bumping the cap on every commit).
     DeepSeek / Mistral Small / Mistral Large handle 50-80 tools
+    Bumped to 82 in 2026-06-07 for find_tool (universal tool-discovery meta-
+    tool). NB: find_tool is precisely what will let us LEAN the profile back
+    down later — the model discovers + binds catalog tools on demand instead
+    of needing them all pre-listed.
+    DeepSeek / Mistral Small / Mistral Large handle 50-80 tools
     comfortably; xLAM-style fragile FC-tunes are no longer in the chain."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 80, f"default has {len(tools)} tools (target 25-80)"
+    assert 25 <= len(tools) <= 82, f"default has {len(tools)} tools (target 25-82)"
 
 
 def test_default_profile_no_duplicates():
