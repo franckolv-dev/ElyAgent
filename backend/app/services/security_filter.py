@@ -42,8 +42,24 @@ _PATTERNS: dict[str, re.Pattern] = {
     "TOKEN": re.compile(r"(?:api[_-]?key|token|auth|password|secret|bearer)[:\s=]+([a-zA-Z0-9\-_.]{16,256})", re.IGNORECASE),
     # IBAN: no optional spaces to avoid alternation backtracking — strip spaces first
     "IBAN":  re.compile(r"\b[A-Z]{2}\d{2}(?:\d{4}){4}\d{2,}\b"),
-    # PHONE: no optional separator inside repeating group
-    "PHONE": re.compile(r"\b(?:\+33|0)[1-9](?:\d{2}){4}\b"),
+    # PHONE: French numbers, accept the common written formats. The previous
+    # version was too strict (digits-only, e.g. "0612345678") and missed the
+    # standard French format "06 12 34 56 78" with spaces — which is exactly
+    # how every site / Gmail signature / LinkedIn profile writes them, so
+    # phones lifted from web search were leaking to the LLM in clear
+    # (observed in prospection mission 2026-06-07).
+    #
+    # Supported now: "0X XX XX XX XX", "0X.XX.XX.XX.XX", "0X-XX-XX-XX-XX",
+    # "0XXXXXXXXX", with the same variants for "+33" (optional separator
+    # right after +33). ReDoS-safe: each group is anchored to exactly two
+    # digits, the only optional element is a single character — no nested
+    # quantifiers, no ambiguous backtracking.
+    #
+    # Non-word-boundary anchors: `\b` doesn't anchor before `+` (it's not a
+    # word char), so we use `(?<!\d)` / `(?!\d)` to keep matches off the
+    # middle of a longer digit sequence WITHOUT depending on word-character
+    # boundaries. Both lookarounds are fixed-width 1 — Python-compatible.
+    "PHONE": re.compile(r"(?<!\d)(?:\+33[ .\-]?|0)[1-9](?:[ .\-]?\d{2}){4}(?!\d)"),
 }
 
 # Tool names that always require human validation.
