@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 def register_all() -> None:
     """Import every builtin skill module to trigger side-effect registration."""
     # Existing tools wrapped as skills
+    from app.skills.builtin import find_tool_skill   # noqa: F401  (universal — tool discovery)
     from app.skills.builtin import system_skill      # noqa: F401
     from app.skills.builtin import gmail_skill       # noqa: F401
     from app.skills.builtin import calendar_skill    # noqa: F401
