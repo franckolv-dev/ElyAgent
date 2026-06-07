@@ -23,10 +23,40 @@ class TestAnonymizeBasic:
         assert "[EMAIL_0]" in result
 
     def test_phone_replaced(self, sf):
-        # Regex was tightened for ReDoS: no inline separators — canonical form
+        # Digit-only form (legacy support).
         result = sf.anonymize("Mon numéro est 0612345678.")
         assert "0612345678" not in result
         assert "[PHONE_" in result
+
+    @pytest.mark.parametrize("phone", [
+        "06 12 34 56 78",          # spaces — the standard French written form
+        "06.12.34.56.78",          # dots
+        "06-12-34-56-78",          # dashes
+        "0612345678",              # digits-only (legacy)
+        "+33612345678",            # +33 digits-only
+        "+33 6 12 34 56 78",       # +33 with spaces
+        "+33-6-12-34-56-78",       # +33 with dashes
+        "05 53 98 22 57",          # real value from a prospection mission
+        "07 88 11 15 77",          # ditto
+    ])
+    def test_phone_french_formats(self, sf, phone):
+        """Tels lifted from the web come with separators (the standard French
+        written form). The old pattern accepted digits-only and missed them all
+        — phones leaked to the LLM in clear. Pin every variant we want covered."""
+        result = sf.anonymize(f"Tel: {phone}, contact me.")
+        assert phone not in result, f"phone {phone!r} not anonymized"
+        assert "[PHONE_" in result
+
+    @pytest.mark.parametrize("text", [
+        "Date 2024 12 15 10 30 47",   # date+time, no leading 0[1-9]
+        "9 rue du 12 mai 2024 75001", # address — must not match
+        "0612345",                    # too short
+        "06123456789012",             # too long (10 digit prefix + more)
+        "0012345678",                 # 00 — not a French mobile/landline
+    ])
+    def test_phone_no_false_positives(self, sf, text):
+        result = sf.anonymize(text)
+        assert "[PHONE_" not in result, f"false positive on {text!r}: {result!r}"
 
     def test_card_replaced(self, sf):
         result = sf.anonymize("Carte : 4111 1111 1111 1111")
