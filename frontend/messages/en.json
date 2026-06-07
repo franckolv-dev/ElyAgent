@@ -315,6 +315,16 @@
     "flash_generated": "Tool “{name}” generated — review it on the candidates page.",
     "flash_generation_failed": "Generation failed (status: {status})."
   },
+  "sovereignty": {
+    "title": "Data sovereignty (PII)",
+    "description": "When enabled, all agentic cloud calls (tier B/C) are routed to the EU Mistral chain (Large → Medium → Small) instead of DeepSeek. Local + maintenance tiers are unaffected (already local). Off by default.",
+    "toggleLabel": "Enable strict sovereignty (EU cloud only)",
+    "activeNote": "Sovereignty active. Your agentic traffic is sent to Mistral (French cloud) instead of DeepSeek.",
+    "noMistralWarning": "No Mistral instance is configured in Settings → LLM. Sovereignty is enabled but has no effect: calls will fall back to the default chain. Configure Mistral for the routing to take effect.",
+    "loading": "Loading…",
+    "errorLoad": "Couldn't load the preference.",
+    "errorSave": "Couldn't save."
+  },
   "userState": {
     "title": "My state, as ELY sees it",
     "subtitle": "User state vector — Sprint 3",

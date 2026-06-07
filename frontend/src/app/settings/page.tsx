@@ -26,6 +26,7 @@ import { Header } from "@/components/layout/Header";
 import { LicenceBanner } from "@/components/layout/LicenceBanner";
 import { GoogleAccountsSection } from "@/components/settings/GoogleAccountsSection";
 import { HitlPreferencesSection } from "@/components/settings/HitlPreferencesSection";
+import { SovereigntySection } from "@/components/settings/SovereigntySection";
 import { LicenceSection } from "@/components/settings/LicenceSection";
 import { api } from "@/lib/api";
 import {
@@ -2059,6 +2060,8 @@ export default function SettingsPage() {
               </div>
             </section>
             )}
+
+            {activeTab === "compte" && <SovereigntySection />}
 
             {/* ----------------------------------------------------------------
                 SSH Hosts — in "integrations" tab, admin only

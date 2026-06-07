@@ -98,6 +98,9 @@ async def init_db():
             ("users", "onboarding_step", "INTEGER NOT NULL DEFAULT 0"),
             ("users", "onboarding_skip_count", "INTEGER NOT NULL DEFAULT 0"),
             ("users", "tts_auto_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
+            # PII sovereignty (2026-06-07) — force EU chain for tier B/C
+            # cloud calls when ON. Off by default (opt-in).
+            ("users", "sovereignty_strict", "BOOLEAN NOT NULL DEFAULT 0"),
             # Hermes Chantier 1 (audit 2026-05-07) — sticky toolset profile
             # per conversation. NULL until first message auto-detects it.
             ("conversations", "toolset_profile", "VARCHAR(40)"),

@@ -345,6 +345,25 @@ export const api = {
       body: JSON.stringify(patch),
     }) as Promise<{ tts_auto_enabled: boolean }>,
 
+  // ── PII sovereignty preference (2026-06-07) ──────────────────────────────
+  /** Get the current user's sovereignty toggle (default: off). The response
+   *  also indicates whether a Mistral instance is actually configured — when
+   *  it's not, the toggle is honoured but routing falls back to the default
+   *  chain (graceful, with a UI warning). */
+  getSovereigntyPrefs: () =>
+    fetchAPI("/api/preferences/sovereignty") as Promise<{
+      sovereignty_strict: boolean;
+      mistral_configured: boolean;
+    }>,
+
+  /** Toggle PII sovereignty. When ON, every tier-B/C cloud call is routed to
+   *  the Mistral EU chain (Large → Medium → Small). PATCH semantics. */
+  updateSovereigntyPrefs: (patch: { sovereignty_strict?: boolean }) =>
+    fetchAPI("/api/preferences/sovereignty", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }) as Promise<{ sovereignty_strict: boolean; mistral_configured: boolean }>,
+
   // ── Licence (Elastic License v2 — info only since 2026-05-28 pivot) ──────
   /** Static licence-info payload. Replaces the old tier-aware status. */
   licenceStatus: () =>

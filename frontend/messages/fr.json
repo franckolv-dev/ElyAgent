@@ -315,6 +315,16 @@
     "flash_generated": "Outil « {name} » généré — à valider sur la page des candidates.",
     "flash_generation_failed": "Génération échouée (status: {status})."
   },
+  "sovereignty": {
+    "title": "Souveraineté des données (PII)",
+    "description": "Quand activé, tous les appels aux modèles cloud agentiques (tiers B/C) sont routés vers la chaîne européenne Mistral (Large → Medium → Small) au lieu de DeepSeek. Les tiers locaux + maintenance restent inchangés (déjà locaux). Off par défaut.",
+    "toggleLabel": "Activer la souveraineté stricte (cloud EU uniquement)",
+    "activeNote": "Souveraineté active. Tes échanges agentiques sont envoyés à Mistral (cloud français) au lieu de DeepSeek.",
+    "noMistralWarning": "Aucune instance Mistral n'est configurée dans Paramètres → LLM. La souveraineté est activée mais sans effet : les appels retomberont sur la chaîne par défaut. Configure Mistral pour que le routage prenne effet.",
+    "loading": "Chargement…",
+    "errorLoad": "Impossible de charger la préférence.",
+    "errorSave": "Impossible de sauvegarder."
+  },
   "userState": {
     "title": "Mon état selon ELY",
     "subtitle": "Vecteur d'état utilisateur — Sprint 3",
