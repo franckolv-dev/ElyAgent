@@ -48,6 +48,7 @@ MAX_FIELD_CHARS: int = 2000
 SIGNAL_HITL_REFUSAL = "hitl_refusals"
 SIGNAL_HALLUCINATION = "hallucination_blocks"
 SIGNAL_MISSION_CRITIQUE = "mission_critiques"
+SIGNAL_TOOL_ABSENT = "tool_absent"  # find_tool searched the catalog and found nothing
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -84,6 +85,69 @@ def _dump_payload(payload: dict[str, Any]) -> str:
 
 
 # ── Per-signal capture functions ───────────────────────────────────────────
+
+
+async def record_tool_absent(
+    *,
+    user_id: str,
+    capability: str,
+    conversation_id: str | None = None,
+    mission_id: str | None = None,
+) -> int | None:
+    """Record a genuine capability gap (find_tool Phase 2 — the
+    ``tool_absent_acknowledged`` signal).
+
+    Called when ``find_tool`` searched the FULL catalog and found nothing
+    matching ``capability`` — i.e. it's not a binding gap (find_tool would
+    have surfaced it), it's a real missing capability. Persisted as a
+    ``FailureCase`` so the auto-dev pipeline (V3) and humans can review/act on
+    it; in the meantime it's a queryable backlog of "what users needed but ELY
+    lacks". Deduped on the capability fingerprint while still unprocessed, so a
+    repeated gap doesn't pile up rows.
+
+    Best-effort, never raises. Returns the FailureCase.id (new or the existing
+    unprocessed one), or None.
+    """
+    capability = (capability or "").strip()
+    if not user_id or not capability:
+        return None
+    try:
+        from sqlalchemy import select
+
+        from app.models.failure_case import FailureCase
+
+        fp = _fingerprint(SIGNAL_TOOL_ABSENT, capability[:120])
+        payload = {
+            "signal_kind": "tool_absent_acknowledged",
+            "capability": _truncate(capability),
+        }
+        async with async_session() as db:
+            # Dedup: don't re-record the same gap while it's still unprocessed.
+            existing = (await db.execute(
+                select(FailureCase.id).where(
+                    FailureCase.signal_table == SIGNAL_TOOL_ABSENT,
+                    FailureCase.pattern_hash == fp,
+                    FailureCase.processed_at.is_(None),
+                ).limit(1)
+            )).scalar_one_or_none()
+            if existing is not None:
+                return existing
+            row = FailureCase(
+                user_id=user_id,
+                signal_table=SIGNAL_TOOL_ABSENT,
+                signal_id=0,  # synthetic — no upstream signal-table row
+                conversation_id=conversation_id,
+                mission_id=mission_id,
+                replay_payload=_dump_payload(payload),
+                expected_outcome=_truncate(capability),
+                pattern_hash=fp,
+            )
+            db.add(row)
+            await db.commit()
+            return row.id
+    except Exception as exc:
+        logger.debug("record_tool_absent failed (swallowed): %s", exc)
+        return None
 
 
 async def capture_from_hitl_refusal(
