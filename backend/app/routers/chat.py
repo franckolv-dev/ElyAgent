@@ -363,6 +363,17 @@ async def websocket_chat(websocket: WebSocket):
             history_msgs = history_msgs[-_MAX_HISTORY:]
             history_msgs.append(HumanMessage(content=clean_content))
 
+            # PII sovereignty (2026-06-07) — when the user opted in, force the
+            # tier B/C routing to the EU Mistral chain instead of the default
+            # cloud provider (DeepSeek). ContextVars propagate per asyncio task,
+            # so downstream get_tier_config() in get_llm_for_tier sees the flag
+            # for THIS turn only — no cross-user leakage.
+            try:
+                from app.services.sovereignty import SOVEREIGNTY_STRICT
+                SOVEREIGNTY_STRICT.set(bool(getattr(user, "sovereignty_strict", False)))
+            except Exception as _sov_exc:  # noqa: BLE001
+                logger.debug("sovereignty ContextVar set skipped: %s", _sov_exc)
+
             agent = get_agent()
             await websocket.send_text(_dumps({
                 "type": "start",

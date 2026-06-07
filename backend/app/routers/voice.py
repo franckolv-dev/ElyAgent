@@ -310,6 +310,13 @@ async def websocket_voice(websocket: WebSocket):
             augmented_content = f"[{voice_hint}]\n\n{clean_content}"
             history_msgs.append(HumanMessage(content=augmented_content))
 
+            # PII sovereignty — see chat.py for full rationale.
+            try:
+                from app.services.sovereignty import SOVEREIGNTY_STRICT
+                SOVEREIGNTY_STRICT.set(bool(getattr(user, "sovereignty_strict", False)))
+            except Exception as _sov_exc:  # noqa: BLE001
+                logger.debug("sovereignty ContextVar set skipped: %s", _sov_exc)
+
             # ── Run agent ────────────────────────────────────────────────
             agent = get_agent()
             await websocket.send_text(json.dumps({

@@ -220,8 +220,33 @@ def set_tier_config(config: dict) -> None:
 
 
 def get_tier_config() -> dict[str, dict]:
-    """Return the active tier routing config (DB override or defaults)."""
-    return _tier_config if _tier_config else DEFAULT_TIER_CONFIG
+    """Return the active tier routing config (DB override or defaults).
+
+    PII sovereignty (2026-06-07): when the current asyncio task has
+    ``SOVEREIGNTY_STRICT`` set (the calling user opted in), cloud tiers
+    (MEDIUM, COMPLEX) are rewritten to the Mistral EU chain. SIMPLE +
+    MAINTENANCE keep their local providers; IMAGE is unchanged. If no
+    Mistral instance is configured, the original config is returned
+    untouched (graceful fallback with a one-time warning from
+    sovereignty.get_sovereign_provider_ids).
+    """
+    base = _tier_config if _tier_config else DEFAULT_TIER_CONFIG
+    try:
+        from app.services.sovereignty import (
+            SOVEREIGNTY_STRICT,
+            sovereign_chain_for_tier,
+        )
+        if not SOVEREIGNTY_STRICT.get():
+            return base
+    except Exception:  # noqa: BLE001 — never crash routing on a stray import
+        return base
+
+    overridden = dict(base)  # shallow copy — we only swap a couple of tier entries
+    for tier_name in ("medium", "complex"):
+        chain = sovereign_chain_for_tier(tier_name)
+        if chain:
+            overridden[tier_name] = {"providers": chain, "fallback_enabled": True}
+    return overridden
 
 
 def get_tier_config_version() -> int:

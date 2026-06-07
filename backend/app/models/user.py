@@ -61,6 +61,14 @@ class User(Base):
     hitl_preferred_channel: Mapped[str | None] = mapped_column(
         String(20), nullable=True, default=None
     )
+    # PII sovereignty toggle. When True, the agent forces every tier-B/C call
+    # to the Mistral EU chain (Large → Medium → Small) instead of the user's
+    # default cloud provider (typically DeepSeek). Off by default; opt-in via
+    # Settings. Local + maintenance tiers are unaffected (they're already local).
+    # See app/services/sovereignty.py for the routing override.
+    sovereignty_strict: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
     # Conversational onboarding — Éli initiates a guided chat at first
     # login to learn the user's vocabulary, preferred names, Gmail labels,
     # calendar names, routines, strict rules, etc. Stored as a series of

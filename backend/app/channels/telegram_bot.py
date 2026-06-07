@@ -309,6 +309,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         history_msgs = history_msgs[-40:]
         history_msgs.append(HumanMessage(content=sf.anonymize(user_content)))
 
+        # PII sovereignty — see chat.py for full rationale.
+        try:
+            from app.services.sovereignty import SOVEREIGNTY_STRICT
+            SOVEREIGNTY_STRICT.set(bool(getattr(user, "sovereignty_strict", False)))
+        except Exception as _sov_exc:  # noqa: BLE001
+            logger.debug("sovereignty ContextVar set skipped: %s", _sov_exc)
+
         # Invoke agent
         agent = _get_agent()
         invoke_result = await agent.ainvoke({

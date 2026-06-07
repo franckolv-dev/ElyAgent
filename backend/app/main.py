@@ -506,6 +506,9 @@ app.include_router(_onboarding_router.router, prefix="/api")
 # `/api/preferences`, so no extra prefix here.
 from app.routers import voice_prefs as _voice_prefs_router
 app.include_router(_voice_prefs_router.router)
+# PII sovereignty toggle (2026-06-07). Self-prefixes with /api/preferences.
+from app.routers import sovereignty_prefs as _sovereignty_prefs_router
+app.include_router(_sovereignty_prefs_router.router)
 # Tier-aware licence enforcement (Phase 1) — router carries its own /api/licence prefix.
 from app.routers import licence as _licence_router
 app.include_router(_licence_router.router)
