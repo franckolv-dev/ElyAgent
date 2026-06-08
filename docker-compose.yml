@@ -129,9 +129,42 @@ services:
   # Running Ollama inside a container would lose GPU access and just
   # duplicate models in RAM/disk.
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Sprint 4b V3 J2.b — Egress proxy for the python_tool sandbox.
+  #
+  # Squid forward proxy. The future `sandbox` service (J2.c) will live on
+  # `sandbox-net` (internal: true → no native route to the Internet, no
+  # native route to the other services), with this proxy as its ONLY way
+  # out. The proxy is dual-homed: on `sandbox-net` to receive sandbox
+  # traffic, on `cyberentity-net` to forward to the upstream Internet.
+  # Allow-list is per-domain via `dstdomain` ACLs in sandbox/squid.conf.
+  # ─────────────────────────────────────────────────────────────────────────
+  egress-proxy:
+    image: ubuntu/squid:6.6-24.04_beta
+    restart: unless-stopped
+    container_name: ely-egress-proxy
+    volumes:
+      - ./sandbox/squid.conf:/etc/squid/squid.conf:ro
+    networks:
+      # The sandbox lives here. `internal: true` (see below) means the
+      # ONLY way out for anything on this network is through this proxy.
+      - sandbox-net
+      # Used to actually forward the allowed traffic upstream. Squid only
+      # accepts on the sandbox-net side (ACLs in squid.conf) — being on
+      # cyberentity-net does NOT mean the sandbox can talk to backend, it
+      # just means the proxy itself has Internet to forward to.
+      - cyberentity-net
+
 networks:
   cyberentity-net:
     driver: bridge
+  # Isolated network for the python_tool sandbox + its egress proxy.
+  # `internal: true` means: no implicit route to the Internet, no NAT to the
+  # host. A container on this network can only talk to other containers also
+  # on this network — i.e. the egress proxy (and, later, the sandbox itself).
+  sandbox-net:
+    driver: bridge
+    internal: true
 
 volumes:
   qdrant-data:
