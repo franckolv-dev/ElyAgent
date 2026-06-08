@@ -39,13 +39,32 @@ RUN set -eux; \
     # the user escapes its uid, no SUID binary remains to climb back to root.
     find / -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod a-s {} \; 2>/dev/null || true
 
-# Curated dependency allow-list (decision §10.③) — pinned exactly.
+# Curated dependency allow-list for the USER code (decision §10.③) — pinned
+# exactly. These libs live in the system Python and are what `python -S
+# wrapper.py` (the subprocess that runs the generated tool) sees.
 COPY sandbox/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --root-user-action=ignore -r /tmp/requirements.txt \
- && rm /tmp/requirements.txt \
- # Remove pip itself — the running sandbox must never be able to install new
- # packages. Bumping the allow-list = rebuild the image.
- && pip uninstall -y pip setuptools wheel 2>/dev/null || true
+ && rm /tmp/requirements.txt
+
+# Sprint 4b V3 J2.c — runner HTTP service.
+#
+# FastAPI + uvicorn live in a SEPARATE venv (/opt/runner-venv). The
+# generated tool's subprocess uses the system `python` (so it sees httpx /
+# bs4 / lxml but NOT fastapi/uvicorn — keeps the user-visible namespace
+# minimal). The runner itself is launched from /opt/runner-venv/bin/python.
+RUN python -m venv /opt/runner-venv \
+ && /opt/runner-venv/bin/pip install --no-cache-dir --root-user-action=ignore \
+        "fastapi==0.121.1" "uvicorn[standard]==0.40.0" "pydantic==2.13.1"
+
+# Now that BOTH dep sets are installed, drop pip from system Python so the
+# running sandbox can never install new packages. The runner venv keeps its
+# own pip (isolated) — irrelevant since the runner doesn't expose any way to
+# trigger pip from outside.
+RUN pip uninstall -y pip setuptools wheel 2>/dev/null || true
+
+# Copy the runner code into the image (immutable — the read-only rootfs will
+# keep it that way at runtime).
+COPY sandbox/runner /opt/runner
 
 # Non-root user. Fixed uid 1000 so the docker-compose service can map a
 # read-only volume without uid mismatch surprises. NOT --system (1000 is
@@ -57,16 +76,18 @@ RUN groupadd --gid 1000 sandbox \
  && chown -R sandbox:sandbox /work /home/sandbox
 
 USER sandbox:sandbox
-WORKDIR /work
+WORKDIR /opt/runner
 
 # Disable bytecode + buffering — both noise inside an ephemeral container
 # (read-only fs means .pyc writes would fail anyway).
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONHASHSEED=random \
-    HOME=/home/sandbox
+    HOME=/home/sandbox \
+    PATH="/opt/runner-venv/bin:${PATH}"
 
-# Default entrypoint just exits cleanly — the J2.c service overrides this
-# with the actual job runner. Having a sane default lets us smoke-test the
-# image directly (`docker run --rm sandbox:latest`).
-CMD ["python", "-c", "print('ely-sandbox image OK')"]
+# Default CMD = the runner HTTP server. The runner binds 0.0.0.0:8080; the
+# compose file connects it ONLY to sandbox-net, so the port is unreachable
+# from outside that network. `docker run --rm` for image smoke just imports
+# the module — the j2.a CI job's CMD override stays usable.
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]
