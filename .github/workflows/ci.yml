@@ -97,3 +97,16 @@ jobs:
           uid=$(docker run --rm ely-sandbox:ci id -u)
           echo "uid=$uid"
           [ "$uid" = "1000" ]
+
+  egress-proxy:
+    # Sprint 4b V3 J2.b — boot the egress-proxy + sandbox-net via
+    # docker-compose and run the 8-invariant smoke (network isolation,
+    # allow-list per domain, fast-deny on cloud metadata, GET-only,
+    # HTTPS via CONNECT, backend/qdrant unreachable). Pins the entire
+    # security model of J2.b.
+    name: Egress proxy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run egress invariants smoke
+        run: bash sandbox/test-egress.sh
