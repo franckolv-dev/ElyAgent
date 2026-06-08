@@ -180,7 +180,15 @@ services:
     container_name: ely-sandbox
     restart: unless-stopped
     networks:
+      # The runner's HTTP surface (POST /run) needs to be reachable by the
+      # backend, which lives on cyberentity-net. The sandbox itself only
+      # SERVES on this network — it never INITIATES traffic on it (its
+      # outbound calls go via egress-proxy on sandbox-net, controlled by
+      # HTTP(S)_PROXY env). So dual-homing is asymmetric in practice:
+      # cyberentity-net = inbound /run from the backend; sandbox-net =
+      # outbound generated-tool traffic through the proxy.
       - sandbox-net
+      - cyberentity-net
     environment:
       # Force every outbound HTTP/HTTPS through the egress-proxy. httpx /
       # urllib / requests all honour these automatically.
