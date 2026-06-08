@@ -62,3 +62,38 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+  sandbox-image:
+    # Sprint 4b V3 J2.a — validate that the sandbox base image still builds.
+    # Doesn't push anywhere; the docker-compose `sandbox` service (J2.c) will
+    # build it locally on `docker compose up --build`. Catches a broken
+    # Dockerfile / dep pin bump at PR time instead of in prod.
+    name: Sandbox image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sandbox image
+        run: docker build -t ely-sandbox:ci -f sandbox/Dockerfile .
+
+      - name: Smoke-run the image
+        # The image's default CMD prints a readiness line; if the image is
+        # broken (missing libs, wrong user, busted entrypoint) this fails.
+        run: |
+          out=$(docker run --rm ely-sandbox:ci)
+          echo "$out"
+          echo "$out" | grep -q "ely-sandbox image OK"
+
+      - name: Confirm pip is gone (no runtime installs)
+        # Defence in depth: the running sandbox must NEVER be able to install
+        # new packages. The Dockerfile uninstalls pip — pin that here.
+        run: |
+          ! docker run --rm ely-sandbox:ci python -m pip --version 2>/dev/null
+
+      - name: Confirm runs as non-root
+        # The Dockerfile drops to `sandbox` (uid 1000). Regression here = a
+        # tool escape could touch root-owned files. Pin it.
+        run: |
+          uid=$(docker run --rm ely-sandbox:ci id -u)
+          echo "uid=$uid"
+          [ "$uid" = "1000" ]

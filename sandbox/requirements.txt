@@ -1,0 +1,17 @@
+# Sandbox curated dependency allow-list (Sprint 4b V3 J2.a — decision §10.③).
+#
+# These are the ONLY third-party libraries a generated python_tool may import
+# at runtime. Pinned to exact versions so the image is reproducible and we
+# audit any bump explicitly. V3.0 scope is HTTP GET read-only (decision §10.④),
+# so the list is deliberately tiny.
+#
+# When the generator wants to use a lib that isn't here, the validation gate
+# (J4 — declarations) will refuse the candidate; bumping the list is a human
+# decision (PR + review), never automatic.
+
+# HTTP client — modern async-first, supersedes requests/urllib3.
+httpx==0.28.1
+
+# HTML/XML parsing.
+beautifulsoup4==4.13.5
+lxml==6.0.2
