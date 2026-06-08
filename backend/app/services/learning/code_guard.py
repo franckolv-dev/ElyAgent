@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, field
+from typing import Literal
 
 
 # ── Allow-lists ──────────────────────────────────────────────────────────────
@@ -79,6 +80,47 @@ ALLOWED_IMPORT_EXACT: frozenset[str] = frozenset({
     # import grants only the SAFE composition surface — defence in depth.
     "app.services.learning.learned_tool_dispatch",
 })
+
+
+# ── Sprint 4b V3 J3 — "io" profile ───────────────────────────────────────────
+# V3 tools may do real network I/O. They run inside the sandbox container
+# (read-only rootfs, dropped caps, no native Internet route — outbound is
+# clamped through the egress-proxy allow-list). So the threat model at the
+# AST level shifts: we don't need to prevent the *act* of making an HTTP
+# call (the proxy + network isolation does that), we need to prevent the
+# *escape patterns* (eval/exec/__import__/dunder-attr access) that would
+# let a malicious tool bypass our chain.
+#
+# V3.0 SCOPE — HTTP GET read-only:
+#   - httpx        — modern HTTP client (sync + async)
+#   - beautifulsoup4 (top-level package name `bs4`) — HTML/XML parsing
+#   - lxml         — fast XML/HTML parser, used by bs4 internals
+#
+# The same curated set is BAKED INTO the sandbox image (sandbox/Dockerfile)
+# so the import being "allowed" and the import "actually resolving" stay in
+# lockstep. Bumping either side is a PR; both sides must move together.
+#
+# FORBIDDEN_CALLS is UNCHANGED — even an "io" tool can't `eval(...)` or
+# `__import__("os").system(...)`. The escape patterns are the real risk;
+# the libraries themselves do nothing the proxy can't gate.
+ALLOWED_IMPORT_ROOTS_IO: frozenset[str] = ALLOWED_IMPORT_ROOTS | frozenset({
+    "httpx",
+    "bs4",
+    "lxml",
+})
+
+ALLOWED_IMPORT_EXACT_IO: frozenset[str] = ALLOWED_IMPORT_EXACT
+
+
+# ── Profile dispatch ─────────────────────────────────────────────────────────
+# Stays a dict (not just an if/elif) so adding a future "io_post" or
+# "io_extended" profile is one entry plus its own frozensets, no plumbing.
+GuardProfile = Literal["pure", "io"]
+
+_PROFILE_SETS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "pure": (ALLOWED_IMPORT_ROOTS, ALLOWED_IMPORT_EXACT),
+    "io":   (ALLOWED_IMPORT_ROOTS_IO, ALLOWED_IMPORT_EXACT_IO),
+}
 
 # Builtins that are escape hatches or perform I/O. Flagged when called as a
 # bare name: `eval(...)`, `open(...)`. Note `re.compile(...)` is an Attribute
@@ -165,19 +207,35 @@ def _module_allowed(module: str | None) -> bool:
 def check_tool_source(
     source: str,
     *,
+    profile: GuardProfile = "pure",
     allowed_import_roots: frozenset[str] | None = None,
     allowed_import_exact: frozenset[str] | None = None,
 ) -> GuardReport:
-    """Statically validate generated ``@tool`` source against the V2
-    allow-list. Returns a :class:`GuardReport` collecting **all**
-    violations (not just the first), so the generator gets full feedback
-    in one pass.
+    """Statically validate generated ``@tool`` source. Returns a
+    :class:`GuardReport` collecting **all** violations (not just the
+    first), so the generator gets full feedback in one pass.
 
-    The allow-lists are overridable for tests / future tuning; defaults
-    are the module constants above.
+    ``profile``:
+        - ``"pure"`` (default) — V2 N1/N2 scope: stdlib pure-compute + the
+          scaffolding + ``call_tool`` for safe composition. NO network, NO
+          I/O. Backward-compatible with every existing call-site.
+        - ``"io"`` — V3 scope: V2 allow-list PLUS the curated network/parse
+          libs (httpx / bs4 / lxml) baked into the sandbox image. Used by
+          tools that actually do HTTP GET-style network reads. The escape
+          ban (``FORBIDDEN_CALLS``) is identical — the relaxation is import
+          allow-list only.
+
+    ``allowed_import_roots`` / ``allowed_import_exact`` are an explicit
+    escape hatch (tests, future tuning). When set, they take precedence over
+    the profile-resolved defaults.
     """
-    roots = allowed_import_roots if allowed_import_roots is not None else ALLOWED_IMPORT_ROOTS
-    exact = allowed_import_exact if allowed_import_exact is not None else ALLOWED_IMPORT_EXACT
+    if profile not in _PROFILE_SETS:
+        raise ValueError(
+            f"unknown guard profile {profile!r} — valid: {sorted(_PROFILE_SETS)}"
+        )
+    default_roots, default_exact = _PROFILE_SETS[profile]
+    roots = allowed_import_roots if allowed_import_roots is not None else default_roots
+    exact = allowed_import_exact if allowed_import_exact is not None else default_exact
 
     def _mod_ok(module: str | None) -> bool:
         if not module:
@@ -281,6 +339,6 @@ def check_tool_source(
     return GuardReport(ok=not violations, violations=tuple(violations))
 
 
-def is_safe(source: str) -> bool:
+def is_safe(source: str, *, profile: GuardProfile = "pure") -> bool:
     """Convenience boolean wrapper around :func:`check_tool_source`."""
-    return check_tool_source(source).ok
+    return check_tool_source(source, profile=profile).ok
