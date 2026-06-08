@@ -155,6 +155,73 @@ services:
       # just means the proxy itself has Internet to forward to.
       - cyberentity-net
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Sprint 4b V3 J2.c — the sandbox runner itself.
+  #
+  # Exposes POST /run on port 8080 (sandbox-net only). Receives a job spec
+  # from the backend, spawns a fresh `python -S wrapper.py` subprocess in
+  # the user-Python (the one with the curated httpx/bs4/lxml allow-list),
+  # captures the single-line JSON outcome, returns it.
+  #
+  # Runtime hardening enforced HERE — the J2.a image already drops to uid
+  # 1000 and removes pip; this section locks the rest:
+  #   - read-only rootfs; only /tmp is writable (tmpfs)
+  #   - all Linux caps dropped, no-new-privileges
+  #   - pids/cpus/mem caps prevent fork bombs + runaway allocs
+  #   - connected ONLY to sandbox-net → outbound Internet ONLY via the
+  #     egress-proxy (HTTP(S)_PROXY env). Backend / qdrant / nginx are NOT
+  #     reachable (different network).
+  # ─────────────────────────────────────────────────────────────────────────
+  sandbox:
+    build:
+      context: .
+      dockerfile: sandbox/Dockerfile
+    image: ely-sandbox:latest
+    container_name: ely-sandbox
+    restart: unless-stopped
+    networks:
+      - sandbox-net
+    environment:
+      # Force every outbound HTTP/HTTPS through the egress-proxy. httpx /
+      # urllib / requests all honour these automatically.
+      HTTP_PROXY: "http://egress-proxy:3128"
+      HTTPS_PROXY: "http://egress-proxy:3128"
+      # Tuneable resource limits applied via setrlimit inside the wrapper
+      # (CPU in seconds, memory in bytes). The docker-level mem_limit /
+      # pids_limit / cpus below are the harder outer wall.
+      ELY_SANDBOX_CPU_SECONDS: "10"
+      ELY_SANDBOX_MEM_BYTES: "268435456"   # 256 MiB
+    # Filesystem hardening — rootfs is fully read-only; only /tmp is a
+    # small tmpfs the wrapper can write to (job spec stays in stdin, so
+    # the tmpfs is mostly a safety net).
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    # Capability hardening — drop everything Linux gives by default.
+    # Squid in egress-proxy needs NET_BIND_SERVICE etc., but this service
+    # only listens on a high port (8080) and never touches privileged ops.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Resource hardening — even a runaway tool can't starve the host.
+    # pids_limit blocks fork bombs; mem_limit triggers OOM-kill before the
+    # host sweats; cpus caps the share so one bad tool can't peg a core.
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 0.5
+    # Healthcheck — the runner's /healthz just checks the wrapper script
+    # exists. Used by docker compose `--wait` and by orchestration.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=2).read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      egress-proxy:
+        condition: service_started
+
 networks:
   cyberentity-net:
     driver: bridge

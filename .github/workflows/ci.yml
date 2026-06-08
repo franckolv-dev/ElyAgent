@@ -76,19 +76,25 @@ jobs:
       - name: Build sandbox image
         run: docker build -t ely-sandbox:ci -f sandbox/Dockerfile .
 
-      - name: Smoke-run the image
-        # The image's default CMD prints a readiness line; if the image is
-        # broken (missing libs, wrong user, busted entrypoint) this fails.
-        run: |
-          out=$(docker run --rm ely-sandbox:ci)
-          echo "$out"
-          echo "$out" | grep -q "ely-sandbox image OK"
+      - name: Confirm runner module imports
+        # The Dockerfile's default CMD is uvicorn; for the smoke we override
+        # to a one-shot import-test. A broken runner (missing dep, wrong
+        # WORKDIR, busted FastAPI install) fails here.
+        run: docker run --rm ely-sandbox:ci python -c "import server; print('runner OK')"
 
-      - name: Confirm pip is gone (no runtime installs)
-        # Defence in depth: the running sandbox must NEVER be able to install
-        # new packages. The Dockerfile uninstalls pip — pin that here.
+      - name: Confirm user-Python has the curated libs
+        # The libs the GENERATED tool will see at runtime. Regression here
+        # means the system pip install layer is broken.
         run: |
-          ! docker run --rm ely-sandbox:ci python -m pip --version 2>/dev/null
+          docker run --rm ely-sandbox:ci /usr/local/bin/python -c "import httpx, bs4, lxml; print('libs OK')"
+
+      - name: Confirm user-Python has NO pip (no runtime installs possible)
+        # Defence in depth: a generated tool must NEVER be able to install
+        # new packages. The Dockerfile uninstalls pip from the system Python
+        # (the runner venv keeps its own pip — irrelevant, the runner exposes
+        # no path to invoke it). Pin the SYSTEM-pip absence here.
+        run: |
+          ! docker run --rm ely-sandbox:ci /usr/local/bin/python -m pip --version 2>/dev/null
 
       - name: Confirm runs as non-root
         # The Dockerfile drops to `sandbox` (uid 1000). Regression here = a
@@ -110,3 +116,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run egress invariants smoke
         run: bash sandbox/test-egress.sh
+
+  sandbox-run:
+    # Sprint 4b V3 J2.c — boot the runner + egress-proxy via docker-compose
+    # and run the 10-invariant end-to-end smoke (pure compute, allowed +
+    # denied egress, raise capture, wall-clock timeout, read-only rootfs,
+    # /tmp tmpfs writable). Pins the runtime contract the backend (J2.d)
+    # will rely on.
+    name: Sandbox run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run sandbox runner E2E
+        run: bash sandbox/test-sandbox-run.sh
