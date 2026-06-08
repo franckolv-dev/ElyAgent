@@ -61,8 +61,21 @@ trap 'echo "▶ Cleaning up…"; docker compose stop sandbox egress-proxy >/dev/
 
 docker pull "$CURL_IMAGE" >/dev/null 2>&1 || true
 
-# Wait for /healthz to come back OK (compose healthcheck does the same but
-# we poll directly so the wait is bounded).
+# Wait for Squid to actually accept connections (it logs `listening port: 3128`).
+# `depends_on: service_started` only guarantees the container exists — Squid
+# itself needs 2-3 s to load its config and bind. Without this poll, tests 2-3
+# (which immediately drive http through the proxy) race with Squid's bind on
+# fast Linux runners and fail with `Connection refused`. Bit me in CI even
+# though local Docker Desktop hid it.
+for _ in {1..30}; do
+  if docker logs ely-egress-proxy 2>&1 | grep -q "listening port: 3128"; then
+    break
+  fi
+  sleep 1
+done
+
+# Wait for the runner's /healthz to come back OK (compose healthcheck does
+# the same but we poll directly so the wait is bounded).
 for _ in {1..30}; do
   if docker run --rm --network "$NET" "$CURL_IMAGE" \
        -fsS --max-time 2 http://sandbox:8080/healthz >/dev/null 2>&1; then
