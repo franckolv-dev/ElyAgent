@@ -61,13 +61,14 @@ def _safe_json(value: Any) -> tuple[bool, str]:
 
 
 def main() -> None:
-    # Spec is small (the source + kwargs); read all of stdin.
+    # Spec is small (the source + kwargs + optional secrets); read all of stdin.
     raw = sys.stdin.read()
     try:
         spec = json.loads(raw)
         source: str = spec["source"]
         func_name: str = spec["func_name"]
         kwargs: dict = spec.get("kwargs") or {}
+        secrets: dict = spec.get("secrets") or {}
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         print(json.dumps({"outcome": "error", "detail": f"bad spec: {exc}"}))
         sys.exit(0)
@@ -78,6 +79,18 @@ def main() -> None:
     # sync tools only. Async support can land in V3.x without breaking the
     # wire format (just an extra outcome branch).
     ns: dict[str, Any] = {"__name__": "ely_generated_tool"}
+
+    # Sprint 4b V3 J6.b.1 — expose secrets to the user code. Two access
+    # patterns supported on purpose:
+    #   - `_SECRETS["label"]` — dict access, raises KeyError on missing.
+    #   - `get_secret("label")` — helper, returns "" on missing (so tools
+    #     can degrade-open rather than KeyError-crash when a label was
+    #     declared but never provisioned).
+    # Both reference the SAME backing dict — mutating one mutates the
+    # other, but the dict is fresh per call (next invocation builds a new
+    # ns) so there's no cross-call leak.
+    ns["_SECRETS"] = dict(secrets)
+    ns["get_secret"] = lambda label, _bag=ns["_SECRETS"]: _bag.get(label, "")
     try:
         exec(compile(source, "<ely_generated_tool>", "exec"), ns, ns)
     except Exception as exc:  # noqa: BLE001 — any user-code exception → report

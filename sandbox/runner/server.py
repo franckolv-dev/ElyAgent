@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import signal
 import time
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,6 +79,14 @@ MAX_STDOUT_BYTES = 64 * 1024
 MAX_STDERR_BYTES = 16 * 1024
 
 
+# Sprint 4b V3 J6.b.1 — bounds on `secrets`. A label that fits the V4
+# decl gate (`[a-z][a-z0-9_]{2,63}`) and a value cap that fits any
+# realistic PAT / API key without ballooning request size.
+MAX_SECRET_LABELS = 32
+MAX_SECRET_VALUE_BYTES = 4 * 1024  # 4 KB per secret
+_SECRET_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
+
+
 class RunRequest(BaseModel):
     source: str = Field(
         ...,
@@ -101,6 +110,48 @@ class RunRequest(BaseModel):
         le=MAX_TIMEOUT_S,
         description="Wall-clock timeout for the whole run. The wrapper also caps CPU via RLIMIT.",
     )
+    # Sprint 4b V3 J6.b.1 — secrets the tool can read inside the sandbox.
+    # Labels match the V3 decl gate; values are arbitrary (the caller has
+    # already resolved them from Vault). The wrapper injects them as a
+    # `_SECRETS: dict[str, str]` global + a `get_secret(label) -> str`
+    # helper, both available to the tool's source. We do NOT push them as
+    # env vars: the user code can't `import os` even under profile=io
+    # (code_guard's import allow-list omits `os` deliberately), so an env
+    # var would be inert anyway and a leak risk to any future child.
+    secrets: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per-call secrets bag. Labels must match [a-z][a-z0-9_]{2,63}; "
+            "values are capped at 4 KB each, max 32 entries per call. "
+            "Available to the tool source as `_SECRETS[label]` or "
+            "`get_secret(label)` (the latter returns '' for unknown labels)."
+        ),
+    )
+
+    @field_validator("secrets")
+    @classmethod
+    def _validate_secrets(cls, v: dict[str, str]) -> dict[str, str]:
+        if not v:
+            return v
+        if len(v) > MAX_SECRET_LABELS:
+            raise ValueError(
+                f"too many secrets ({len(v)} > {MAX_SECRET_LABELS})",
+            )
+        for label, value in v.items():
+            if not isinstance(label, str) or not _SECRET_LABEL_RE.match(label):
+                raise ValueError(
+                    f"invalid secret label {label!r} (must match "
+                    f"[a-z][a-z0-9_]{{2,63}})",
+                )
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"secret {label!r} value must be a string (got {type(value).__name__})",
+                )
+            if len(value.encode("utf-8")) > MAX_SECRET_VALUE_BYTES:
+                raise ValueError(
+                    f"secret {label!r} value exceeds {MAX_SECRET_VALUE_BYTES} bytes",
+                )
+        return v
 
 
 class RunResponse(BaseModel):
@@ -169,10 +220,14 @@ async def _run_subprocess(req: RunRequest) -> RunResponse:
             env[var] = os.environ[var]
 
     import json as _json
+    # `secrets` only enters the wrapper via stdin (never env), so a leak path
+    # via /proc/<runner-pid>/environ doesn't exist. The wrapper exposes them
+    # to user code as a `_SECRETS` dict + `get_secret` helper.
     spec_payload = _json.dumps({
         "source": req.source,
         "func_name": req.func_name,
         "kwargs": req.kwargs,
+        "secrets": req.secrets,
     })
 
     t0 = time.perf_counter()
