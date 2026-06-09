@@ -91,6 +91,7 @@ async def run_in_sandbox(
     func_name: str,
     *,
     kwargs: dict[str, Any] | None = None,
+    secrets: dict[str, str] | None = None,
     timeout_s: int = DEFAULT_TIMEOUT_S,
     base_url: str = DEFAULT_BASE_URL,
 ) -> SandboxResult:
@@ -103,6 +104,12 @@ async def run_in_sandbox(
             re-validate.
         func_name: Name of the callable to invoke after `exec`'ing `source`.
         kwargs: Keyword args passed to the callable (must be JSON-serialisable).
+        secrets: Optional per-call secrets bag (V3 J6.b.1). Labels must
+            match ``[a-z][a-z0-9_]{2,63}`` and values must be strings; the
+            runner enforces the same shape with HTTP 422 on violation, so
+            any malformed bag fails closed instead of slipping through.
+            Available to the tool source as ``_SECRETS[label]`` /
+            ``get_secret(label)``. Default ``None`` (treated as empty dict).
         timeout_s: Wall-clock cap. Clamped to [1, MAX_TIMEOUT_S].
         base_url: Override for the runner URL. Useful in tests.
 
@@ -120,6 +127,7 @@ async def run_in_sandbox(
         "source": source,
         "func_name": func_name,
         "kwargs": kwargs or {},
+        "secrets": secrets or {},
         "timeout_s": timeout_s,
     }
     http_timeout = timeout_s + HTTP_OVERHEAD_S
