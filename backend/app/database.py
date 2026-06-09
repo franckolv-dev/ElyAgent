@@ -124,6 +124,11 @@ async def init_db():
             # Existing rows backfill to 'markdown_playbook' / '{}' via DEFAULT.
             ("learned_skills", "content_format", "VARCHAR(20) NOT NULL DEFAULT 'markdown_playbook'"),
             ("learned_skills", "validation_report_json", "TEXT NOT NULL DEFAULT '{}'"),
+            # Sprint 4b V3 J6.a — execution profile for python_tool skills:
+            # "pure" (V2, in-process) vs "io" (V3, sandbox runner). Existing
+            # rows backfill to 'pure' via DEFAULT — no behaviour change until
+            # tool_creator starts persisting "io" (J6.b/J7).
+            ("learned_skills", "tool_profile", "VARCHAR(8) NOT NULL DEFAULT 'pure'"),
             # Mission autonomous mode (2026-06-04) — auto-approve non-floor HITL
             # for unattended runs. Existing missions stay non-autonomous (0).
             ("missions", "autonomous", "BOOLEAN NOT NULL DEFAULT 0"),
