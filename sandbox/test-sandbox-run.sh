@@ -118,6 +118,25 @@ assert_contains "[6] error mentions read-only or permission"           "$out" 'O
 out=$(post '{"source":"def write_tmp():\n    open(\"/tmp/probe\", \"w\").write(\"hello\")\n    return open(\"/tmp/probe\").read()\n","func_name":"write_tmp"}')
 assert_contains "[7] /tmp tmpfs is writable" "$out" '"result_json":"\"hello\""'
 
+# 8. Sprint 4b V3 J6.b.1 — `secrets` arrive as a `_SECRETS` dict + helper.
+# We probe BOTH access patterns to lock the contract in (a future refactor
+# that breaks either should fail here, not in a downstream test).
+out=$(post '{"source":"def read_sec():\n    return _SECRETS[\"api_key\"]\n","func_name":"read_sec","secrets":{"api_key":"sk-test-42"}}')
+assert_contains "[8] _SECRETS dict access" "$out" '"result_json":"\"sk-test-42\""'
+
+out=$(post '{"source":"def read_sec():\n    return get_secret(\"api_key\")\n","func_name":"read_sec","secrets":{"api_key":"via-helper"}}')
+assert_contains "[8] get_secret() helper" "$out" '"result_json":"\"via-helper\""'
+
+out=$(post '{"source":"def read_missing():\n    return get_secret(\"nope\")\n","func_name":"read_missing","secrets":{"api_key":"ignored"}}')
+assert_contains "[8] get_secret() unknown label returns empty string" "$out" '"result_json":"\"\""'
+
+# 9. Sprint 4b V3 J6.b.1 — invalid secret label is rejected at the HTTP
+# boundary (FastAPI/pydantic 422), so a malformed call NEVER reaches the
+# subprocess. This is the "fail at frontier" pin — a backend bug that
+# tries to pass an UPPERCASE label can't slip a secret through.
+out=$(post '{"source":"def f():\n    return 1\n","func_name":"f","secrets":{"UPPERCASE":"v"}}')
+assert_contains "[9] invalid secret label → HTTP 422" "$out" 'invalid secret label'
+
 echo ""
 echo "────────────────────────"
 echo "Result: ${PASS} pass / ${FAIL} fail"
