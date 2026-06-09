@@ -105,14 +105,25 @@ class _FakeVault:
             raise KeyError(label)
         return self._store[label]
 
+    async def list_secrets(self, user_id: str):  # noqa: ARG002
+        # Shape match VaultService.list_secrets — labels-only, never values.
+        return [{"label": label} for label in self._store]
+
 
 class _LockedVault:
     async def get_secret(self, user_id: str, label: str) -> str:  # noqa: ARG002
         raise PermissionError("vault is locked")
 
+    async def list_secrets(self, user_id: str):  # noqa: ARG002
+        # A locked vault can still list — labels aren't sensitive.
+        return []
+
 
 class _CrashingVault:
     async def get_secret(self, user_id: str, label: str) -> str:  # noqa: ARG002
+        raise RuntimeError("postgres down")
+
+    async def list_secrets(self, user_id: str):  # noqa: ARG002
         raise RuntimeError("postgres down")
 
 
@@ -347,3 +358,209 @@ async def test_load_active_io_tools_empty_when_flag_off(monkeypatch):
     monkeypatch.delenv("LEARNED_PYTHON_TOOLS_IO_ENABLED", raising=False)
     out = await load_active_io_tools("nonexistent_user")
     assert out == []
+
+
+# ── Sprint 4b V3 J6.c.1 — bind-time secrets gate + audit hook ──────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatch_records_audit_on_happy_path():
+    """Every dispatch that reaches run_in_sandbox must produce an audit
+    row. Verify the call goes through record_dispatch with the right
+    snapshot shape."""
+    vault = _FakeVault({"openweather_api_key": "sk-test"})
+
+    async def _fake_run(*args, **kwargs):
+        return SandboxResult(outcome="returned", result_json="200", duration_s=0.123)
+
+    captured_audit: dict = {}
+
+    async def _fake_audit(**kwargs):
+        captured_audit.update(kwargs)
+
+    with patch.object(io_mod, "run_in_sandbox", side_effect=_fake_run), \
+         patch.object(io_mod, "record_dispatch", side_effect=_fake_audit):
+        tool = build_io_structured_tool(
+            source=_PROBE_SRC, user_id="u1", skill_id="skill-99",
+            vault_service=vault,
+        )
+        await tool.ainvoke({"city": "Paris"})
+
+    assert captured_audit["user_id"] == "u1"
+    assert captured_audit["skill_id"] == "skill-99"
+    assert captured_audit["tool_name"] == "weather_probe"
+    assert captured_audit["outcome"] == "returned"
+    assert captured_audit["duration_s"] == 0.123
+    # Only labels of secrets we actually resolved (not their values).
+    assert captured_audit["secrets_used"] == ("openweather_api_key",)
+    # Declared `network_allow` snapshotted at dispatch.
+    assert captured_audit["network_allow"] == ("api.openweathermap.org",)
+    # No error on a returned outcome.
+    assert captured_audit["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_records_audit_on_missing_secret():
+    """A config-error path (secret not in vault) still produces an audit
+    row — surfaces the misconfiguration in the operational signal."""
+    vault = _FakeVault({})  # no entries
+    captured: dict = {}
+
+    async def _fake_audit(**kwargs):
+        captured.update(kwargs)
+
+    with patch.object(io_mod, "run_in_sandbox") as fake_run, \
+         patch.object(io_mod, "record_dispatch", side_effect=_fake_audit):
+        tool = build_io_structured_tool(
+            source=_PROBE_SRC, user_id="u1", skill_id="skill-99",
+            vault_service=vault,
+        )
+        await tool.ainvoke({"city": "Paris"})
+
+    fake_run.assert_not_called()
+    assert captured["outcome"] == "config_error"
+    assert "not provisioned" in (captured.get("error") or "")
+
+
+@pytest.mark.asyncio
+async def test_dispatch_records_audit_on_sandbox_error_outcome():
+    """A `raised` outcome must include the truncated error in the audit
+    row, so the admin UI can show what went wrong without re-running."""
+    vault = _FakeVault({"openweather_api_key": "sk"})
+
+    async def _fake_run(*args, **kwargs):
+        return SandboxResult(
+            outcome="raised", stage="call",
+            error="ConnectError: connection refused",
+            duration_s=0.05,
+        )
+
+    captured: dict = {}
+
+    async def _fake_audit(**kwargs):
+        captured.update(kwargs)
+
+    with patch.object(io_mod, "run_in_sandbox", side_effect=_fake_run), \
+         patch.object(io_mod, "record_dispatch", side_effect=_fake_audit):
+        tool = build_io_structured_tool(
+            source=_PROBE_SRC, user_id="u1", skill_id="skill-99",
+            vault_service=vault,
+        )
+        await tool.ainvoke({"city": "Paris"})
+
+    assert captured["outcome"] == "raised"
+    assert "ConnectError" in captured["error"]
+    assert captured["duration_s"] == 0.05
+
+
+# ── Bind-time secrets gate (load_active_io_tools) ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_load_active_io_excludes_skill_with_missing_secret(monkeypatch):
+    """A skill that declares secrets none of which are in the vault must
+    NOT be exposed to the LLM — bind exclusion. The user sees a clear
+    UI-side warning (admin path, J6.x), but the agent loop doesn't see
+    a tool it can't call."""
+    monkeypatch.setenv("LEARNED_PYTHON_TOOLS_IO_ENABLED", "1")
+    monkeypatch.delenv("LEARNED_PYTHON_TOOLS_DISABLED", raising=False)
+
+    # Mock the DB read with a single skill that needs a secret.
+    class _Skill:
+        id = "skill-bind-test"
+        name = "weather_probe"
+        content = _PROBE_SRC
+
+    class _MockExecResult:
+        def scalars(self):
+            class _S:
+                @staticmethod
+                def all():
+                    return [_Skill()]
+            return _S()
+
+    class _MockSession:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def execute(self, *_):
+            return _MockExecResult()
+
+    with patch("app.database.async_session", return_value=_MockSession()):
+        # Empty vault — the secret openweather_api_key is missing.
+        out = await load_active_io_tools(
+            "u_bind", vault_service=_FakeVault({}),
+        )
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_load_active_io_includes_skill_when_secrets_present(monkeypatch):
+    """The same skill, with the secret provisioned, MUST be bound — pin
+    that the gate correctly passes through the happy path."""
+    monkeypatch.setenv("LEARNED_PYTHON_TOOLS_IO_ENABLED", "1")
+    monkeypatch.delenv("LEARNED_PYTHON_TOOLS_DISABLED", raising=False)
+
+    class _Skill:
+        id = "skill-bind-test"
+        name = "weather_probe"
+        content = _PROBE_SRC
+
+    class _MockExecResult:
+        def scalars(self):
+            class _S:
+                @staticmethod
+                def all():
+                    return [_Skill()]
+            return _S()
+
+    class _MockSession:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def execute(self, *_):
+            return _MockExecResult()
+
+    with patch("app.database.async_session", return_value=_MockSession()):
+        out = await load_active_io_tools(
+            "u_bind",
+            vault_service=_FakeVault({"openweather_api_key": "sk"}),
+        )
+    assert len(out) == 1
+    assert out[0].name == "weather_probe"
+
+
+@pytest.mark.asyncio
+async def test_load_active_io_includes_no_secret_skill_without_vault(monkeypatch):
+    """A skill that doesn't declare any secret must be bound even when
+    no vault is passed — symmetric with the per-call rule."""
+    monkeypatch.setenv("LEARNED_PYTHON_TOOLS_IO_ENABLED", "1")
+    monkeypatch.delenv("LEARNED_PYTHON_TOOLS_DISABLED", raising=False)
+
+    class _Skill:
+        id = "skill-no-sec"
+        name = "public_ping"
+        content = _PURE_SRC_NO_SECRETS
+
+    class _MockExecResult:
+        def scalars(self):
+            class _S:
+                @staticmethod
+                def all():
+                    return [_Skill()]
+            return _S()
+
+    class _MockSession:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def execute(self, *_):
+            return _MockExecResult()
+
+    with patch("app.database.async_session", return_value=_MockSession()):
+        out = await load_active_io_tools("u_bind", vault_service=None)
+    assert len(out) == 1
+    assert out[0].name == "public_ping"
