@@ -130,6 +130,35 @@ class SkillContentFormat:
     ALL = {MARKDOWN_PLAYBOOK, PYTHON_TOOL}
 
 
+# ── Tool profile enum (V3, Sprint 4b) ───────────────────────────────────────
+class SkillToolProfile:
+    """Execution profile for ``content_format == "python_tool"`` skills.
+
+    ``pure``  V2 — composition of existing ELY tools + pure-computation stdlib,
+              **zero I/O**. Validated through the V2 AST guard ("pure" profile)
+              and bound in-process via :mod:`learned_tools_runtime`. Default
+              for every V2 row (and for any future row whose profile isn't
+              explicitly set).
+    ``io``    V3 — same validation pipeline + the V3 declaration gates
+              (``network_allow`` / ``requires`` / ``requires_secrets``), and
+              the tool **only ever executes inside the sandbox runner**
+              (sandbox/runner) over an isolated network with a Squid
+              forward-proxy ACL — never in the backend process. Bound as an
+              async :class:`StructuredTool` whose body marshals the call into
+              a sandbox HTTP request (J6.b).
+
+    Decision (Sprint 4b V3 J6.a): every existing row stays ``pure`` (default).
+    A row only flips to ``io`` when ``tool_creator`` explicitly generated an
+    io tool — which won't happen until J6.b / J7 land. Until then no caller
+    persists ``io``, so the column is purely additive and reversible.
+    """
+
+    PURE = "pure"
+    IO = "io"
+
+    ALL = {PURE, IO}
+
+
 class LearnedSkill(Base):
     """One Markdown playbook + metadata, user-scoped."""
 
@@ -167,6 +196,18 @@ class LearnedSkill(Base):
     # mypy / smoke / bench), one entry per stage. "{}" for markdown
     # playbooks and for python_tool skills not yet validated.
     validation_report_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    # V3 (Sprint 4b J6.a) — execution profile for python_tool skills.
+    # "pure" = composition + stdlib, bound in-process (V2 path).
+    # "io"   = isolated I/O tool, executed in the sandbox runner (V3 path).
+    # Ignored when content_format == "markdown_playbook" (playbooks have no
+    # runtime), but stored uniformly to keep the schema rectangular. Every
+    # pre-V3 row stays "pure" via DEFAULT, so the column is additive.
+    # See SkillToolProfile + Sprint 4b V3 design notes.
+    tool_profile: Mapped[str] = mapped_column(
+        String(8),
+        default=SkillToolProfile.PURE,
+    )
 
     # Lifecycle + provenance (see enums above).
     status: Mapped[str] = mapped_column(
