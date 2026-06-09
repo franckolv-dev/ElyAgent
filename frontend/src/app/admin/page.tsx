@@ -406,7 +406,17 @@ export default function AdminPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showMsg("err", formatApiError(err, `Erreur ${res.status}`));
+        // 422 here is, in practice, always the password-strength gate.
+        // With the live indicator + disabled button this is unreachable
+        // through the UI, but the server stays authoritative — when the
+        // race does happen, we want a CONSIGNE message, not a crashy
+        // technical dump of Pydantic violations.
+        showMsg(
+          "err",
+          res.status === 422
+            ? "Mot de passe non conforme : 12 caractères minimum, avec majuscule, minuscule, chiffre et caractère spécial."
+            : formatApiError(err, `Erreur ${res.status}`),
+        );
       } else {
         showMsg("ok", `Mot de passe de « ${resetTarget.username} » réinitialisé.`);
         setResetTarget(null);
@@ -615,7 +625,13 @@ export default function AdminPage() {
                       </button>
                     </div>
                     {/* Live password rules — backend rejects with 422 if any is missing.
-                        Showing them inline avoids the surprise round-trip. */}
+                        Showing them inline avoids the surprise round-trip. Framed
+                        as a CONSIGNE rather than a validation report — the admin
+                        reads "voici ce que doit contenir le mot de passe", not
+                        "voici les erreurs que vous faites". */}
+                    <div className="text-[10px] text-text-muted">
+                      Le mot de passe doit contenir :
+                    </div>
                     <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
                       {ruleRows.map(([ok, label]) => (
                         <li key={label} className={ok ? "text-cyber-cyan" : "text-text-muted"}>
