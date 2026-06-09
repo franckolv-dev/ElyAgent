@@ -38,6 +38,8 @@ from app.models.user_state import UserState
 # Sprint 4b Phase 1 — auto-amélioration par création de skills (Hermes-style)
 from app.models.failure_case import FailureCase
 from app.models.learned_skill import LearnedSkill, SkillStatus, SkillSource
+# Sprint 4b V3 J6.c.1 — per-call audit for io python_tool dispatches.
+from app.models.io_tool_dispatch import IoToolDispatch
 # Models that were registered with Base.metadata only by side-effect of being
 # imported from other parts of the codebase. Listing them here makes the
 # dependency explicit so ``Base.metadata.create_all`` sees their tables on a
@@ -66,6 +68,7 @@ __all__ = [
     "HitlRefusal", "HallucinationBlock", "ProviderSwitch", "MissionCritique",
     "UserState",
     "FailureCase", "LearnedSkill", "SkillStatus", "SkillSource",
+    "IoToolDispatch",
     # Newly explicit (side-effect imports promoted to first-class)
     "ArenaMatch", "ArenaElo", "CommunitySkill", "Feedback", "LLMInstance",
     "MCPServer", "Note", "ScheduledTask", "SkillPreference", "SystemConfig",

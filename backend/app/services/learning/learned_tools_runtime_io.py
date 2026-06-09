@@ -57,8 +57,12 @@ from typing import Any
 from langchain_core.tools import StructuredTool
 from pydantic import create_model
 
+from app.services.learning.io_tool_audit import record_dispatch
 from app.services.learning.registration_gate import extract_tool_signature
-from app.services.learning.v3_declarations import parse_v3_declarations
+from app.services.learning.v3_declarations import (
+    check_secrets_exist,
+    parse_v3_declarations,
+)
 from app.services.sandbox_client import SandboxResult, run_in_sandbox
 
 logger = logging.getLogger(__name__)
@@ -176,13 +180,22 @@ def _make_dispatcher(
     *,
     source: str,
     func_name: str,
+    tool_name: str,
     secret_labels: tuple[str, ...],
+    network_allow: tuple[str, ...],
     user_id: str,
+    skill_id: str | None,
     vault_service: Any,
     timeout_s: int,
 ):
     """Build the async coroutine that StructuredTool will call. Kept as a
     factory so each tool gets its own closure (no shared mutable state)."""
+
+    # The audit takes a non-empty skill_id (the FK column is non-nullable).
+    # For unit-test builds without a persisted skill we fall back to a
+    # synthetic id; the test asserts don't read it. Production callers
+    # always supply the real DB id.
+    _skill_id = skill_id or f"<unsaved:{func_name}>"
 
     async def _dispatch(**kwargs: Any) -> str:
         # Resolve secrets at CALL time (vault may unlock/lock between
@@ -199,11 +212,25 @@ def _make_dispatcher(
                         "io dispatch %s: secret %r not in vault for %s",
                         func_name, label, user_id[:8],
                     )
+                    await record_dispatch(
+                        user_id=user_id, skill_id=_skill_id,
+                        tool_name=tool_name, outcome="config_error",
+                        secrets_used=secret_labels,
+                        network_allow=network_allow,
+                        error=f"secret '{label}' not provisioned",
+                    )
                     return f"[io tool config error] secret '{label}' not provisioned"
                 except PermissionError:
                     logger.info(
                         "io dispatch %s: vault locked for %s",
                         func_name, user_id[:8],
+                    )
+                    await record_dispatch(
+                        user_id=user_id, skill_id=_skill_id,
+                        tool_name=tool_name, outcome="config_error",
+                        secrets_used=secret_labels,
+                        network_allow=network_allow,
+                        error="vault locked",
                     )
                     return f"[io tool config error] vault is locked; please unlock to use this tool"
                 except Exception as exc:  # noqa: BLE001
@@ -211,10 +238,24 @@ def _make_dispatcher(
                         "io dispatch %s: vault crash on %r: %s",
                         func_name, label, exc,
                     )
+                    await record_dispatch(
+                        user_id=user_id, skill_id=_skill_id,
+                        tool_name=tool_name, outcome="config_error",
+                        secrets_used=secret_labels,
+                        network_allow=network_allow,
+                        error=f"vault error: {exc}"[:500],
+                    )
                     return f"[io tool config error] vault error: {exc}"
         elif secret_labels and vault_service is None:
             # Misconfiguration — the tool declares secrets but no vault
             # service was injected. Don't pretend it worked.
+            await record_dispatch(
+                user_id=user_id, skill_id=_skill_id,
+                tool_name=tool_name, outcome="config_error",
+                secrets_used=secret_labels,
+                network_allow=network_allow,
+                error="no vault service in session",
+            )
             return (
                 "[io tool config error] tool requires secrets but vault "
                 "is not available in this session"
@@ -226,6 +267,21 @@ def _make_dispatcher(
             kwargs=kwargs,
             secrets=secrets,
             timeout_s=timeout_s,
+        )
+
+        # Audit the call. The labels of secrets we resolved (not the
+        # values); the declared network domains (not the actual URLs);
+        # a 500-char error truncation. Best-effort — record_dispatch
+        # logs + swallows on any DB failure.
+        await record_dispatch(
+            user_id=user_id,
+            skill_id=_skill_id,
+            tool_name=tool_name,
+            outcome=result.outcome,
+            duration_s=result.duration_s,
+            secrets_used=tuple(secrets.keys()),  # actually resolved
+            network_allow=network_allow,
+            error=(result.error or result.detail) if not result.is_ok else None,
         )
         return format_sandbox_result(result)
 
@@ -281,8 +337,11 @@ def build_io_structured_tool(
     dispatcher = _make_dispatcher(
         source=source,
         func_name=sig.func_name,
+        tool_name=sig.tool_name,
         secret_labels=decls.requires_secrets,
+        network_allow=decls.network_allow,
         user_id=user_id,
+        skill_id=skill_id,
         vault_service=vault_service,
         timeout_s=timeout_s,
     )
@@ -359,6 +418,31 @@ async def load_active_io_tools(
     out: list[StructuredTool] = []
     seen: set[str] = set()
     for skill in rows:
+        # ── Secrets gate AT BIND TIME (Sprint 4b V3 J6.c.1) ──────────
+        # Different from the per-call gate inside the dispatcher: this
+        # gate keeps a tool OUT of the LLM's view entirely when its
+        # declared secrets aren't provisioned right now. The LLM never
+        # sees a tool it can't call, so it can't "burn a turn" trying.
+        # The per-call gate (in _make_dispatcher) is the fallback for
+        # the race where the user removes a secret between bind and
+        # call — that returns a config-error string mid-conversation.
+        decls = parse_v3_declarations(skill.content or "")
+        if decls.requires_secrets:
+            gate = await check_secrets_exist(
+                decls, user_id=user_id, vault_service=vault_service,
+            )
+            if not gate.ok:
+                # check_secrets_exist degrades-open on vault crashes
+                # (returns ok=True), so a non-ok here is a genuine
+                # missing-secret. Skip + log; no audit row (the call
+                # never happened — bind exclusion is a separate signal
+                # that V3.x can surface via the admin UI).
+                logger.info(
+                    "load_active_io_tools: excluding skill %s (%s) — %s",
+                    skill.id, skill.name, gate.summary(),
+                )
+                continue
+
         try:
             tool = build_io_structured_tool(
                 source=skill.content or "",
