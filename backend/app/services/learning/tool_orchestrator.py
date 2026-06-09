@@ -36,11 +36,17 @@ from __future__ import annotations
 import ast
 import json
 from dataclasses import dataclass, field
+from typing import Literal
 
-from app.services.learning.code_guard import check_tool_source
+from app.services.learning.code_guard import GuardProfile, check_tool_source
 from app.services.learning.registration_gate import check_registration_safety
 from app.services.learning.smoke_sandbox import smoke_run
 from app.services.learning.static_checks import run_mypy, run_ruff
+from app.services.learning.v3_declarations import (
+    check_declarations_wellformed,
+    check_deps_subset_of_baked,
+    parse_v3_declarations,
+)
 
 
 # ── Report types ──────────────────────────────────────────────────────────────
@@ -48,7 +54,9 @@ from app.services.learning.static_checks import run_mypy, run_ruff
 
 @dataclass(frozen=True)
 class StageResult:
-    stage: str  # ast | ruff | mypy | smoke | registration
+    # Profile=pure:  ast | ruff | mypy | smoke | registration
+    # Profile=io:    ast | declarations | deps | ruff | mypy | smoke | registration
+    stage: str
     ok: bool
     detail: str = ""
 
@@ -85,6 +93,12 @@ class ToolValidationReport:
 
 STAGE_ORDER = ("ast", "ruff", "mypy", "smoke", "registration")
 
+# Sprint 4b V3 J5 — when profile="io", the V3 declaration gates run between
+# the AST guard and ruff. Order matters: code_guard catches the dangerous
+# patterns first; once we know the source is structurally safe, we audit
+# what it CLAIMS to need (declarations) before paying for ruff/mypy/smoke.
+STAGE_ORDER_IO = ("ast", "declarations", "deps", "ruff", "mypy", "smoke", "registration")
+
 
 def _composes_tools(source: str) -> bool:
     """True if ``source`` calls ``call_tool(...)`` — i.e. it composes other
@@ -108,12 +122,25 @@ def validate_tool_source(
     existing_names: set[str] | frozenset[str],
     smoke_kwargs: dict | None = None,
     run_smoke: bool = True,
+    profile: GuardProfile = "pure",
 ) -> ToolValidationReport:
-    """Run the 5-stage validation chain over ``source``, fail-fast.
+    """Run the validation chain over ``source``, fail-fast.
 
     Returns a :class:`ToolValidationReport`. The chain stops at the first
-    failing stage; later stages are not run (and not listed). ``run_smoke``
-    can be False when no sample input is available for stage 4.
+    failing stage; later stages are not run (and not listed).
+
+    ``profile`` (Sprint 4b V3 J5):
+        - ``"pure"`` (default) — V2 N1/N2 scope, 5 stages: ast → ruff → mypy
+          → smoke → registration. Backward-compatible with every existing
+          caller; the new V3 gates are NOT run.
+        - ``"io"`` — V3 scope, 7 stages: adds ``declarations`` and ``deps``
+          between ``ast`` and ``ruff``. The AST guard itself uses the wider
+          allow-list (httpx / bs4 / lxml). The ``secrets_exist`` gate is
+          NOT in this chain because it's async + needs a user_id — it's
+          called separately by the runtime dispatcher in J6.
+
+    ``run_smoke`` can be False when no sample input is available for the
+    smoke stage.
     """
     stages: list[StageResult] = []
 
@@ -125,11 +152,30 @@ def validate_tool_source(
             stages=tuple(stages),
         )
 
-    # [1] AST allow-list (security) — MUST be first.
-    guard = check_tool_source(source)
+    # [1] AST allow-list (security) — MUST be first. The profile flag here
+    # widens the import allow-list when profile="io" (J3); FORBIDDEN_CALLS
+    # and dunder access are still banned in both profiles.
+    guard = check_tool_source(source, profile=profile)
     stages.append(StageResult("ast", guard.ok, guard.summary()))
     if not guard.ok:
         return _finish("ast")
+
+    # [1.5] V3 declaration gates — only when profile="io". A tool that
+    # declares nothing (V3Declarations.is_pure) passes both vacuously, so a
+    # composition or pure-compute tool routed through profile="io" by mistake
+    # doesn't get spurious failures. Run BEFORE ruff/mypy/smoke so we fail
+    # fast on bad declarations without paying for the heavier static checks.
+    if profile == "io":
+        decls = parse_v3_declarations(source)
+        wellformed = check_declarations_wellformed(source, decls=decls)
+        stages.append(StageResult("declarations", wellformed.ok, wellformed.summary()))
+        if not wellformed.ok:
+            return _finish("declarations")
+
+        deps = check_deps_subset_of_baked(decls)
+        stages.append(StageResult("deps", deps.ok, deps.summary()))
+        if not deps.ok:
+            return _finish("deps")
 
     # [2] ruff
     ruff = run_ruff(source)
