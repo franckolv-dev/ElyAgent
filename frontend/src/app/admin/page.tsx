@@ -31,6 +31,58 @@ import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// ── HTTP error formatting (Pydantic 422 has detail as array, not string) ──
+// FastAPI / Pydantic returns 422s with `{detail: [{loc, msg, type, ...}]}`.
+// Passing that object straight into React rendering (or into a `text: string`
+// state slot) crashes the page. This helper folds it back into a readable
+// string. Falls back to `fallback` for shapes we don't recognise.
+type ApiErrorShape = {
+  detail?: string | Array<string | { msg?: unknown }> | unknown;
+};
+function formatApiError(err: unknown, fallback: string): string {
+  if (!err || typeof err !== "object") return fallback;
+  const detail = (err as ApiErrorShape).detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d) => {
+        if (typeof d === "string") return d;
+        if (d && typeof d === "object" && "msg" in d) {
+          const m = (d as { msg: unknown }).msg;
+          return typeof m === "string" ? m : "";
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (msgs.length) return msgs.join(" · ");
+  }
+  return fallback;
+}
+
+// ── Password strength rules (mirror backend/app/schemas/auth.py) ──────────
+// Live-checked in the reset-password modal so the admin sees ahead of time
+// what's missing. The backend still enforces them; this is pre-validation
+// UX, not a security gate.
+type PasswordRules = {
+  length: boolean;
+  upper: boolean;
+  lower: boolean;
+  digit: boolean;
+  special: boolean;
+  allOk: boolean;
+};
+function checkPasswordRules(pwd: string): PasswordRules {
+  const length = pwd.length >= 12;
+  const upper = /[A-Z]/.test(pwd);
+  const lower = /[a-z]/.test(pwd);
+  const digit = /\d/.test(pwd);
+  const special = /[^a-zA-Z0-9]/.test(pwd);
+  return {
+    length, upper, lower, digit, special,
+    allOk: length && upper && lower && digit && special,
+  };
+}
+
 interface AdminUser {
   id: string;
   username: string;
@@ -354,7 +406,7 @@ export default function AdminPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showMsg("err", err.detail ?? `Erreur ${res.status}`);
+        showMsg("err", formatApiError(err, `Erreur ${res.status}`));
       } else {
         showMsg("ok", `Mot de passe de « ${resetTarget.username} » réinitialisé.`);
         setResetTarget(null);
@@ -372,7 +424,7 @@ export default function AdminPage() {
       const res = await authFetch(`${API_URL}/admin/users/${user.id}/toggle-active`, { method: "PATCH" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showMsg("err", err.detail ?? `Erreur ${res.status}`);
+        showMsg("err", formatApiError(err, `Erreur ${res.status}`));
       } else {
         const data = await res.json();
         showMsg("ok", data.message);
@@ -527,7 +579,16 @@ export default function AdminPage() {
                 )}
 
                 {/* Reset password modal */}
-                {resetTarget && (
+                {resetTarget && (() => {
+                  const rules = checkPasswordRules(resetPwd);
+                  const ruleRows: Array<[boolean, string]> = [
+                    [rules.length,  "12 caractères minimum"],
+                    [rules.upper,   "1 lettre majuscule"],
+                    [rules.lower,   "1 lettre minuscule"],
+                    [rules.digit,   "1 chiffre"],
+                    [rules.special, "1 caractère spécial"],
+                  ];
+                  return (
                   <div className="bg-bg-secondary border border-cyber-cyan/20 rounded-lg p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-medium text-text-primary">
@@ -542,7 +603,7 @@ export default function AdminPage() {
                         type={resetPwdShow ? "text" : "password"}
                         value={resetPwd}
                         onChange={(e) => setResetPwd(e.target.value)}
-                        placeholder="Nouveau mot de passe (12 car. min, maj, chiffre, spécial)"
+                        placeholder="Nouveau mot de passe"
                         className="w-full bg-bg-primary border border-border-dim rounded-md px-3 py-2 text-xs text-text-primary placeholder-text-muted/40 focus:outline-none focus:border-cyber-cyan/50 pr-9"
                       />
                       <button
@@ -553,15 +614,26 @@ export default function AdminPage() {
                         {resetPwdShow ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
                     </div>
+                    {/* Live password rules — backend rejects with 422 if any is missing.
+                        Showing them inline avoids the surprise round-trip. */}
+                    <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
+                      {ruleRows.map(([ok, label]) => (
+                        <li key={label} className={ok ? "text-cyber-cyan" : "text-text-muted"}>
+                          {ok ? "✓" : "○"} {label}
+                        </li>
+                      ))}
+                    </ul>
                     <button
                       onClick={handleResetPassword}
-                      disabled={resetSaving || !resetPwd}
-                      className="px-4 py-1.5 rounded text-xs bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors disabled:opacity-40"
+                      disabled={resetSaving || !rules.allOk}
+                      className="px-4 py-1.5 rounded text-xs bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={rules.allOk ? "" : "Toutes les règles doivent être satisfaites"}
                     >
                       {resetSaving ? "En cours…" : "Confirmer la réinitialisation"}
                     </button>
                   </div>
-                )}
+                  );
+                })()}
 
               <div className="bg-bg-secondary border border-border-dim rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
