@@ -24,9 +24,13 @@ Design :
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import math
+import os
 import time
+import unicodedata
 from typing import Any, Optional
 
 from langchain_core.messages import (
@@ -433,6 +437,17 @@ def _get_planner_llm():
     return get_llm_for_tier(ComplexityTier.MEDIUM)
 
 
+def _norm(s: str) -> str:
+    """Lowercase + strip accents — « événement » matche « evenement ».
+
+    Le matching par mots-clés était fragile aux accents (incident scheduler
+    du 31 mai : briefing multi-domaine raté car le goal n'épelait pas les
+    accents comme les listes). Les DEUX côtés de chaque match passent ici.
+    """
+    s = unicodedata.normalize("NFKD", (s or "").lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # ACTION_KEYWORDS — biaise le tool selection par INTENTION (pas par DOMAINE).
 #
@@ -515,19 +530,25 @@ ACTION_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
+# Pré-normalisé une fois à l'import (accent-insensible des deux côtés).
+_ACTION_KEYWORDS_NORM: dict[str, list[str]] = {
+    name: [_norm(kw) for kw in kws] for name, kws in ACTION_KEYWORDS.items()
+}
+
 
 def _boost_by_action_keywords(text: str, all_tools: list) -> list:
     """Return tools whose registered action keywords match the goal/step text.
 
-    Uses simple lowercase substring matching. The boosted tools are placed
-    at the head of the candidate list passed to the LLM, which biases it
-    strongly towards them (position #1 in the function-calling list is the
-    most likely choice at low temperature).
+    Uses accent-insensitive lowercase substring matching (both sides go
+    through `_norm`). The boosted tools are placed at the head of the
+    candidate list passed to the LLM, which biases it strongly towards them
+    (position #1 in the function-calling list is the most likely choice at
+    low temperature).
     """
-    text_low = (text or "").lower()
+    text_norm = _norm(text)
     boosted_names: list[str] = []
-    for tool_name, kws in ACTION_KEYWORDS.items():
-        if any(kw in text_low for kw in kws):
+    for tool_name, kws in _ACTION_KEYWORDS_NORM.items():
+        if any(kw in text_norm for kw in kws):
             boosted_names.append(tool_name)
     if not boosted_names:
         return []
@@ -535,24 +556,108 @@ def _boost_by_action_keywords(text: str, all_tools: list) -> list:
     return [by_name[n] for n in boosted_names if n in by_name]
 
 
-def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str, current_step_desc: str = "") -> list:
+# ──────────────────────────────────────────────────────────────────────────────
+# Re-rank sémantique (« RAG d'outils ») — comble les trous du lexical.
+#
+# Le filtre par mots-clés est précis mais aveugle aux paraphrases : un step
+# « préviens-moi sur mon téléphone » ne contient aucun mot-clé telegram_*.
+# On complète donc les candidats lexicaux par un score HYBRIDE sur le
+# catalogue complet — même recette que find_tool (leçon cross-lingual FR :
+# le pur sémantique échoue, le lexical MÈNE, le cosine AFFINE) :
+#
+#     score = recouvrement_tokens(step, tool) + 0.5 × cosine(step, tool)
+#
+# L'encodeur FastEmbed est déjà résident pour les stores mémoire → coût
+# marginal : un embed batch du catalogue par bump de tools_version + un
+# embed de la requête par step (LRU-caché par MemoryInfra).
+# ──────────────────────────────────────────────────────────────────────────────
+
+_SEM_WEIGHT = 0.5   # le sémantique affine, le lexical mène (leçon find_tool)
+_SEM_FLOOR = 0.15   # score hybride en dessous = bruit, on ne bind pas
+_TOOL_CAP = 15      # ~15 outils max par step (payload + focus des petits modèles)
+_GENERIC_TOOLS = {"web_search", "web_browse", "smart_knowledge_query"}
+
+# Cache module-level des embeddings du catalogue — invalidé sur tools_version
+# (bumpé à chaque register/unregister, y compris hot-reload MCP).
+_tool_vec_version: int = -1
+_tool_vectors: dict[str, list[float]] = {}
+_tool_text_norm: dict[str, str] = {}
+_tool_vec_lock = asyncio.Lock()
+
+
+def _semantic_rank_disabled() -> bool:
+    """Kill-switch env — même convention que USER_STATE_DISABLED."""
+    return os.getenv("MISSION_SEMANTIC_TOOLS_DISABLED", "").lower() in ("1", "true", "yes")
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+async def _ensure_tool_embeddings(all_tools: list) -> None:
+    """(Re)construit le cache d'embeddings du catalogue si le registre a changé.
+
+    Batch UNIQUE hors event loop (`asyncio.to_thread`), comme find_tool — on
+    ne passe pas par `MemoryInfra.embed()` (un appel verrouillé par texte
+    serait bien plus lent à froid sur ~150 outils). Si l'encodeur est
+    indisponible, on garde le cache lexical et on marque quand même la
+    version : ranking dégradé lexical-only jusqu'au prochain bump, pas de
+    retry à chaque step.
+    """
+    global _tool_vec_version, _tool_vectors, _tool_text_norm
+    from app.skills import get_skill_registry
+
+    version = get_skill_registry().tools_version
+    if version == _tool_vec_version and _tool_text_norm:
+        return
+    async with _tool_vec_lock:
+        if version == _tool_vec_version and _tool_text_norm:
+            return
+        _tool_text_norm = {
+            t.name: _norm(f"{t.name} {getattr(t, 'description', '') or ''}") for t in all_tools
+        }
+        try:
+            from app.services.memory import get_memory_infra
+
+            infra = get_memory_infra()
+            names = [t.name for t in all_tools]
+            texts = [f"{t.name}: {getattr(t, 'description', '') or ''}" for t in all_tools]
+            vecs = await asyncio.to_thread(lambda: [v.tolist() for v in infra.encoder.embed(texts)])
+            _tool_vectors = dict(zip(names, vecs))
+            logger.info("missions: embeddings outils prêts — %d outils (tools_version=%d)",
+                        len(names), version)
+        except Exception as exc:  # noqa: BLE001 — le sémantique est optionnel
+            _tool_vectors = {}
+            logger.warning("missions: embeddings outils indisponibles, lexical-only (%s)", exc)
+        _tool_vec_version = version
+
+
+async def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str, current_step_desc: str = "") -> list:
     """Reduce the tool inventory to a manageable subset for this iteration.
 
-    With 76 tools binded simultaneously, smaller models (xLAM-2-8B,
+    With ~150 tools binded simultaneously, smaller models (xLAM-2-8B,
     Gemini-flash) hit payload-size limits or get confused. We pre-filter
-    to ~10-15 tools using THREE signals (in priority order) :
+    to ~10-15 tools using FOUR signals (in priority order) :
 
     1. `ACTION_KEYWORDS` boost from goal+step text (most precise) — matches
-       INTENTION verbs to specific tools. Ex: "supprime spam" boosts
-       `gmail_trash_by_category` to position #1.
+       INTENTION verbs to specific tools, accent-insensitive. Ex: "supprime
+       spam" boosts `gmail_trash_by_category` to position #1.
     2. `tool_hint` from the plan step — strict match by prefix/family.
        Ex: hint="weather_get" → all tools starting with "weather_".
     3. `FAMILY_KEYWORDS` from goal text (broader fallback) — match tool
        families against significant words in the goal.
+    4. Semantic fill — hybrid lexical+cosine re-rank of the remaining
+       catalog, fills the leftover slots with paraphrase matches the
+       keywords miss (« préviens-moi sur mon téléphone » →
+       telegram_send_message). Best-effort : degrades to 1-3 only when the
+       encoder is unavailable ; kill-switch MISSION_SEMANTIC_TOOLS_DISABLED.
 
-    If none yield enough candidates, we top up with a few "generic"
-    tools (web_search, web_browse) so the model always has something
-    to fall back to.
+    The generic safety net (web_search, web_browse, smart_knowledge_query)
+    keeps reserved slots so a wrong semantic guess never starves the step
+    of a fallback.
     """
     if not all_tools:
         return all_tools
@@ -592,8 +697,10 @@ def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str,
 
     # Keyword extraction from goal — pick significant nouns
     if len(candidates) < 10:
-        goal_low = goal.lower()
-        # Common ELY tool families to keyword-match
+        goal_norm = _norm(goal)
+        # Common ELY tool families to keyword-match (accent-insensitive —
+        # both sides normalized, so « réunion » in the goal matches even if
+        # spelled « reunion »)
         FAMILY_KEYWORDS = {
             "weather":  ["météo", "meteo", "weather", "temperature", "pluie", "soleil"],
             "news":     ["news", "actualité", "actualites", "info", "article"],
@@ -607,19 +714,51 @@ def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str,
             "image":    ["image", "photo", "picture", "imagen", "dessin"],
         }
         for family, kws in FAMILY_KEYWORDS.items():
-            if any(kw in goal_low for kw in kws):
+            if any(_norm(kw) in goal_norm for kw in kws):
                 for t in all_tools:
                     if family in t.name.lower():
                         _add(t)
 
+    # ── 4. Semantic fill — hybrid re-rank of what the keywords missed ──
+    # Reserve slots for the generic safety net so it's never starved out.
+    fill_budget = max(0, _TOOL_CAP - len(candidates) - len(_GENERIC_TOOLS))
+    if fill_budget and not _semantic_rank_disabled():
+        try:
+            await _ensure_tool_embeddings(all_tools)
+            step_text = f"{goal} {current_step_desc}".strip()
+            qv: Optional[list[float]] = None
+            if _tool_vectors:
+                from app.services.memory import get_memory_infra
+
+                qv = await get_memory_infra().embed(step_text)
+            q_tokens = [tok for tok in _norm(step_text).split() if len(tok) >= 3]
+            by_name = {t.name: t for t in all_tools}
+            scored: list[tuple[float, str]] = []
+            for t in all_tools:
+                if t.name in seen:
+                    continue
+                text = _tool_text_norm.get(t.name) or _norm(f"{t.name} {getattr(t, 'description', '') or ''}")
+                lex = (sum(1 for tok in q_tokens if tok in text) / len(q_tokens)) if q_tokens else 0.0
+                sem = _cosine(qv, _tool_vectors[t.name]) if (qv and t.name in _tool_vectors) else 0.0
+                score = lex + _SEM_WEIGHT * sem
+                if score >= _SEM_FLOOR:
+                    scored.append((score, t.name))
+            scored.sort(reverse=True)
+            picked = [name for _score, name in scored[:fill_budget]]
+            for name in picked:
+                _add(by_name[name])
+            if picked:
+                logger.info("act: semantic re-rank added %d tools: %s", len(picked), picked)
+        except Exception as exc:  # noqa: BLE001 — le ranking ne doit jamais casser le tick
+            logger.warning("act: semantic re-rank skipped: %s", exc)
+
     # Top up with generic must-haves so we always have a safety net
-    GENERIC = {"web_search", "web_browse", "smart_knowledge_query"}
     for t in all_tools:
-        if t.name in GENERIC:
+        if t.name in _GENERIC_TOOLS:
             _add(t)
 
     # Cap to avoid payload bloat (~15 tools handles 99% of cases)
-    return candidates[:15] if candidates else all_tools[:15]
+    return candidates[:_TOOL_CAP] if candidates else all_tools[:_TOOL_CAP]
 
 
 async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
@@ -643,7 +782,7 @@ async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", curre
     from app.skills import get_skill_registry
 
     all_tools = get_skill_registry().all_tools
-    tools = _filter_tools_for_step(all_tools, tool_hint, goal, current_step_desc)
+    tools = await _filter_tools_for_step(all_tools, tool_hint, goal, current_step_desc)
     # Sprint 4b V2 J7b.2 — append the user's promoted python_tool skills so
     # missions see them too (parity with the chat path). No-op unless
     # LEARNED_PYTHON_TOOLS_ENABLED is on; never shadows a builtin.
