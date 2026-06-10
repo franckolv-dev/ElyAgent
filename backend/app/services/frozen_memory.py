@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import OrderedDict
+from app.services.bounded_cache import BoundedLRUDict
 from typing import Awaitable, Callable, Final, Optional
 
 logger = logging.getLogger(__name__)
@@ -59,21 +59,12 @@ logger = logging.getLogger(__name__)
 _MAX_ENTRIES: Final[int] = 1000
 
 
-class _BoundedDict(OrderedDict):
-    """OrderedDict with FIFO eviction beyond ``maxsize``."""
-
-    def __init__(self, maxsize: int) -> None:
-        super().__init__()
-        self._maxsize = maxsize
-
-    def __setitem__(self, key, value) -> None:  # type: ignore[override]
-        super().__setitem__(key, value)
-        if len(self) > self._maxsize:
-            self.popitem(last=False)
 
 
 # conversation_id → {"snapshot": str, "user_id": str, "built_at": float}
-_snapshots: _BoundedDict = _BoundedDict(maxsize=_MAX_ENTRIES)
+# B-7 — LRU + TTL 24 h (était FIFO : pouvait évincer le snapshot
+# d'une conversation encore active sous charge).
+_snapshots: BoundedLRUDict = BoundedLRUDict(maxsize=_MAX_ENTRIES, ttl_seconds=24 * 3600)
 
 
 async def get_or_build(

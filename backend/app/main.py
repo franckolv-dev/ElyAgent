@@ -334,6 +334,16 @@ async def lifespan(app: FastAPI):
         minute=30,
         id="uploads_purge",
     )
+    # Rétention des tables de signaux (revue 2026-06-10 §4) — 04:30,
+    # ELY_SIGNALS_RETENTION_DAYS (90) / ELY_USAGE_RETENTION_DAYS (365).
+    from app.services.retention import run_retention as _run_retention
+    _memory_scheduler.add_job(
+        _run_retention,
+        trigger="cron",
+        hour=4,
+        minute=30,
+        id="signals_retention",
+    )
     # Sprint 3.7 Jalon 4 — LLM-as-judge post-mission critic.
     # Scans terminal missions (failed/aborted/completed) without a
     # critic_run_at every 5 minutes. Policy (design note §4.1) :

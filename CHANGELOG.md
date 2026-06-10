@@ -21,6 +21,19 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.8] — 2026-06-10 — Phase 2 (lot 3b) revue multi-utilisateurs : caches LRU+TTL & rétention — **Phase 2 complète**
+
+### Security
+- **Vault PII unifié entre les canaux chat et voix.** `voice.py` maintenait son **propre** dict de `SecurityFilter` alors que `tool_node` dé-anonymise les arguments d'outils via le registre partagé `conversation_filters` : sur le canal vocal, les deux vaults divergeaient → un tool_call vocal contenant un placeholder partait avec le **littéral `[EMAIL_0]`** (la résurgence côté voix du bug Gmail du 2026-05-07). Une seule source de vérité désormais, épinglée par test (`voice._get_filter is conversation_filters.get_filter`). *(2026-06-10)*
+
+### Fixed
+- **Caches par-conversation : LRU + TTL d'inactivité au lieu du FIFO (B-7).** Quatre modules (`conversation_filters`, `frozen_memory`, `system_prompt_cache`, `fallback_manager`) dupliquaient le même `_BoundedDict` plafonné à 1000 entrées avec éviction **FIFO à l'insertion** : sous charge (~1000 conversations actives cumulées), l'entrée évincée était la plus *anciennement créée* — potentiellement une conversation **encore en cours** (vault PII détruit en pleine conversation = placeholders du contexte LLM irrésolubles ; état fallback perdu = retour silencieux au primary en panne). Nouveau `services/bounded_cache.BoundedLRUDict` partagé : chaque lecture rafraîchit l'entrée (l'éviction ne cible que la plus longtemps inactive) + TTL d'inactivité 24 h (expiration paresseuse). *(2026-06-10)*
+
+### Added
+- **Rétention des tables de signaux (§4).** Aucune politique n'existait : audit, usage et signaux learning croissent à chaque tour — N fois plus vite en multi-utilisateurs, et sur SQLite un gros fichier = checkpoints WAL plus longs = fenêtres de lock plus larges. Job quotidien 04:30 : `audit_logs`/`hitl_refusals`/`hallucination_blocks`/`provider_switches`/`error_logs` → `ELY_SIGNALS_RETENTION_DAYS` (90 j, 0 = off) ; `usage_logs` → `ELY_USAGE_RETENTION_DAYS` (365 j). Volontairement épargnés : messages/conversations, `mission_critiques` (bench mining), `failure_cases` (UI tool-gaps). *(2026-06-10)*
+
+---
+
 ## [1.14.7] — 2026-06-10 — Phase 2 (lot 3a) revue multi-utilisateurs : budget LLM par utilisateur
 
 ### Added

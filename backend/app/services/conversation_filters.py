@@ -30,30 +30,20 @@ invalid recipient.)
 """
 from __future__ import annotations
 
-from collections import OrderedDict
 from typing import Final
 
+from app.services.bounded_cache import BoundedLRUDict
 from app.services.security_filter import SecurityFilter
-
-
-class _BoundedDict(OrderedDict):
-    """OrderedDict with a hard cap — oldest entries are evicted FIFO when
-    the size exceeds ``maxsize``. We keep up to 1000 active conversations
-    in memory; long-idle ones get garbage-collected."""
-
-    def __init__(self, maxsize: int = 1000) -> None:
-        super().__init__()
-        self._maxsize = maxsize
-
-    def __setitem__(self, key: str, value: SecurityFilter) -> None:  # type: ignore[override]
-        super().__setitem__(key, value)
-        if len(self) > self._maxsize:
-            self.popitem(last=False)
-
 
 _FILTERS_MAXSIZE: Final[int] = 1000
 
-_filters: _BoundedDict = _BoundedDict(maxsize=_FILTERS_MAXSIZE)
+# B-7 (revue 2026-06-10) : LRU + TTL d'inactivité 24 h au lieu du FIFO —
+# l'éviction FIFO pouvait détruire le vault PII d'une conversation ENCORE
+# ACTIVE sous charge (placeholders [EMAIL_0] du contexte LLM devenant
+# irrésolubles → le bug Gmail du 2026-05-07 qui renaissait).
+_filters: BoundedLRUDict = BoundedLRUDict(
+    maxsize=_FILTERS_MAXSIZE, ttl_seconds=24 * 3600,
+)
 
 
 def get_filter(conversation_id: str) -> SecurityFilter:

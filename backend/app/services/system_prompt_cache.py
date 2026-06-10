@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import OrderedDict
+from app.services.bounded_cache import BoundedLRUDict
 from typing import Callable, Final, Optional
 
 logger = logging.getLogger(__name__)
@@ -74,21 +74,11 @@ logger = logging.getLogger(__name__)
 _MAX_ENTRIES: Final[int] = 1000
 
 
-class _BoundedDict(OrderedDict):
-    """OrderedDict with a hard cap — same pattern as fallback_manager."""
-
-    def __init__(self, maxsize: int) -> None:
-        super().__init__()
-        self._maxsize = maxsize
-
-    def __setitem__(self, key, value) -> None:  # type: ignore[override]
-        super().__setitem__(key, value)
-        if len(self) > self._maxsize:
-            self.popitem(last=False)
 
 
 # conversation_id → {"prompt": str, "built_at": float, "build_count": int}
-_cache: _BoundedDict = _BoundedDict(maxsize=_MAX_ENTRIES)
+# B-7 — LRU + TTL 24 h (était FIFO).
+_cache: BoundedLRUDict = BoundedLRUDict(maxsize=_MAX_ENTRIES, ttl_seconds=24 * 3600)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

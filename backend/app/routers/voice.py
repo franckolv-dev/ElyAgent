@@ -74,22 +74,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Per-conversation security filters (bounded)
-from collections import OrderedDict
-
-
-class _BoundedDict(OrderedDict):
-    def __init__(self, maxsize: int = 1000):
-        super().__init__()
-        self._maxsize = maxsize
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        if len(self) > self._maxsize:
-            self.popitem(last=False)
-
-
-_filters: _BoundedDict = _BoundedDict(maxsize=1000)
+# Per-conversation security filters — registre PARTAGÉ avec chat.py et
+# tool_node (B-7, revue 2026-06-10). voice.py avait son propre dict local :
+# le vault PII du canal vocal était DIFFÉRENT de celui que tool_node
+# utilise pour dé-anonymiser les arguments d'outils → un tool_call vocal
+# avec [EMAIL_0] partait avec le placeholder littéral (le bug Gmail du
+# 2026-05-07, version voix). Une seule source de vérité désormais.
+from app.services.conversation_filters import (
+    discard_filter as _discard_filter,
+    get_filter as _get_filter,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +299,7 @@ async def websocket_voice(websocket: WebSocket):
                 await db.commit()
 
             # ── Anonymize ────────────────────────────────────────────────
-            sf = _filters.setdefault(conversation_id, SecurityFilter())
+            sf = _get_filter(conversation_id)
             clean_content = sf.anonymize(user_text)
 
             # ── Load conversation history ────────────────────────────────
@@ -587,4 +581,4 @@ async def websocket_voice(websocket: WebSocket):
         if conversation_id:
             from app.routers.chat import _summarize_conversation
             spawn(_summarize_conversation(conversation_id, user_id))
-        _filters.pop(conversation_id, None) if conversation_id else None
+        _discard_filter(conversation_id) if conversation_id else None
