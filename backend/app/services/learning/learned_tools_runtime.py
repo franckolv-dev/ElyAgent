@@ -150,13 +150,30 @@ async def append_learned_tools(tools: list[Any], user_id: str) -> list[Any]:
     Used at BIND time. A learned tool NEVER shadows a builtin: a tool already
     present with the same name wins (defence in depth — registration_gate
     already rejects name collisions at promotion). Returns a list copy of
-    ``tools`` unchanged when the feature flag is off (no learned tools).
+    ``tools`` unchanged when the feature flags are off (no learned tools).
+
+    Sprint 4b V3 (v1.15.0) : les outils ``io`` (sandbox, egress réel)
+    rejoignent la MÊME couture — chat (agent_node) et missions
+    (_get_actor_llms) en héritent sans câblage supplémentaire.
+    ``load_active_io_tools`` retourne ``[]`` quand
+    ``LEARNED_PYTHON_TOOLS_IO_ENABLED`` est off : zéro changement de
+    comportement tant que le flag n'est pas posé. Ordre : pure d'abord —
+    en cas de collision de nom (déjà rejetée à la promotion), le pure
+    in-process gagne sur l'io sandboxé.
     """
+    from app.services.learning.learned_tools_runtime_io import load_active_io_tools
+
     learned = await load_active_python_tools(user_id)
+    learned = learned + await load_active_io_tools(user_id)
     if not learned:
         return list(tools)
     have = {t.name for t in tools}
-    return list(tools) + [t for t in learned if t.name not in have]
+    out = list(tools)
+    for t in learned:
+        if t.name not in have:
+            out.append(t)
+            have.add(t.name)
+    return out
 
 
 async def merge_into_tool_map(tool_map: dict[str, Any], user_id: str) -> None:
@@ -165,7 +182,15 @@ async def merge_into_tool_map(tool_map: dict[str, Any], user_id: str) -> None:
 
     Used at DISPATCH time. python_tools aren't in the global skill registry
     (per-user, by design), so tool_node / dispatch_tool wouldn't find them at
-    invoke without this. No-op when the feature flag is off.
+    invoke without this. No-op when the feature flags are off.
+
+    V3 (v1.15.0) : même couture pour les outils ``io`` — pure d'abord
+    (cohérent avec ``append_learned_tools``), puis io, ``setdefault``
+    partout.
     """
+    from app.services.learning.learned_tools_runtime_io import load_active_io_tools
+
     for t in await load_active_python_tools(user_id):
+        tool_map.setdefault(t.name, t)
+    for t in await load_active_io_tools(user_id):
         tool_map.setdefault(t.name, t)

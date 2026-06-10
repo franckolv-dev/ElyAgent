@@ -198,6 +198,20 @@ async def tool_node(state: AgentState) -> dict:
         _crit_args = {k: v for k, v in display_args.items() if k not in INSTRUCTION_ARG_KEYS}
         _crit_desc = f"Outil: {tool_name} | Arguments: {json.dumps(_crit_args, ensure_ascii=False)}"
         needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
+        # Sprint 4b V3 — période canary des outils io (design §5.6, v1.15.0) :
+        # les N premières invocations d'un outil io auto-généré (egress réel,
+        # nouveau chemin de code) passent par HITL avant que l'outil ne soit
+        # pleinement de confiance. No-op quand le flag io est off. Les
+        # bypasses ci-dessous (task-scoped allow, « toujours autoriser »)
+        # restent honorés — c'est un consentement explicite de l'utilisateur.
+        if not needs_hitl:
+            try:
+                from app.services.learning.learned_tools_runtime_io import (
+                    io_canary_requires_hitl,
+                )
+                needs_hitl = await io_canary_requires_hitl(user_id, tool_name)
+            except Exception as _canary_exc:
+                logger.debug("io canary check skipped: %s", _canary_exc)
         # Task-scoped approval (2026-06-03) — checked FIRST so it bypasses
         # even LOCKED_HITL_TOOLS: it's the user's explicit, ephemeral,
         # per-conversation "allow for this task" consent. Keyed by tool_name
