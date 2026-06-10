@@ -14,6 +14,7 @@
 """Pins hotfix v1.17.1 (image Docker sans migrations Alembic)."""
 from __future__ import annotations
 
+import re
 import types
 from pathlib import Path
 
@@ -29,11 +30,12 @@ def test_dockerfile_ships_alembic_config_and_migrations() -> None:
     """Sans ces deux COPY, ensure_migrations() ne peut PAS fonctionner en
     prod Docker — et son échec est silencieux par design (best-effort).
     Pin texte : si quelqu'un refactore le Dockerfile et perd ces lignes,
-    ce test casse avant la prod."""
+    ce test casse avant la prod. Tolère les flags COPY (--chown=…, ajouté
+    pour le layer caching) entre COPY et la source."""
     dockerfile = Path(__file__).resolve().parents[1] / "Dockerfile"
     src = dockerfile.read_text()
-    assert "COPY alembic.ini" in src
-    assert "COPY migrations/" in src
+    assert re.search(r"^COPY\s+(?:--\S+\s+)*alembic\.ini\b", src, re.MULTILINE)
+    assert re.search(r"^COPY\s+(?:--\S+\s+)*migrations/", src, re.MULTILINE)
 
 
 # ─────────────────────────────────────────────────────────────────────────

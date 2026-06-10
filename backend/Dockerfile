@@ -47,20 +47,6 @@ RUN if [ "$PII_NER_INSTALL" = "1" ]; then \
         uv pip install "gliner>=0.2.26"; \
     fi
 
-# Copy application code
-COPY app/ ./app/
-
-# Alembic — ensure_migrations() au boot exige ces deux chemins dans l'image.
-# Sans eux il échoue en best-effort (CRITICAL dans les logs, boot continue)
-# et la base prod ne reçoit JAMAIS les révisions post-baseline — vécu en
-# v1.17.0 : missions.spec_yaml absente → HTTP 500 sur toute la page Missions.
-COPY alembic.ini ./
-COPY migrations/ ./migrations/
-
-# Copy operational scripts (backfill, admin, migrations…)
-# Run from the container with: docker compose exec backend python scripts/<name>.py
-COPY scripts/ ./scripts/
-
 # Config files (hosts, providers) mounted via volume at runtime
 # but we create the dir so the app doesn't fail if not mounted
 RUN mkdir -p /config /app/uploads
@@ -94,6 +80,25 @@ RUN uv run --no-sync playwright install --force chromium
 RUN uv pip uninstall hf_xet 2>/dev/null || true
 RUN uv run --no-sync python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/all-MiniLM-L6-v2', cache_dir='/app/.cache/fastembed')" \
     || echo "WARNING: fastembed pre-download failed, will retry at runtime"
+
+# ── Application code — copied LAST for layer caching ──────────────────
+# Everything above (Chromium ~150 MB download, fastembed ~90 MB) is
+# independent of the app source: a code-only change must rebuild ONLY the
+# COPY layers below, not the heavy RUN layers. `--chown=appuser` because
+# the recursive `chown -R appuser /app` above ran before these files
+# existed (same ownership the chown used to give them).
+COPY --chown=appuser app/ ./app/
+
+# Alembic — ensure_migrations() au boot exige ces deux chemins dans l'image.
+# Sans eux il échoue en best-effort (CRITICAL dans les logs, boot continue)
+# et la base prod ne reçoit JAMAIS les révisions post-baseline — vécu en
+# v1.17.0 : missions.spec_yaml absente → HTTP 500 sur toute la page Missions.
+COPY --chown=appuser alembic.ini ./
+COPY --chown=appuser migrations/ ./migrations/
+
+# Copy operational scripts (backfill, admin, migrations…)
+# Run from the container with: docker compose exec backend python scripts/<name>.py
+COPY --chown=appuser scripts/ ./scripts/
 
 EXPOSE 8000
 

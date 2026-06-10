@@ -243,6 +243,21 @@ async def lifespan(app: FastAPI):
     from app.services.slm_warmup import warmup_slm
     await warmup_slm()
 
+    # Couche 2 PII NER (GLiNER ONNX int8) — chargée au boot UNIQUEMENT si
+    # PII_NER_ENABLED est posé (défaut off). Fail-open : tout échec laisse
+    # la couche 1 regex seule (comportement historique), avec un log
+    # explicite de la marche à suivre (export ONNX / rebuild).
+    from app.services.pii_ner import load_ner_engine as _load_ner, pii_ner_enabled as _pii_ner_on
+    if _pii_ner_on():
+        try:
+            import asyncio as _asyncio
+            await _asyncio.to_thread(_load_ner)
+        except Exception:
+            _startup_logger.warning(
+                "PII NER layer failed to load — couche 2 désactivée, couche 1 regex intacte",
+                exc_info=True,
+            )
+
     # Load approved community skills into the skill registry
     from app.services.marketplace import get_marketplace_service
     try:

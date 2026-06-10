@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 # peut faire exploser le backtracking sur les patterns ci-dessous.
 _MAX_REGEX_INPUT = 50_000   # caractères
 
+# Forme d'un placeholder déjà posé ([EMAIL_0], [PERSON_12], …). La couche 2
+# ne doit JAMAIS substituer à l'intérieur d'un placeholder existant.
+_PLACEHOLDER_RE = re.compile(r"\[[A-Z]+_\d+\]")
+
 # Patterns for sensitive data detection.
 # Notes ReDoS :
 #   EMAIL  — quantificateurs imbriqués sur [a-zA-Z0-9_.+-]+ → vulnérable sur entrées
@@ -184,6 +188,20 @@ class SecurityFilter:
     Anonymizes sensitive data before it leaves to the cloud LLM, and
     restores it in the response. Also flags critical actions so the
     HITL manager can request human validation.
+
+    Deux couches d'anonymisation :
+
+    1. **Regex** (toujours active) — formats déterministes : EMAIL, PHONE,
+       CARD, IBAN, TOKEN. Jamais de faux négatif sur un format connu.
+    2. **NER** (``PII_NER_ENABLED``, défaut off) — PII en texte libre que
+       les regex ne peuvent pas voir : personnes, organisations, adresses
+       (GLiNER ONNX int8, voir ``app/services/pii_ner.py``). Flag off ou
+       modèle indisponible → la couche est un no-op strict, le comportement
+       est celui d'avant son introduction.
+
+    Les deux couches partagent le même vault et le même compteur : un
+    placeholder ([PERSON_0], [EMAIL_1], …) est stable pour toute la durée
+    de la conversation et réversible via :meth:`deanonymize`.
     """
     _vault: dict[str, str] = field(default_factory=dict)
     _counter: int = field(default=0)
@@ -245,6 +263,96 @@ class SecurityFilter:
                 self._counter += 1
             result = result[:start] + placeholder + result[end:]
 
+        # ── Couche 2 : NER (personnes / organisations / adresses) ────────
+        return self._apply_ner_layer(result)
+
+    def _apply_ner_layer(self, text: str) -> str:
+        """Couche 2 NER — no-op strict si ``PII_NER_ENABLED`` n'est pas
+        posé ou si le moteur n'a pas pu être chargé au boot (fail-open,
+        la couche 1 regex reste le filet).
+
+        Vault-first : toute valeur DÉJÀ connue du vault (labels PERSON /
+        ORG / ADDRESS) est masquée par recherche directe, indépendamment
+        du score NER du jour. Le bench 2026-06-10 a montré que la même
+        valeur (« Sophie ») score entre 0.46 et 0.72 selon l'occurrence :
+        sans ce filet, une occurrence sur deux passait sous le seuil.
+        Une fois dans le vault, toutes les occurrences sont masquées.
+
+        Le NER tourne sur le texte post-couche-1 (stable d'un tour à
+        l'autre puisque les regex sont déterministes), ce qui maximise les
+        hits du cache hash→entités du moteur — le chemin chaud de chat.py
+        ré-anonymise ~40 messages d'historique à chaque tour.
+        """
+        from app.services.pii_ner import (
+            NER_PLACEHOLDER_LABELS,
+            get_ner_engine,
+            pii_ner_enabled,
+        )
+        if not pii_ner_enabled():
+            return text
+        engine = get_ner_engine()
+        if engine is None:
+            return text
+
+        # value → label, le vault d'abord (priorité au label historique :
+        # même valeur revue → même placeholder, quoi que dise le NER).
+        candidates: dict[str, str] = {}
+        for placeholder, value in self._vault.items():
+            label = placeholder.strip("[]").rsplit("_", 1)[0]
+            if label in NER_PLACEHOLDER_LABELS and len(value) >= 2:
+                candidates.setdefault(value, label)
+        for value, label in engine.extract(text):
+            candidates.setdefault(value, label)
+        if not candidates:
+            return text
+        return self._replace_values(text, candidates)
+
+    def _replace_values(self, text: str, candidates: dict[str, str]) -> str:
+        """Remplace chaque occurrence en texte libre des ``candidates``
+        (value → label) par son placeholder, en réutilisant le vault.
+
+        Mêmes garanties que la couche 1 : matching par positions avec
+        frontières de mots (« Marion » ne matche pas « Marionnette »),
+        chevauchements résolus au plus long (« Sophie Lefebvre » avant
+        « Sophie »), substitution droite→gauche, et jamais à l'intérieur
+        d'un placeholder déjà posé.
+        """
+        forbidden = [(m.start(), m.end()) for m in _PLACEHOLDER_RE.finditer(text)]
+
+        def _overlaps_placeholder(start: int, end: int) -> bool:
+            return any(start < f_end and end > f_start for f_start, f_end in forbidden)
+
+        all_matches: list[tuple[int, int, str, str]] = []
+        for value, label in candidates.items():
+            # Frontières de mots unicode, seulement quand la valeur commence/
+            # finit par un caractère de mot (une adresse finissant par « . »
+            # n'a pas besoin de garde à droite).
+            prefix = r"(?<!\w)" if (value[0].isalnum() or value[0] == "_") else ""
+            suffix = r"(?!\w)" if (value[-1].isalnum() or value[-1] == "_") else ""
+            pattern = re.compile(prefix + re.escape(value) + suffix)
+            for m in pattern.finditer(text):
+                if not _overlaps_placeholder(m.start(), m.end()):
+                    all_matches.append((m.start(), m.end(), label, value))
+
+        # Position croissante, puis le plus LONG d'abord à position égale.
+        all_matches.sort(key=lambda x: (x[0], -(x[1] - x[0])))
+        non_overlapping: list[tuple[int, int, str, str]] = []
+        last_end = -1
+        for start, end, label, value in all_matches:
+            if start >= last_end:
+                non_overlapping.append((start, end, label, value))
+                last_end = end
+
+        _seen: dict[str, str] = {v: k for k, v in self._vault.items()}
+        result = text
+        for start, end, label, value in reversed(non_overlapping):
+            placeholder = _seen.get(value)
+            if placeholder is None:
+                placeholder = f"[{label}_{self._counter}]"
+                self._vault[placeholder] = value
+                _seen[value] = placeholder
+                self._counter += 1
+            result = result[:start] + placeholder + result[end:]
         return result
 
     def deanonymize(self, text: str) -> str:

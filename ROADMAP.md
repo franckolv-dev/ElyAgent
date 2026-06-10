@@ -110,7 +110,7 @@ L'objectif a été : ouvrir le repo sans honte ni faille. Catalogue final livré
 - ✅ `backend/app/skills/builtin/__init__.py` — hook `auto_discover_tools()` appelé après les enregistrements manuels existants. Robuste : si l'auto-discovery plante, l'app continue à démarrer avec les skills legacy
 - ✅ `backend/tests/test_auto_discover.py` — 13 tests dédiés (décorateur, scanner E2E, groupement, idempotence, gestion erreur d'import, package inexistant)
 - ✅ `backend/app/agent/tools/session_search_tool.py` — **migration de validation E2E** : `search_past_conversations_tool` désormais auto-enregistré via `@register`. Suppression de l'entrée manuelle correspondante dans `memory_skill.py`. Comportement runtime strictement identique (vérifié par les tests existants).
-- ✅ `docs/ADDING_A_TOOL.md` — guide complet pour les contributeur·rices, avec exemple bout-en-bout et section migration legacy→décorateur
+- ✅ Guide « ajouter un outil » rédigé (exemple bout-en-bout + section migration legacy→décorateur) — doc interne, le pattern vivant est dans `backend/app/skills/builtin/`
 - ✅ 432/432 tests verts, zéro régression
 
 **Ce qui n'est PAS dans ce sprint (différé volontairement)** :

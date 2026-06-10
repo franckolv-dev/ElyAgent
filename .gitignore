@@ -116,6 +116,26 @@ docs/external-references/
 docs/TEST_REPORT_*.md
 docs/auto-amelioration.md
 docs/optimisation-Ely-Gemini.md
+# Tri 2026-06-10 : seules les docs d'install / configuration / utilisation
+# (via l'interface) restent publiques. Les docs dev/process ci-dessous sont
+# conservées localement mais retirées du dépôt (git rm --cached).
+docs/ADDING_A_TOOL.md
+docs/RELEASE_CHECKLIST.md
+docs/TESTING_CHECKLIST.md
+docs/roadmap.md
+bench/README.md
+scripts/screenshots/README.md
+# (ROUTING.md reste public : ce n'est pas une doc, c'est le contrat de
+# routage mémoire LU PAR les tests test_explicit_write_routing.py et
+# test_legacy_memory_tools_deprecated.py — l'ignorer casserait la CI.)
+backend/app/services/memory/SPRINT_2_5_SUMMARY.md
+# Familles récurrentes d'analyses locales (audits, revues de code, études
+# concurrentielles, benchs) — ne doivent jamais atterrir sur GitHub.
+docs/audit-*.md
+docs/code-review-*.md
+docs/revueDeCode*.md
+docs/Agents2026vsELY*.md
+docs/bench-*.md
 launch-drafts/
 test-runner/
 frontend/.env.local

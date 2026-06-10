@@ -1,9 +1,9 @@
 .venv/
-__pycache__/
-*.pyc
-*.pyo
+**/__pycache__
+**/*.pyc
+**/*.pyo
 *.db
 .env
-*.egg-info/
+**/*.egg-info
 dist/
-.pytest_cache/
+**/.pytest_cache

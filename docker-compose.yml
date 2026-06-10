@@ -5,6 +5,10 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # Couche 2 PII NER : embarque gliner+torch dans l'image (opt-in,
+        # ~800 Mo installés). Requis seulement si PII_NER_ENABLED=true.
+        - PII_NER_INSTALL=${PII_NER_INSTALL:-0}
     restart: unless-stopped
     # B-16 (revue 2026-06-10) — le backend est LE service dont la RAM croît
     # avec le nombre d'utilisateurs (faster-whisper, fastembed, Chromium
@@ -32,6 +36,11 @@ services:
       - ./data/backups/qdrant:/backups/qdrant
       - ./data/playwright:/app/.cache/playwright
       - fastembed-cache:/app/.cache/fastembed
+      # Couche 2 PII NER — modèle GLiNER ONNX int8 exporté sur l'HÔTE par
+      # backend/scripts/export_gliner_onnx.py (jamais dans le conteneur :
+      # l'export PyTorch fp32 pèse 2.5 Go de RSS, le cap est à 4g). Bind
+      # mount host pour que l'export y écrive directement.
+      - ./data/pii_ner:/app/.cache/pii_ner
     env_file:
       - .env
     environment:
@@ -61,6 +70,11 @@ services:
       - SLM_MODEL=${SLM_MODEL:-qwen2.5:3b-instruct}
       - SLM_COMPLEXITY_THRESHOLD=${SLM_COMPLEXITY_THRESHOLD:-40}
       - SLM_TIMEOUT=${SLM_TIMEOUT:-25.0}
+      # Couche 2 PII NER (GLiNER ONNX int8) — défaut OFF. Pré-requis si on
+      # l'active : (1) image buildée avec PII_NER_INSTALL=1, (2) modèle
+      # exporté dans ./data/pii_ner (scripts/export_gliner_onnx.py).
+      - PII_NER_ENABLED=${PII_NER_ENABLED:-false}
+      - PII_NER_MODEL_DIR=/app/.cache/pii_ner/gliner_multi_pii-v1-onnx
     depends_on:
       qdrant:
         condition: service_healthy
