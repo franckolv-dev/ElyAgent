@@ -89,7 +89,7 @@ ELY est la réponse pour les particuliers et les organisations qui ont besoin d'
 ### Architecture
 **Multi-utilisateur. Multi-LLM. Conçu pour passer à l'échelle d'une famille ou d'une organisation.**
 
-- **Multi-utilisateur natif** — un déploiement sert une famille, une équipe, une PME. Chaque utilisateur a sa mémoire, son coffre, sa file de validation.
+- **Multi-utilisateur natif — et durci pour ça** *(campagne juin 2026 : 11 releases)* — un déploiement sert une famille, une équipe, une PME. Chaque utilisateur a sa mémoire, son coffre, sa file de validation, **son budget LLM quotidien**, ses quotas et limites de débit. Secrets chiffrés au repos, migrations Alembic, sauvegardes nocturnes, healthchecks profonds.
 - **Multi-LLM avec tiers de complexité** — assignez des modèles différents aux Tiers A (rapide) / B (standard) / C (profond) / IMG / SYS. Local pour les tâches simples, Mistral ou Anthropic pour les complexes — votre choix, sans redémarrage.
 - 11 fournisseurs LLM supportés · bascule automatique en cas de panne · cache de prompt Anthropic activé
 - Mappage canal-utilisateur empêchant l'usurpation entre plateformes
@@ -104,7 +104,8 @@ ELY est la réponse pour les particuliers et les organisations qui ont besoin d'
 
 La plupart des agents sont statiques. **ELY observe ses propres échecs et progresse — en toute transparence, avec vous aux commandes.**
 
-- **Agent auto-développant (compétences auto-apprises).** Quand ELY refuse, hallucine ou rate une tâche de façon répétée, une boucle en arrière-plan analyse l'échec, rédige un *playbook* réutilisable en Markdown, et un LLM externe le note. Les meilleurs deviennent des **candidates que vous validez et promouvez** depuis l'UI admin — rien ne pilote l'agent tant qu'un humain n'a pas approuvé. *(C'est la fondation de la V2 : ELY écrivant et validant ses propres outils Python.)*
+- **Agent auto-développant — ELY écrit ses propres outils.** Quand une capacité lui manque de façon répétée, ELY ne se contente plus d'un playbook Markdown (V1) — elle **génère un vrai outil Python** (V2), et depuis la v1.16 même de **vraies intégrations réseau** (V3) : l'outil généré déclare ses domaines egress, ses secrets Vault et ses dépendances, traverse un **pipeline de validation à 7 étages** (garde AST → déclarations → allow-list de deps → ruff → mypy → smoke test sandboxé → enregistrement), voit son *périmètre* revu par l'admin (panneaux domaines / secrets / deps), puis s'exécute dans une **sandbox isolée** derrière un proxy egress filtrant — avec **HITL sur ses 10 premières invocations** (canary) avant d'être de confiance. Rien ne part en service sans un humain.
+- **Missions structurées qui demandent au lieu de deviner** *(v1.17)*. Décrivez un workflow multi-étapes en YAML simple — `steps`, `foreach` sur les résultats d'un step précédent, et des **handlers d'edge-case** : `on_ambiguous: ask_user("…")`, `on_not_found: skip_with_note("…")`. Quand ELY hésite, elle **vous ping** (web, push, Telegram), vous répondez, elle reprend — pendant que les autres items continuent. Un cas oublié ? Ajoutez **une ligne**, pas une réécriture de prompt. Un viewer liste vivant montre chaque step et item (✓ ⏳ ⏸ ⊝) avec réponse inline.
 - **Auto-critique par LLM-juge.** Chaque mission autonome est notée *a posteriori* par un modèle séparé qui lit toute la trace d'étapes et détecte le **« succès en façade »** — quand l'agent prétend avoir réussi alors que les étapes montrent le contraire. Le verdict alimente la boucle d'apprentissage.
 - **Transparence radicale.** Deux tableaux de bord — `/me/learning` et `/me/state` — vous montrent exactement ce qu'ELY a appris de vous et le modèle qu'elle se fait de vous (humeur, focus, dossiers ouverts). Lisibles, modifiables, supprimables, jamais cachés.
 - **Mémoire cognitive typée.** Cinq types de mémoire (épisodique · sémantique · procédurale · erreur · contrainte) au lieu d'un blob opaque — rappelés par type, entre conversations, 100 % en local.
@@ -198,7 +199,7 @@ Une vraie UI produit sur chaque surface — **pas un terminal déguisé en site 
 <details>
 <summary><strong>Pipeline de sécurité</strong> — masquage PII · HITL · coffre · journal d'audit</summary>
 
-- **Pipeline de masquage PII.** Détection regex + heuristiques ML pour e-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone, SIRET, identifiants salariés. Placeholders déterministes. Restitution uniquement à l'affichage côté utilisateur.
+- **Pipeline de masquage PII.** Détection regex déterministe : e-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone (tous les formats français), SIRET, identifiants salariés. Placeholders déterministes, restitués uniquement à l'affichage côté utilisateur. Une couche NER locale (GLiNER) pour les noms/organisations en texte libre est benchée et en évaluation.
 - **Validation humaine.** Bloque par défaut plus de 30 catégories d'outils. Trois actions : autoriser une fois, refuser une fois, **bannir définitivement** (persisté entre toutes les sessions futures).
 - **Coffre chiffré.** AES-256-GCM, clé dérivée du mot de passe utilisateur. Zero-knowledge — le serveur ne peut rien lire après verrouillage. Stocke clés API, jetons OAuth, identifiants de canaux.
 - **Journal d'audit.** Chaque décision de validation est journalisée de manière immuable (JSON Lines). Exportable pour la conformité.
@@ -226,12 +227,33 @@ Donnez un objectif à ELY — elle le décompose en étapes, choisit les outils,
 
 Cinq garde-fous : budget de tokens · budget d'itérations · deadline optionnelle · HITL sur outils critiques · anti-boucle après 3 échecs consécutifs. Notifications en parallèle : web · DM Telegram · push ntfy. Chaque mission terminée est notée par un **LLM-juge** externe qui détecte le « succès en façade ».
 
+**Missions structurées** *(v1.17)* — remplacez le prompt monolithe par une spec YAML :
+
+```yaml
+version: 1
+steps:
+  - id: enrich
+    foreach: "{{ read_companies.output }}"
+    do: "Trouve le dirigeant de {{ item }} sur LinkedIn."
+    on_ambiguous: ask_user("Plusieurs résultats pour {{ item }} — lequel ?")
+    on_not_found: skip_with_note("Introuvable")
+    on_error: resume_next
+```
+
+Le LLM reste dans la boucle (la spec *cadre* l'exécution, elle ne remplace pas le raisonnement) ; les cas d'edge déclarés sont **signalés, pas improvisés** ; `ask_user` met l'item en pause, vous ping sur tous vos canaux et reprend sur votre réponse pendant que les autres items continuent. Viewer liste vivant avec réponses inline. Terminaison déterministe — plus de « fini » jugé par le LLM. Les missions texte libre existantes sont inchangées.
+
 </details>
 
 <details>
-<summary><strong>Auto-amélioration & compétences apprises</strong> — ELY transforme ses échecs en playbooks que vous validez</summary>
+<summary><strong>Auto-développement & outils appris</strong> — ELY écrit ses propres outils, vous tenez la barrière</summary>
 
-Les signaux d'échec (refus HITL, blocages d'hallucination, critiques de mission) alimentent une boucle d'apprentissage. Un modèle Tier-S rédige un **playbook** Markdown réutilisable, un juge externe le note, et les meilleurs deviennent des **candidates** que vous promouvez depuis l'UI admin (`/admin/learning/candidates`). Seules les compétences promues (actives) sont injectées dans le prompt de l'agent — l'humain est toujours le garde-fou. Un banc de régression 50 scénarios + CI nocturne garde toute la boucle honnête. C'est la fondation de la **V2** : ELY générant et validant ses propres outils Python.
+Les signaux d'échec (refus HITL, blocages d'hallucination, critiques de mission, « capacité manquante ») alimentent une boucle d'apprentissage à trois niveaux de maturité, **tous livrés** :
+
+- **V1 — playbooks Markdown** rédigés depuis les échecs minés, notés par un juge externe, promus par vous.
+- **V2 — outils Python purs** : ELY génère un vrai `@tool` (composition + calcul), validé par un pipeline 5 étages (whitelist AST → ruff → mypy → smoke → enregistrement) avant d'atterrir en candidate.
+- **V3 — vraies intégrations réseau** *(v1.15–v1.16)* : les outils générés peuvent appeler des API externes — avec **domaines egress déclarés** (appliqués par un proxy Squid filtrant), **secrets Vault** injectés au runtime (jamais dans la source), dépendances bornées à une allow-list, exécution en **sandbox isolée** (rootfs lecture seule, zéro capability, limites de ressources), un audit par appel, **revue admin du périmètre** (panneaux domaines/secrets/deps, pas seulement le code), et **canary HITL sur les 10 premières invocations**.
+
+Seuls les outils promus (actifs) sont bindés à l'agent — l'humain est toujours la barrière. Un banc de régression 50 scénarios + CI nocturne garde toute la boucle honnête. Prochaine étape : **V4 — la graduation des outils éprouvés en code noyau** (→ v2.0).
 
 </details>
 
@@ -325,16 +347,19 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 ## Roadmap
 
 **Livré** *(mai–juin 2026)*
+- **Agent auto-développant — complet (V1→V3)** — ELY écrit ses propres outils Python, y compris des intégrations réseau sandboxées avec egress déclaré, secrets Vault, validation 7 étages, revue admin du périmètre et canary HITL
+- **Missions structurées** *(v1.17)* — specs YAML avec `foreach` + handlers d'edge-case ; `ask_user` met en pause, vous ping, reprend sur votre réponse ; viewer liste vivant
+- **Campagne de durcissement multi-utilisateur** *(11 releases, v1.14.1→v1.14.11)* — audit d'isolation cross-user, budgets/quotas/limites par utilisateur, secrets chiffrés au repos, migrations Alembic, sauvegardes nocturnes, verrou mono-process, healthchecks profonds
 - **Mémoire cognitive typée** — 5 types de mémoire, rappel transversal entre conversations
 - **Transparence radicale** — tableaux de bord `/me/learning` + `/me/state`
-- **Boucle d'auto-amélioration mesurée** — signaux d'échec, mission-critic LLM-juge, playbooks de compétences auto-apprises avec revue/promotion admin
+- **Boucle d'auto-amélioration mesurée** — signaux d'échec, mission-critic LLM-juge, revue/promotion admin
 - **Client MCP** — consommer n'importe quel serveur Model Context Protocol
-- **Banc de régression 50 scénarios** + CI nocturne
-- Registre d'outils auto-découvert · routage multi-domaines des tâches planifiées · garde-fous anti-hallucination durcis
+- **Banc de régression 50 scénarios** + CI nocturne · 1 860+ tests automatisés
 
 **Suivant**
-- **V2 — Agent auto-développant.** ELY génère et valide ses *propres* outils Python : whitelist AST → ruff/mypy → sandbox eval → régression banc → HITL admin avant toute mise en service.
-- **Serveur MCP** — exposer ELY elle-même comme serveur MCP.
+- **V4 — Graduation** *(→ v2.0)*. Les outils appris éprouvés sont promus en code noyau, avec non-régression garantie par le banc.
+- **Serveur MCP** — exposer ELY elle-même comme serveur MCP (votre agent, branchable dans Claude Desktop / Cursor / Zed).
+- **PII couche 2 (NER)** — modèle GLiNER local pour masquer les noms de personnes/organisations en texte libre (benché, en évaluation).
 
 → [Roadmap publique complète avec efforts annoncés →](https://agent-ely.fr/roadmap.html)
 
