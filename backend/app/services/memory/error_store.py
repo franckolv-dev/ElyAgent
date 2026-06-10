@@ -45,6 +45,7 @@ class ErrorStore:
         tier_llm: str | None = None,
         recovered: bool = False,
         prompt_version: str | None = None,
+        tool_origin: str | None = None,
     ) -> int | None:
         """Persist one error row. Returns the row id or None on failure.
 
@@ -76,6 +77,7 @@ class ErrorStore:
                 tier_llm=tier_llm,
                 recovered=recovered,
                 prompt_version=prompt_version,
+                tool_origin=tool_origin,
             )
             session.add(row)
             await session.flush()

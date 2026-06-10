@@ -59,4 +59,6 @@ class HitlRefusal(Base):
     tier_llm: Mapped[str | None] = mapped_column(String(8), nullable=True)
     # sha256[:8] of the system prompt active at this turn — for A/B correlation
     prompt_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Sprint 4d J1 — "learned" | "builtin" | NULL (pré-J1). Voir error_log.
+    tool_origin: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
