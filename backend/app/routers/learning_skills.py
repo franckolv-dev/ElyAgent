@@ -511,12 +511,52 @@ async def graduate_skill(
     result = await dry_run_graduation(db, skill, smoke_kwargs=body.smoke_kwargs)
     if body.dry_run:
         return result
-    # Livraison réelle — J5 (PR via API GitHub). Fail-closed tant que le
-    # canal n'est pas câblé : on ne « gradue » jamais silencieusement.
-    raise HTTPException(
-        501,
-        "La livraison PR (J5) n'est pas encore câblée — utiliser dry_run=true.",
+
+    # ── Livraison réelle (J5) — exige un dry-run intégralement vert ──────
+    if not result["ready"]:
+        raise HTTPException(
+            409,
+            {
+                "message": "Graduation refusée : le dry-run n'est pas vert.",
+                "graduation_eligible": result["graduation"]["eligible"],
+                "revalidation_ok": result["revalidation"]["ok"],
+                "composition_ok": result["composition"]["ok"],
+            },
+        )
+    from app.services.learning.graduation_delivery import (
+        GitHubDeliveryError,
+        deliver_graduation,
     )
+    try:
+        delivery = await deliver_graduation(
+            manifest=result["manifest"], files=result["files"],
+        )
+    except GitHubDeliveryError as exc:
+        raise HTTPException(502, f"Livraison GitHub échouée : {exc}")
+
+    # Trace de la livraison dans frontmatter_json.graduation — le statut
+    # reste ACTIVE : c'est la garde de chargement (J4) qui bascule en
+    # 'graduated' après merge + rebuild (collision core détectée).
+    try:
+        fm = json.loads(skill.frontmatter_json or "{}")
+    except ValueError:
+        fm = {}
+    fm["graduation"] = {
+        "delivered_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "by_admin": admin.id[:8] if admin.id else "?",
+        "status": delivery["status"],
+        "pr_url": delivery.get("pr_url"),
+        "branch": delivery.get("branch"),
+        "export_path": delivery.get("export_path"),
+    }
+    skill.frontmatter_json = json.dumps(fm, ensure_ascii=False)
+    await db.commit()
+    logger.info(
+        "skill_graduation_delivered: id=%s name=%s via=%s by_admin=%s",
+        skill.id, skill.name, delivery["status"],
+        admin.id[:8] if admin.id else "?",
+    )
+    return {**result, "delivery": delivery}
 
 
 @router.post("/skills/{skill_id}/archive", response_model=CandidateOut)
