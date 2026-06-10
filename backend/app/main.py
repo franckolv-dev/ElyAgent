@@ -118,6 +118,12 @@ async def lifespan(app: FastAPI):
     from app.services.log_buffer import install_handler as _install_log_buffer
     _install_log_buffer()
 
+    # Verrou mono-process (A-7, revue 2026-06-10) — AVANT init_db : deux
+    # process sur la même base = create_all/ALTER en race + HITL/registres
+    # split-brain. Échec de boot explicite plutôt que corruption silencieuse.
+    from app.services.singleton_guard import acquire_singleton_lock
+    acquire_singleton_lock()
+
     # Register all built-in skills BEFORE the agent graph is built
     from app.skills.builtin import register_all
     register_all()
@@ -343,6 +349,19 @@ async def lifespan(app: FastAPI):
         hour=4,
         minute=30,
         id="signals_retention",
+    )
+    # Éviction des sessions navigateur inactives (B-17) — toutes les 10 min,
+    # contextes Chromium fermés après 15 min sans usage.
+    from app.services.browser_manager import get_browser_manager as _get_bm
+
+    async def _browser_idle_cleanup() -> None:
+        await _get_bm().cleanup_idle_sessions()
+
+    _memory_scheduler.add_job(
+        _browser_idle_cleanup,
+        trigger="interval",
+        minutes=10,
+        id="browser_idle_cleanup",
     )
     # Sprint 3.7 Jalon 4 — LLM-as-judge post-mission critic.
     # Scans terminal missions (failed/aborted/completed) without a

@@ -30,3 +30,44 @@ async def health_check():
     # Exempté du rate limit global (A-6) : sondé par le healthcheck Docker
     # et le monitoring — un 429 ici ferait flapper le conteneur.
     return {"status": "ok"}
+
+
+@router.get("/health/deep")
+@limiter.exempt
+async def health_check_deep():
+    """Sonde profonde (revue 2026-06-10 §4) — `/health` répondait « ok »
+    même avec une DB corrompue ou un Qdrant mort. Teste réellement les
+    deux dépendances ; 503 si l'une est down (le monitoring voit ENFIN
+    un backend malade). Reste volontairement anonyme : booléens, aucun
+    détail d'infra."""
+    import asyncio
+
+    from fastapi.responses import JSONResponse
+
+    checks = {"db": False, "qdrant": False}
+
+    try:
+        from sqlalchemy import text
+
+        from app.database import async_session
+        async with async_session() as db:
+            await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=5)
+        checks["db"] = True
+    except Exception:
+        pass
+
+    try:
+        from app.services.memory_manager import get_memory_manager
+        client = get_memory_manager()._infra.client
+        await asyncio.wait_for(
+            asyncio.to_thread(client.get_collections), timeout=5,
+        )
+        checks["qdrant"] = True
+    except Exception:
+        pass
+
+    healthy = all(checks.values())
+    return JSONResponse(
+        {"status": "ok" if healthy else "degraded", **checks},
+        status_code=200 if healthy else 503,
+    )
