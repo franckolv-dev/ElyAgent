@@ -107,6 +107,13 @@ async def _compile_active(user_id: str) -> list[Any]:
         logger.warning("learned_tools_runtime: query failed for %s: %s", user_id[:8], exc)
         return []
 
+    # ── Garde de graduation (Sprint 4d J4) ────────────────────────────
+    # Un tool CORE homonyme d'un learned actif = la PR de graduation a été
+    # mergée et l'image rebuildée : le core prend le relais. La row passe
+    # status='graduated' (idempotent, loggé) et on ne binde JAMAIS deux
+    # outils homonymes — le comportement LangChain serait indéfini.
+    rows = await _reconcile_graduated(rows)
+
     out: list[Any] = []
     seen: set[str] = set()
     for skill in rows:
@@ -128,6 +135,61 @@ async def _compile_active(user_id: str) -> list[Any]:
             "learned_tools_runtime: loaded %d python_tool(s) for user %s", len(out), user_id[:8],
         )
     return out
+
+
+def _core_tool_names() -> set[str]:
+    """Noms du registre core — seam monkeypatchable pour les tests."""
+    try:
+        from app.skills.registry import get_skill_registry
+        return get_skill_registry().all_tool_names()
+    except Exception as exc:  # noqa: BLE001 — fail-open : pas de bascule
+        logger.debug("learned_tools_runtime: registry lookup failed: %s", exc)
+        return set()
+
+
+async def _reconcile_graduated(rows: list[Any]) -> list[Any]:
+    """Sprint 4d J4 — bascule en ``graduated`` les learned actifs dont le
+    nom est désormais porté par un tool core, et les retire du binding.
+
+    Best-effort : si l'UPDATE échoue, la row est quand même écartée du
+    binding de CE chargement (l'unicité prime), et la bascule sera
+    retentée au prochain chargement.
+    """
+    if not rows:
+        return rows
+    core = _core_tool_names()
+    if not core:
+        return rows
+    survivors: list[Any] = []
+    collided: list[Any] = []
+    for skill in rows:
+        (collided if skill.name in core else survivors).append(skill)
+    if not collided:
+        return rows
+    try:
+        from sqlalchemy import update
+
+        from app.database import async_session
+        from app.models.learned_skill import LearnedSkill, SkillStatus
+        async with async_session() as db:
+            await db.execute(
+                update(LearnedSkill)
+                .where(LearnedSkill.id.in_([s.id for s in collided]))
+                .values(status=SkillStatus.GRADUATED)
+            )
+            await db.commit()
+        for s in collided:
+            logger.info(
+                "learned_tools_runtime: %s (%s) GRADUATED — un tool core "
+                "porte désormais ce nom, le binding dynamique s'efface.",
+                s.id, s.name,
+            )
+    except Exception as exc:  # noqa: BLE001 — l'unicité prime, on réessaiera
+        logger.warning(
+            "learned_tools_runtime: graduation flip failed (retry au "
+            "prochain chargement): %s", exc,
+        )
+    return survivors
 
 
 def invalidate(user_id: str | None = None) -> None:
