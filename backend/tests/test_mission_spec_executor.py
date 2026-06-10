@@ -359,22 +359,26 @@ async def test_migration_0003_creates_table_on_legacy_db(tmp_path, monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_step_runs_endpoint_scoped_to_owner(spec_mission) -> None:
+async def test_structure_endpoint_scoped_to_owner(spec_mission) -> None:
+    """L'outline montre TOUS les steps de la spec (même pas encore
+    touchés) + les runs existants — un seul round-trip pour le viewer."""
     from fastapi import HTTPException
 
-    from app.routers.missions import list_step_runs_endpoint
+    from app.routers.missions import mission_structure
     from app.services import mission_spec_runtime as msr
 
     uid, mid = spec_mission
     await msr.ensure_step_run(mid, "enrich", 0, "Acme")
 
-    rows = await list_step_runs_endpoint(
+    out = await mission_structure(
         mid, current_user=types.SimpleNamespace(id=uid),
     )
-    assert len(rows) == 1 and rows[0].step_id == "enrich"
+    assert [s.id for s in out.steps] == ["collect", "enrich"]
+    assert out.steps[1].handler_cases == ["ambiguous", "error", "not_found"]
+    assert len(out.runs) == 1 and out.runs[0].step_id == "enrich"
 
     with pytest.raises(HTTPException) as exc_info:
-        await list_step_runs_endpoint(
+        await mission_structure(
             mid, current_user=types.SimpleNamespace(id="autre_user"),
         )
     assert exc_info.value.status_code == 404

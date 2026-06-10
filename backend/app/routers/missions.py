@@ -259,23 +259,57 @@ class StepRunOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.get("/{mission_id}/step-runs", response_model=list[StepRunOut])
-async def list_step_runs_endpoint(
+class SpecStepOut(BaseModel):
+    """Sprint 4c J4 — un step de la spec, pour l'outline du viewer."""
+    id: str
+    do: str
+    foreach: Optional[str]
+    handler_cases: list[str]
+
+
+class MissionStructureOut(BaseModel):
+    """Outline de la spec + statuts par item — UN appel pour le viewer."""
+    steps: list[SpecStepOut]
+    runs: list[StepRunOut]
+
+
+@router.get("/{mission_id}/structure", response_model=MissionStructureOut)
+async def mission_structure(
     mission_id: str,
     current_user: User = Depends(get_current_user),
-) -> list[StepRunOut]:
-    """Sprint 4c — statuts par step/item d'une mission structurée.
+) -> MissionStructureOut:
+    """Sprint 4c J4 — la matière du viewer LISTE en un seul round-trip.
 
-    La matière première du viewer LISTE (J4) :
-    ✓ done · ⏳ running/pending · ⏸ waiting_user · ⊝ skipped · ✗ failed.
-    Liste vide pour une mission legacy (prompt monolithe).
+    ``steps`` = l'outline de la spec (TOUS les steps, y compris ceux pas
+    encore touchés — le viewer montre le chemin complet) ; ``runs`` = les
+    statuts par item (✓ done · ⏳ pending/running · ⏸ waiting_user ·
+    ⊝ skipped · ✗ failed). Les deux listes vides pour une mission legacy.
     """
     m = await mission_service.get_mission(mission_id)
     if not m or m.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Mission introuvable")
+
+    steps: list[SpecStepOut] = []
+    if m.spec_yaml:
+        from app.services.mission_spec import MissionSpecError, parse_mission_spec
+        try:
+            spec = parse_mission_spec(m.spec_yaml)
+            steps = [
+                SpecStepOut(
+                    id=s.id, do=s.do, foreach=s.foreach,
+                    handler_cases=sorted(s.handlers.keys()),
+                )
+                for s in spec.steps
+            ]
+        except MissionSpecError:
+            steps = []  # spec corrompue en DB — le viewer dégrade en legacy
+
     from app.services.mission_spec_runtime import list_step_runs
     runs = await list_step_runs(mission_id)
-    return [StepRunOut.model_validate(r) for r in runs]
+    return MissionStructureOut(
+        steps=steps,
+        runs=[StepRunOut.model_validate(r) for r in runs],
+    )
 
 
 class StepRunAnswerIn(BaseModel):

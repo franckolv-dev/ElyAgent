@@ -17,7 +17,10 @@ Categories used:
 
 ## [Unreleased]
 
-> Sprint 4c — missions structurées (→ v1.17.0). Jalons : J1 ✅ format+parser+modèle · J2 ✅ exécuteur · J3 ✅ hook ask_user · J4 viewer liste · J5 rétrocompat+docs.
+> Sprint 4c — missions structurées (→ v1.17.0). Jalons : J1 ✅ format+parser+modèle · J2 ✅ exécuteur · J3 ✅ hook ask_user · J4 ✅ viewer liste · J5 rétrocompat+docs.
+
+### Added (J4 — viewer liste, la fonctionnalité devient visible)
+- **Le viewer LISTE** (pas de canvas — choix de design explicite du backlog) : sur la page de détail d'une mission structurée, panneau « Exécution structurée » — chaque step de la spec avec son icône d'état, la progression `done/total` des `foreach`, les items dessous (✓ done avec extrait de résultat · ⏳ en cours · ⏸ **attend ta réponse** avec champ inline « Répondre » (Entrée pour envoyer) · ⊝ sauté avec sa note · ✗ échec), les cas prévus du step, et la réponse passée affichée sur l'item traité (« ↳ Celle de Bordeaux »). Badge « N questions en attente » en tête. Auto-refresh 3 s pendant l'exécution (poll existant). Endpoint `GET /missions/{id}/structure` (outline de la spec — TOUS les steps, même futurs — + runs, un seul round-trip ; remplace `step-runs`). **Création depuis l'UI** : zone repliable « Mission structurée (YAML) » dans le modal Nouvelle mission, avec exemple canonique en placeholder — 422 listant toutes les erreurs si la spec est invalide. i18n FR/EN, `sw.js` v14→v15. *(2026-06-10)*
 
 ### Added (J3 — hook ask_user, le cœur du sprint)
 - **La mission qui hésite pose sa question, et reprend sur la réponse.** Quand un handler `ask_user` parque un item : **notification multicanal** (event `mission_question` en fan-out sur toutes les sockets du user + push ntfy + DM Telegram si la mission vient de Telegram — chaque canal isolé, calqué sur `_notify_terminal`). Nouvel endpoint `POST /missions/{id}/step-runs/{step}/{item}/answer` (owner-scoped 404, 409 si l'item n'attend rien) : la réponse est stockée (`answer`, révision Alembic `0004`), l'item repasse `pending` avec tentatives remises à zéro, la mission redevient due **immédiatement**. Au tick suivant, le prompt acteur reçoit « RÉPONSE DE L'UTILISATEUR (à la question « … ») : … » avec `{{ item }}` substitué — le « mode chat fait à la main » de la prospection LinkedIn, automatisé. *(2026-06-10)*
