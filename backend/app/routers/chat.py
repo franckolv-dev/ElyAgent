@@ -92,6 +92,24 @@ def get_agent():
     return _agent_graph
 
 
+async def _assert_owns_conversation(db, conversation_id: str, user_id: str) -> bool:
+    """True iff the conversation exists AND belongs to ``user_id``.
+
+    WS counterpart of ``conversations._get_owned_conversation`` (IDOR fix
+    A-1, revue 2026-06-10) — here the caller closes the socket with code
+    4003 instead of raising HTTPException. "Not found" and "owned by
+    someone else" are deliberately indistinguishable so the close never
+    confirms that a conversation id exists.
+    """
+    result = await db.execute(
+        select(Conversation.id).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
 @router.websocket("/chat")
 async def websocket_chat(websocket: WebSocket):
     # NOTE: websocket.accept() MUST be called before websocket.close().
@@ -173,7 +191,31 @@ async def websocket_chat(websocket: WebSocket):
                 continue
 
             user_content = msg.get("content", "")
-            conversation_id = msg.get("conversation_id") or conversation_id
+
+            # IDOR fix A-1 (revue 2026-06-10) — a client-supplied
+            # conversation_id must belong to the authenticated user,
+            # otherwise any logged-in user could write into (and have the
+            # agent read from) another user's conversation by replaying
+            # its UUID. Validate at the single ingestion point, BEFORE
+            # assigning the loop variable: every downstream use (slash
+            # commands, message persistence, toolset profile, summarize
+            # on disconnect) then only ever sees an owned or
+            # server-created id.
+            _client_conv_id = msg.get("conversation_id")
+            if _client_conv_id and _client_conv_id != conversation_id:
+                async with async_session() as db:
+                    _owned = await _assert_owns_conversation(
+                        db, str(_client_conv_id), user_id
+                    )
+                if not _owned:
+                    logger.warning(
+                        "WS chat: user %s sent conversation_id %s they don't "
+                        "own — closing (4003)",
+                        user_id, _client_conv_id,
+                    )
+                    await websocket.close(code=4003, reason="Conversation not found")
+                    return
+            conversation_id = _client_conv_id or conversation_id
 
             # Enrich content with attached file paths so the agent can process them
             attachments = msg.get("attachments") or []

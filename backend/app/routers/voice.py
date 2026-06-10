@@ -96,16 +96,16 @@ _filters: _BoundedDict = _BoundedDict(maxsize=1000)
 
 async def _transcribe_audio(audio_b64: str, audio_format: str = "webm") -> str:
     """Transcribe base64-encoded audio to text using faster-whisper."""
-    from app.routers.transcribe import _get_model
+    from app.routers.transcribe import TRANSCRIBE_SEMAPHORE, _transcribe_sync
 
     audio_bytes = base64.b64decode(audio_b64)
     with tempfile.NamedTemporaryFile(suffix=f".{audio_format}", delete=False) as tmp:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
     try:
-        model = _get_model()
-        segments, info = model.transcribe(tmp_path, language="fr", beam_size=5)
-        return " ".join(seg.text.strip() for seg in segments).strip()
+        async with TRANSCRIBE_SEMAPHORE:
+            text, _info = await asyncio.to_thread(_transcribe_sync, tmp_path)
+        return text
     finally:
         os.unlink(tmp_path)
 

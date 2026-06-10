@@ -17,7 +17,16 @@ Categories used:
 
 ## [Unreleased]
 
-_(empty — next batch starts here)_
+### Security
+- **Conversation ownership enforced on the chat WebSocket (IDOR A-1, revue 2026-06-10).** The `/ws/chat` handler accepted any client-supplied `conversation_id` without checking it belongs to the authenticated user — any logged-in user could write into (and have the agent read from) another user's conversation by replaying its UUID, including the per-conversation PII vault and frozen-memory snapshot keyed by that id. A foreign or unknown id now closes the socket with code 4003, indistinguishable from "not found" (no existence oracle), mirroring `conversations._get_owned_conversation`. Regression-pinned by `tests/test_idor_conversation_ownership.py` (real WS round-trip). *(2026-06-10)*
+- **Ownership check on `POST /api/me/state/recompute` (IDOR A-2, revue 2026-06-10).** The `conversation_id` query param was passed straight to `compute_user_state`, whose `_load_recent_messages` has no user filter — the MAINTENANCE LLM could read a foreign conversation. Foreign/unknown ids now 404 before any read. *(2026-06-10)*
+
+### Fixed
+- **faster-whisper moved off the event loop (A-4, revue 2026-06-10).** `model.transcribe(...)` was called synchronously inside async handlers (`/ws/voice` + `POST /api/transcribe`), freezing the whole backend (all websockets, mission heartbeats, webhooks) for the duration of each decode. Transcription now runs in `asyncio.to_thread` with the lazy segments generator consumed inside the worker thread, bounded by a shared `Semaphore(2)`. *(2026-06-10)*
+- **`POST /api/transcribe` always returned 500.** The endpoint read `info.detected_language`, which does not exist on faster-whisper's `TranscriptionInfo` (real field: `language`) — every successful transcription crashed at response-build time. Latent since the endpoint was written; surfaced by the A-4 test pins. *(2026-06-10)*
+
+### Changed
+- `.gitignore` now excludes SQLite WAL/SHM sidecars (`*.db-wal`, `*.db-shm`) that appear when the backend runs outside Docker with the relative DB path. *(2026-06-10)*
 
 ---
 

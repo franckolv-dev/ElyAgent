@@ -36,7 +36,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import desc, select
 
@@ -168,6 +168,23 @@ async def recompute_user_state(
     intervening conversation activity yields the same state.
     """
     user_id = str(current_user.id)
+
+    # IDOR fix A-2 (revue 2026-06-10) — an explicit conversation_id may be
+    # any UUID; verify ownership BEFORE compute_user_state reads its
+    # messages (_load_recent_messages has no user filter). 404 — not 403 —
+    # mirrors conversations._get_owned_conversation so the response never
+    # confirms that a foreign conversation id exists.
+    if conversation_id:
+        async with async_session() as db:
+            owned = (await db.execute(
+                select(Conversation.id).where(
+                    Conversation.id == conversation_id,
+                    Conversation.user_id == user_id,
+                )
+            )).scalar_one_or_none()
+        if owned is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
     before = await get_user_state(user_id)
 
     if is_disabled():
