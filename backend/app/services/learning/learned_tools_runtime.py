@@ -34,6 +34,7 @@ fail at invoke (undefined name), so it simply won't be produced/promoted.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
@@ -129,12 +130,70 @@ async def _compile_active(user_id: str) -> list[Any]:
             logger.warning("learned_tools_runtime: duplicate tool name %s — skipping", name)
             continue
         seen.add(name)
-        out.append(res.tool)
+        out.append(_wrap_with_usage_bump(res.tool, skill.id))
     if out:
         logger.info(
             "learned_tools_runtime: loaded %d python_tool(s) for user %s", len(out), user_id[:8],
         )
     return out
+
+
+def _wrap_with_usage_bump(tool: Any, skill_id: str) -> Any:
+    """Sprint 4d (gap J1 découvert en réel) — compte CHAQUE invocation d'un
+    python_tool pur dans ``use_count``/``last_used_at``.
+
+    ``bump_skill_usage`` n'était câblé que pour les playbooks (skill_view) ;
+    les python_tools purs passaient par le binding LLM sans jamais bumper —
+    la gate « invocations » de la graduation restait à zéro quel que soit
+    l'usage réel (constaté sur fibonacci, 11 appels → use_count=0… parce
+    qu'en plus le LLM répondait de tête, mais c'est une autre histoire).
+    Les tools io ont déjà leur trace (io_tool_dispatches).
+
+    Fire-and-forget strict : le bump ne retarde ni ne casse JAMAIS l'appel.
+    La boucle asyncio est capturée au moment du compile (contexte async) ;
+    un tool sync invoqué depuis l'executor LangChain re-schedule dessus.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    def _bump() -> None:
+        try:
+            from app.services.learning.active_skills import bump_skill_usage
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is not None:
+                running.create_task(bump_skill_usage(skill_id))
+            elif loop is not None and loop.is_running():
+                asyncio.run_coroutine_threadsafe(bump_skill_usage(skill_id), loop)
+            else:
+                asyncio.run(bump_skill_usage(skill_id))
+        except Exception as exc:  # noqa: BLE001 — jamais au prix de l'appel
+            logger.debug("usage bump failed for %s (swallowed): %s", skill_id, exc)
+
+    try:
+        if getattr(tool, "coroutine", None) is not None:
+            original_coro = tool.coroutine
+
+            async def _traced_coro(*args: Any, **kwargs: Any) -> Any:
+                _bump()
+                return await original_coro(*args, **kwargs)
+
+            tool.coroutine = _traced_coro
+        if getattr(tool, "func", None) is not None:
+            original_func = tool.func
+
+            def _traced_func(*args: Any, **kwargs: Any) -> Any:
+                _bump()
+                return original_func(*args, **kwargs)
+
+            tool.func = _traced_func
+    except Exception as exc:  # noqa: BLE001 — un tool non-wrappable reste utilisable
+        logger.warning("usage bump wrap failed for %s: %s", skill_id, exc)
+    return tool
 
 
 def _core_tool_names() -> set[str]:
