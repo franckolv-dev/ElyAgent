@@ -16,10 +16,14 @@
 #   - INTERDIT : Revente comme SaaS / service managé à des tiers.
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -146,7 +150,16 @@ async def init_db():
         for _table, _col, _ddl in _safe_columns:
             try:
                 await conn.execute(text(f"ALTER TABLE {_table} ADD COLUMN {_col} {_ddl}"))
-            except Exception:
-                # Column already exists — SQLite raises OperationalError, that's
-                # the steady-state on every restart after the initial migration.
-                pass
+            except Exception as _alter_exc:
+                # B-4 (revue 2026-06-10) — on n'avale plus TOUTES les
+                # exceptions : « duplicate column » est l'état nominal à
+                # chaque redémarrage, tout le reste (disque plein, lock,
+                # faute de frappe SQL) doit se VOIR — c'est exactement le
+                # drift silencieux qui a produit le bug critic_run_at
+                # (676 AttributeError en prod).
+                _msg = str(_alter_exc).lower()
+                if "duplicate column" not in _msg:
+                    logger.warning(
+                        "init_db: ALTER TABLE %s ADD %s a échoué (PAS un "
+                        "duplicate) : %s", _table, _col, _alter_exc,
+                    )

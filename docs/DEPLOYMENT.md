@@ -478,3 +478,61 @@ La propagation DNS peut prendre de quelques minutes à 48h selon le registrar. V
 dig votre-sous-domaine.mondomaine.fr @1.1.1.1 +short
 ```
 Tant que ça ne retourne pas d'IP, attendez et réessayez.
+
+---
+
+## Base de données : SQLite (défaut) ou PostgreSQL (opt-in)
+
+> Section ajoutée le 10 juin 2026 (Phase 3 de la revue multi-utilisateurs).
+
+**SQLite est le bon choix par défaut** — y compris en multi-utilisateurs
+foyer/petite équipe. Avec la configuration livrée (WAL, `busy_timeout`,
+sessions courtes, backup nocturne `VACUUM INTO`), une instance encaisse
+confortablement **5 à 10 utilisateurs actifs simultanés** (~20-50 comptes).
+Le facteur limitant au-delà n'est pas SQLite mais l'event loop mono-process
+(verrouillé au boot par `.ely-singleton.lock`).
+
+PostgreSQL est un **chemin opt-in** pour les grosses instances. Ce qu'il
+apporte : écrivains concurrents réels et la porte vers le multi-process
+(qui exige AUSSI d'externaliser HITL/registres — pas encore livré). Ce
+qu'il coûte : un service de plus, `pg_dump` à la place du backup fichier,
+et ~150 Mo de RAM.
+
+### Activer PostgreSQL
+
+1. Ajouter un service `postgres` au `docker-compose.yml` (image
+   `postgres:17-alpine`, volume dédié, healthcheck `pg_isready`).
+2. Dans `.env` :
+   ```
+   DATABASE_URL=postgresql+asyncpg://ely:<motdepasse>@postgres:5432/ely
+   ```
+   Le code détecte l'URL : pool dimensionné (20+30, `pool_pre_ping`)
+   appliqué automatiquement ; les pragmas SQLite sont ignorés.
+3. Premier démarrage : `create_all` crée le schéma, puis Alembic stampe la
+   base sur la baseline (`alembic_runner`, automatique).
+4. Migration des données existantes SQLite → Postgres : pas d'outil fourni
+   (usage avancé) — `pgloader` fonctionne bien sur ce schéma.
+
+### Limites connues du chemin Postgres
+
+- `missions_checkpoints.sqlite` (checkpointer LangGraph des missions)
+  reste en SQLite local — migration vers `langgraph-checkpoint-postgres`
+  non câblée.
+- Le backend reste **mono-process** (HITL, registres WebSocket et
+  schedulers vivent en RAM). `ELY_ALLOW_MULTIPROCESS=true` existe mais ne
+  doit être posé qu'avec un état externalisé — sinon split-brain garanti.
+
+### Migrations de schéma (Alembic)
+
+Depuis la v1.14.11, le schéma est suivi par Alembic :
+
+```bash
+cd backend
+uv run alembic revision --autogenerate -m "ma migration"   # créer
+uv run alembic upgrade head                                 # appliquer
+```
+
+Au boot, l'application stampe les bases jamais vues par Alembic sur la
+révision `0001_baseline`, puis applique les révisions plus récentes.
+Les nouvelles colonnes ne doivent PLUS être ajoutées à `_safe_columns`
+(`backend/app/database.py`) — créer une révision Alembic à la place.

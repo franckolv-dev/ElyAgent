@@ -130,6 +130,14 @@ async def lifespan(app: FastAPI):
 
     await init_db()
 
+    # B-4 (revue 2026-06-10) — Alembic : stampe la base sur la baseline au
+    # premier boot, applique les révisions postérieures ensuite. Toute
+    # évolution de schéma future passe par `alembic revision --autogenerate`
+    # au lieu d'allonger _safe_columns. Best-effort : un échec ne tue pas
+    # le boot.
+    from app.services.alembic_runner import ensure_migrations
+    await ensure_migrations()
+
     # B-11 (revue 2026-06-10) — chiffre en une passe les secrets encore en
     # clair (system_config is_secret + llm_instances.api_key). Idempotent.
     # AVANT load_llm_settings_from_db pour que les lectures déchiffrent.
