@@ -314,6 +314,26 @@ async def lifespan(app: FastAPI):
         minute=0,
         id="qdrant_backup",
     )
+    # Backup SQLite nocturne 02:30 (revue 2026-06-10 §4) — Qdrant était
+    # sauvegardé, la VRAIE source de vérité (users/convs/missions) jamais.
+    from app.services.sqlite_backup import run_backup as _sqlite_backup
+    _memory_scheduler.add_job(
+        _sqlite_backup,
+        trigger="cron",
+        hour=2,
+        minute=30,
+        id="sqlite_backup",
+    )
+    # Purge quotidienne des uploads (B-9) — rétention 90 j par défaut,
+    # env ELY_UPLOADS_RETENTION_DAYS (0 = désactivée).
+    from app.routers.upload import purge_old_uploads as _purge_uploads
+    _memory_scheduler.add_job(
+        _purge_uploads,
+        trigger="cron",
+        hour=3,
+        minute=30,
+        id="uploads_purge",
+    )
     # Sprint 3.7 Jalon 4 — LLM-as-judge post-mission critic.
     # Scans terminal missions (failed/aborted/completed) without a
     # critic_run_at every 5 minutes. Policy (design note §4.1) :

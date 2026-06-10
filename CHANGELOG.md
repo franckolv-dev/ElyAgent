@@ -21,6 +21,19 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.5] — 2026-06-10 — Phase 2 (lot 1) revue multi-utilisateurs : hygiène disque & données
+
+### Fixed
+- **Connexions FTS hors-engine alignées sur les pragmas de l'engine (B-2).** Les deux stores FTS5 ouvraient des `aiosqlite.connect()` nus sur le même fichier que l'engine SQLAlchemy : 5 s de lock timeout (vs 30 s engine) et `synchronous=FULL`. Sous écrivains concurrents, une écriture d'index qui attendait > 5 s recevait `database is locked` — avalé par le « best-effort » — et **la ligne d'index FTS était perdue définitivement** : rappel mémoire et recherche de messages dégradés silencieusement, par user, de façon non reproductible. Nouveau helper `services/sqlite_aio.connect()` (timeout 30 s + `busy_timeout` + `NORMAL`), 11 sites migrés, test source-level anti-régression. *(2026-06-10)*
+- **Voix Vivienne réellement active en Docker.** Le compose forçait `TTS_VOICE=${TTS_VOICE:-fr-FR-DeniseNeural}` — le défaut applicatif de la v1.14.2 était **écrasé silencieusement** quand `TTS_VOICE` n'était pas dans le `.env` hôte. Défaut compose aligné. *(2026-06-10)*
+
+### Added
+- **Backup SQLite nocturne (§4).** Qdrant était sauvegardé chaque nuit ; `cyberentity.db` — users, conversations, missions, signaux learning, la **vraie** source de vérité — jamais. Nouveau job 02:30 via `VACUUM INTO` (snapshot cohérent à chaud, les writers continuent) couvrant aussi `missions_checkpoints.sqlite`, rotation 7 j (`ELY_SQLITE_BACKUP_RETENTION_DAYS`), à destination du volume hôte déjà monté. *(2026-06-10)*
+- **Uploads : volume persistant, quota par user, purge (B-9).** `/app/uploads` n'était pas monté — chaque rebuild perdait les fichiers et captures référencés dans l'historique des conversations (liens morts). Volume `./data/uploads` ajouté ; quota disque par user (500 Mo, `ELY_UPLOAD_QUOTA_MB`, 0 = off) vérifié à l'upload (413 au-delà, scan en thread) ; purge quotidienne 03:30 des fichiers > 90 j (`ELY_UPLOADS_RETENTION_DAYS`, 0 = off). *(2026-06-10)*
+- **`mem_limit: 4g` sur le backend (B-16).** Seul service sans cap mémoire alors que c'est lui qui grossit avec N users (Whisper, fastembed, Chromium, clients WhatsApp par user) — risque de swap hôte qui dégrade LM Studio. *(2026-06-10)*
+
+---
+
 ## [1.14.4] — 2026-06-10 — Phase 1 (lot 2) revue multi-utilisateurs : event loop & LLM local
 
 ### Fixed

@@ -43,7 +43,8 @@ import logging
 import re
 from functools import lru_cache
 
-import aiosqlite
+import aiosqlite  # noqa: F401  (kept: Row/static typing helpers)
+from app.services.sqlite_aio import connect as _connect
 
 from app.config import get_settings
 
@@ -109,7 +110,7 @@ class FTSStore:
     async def init(self) -> None:
         """Create the FTS5 virtual table if it does not already exist."""
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.execute(_CREATE_TABLE)
                 await db.commit()
             logger.info("FTS5 memory index ready")
@@ -129,7 +130,7 @@ class FTSStore:
     ) -> None:
         """Index a memory item so it can be retrieved by keyword search."""
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.execute(
                     "INSERT INTO memory_fts(text, user_id, collection, qdrant_id)"
                     " VALUES (?, ?, ?, ?)",
@@ -159,7 +160,7 @@ class FTSStore:
         if not fts_query:
             return []
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 cursor = await db.execute(
                     """
                     SELECT   qdrant_id
@@ -186,7 +187,7 @@ class FTSStore:
     async def delete_user_data(self, user_id: str) -> None:
         """Remove all FTS entries for a given user (GDPR / account deletion)."""
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.execute(
                     "DELETE FROM memory_fts WHERE user_id = ?", (user_id,)
                 )
