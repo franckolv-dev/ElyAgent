@@ -44,7 +44,7 @@ async def health_check_deep():
 
     from fastapi.responses import JSONResponse
 
-    checks = {"db": False, "qdrant": False}
+    checks = {"db": False, "qdrant": False, "migrations": False}
 
     try:
         from sqlalchemy import text
@@ -53,6 +53,18 @@ async def health_check_deep():
         async with async_session() as db:
             await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=5)
         checks["db"] = True
+    except Exception:
+        pass
+
+    # Drift de migrations — ensure_migrations() au boot est best-effort
+    # (CRITICAL loggé, boot continue) : sans ce check, une base restée en
+    # arrière des révisions est invisible jusqu'au premier 500 utilisateur
+    # (vécu v1.17.0 : missions.spec_yaml absente → page Missions morte).
+    try:
+        from app.services.alembic_runner import migrations_current_sync
+        checks["migrations"] = await asyncio.wait_for(
+            asyncio.to_thread(migrations_current_sync), timeout=5,
+        )
     except Exception:
         pass
 

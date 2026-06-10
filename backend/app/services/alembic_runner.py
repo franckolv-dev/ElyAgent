@@ -61,6 +61,36 @@ def _has_version_table_sync() -> bool:
         engine.dispose()
 
 
+def migrations_current_sync() -> bool:
+    """La base est-elle au head des révisions ? Pour `/health/deep`.
+
+    ``ensure_migrations`` est best-effort : un échec au boot (ex. image
+    Docker sans ``migrations/`` — vécu v1.17.0, missions.spec_yaml jamais
+    créée → 500) ne laissait AUCUNE trace hors d'un CRITICAL dans les
+    logs. La sonde profonde expose désormais ce drift au monitoring.
+    """
+    import sqlalchemy as sa
+
+    from alembic.script import ScriptDirectory
+
+    from app.config import get_settings
+
+    head = ScriptDirectory.from_config(_alembic_config()).get_current_head()
+    url = get_settings().database_url
+    sync_url = url.replace("+aiosqlite", "").replace("+asyncpg", "")
+    engine = sa.create_engine(sync_url)
+    try:
+        with engine.connect() as conn:
+            if not sa.inspect(conn).has_table("alembic_version"):
+                return False
+            current = conn.execute(
+                sa.text("SELECT version_num FROM alembic_version")
+            ).scalar()
+            return current == head
+    finally:
+        engine.dispose()
+
+
 def _stamp_or_upgrade_sync() -> str:
     from alembic import command
 
