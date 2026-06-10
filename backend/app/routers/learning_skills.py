@@ -361,10 +361,14 @@ async def list_candidates(
 # transition active→stale and stale→archived without bypassing this map.
 _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     SkillStatus.CANDIDATE: {SkillStatus.ACTIVE, SkillStatus.ARCHIVED},
-    SkillStatus.ACTIVE:    {SkillStatus.ARCHIVED, SkillStatus.STALE},
+    SkillStatus.ACTIVE:    {SkillStatus.ARCHIVED, SkillStatus.STALE, SkillStatus.GRADUATED},
     SkillStatus.STALE:     {SkillStatus.ACTIVE, SkillStatus.ARCHIVED},
     SkillStatus.ARCHIVED:  {SkillStatus.CANDIDATE},  # restore back to review
     SkillStatus.REJECTED:  set(),                    # terminal, only DELETE
+    # Sprint 4d — un-graduation (PR refusée / revert du core) : retour au
+    # binding dynamique. La garde de chargement re-graduera si la collision
+    # core existe toujours — le retour ACTIVE n'est effectif qu'après revert.
+    SkillStatus.GRADUATED: {SkillStatus.ACTIVE},
 }
 
 
@@ -469,6 +473,50 @@ async def graduation_report(
         )
     from app.services.learning.graduation import compute_graduation_stats
     return await compute_graduation_stats(db, skill)
+
+
+class GraduateRequest(BaseModel):
+    """Corps de POST /skills/{id}/graduate.
+
+    ``dry_run=True`` (défaut) : joue toutes les gates et retourne les
+    fichiers générés SANS rien livrer. ``smoke_kwargs`` (optionnel) :
+    arguments d'exemple — déclenche l'étage smoke de la revalidation ET
+    un test d'invocation réelle dans le pytest généré.
+    """
+    dry_run: bool = True
+    smoke_kwargs: Optional[dict] = None
+
+
+@router.post("/skills/{skill_id}/graduate")
+async def graduate_skill(
+    skill_id: str,
+    body: GraduateRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Sprint 4d J4 — graduation d'un learned tool vers le code core.
+
+    Dry-run : gates J1 + revalidation 7 étages + dépendances de
+    composition + aperçu des 3 artefacts (tool core, test pytest,
+    manifest). La livraison réelle (branche + PR GitHub) est J5.
+    """
+    skill = await _load_skill_or_404(db, skill_id)
+    if skill.content_format != SkillContentFormat.PYTHON_TOOL:
+        raise HTTPException(
+            400,
+            f"Skill {skill.name!r} is a {skill.content_format} — "
+            "only python_tool skills can graduate.",
+        )
+    from app.services.learning.graduation_codegen import dry_run_graduation
+    result = await dry_run_graduation(db, skill, smoke_kwargs=body.smoke_kwargs)
+    if body.dry_run:
+        return result
+    # Livraison réelle — J5 (PR via API GitHub). Fail-closed tant que le
+    # canal n'est pas câblé : on ne « gradue » jamais silencieusement.
+    raise HTTPException(
+        501,
+        "La livraison PR (J5) n'est pas encore câblée — utiliser dry_run=true.",
+    )
 
 
 @router.post("/skills/{skill_id}/archive", response_model=CandidateOut)

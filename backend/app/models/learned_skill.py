@@ -70,6 +70,12 @@ class SkillStatus:
                    via the admin UI (curator transition).
     ``rejected``   Eval loop exhausted its N iterations without passing;
                    permanent failure record. Not promoted, not curated.
+    ``graduated``  Sprint 4d (V4) : converti en tool CORE (fichier dans
+                   app/agent/tools/graduated/, livré par PR). La row reste
+                   comme trace d'audit ; le binding dynamique l'ignore
+                   (le core homonyme prend le relais par nom). Posé par
+                   la garde de chargement quand la collision core est
+                   détectée après merge+rebuild.
     """
 
     CANDIDATE = "candidate"
@@ -77,8 +83,9 @@ class SkillStatus:
     STALE = "stale"
     ARCHIVED = "archived"
     REJECTED = "rejected"
+    GRADUATED = "graduated"
 
-    ALL = {CANDIDATE, ACTIVE, STALE, ARCHIVED, REJECTED}
+    ALL = {CANDIDATE, ACTIVE, STALE, ARCHIVED, REJECTED, GRADUATED}
     # States visible to the prompt injection layer (active session use).
     PROMPT_VISIBLE = {ACTIVE}
 
