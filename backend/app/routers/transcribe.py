@@ -17,12 +17,18 @@
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 """Speech-to-text endpoint using faster-whisper (local, CPU)."""
+import asyncio
+
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from app.auth.dependencies import get_current_user
 
 router = APIRouter()
 
 _model = None
+
+# Whisper int8 on CPU saturates a core per decode: bound concurrent
+# transcriptions (semaphore shared by REST /api/transcribe and WS /ws/voice).
+TRANSCRIBE_SEMAPHORE = asyncio.Semaphore(2)
 
 
 def _get_model():
@@ -32,6 +38,18 @@ def _get_model():
         # tiny model: ~75MB, fast on CPU, good enough for short voice commands
         _model = WhisperModel("tiny", device="cpu", compute_type="int8")
     return _model
+
+
+def _transcribe_sync(tmp_path: str):
+    """Blocking transcription — call via asyncio.to_thread.
+
+    The segments generator is lazy (decoding happens while iterating), so it
+    must be consumed here, inside the worker thread — not on the event loop.
+    """
+    model = _get_model()
+    segments, info = model.transcribe(tmp_path, language="fr", beam_size=5)
+    text = " ".join(seg.text.strip() for seg in segments).strip()
+    return text, info
 
 
 @router.post("/transcribe")
@@ -56,10 +74,9 @@ async def transcribe_audio(
         tmp_path = tmp.name
 
     try:
-        model = _get_model()
-        segments, info = model.transcribe(tmp_path, language="fr", beam_size=5)
-        text = " ".join(seg.text.strip() for seg in segments).strip()
-        return {"text": text, "language": info.detected_language}
+        async with TRANSCRIBE_SEMAPHORE:
+            text, info = await asyncio.to_thread(_transcribe_sync, tmp_path)
+        return {"text": text, "language": info.language}
     except Exception as exc:
         raise HTTPException(500, f"Transcription failed: {exc}")
     finally:

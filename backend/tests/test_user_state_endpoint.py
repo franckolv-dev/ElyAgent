@@ -291,9 +291,23 @@ async def test_recompute_explicit_conversation_id_overrides_latest(
     monkeypatch, fresh_user: str,
 ) -> None:
     """If the caller passes ``?conversation_id=X``, the handler must use
-    X even when a more recent conversation exists."""
+    X even when a more recent conversation exists. Since the IDOR fix
+    A-2 (revue 2026-06-10) X must be a real conversation owned by the
+    caller — an arbitrary id now 404s (see
+    tests/test_idor_conversation_ownership.py)."""
+    from app.database import async_session
+    from app.models.conversation import Conversation
     from app.routers.user_state import recompute_user_state
     seen = []
+
+    # Two conversations — the explicit (older) one must win over latest.
+    async with async_session() as db:
+        older = Conversation(user_id=fresh_user, title="older conv")
+        newer = Conversation(user_id=fresh_user, title="newer conv")
+        db.add_all([older, newer])
+        await db.commit()
+        await db.refresh(older)
+        older_id = str(older.id)
 
     async def fake_compute(user_id, conversation_id=None, **_kw):
         seen.append(conversation_id)
@@ -305,11 +319,11 @@ async def test_recompute_explicit_conversation_id_overrides_latest(
     )
 
     resp = await recompute_user_state(
-        conversation_id="explicit-conv-id",
+        conversation_id=older_id,
         current_user=_fake_user(fresh_user),
     )
     assert resp.status_code == 200
-    assert seen == ["explicit-conv-id"]
+    assert seen == [older_id]
 
 
 @pytest.mark.asyncio
