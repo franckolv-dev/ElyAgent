@@ -48,6 +48,9 @@ _HITL_REFUSAL_COLUMNS = {
     "id", "user_id", "conversation_id", "mission_id", "tool_name",
     "args_redacted", "action_description", "decision", "reason",
     "tier_llm", "prompt_version", "created_at",
+    # Sprint 4d J1 — origine du tool au moment du refus ("learned"|"builtin"),
+    # posée à la capture pour les gates de graduation (migration 0005).
+    "tool_origin",
 }
 _HALLUCINATION_BLOCK_COLUMNS = {
     "id", "user_id", "conversation_id", "mission_id", "model_used",

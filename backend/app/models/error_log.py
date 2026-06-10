@@ -69,4 +69,9 @@ class ErrorLog(Base):
     # error fired. Lets the dashboard correlate error rates with specific
     # prompt versions.
     prompt_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Sprint 4d J1 — "learned" si le tool était un python_tool ACTIF de ce
+    # user au moment de l'erreur, sinon "builtin". NULL = rows pré-J1 ou
+    # origine indéterminable (lookup best-effort). Permet d'agréger les
+    # stats de graduation sans JOIN fragile sur learned_skills.
+    tool_origin: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)

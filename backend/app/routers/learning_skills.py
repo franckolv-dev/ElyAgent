@@ -443,6 +443,34 @@ async def promote_skill(
     return _to_candidate_out(skill)
 
 
+@router.get("/skills/{skill_id}/graduation")
+async def graduation_report(
+    skill_id: str,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Sprint 4d J1 — stats + gates de graduation d'un learned tool.
+
+    Retourne invocations / erreurs récentes / refus HITL / âge et le
+    verdict gate par gate (seuils env-tunables, design note §4.2).
+    ``eligible=true`` = digne d'un dry-run de graduation (J4) — les gates
+    de revalidation et de composition seront jouées par le dry-run.
+
+    404 sur un skill inexistant ; 400 sur un format non python_tool (les
+    playbooks markdown ne graduent pas — c'est aussi une gate, mais la
+    demander explicitement est plus probablement une erreur d'appel).
+    """
+    skill = await _load_skill_or_404(db, skill_id)
+    if skill.content_format != SkillContentFormat.PYTHON_TOOL:
+        raise HTTPException(
+            400,
+            f"Skill {skill.name!r} is a {skill.content_format} — "
+            "only python_tool skills can graduate.",
+        )
+    from app.services.learning.graduation import compute_graduation_stats
+    return await compute_graduation_stats(db, skill)
+
+
 @router.post("/skills/{skill_id}/archive", response_model=CandidateOut)
 async def archive_skill(
     skill_id: str,

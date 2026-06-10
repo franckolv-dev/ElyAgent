@@ -105,6 +105,7 @@ async def record_hitl_refusal(
         prompt_version = _safe_prompt_version()
     try:
         from app.models.hitl_refusal import HitlRefusal
+        from app.services.learning.graduation import tool_origin as _tool_origin
         row = HitlRefusal(
             user_id=user_id,
             conversation_id=conversation_id,
@@ -116,6 +117,9 @@ async def record_hitl_refusal(
             reason=reason,
             tier_llm=tier_llm,
             prompt_version=prompt_version,
+            # Sprint 4d J1 — posé à la capture (jamais recalculé) : après
+            # graduation, le core homonyme produit « builtin », exact.
+            tool_origin=await _tool_origin(user_id, tool_name),
         )
         async with async_session() as db:
             db.add(row)
@@ -244,8 +248,12 @@ async def record_tool_error(
     if prompt_version is None:
         prompt_version = _safe_prompt_version()
     try:
+        from app.services.learning.graduation import tool_origin as _tool_origin
         from app.services.memory.error_store import ErrorStore
         store = ErrorStore()
+        # Sprint 4d J1 — origine résolue AVANT d'ouvrir la session d'écriture
+        # (le helper ouvre la sienne) ; posée à la capture, jamais recalculée.
+        origin = await _tool_origin(user_id, tool_name)
         async with async_session() as db:
             row_id = await store.store(
                 db,
@@ -259,6 +267,7 @@ async def record_tool_error(
                 tier_llm=tier_llm,
                 recovered=recovered,
                 prompt_version=prompt_version,
+                tool_origin=origin,
             )
             await db.commit()
             return row_id
