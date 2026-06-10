@@ -74,6 +74,11 @@ class Mission(Base):
     # ── User-facing description ──
     title: Mapped[str] = mapped_column(String(255))
     goal: Mapped[str] = mapped_column(Text)  # the actual objective the agent pursues
+    # Sprint 4c J1 (2026-06-10) — spec structurée V2 (YAML : steps + foreach
+    # + handlers on_*). NULL = mission legacy « prompt monolithe » (goal
+    # seul), rétrocompatibilité totale. Voir services/mission_spec.py pour
+    # le contrat, et la révision Alembic 0002 pour la migration.
+    spec_yaml: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # ── Lifecycle ──
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)

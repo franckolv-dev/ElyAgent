@@ -17,7 +17,13 @@ Categories used:
 
 ## [Unreleased]
 
-_(empty — next batch starts here)_
+> Sprint 4c — missions structurées (→ v1.17.0). Jalons : J1 ✅ format+parser+modèle · J2 exécuteur · J3 hook ask_user · J4 viewer liste · J5 rétrocompat+docs.
+
+### Added
+- **Sprint 4c J1 — format de mission structurée V2.** Fin du prompt-monolithe : une mission peut désormais être décrite en YAML (`steps` ordonnés avec instruction `do` en langage naturel, `foreach` itérant sur le résultat d'un step précédent via `{{ step.output }}` ou en texte libre, et **handlers d'edge-case par step** — `on_ambiguous`, `on_not_found`, `on_<cas_métier_libre>` — dont les actions forment un vocabulaire fermé : `ask_user("…")`, `skip_with_note("…")`, `resume_next`, `fail`). Ajouter un cas oublié = ajouter UNE ligne. Le parser (`services/mission_spec.py`) collecte **toutes** les erreurs en une passe, en français. Colonne `missions.spec_yaml` (NULL = mission legacy, rétrocompatibilité totale) via la **première vraie révision Alembic** (`0002_mission_spec_yaml`, défensive). API : `POST /missions` accepte `spec_yaml`, 422 avec la liste complète des erreurs ; validation aussi côté service (défense en profondeur pour Telegram/scheduler). *(2026-06-10)*
+
+### Fixed
+- **Adoption Alembic : stamp baseline puis upgrade (au lieu de stamp head).** Stamper `head` sur une base jamais vue aurait sauté les révisions post-baseline sur les bases **existantes** (colonne manquante à jamais) — corrigé avant la première vraie révision ; les migrations sont écrites défensives pour les installs fraîches. Également : `fileConfig(disable_existing_loggers=False)` dans `migrations/env.py` — le défaut aurait **éteint tous les loggers de l'application** à chaque boot. *(2026-06-10)*
 
 ---
 

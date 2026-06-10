@@ -66,10 +66,16 @@ def _stamp_or_upgrade_sync() -> str:
 
     cfg = _alembic_config()
     if not _has_version_table_sync():
-        # Base existante (ou fraîche, créée par create_all) jamais vue par
-        # Alembic : on la déclare au niveau baseline sans rien exécuter.
-        command.stamp(cfg, "head")
-        return "stamped"
+        # Base jamais vue par Alembic : on la déclare au niveau BASELINE
+        # (pas head !) puis on upgrade. Stamper head sauterait les
+        # révisions post-baseline sur une base EXISTANTE (colonne manquante
+        # à jamais — le piège classique de l'adoption). Les installs
+        # fraîches créées par create_all ont déjà tout : les révisions
+        # post-baseline sont écrites défensives (vérif d'existence) et
+        # no-opent proprement. Convention documentée dans 0002.
+        command.stamp(cfg, "0001_baseline")
+        command.upgrade(cfg, "head")
+        return "stamped+upgraded"
     command.upgrade(cfg, "head")
     return "upgraded"
 

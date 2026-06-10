@@ -59,10 +59,25 @@ async def create_mission(
     tick_interval_seconds: Optional[int] = None,
     deadline: Optional[datetime] = None,
     autonomous: bool = False,
+    spec_yaml: Optional[str] = None,
 ) -> Mission:
-    """Create a new mission in `draft` status."""
+    """Create a new mission in `draft` status.
+
+    ``spec_yaml`` (Sprint 4c J1) : spec structurée V2 — validée ICI aussi
+    (défense en profondeur, le router valide déjà) pour que les autres
+    sources (Telegram, scheduler) ne puissent pas persister une spec
+    invalide.
+    """
     if source not in MISSION_SOURCES:
         raise ValueError(f"invalid source: {source!r}")
+    if spec_yaml is not None and spec_yaml.strip():
+        from app.services.mission_spec import MissionSpecError, parse_mission_spec
+        try:
+            parse_mission_spec(spec_yaml)
+        except MissionSpecError as exc:
+            raise ValueError(f"spec invalide : {exc}") from exc
+    else:
+        spec_yaml = None
 
     mission = Mission(
         user_id=user_id,
@@ -77,6 +92,7 @@ async def create_mission(
         tick_interval_seconds=tick_interval_seconds,
         deadline=deadline,
         autonomous=autonomous,
+        spec_yaml=spec_yaml,
     )
     async with async_session() as db:
         db.add(mission)

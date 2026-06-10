@@ -49,6 +49,10 @@ class MissionCreate(BaseModel):
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None
     autonomous: bool = False
+    # Sprint 4c J1 — spec structurée V2 (YAML : steps + foreach + handlers
+    # on_*). None = mission legacy prompt-monolithe. Validée à la création :
+    # 422 avec la liste COMPLÈTE des erreurs du parser.
+    spec_yaml: Optional[str] = Field(None, max_length=64_000)
 
 
 class MissionUpdate(BaseModel):
@@ -91,6 +95,8 @@ class MissionOut(BaseModel):
     autonomous: bool
     final_summary: Optional[str]
     failure_reason: Optional[str]
+    # Sprint 4c — None pour les missions legacy ; le viewer J4 s'en sert.
+    spec_yaml: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -135,10 +141,19 @@ async def create_mission(
     body: MissionCreate,
     current_user: User = Depends(get_current_user),
 ) -> MissionOut:
+    if body.spec_yaml and body.spec_yaml.strip():
+        from app.services.mission_spec import validate_mission_spec
+        spec_errors = validate_mission_spec(body.spec_yaml)
+        if spec_errors:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "Spec de mission invalide", "errors": spec_errors},
+            )
     m = await mission_service.create_mission(
         user_id=current_user.id,
         title=body.title,
         goal=body.goal,
+        spec_yaml=body.spec_yaml,
         priority=body.priority,
         source="ui",
         budget_tokens=body.budget_tokens,
