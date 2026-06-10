@@ -18,9 +18,11 @@ import { Header } from "@/components/layout/Header";
 import {
   ArrowLeft, Loader2, Play, Pause, X, Zap, AlertCircle, CheckCircle,
   Wrench, Brain, Eye, RefreshCw, ChevronDown, ChevronRight,
+  CircleSlash, MessageCircleQuestion, Send, ListChecks,
 } from "lucide-react";
 import {
   missionsApi, type Mission, type MissionStep, type MissionPlan,
+  type MissionStructure, type SpecStepOutline, type StepRun,
   STATUS_META, PHASE_META, isTerminal,
 } from "@/lib/missions";
 
@@ -32,6 +34,8 @@ export default function MissionDetailPage() {
   const [mission, setMission] = useState<Mission | null>(null);
   const [steps, setSteps]     = useState<MissionStep[]>([]);
   const [plan, setPlan]       = useState<MissionPlan | null>(null);
+  // Sprint 4c J4 — outline de la spec + statuts par item (viewer liste)
+  const [structure, setStructure] = useState<MissionStructure | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [busy, setBusy]       = useState<string | null>(null); // which action is in flight
@@ -39,14 +43,16 @@ export default function MissionDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!id) return;
     try {
-      const [m, s, p] = await Promise.all([
+      const [m, s, p, st] = await Promise.all([
         missionsApi.get(id),
         missionsApi.steps(id),
         missionsApi.plan(id).catch(() => null),
+        missionsApi.structure(id).catch(() => null),
       ]);
       setMission(m);
       setSteps(s);
       setPlan(p);
+      setStructure(st && st.steps.length > 0 ? st : null);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur de chargement");
@@ -242,6 +248,14 @@ export default function MissionDetailPage() {
             </div>
 
             {/* Plan card */}
+            {structure && (
+              <StructuredRunPanel
+                structure={structure}
+                missionId={mission.id}
+                onAnswered={fetchAll}
+              />
+            )}
+
             {plan && (
               <div className="bg-bg-secondary border border-border-dim rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -358,6 +372,186 @@ function StepRow({ step }: { step: MissionStep }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Sprint 4c J4 — viewer LISTE de la mission structurée ────────────────────
+// Le backlog est explicite : « PAS un canvas n8n — juste visualiser comment
+// la mission s'exécute ». Une liste de steps, les items dessous, et le champ
+// de réponse inline sur les ⏸ — clic, réponse, la mission repart.
+
+const RUN_ICON: Record<StepRun["status"], { icon: typeof CheckCircle; cls: string; label: string }> = {
+  done:         { icon: CheckCircle,            cls: "text-emerald-400", label: "terminé" },
+  running:      { icon: Loader2,                cls: "text-cyber-cyan animate-spin", label: "en cours" },
+  pending:      { icon: ChevronRight,           cls: "text-text-muted", label: "à traiter" },
+  waiting_user: { icon: MessageCircleQuestion,  cls: "text-amber-400", label: "attend ta réponse" },
+  skipped:      { icon: CircleSlash,            cls: "text-text-muted", label: "sauté" },
+  failed:       { icon: AlertCircle,            cls: "text-red-400", label: "échec" },
+};
+
+function stepSummary(runs: StepRun[]): { done: number; total: number; waiting: number } {
+  const terminal = new Set(["done", "skipped", "failed"]);
+  return {
+    done: runs.filter((r) => terminal.has(r.status)).length,
+    total: runs.length,
+    waiting: runs.filter((r) => r.status === "waiting_user").length,
+  };
+}
+
+function AnswerBox({ missionId, run, onAnswered }: {
+  missionId: string; run: StepRun; onAnswered: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!value.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await missionsApi.answerStepRun(missionId, run.step_id, run.item_index, value.trim());
+      setValue("");
+      onAnswered();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Envoi échoué");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5 ml-6">
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Ta réponse… (Entrée pour envoyer)"
+          className="flex-1 text-xs bg-bg-secondary border border-amber-500/30 rounded px-2.5 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-amber-400/60"
+        />
+        <button
+          onClick={submit}
+          disabled={busy || !value.trim()}
+          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+          Répondre
+        </button>
+      </div>
+      {err && <p className="text-[10px] text-red-400 mt-1">{err}</p>}
+    </div>
+  );
+}
+
+function RunRow({ missionId, run, onAnswered }: {
+  missionId: string; run: StepRun; onAnswered: () => void;
+}) {
+  const meta = RUN_ICON[run.status] ?? RUN_ICON.pending;
+  const Icon = meta.icon;
+  return (
+    <li className="py-1">
+      <div className="flex items-start gap-2 text-xs">
+        <Icon className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${meta.cls}`} />
+        <div className="flex-1 min-w-0">
+          <span className={`${run.status === "skipped" ? "text-text-muted line-through" : "text-text-secondary"}`}>
+            {run.item_value ?? "(step)"}
+          </span>
+          {run.note && (
+            <span className={`ml-2 ${run.status === "waiting_user" ? "text-amber-300" : "text-text-muted"}`}>
+              {run.status === "waiting_user" ? "⚠ " : "— "}{run.note}
+            </span>
+          )}
+          {run.status === "done" && run.output && (
+            <span className="ml-2 text-text-muted">— {run.output.slice(0, 120)}</span>
+          )}
+          {run.answer && run.status !== "waiting_user" && (
+            <span className="ml-2 text-cyber-cyan/80" title="Ta réponse a guidé ce traitement">
+              ↳ {run.answer.slice(0, 80)}
+            </span>
+          )}
+        </div>
+      </div>
+      {run.status === "waiting_user" && (
+        <AnswerBox missionId={missionId} run={run} onAnswered={onAnswered} />
+      )}
+    </li>
+  );
+}
+
+function StructuredRunPanel({ structure, missionId, onAnswered }: {
+  structure: MissionStructure; missionId: string; onAnswered: () => void;
+}) {
+  const runsByStep = new Map<string, StepRun[]>();
+  for (const r of structure.runs) {
+    const list = runsByStep.get(r.step_id) ?? [];
+    list.push(r);
+    runsByStep.set(r.step_id, list);
+  }
+  const totalWaiting = structure.runs.filter((r) => r.status === "waiting_user").length;
+
+  const stepIcon = (step: SpecStepOutline, runs: StepRun[]) => {
+    if (runs.length === 0) return { icon: ChevronRight, cls: "text-text-muted" };
+    const { done, total, waiting } = stepSummary(runs);
+    if (waiting > 0) return { icon: MessageCircleQuestion, cls: "text-amber-400" };
+    if (done === total) return { icon: CheckCircle, cls: "text-emerald-400" };
+    return { icon: Loader2, cls: "text-cyber-cyan animate-spin" };
+  };
+
+  return (
+    <div className="bg-bg-primary border border-border-dim rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <ListChecks className="w-4 h-4 text-cyber-cyan" />
+        <h2 className="text-sm font-medium text-text-primary">Exécution structurée</h2>
+        {totalWaiting > 0 && (
+          <span className="ml-auto text-[11px] px-2 py-0.5 rounded border border-amber-500/30 text-amber-300 bg-amber-500/10">
+            {totalWaiting} question{totalWaiting > 1 ? "s" : ""} en attente
+          </span>
+        )}
+      </div>
+      <ul className="space-y-2">
+        {structure.steps.map((step) => {
+          const runs = runsByStep.get(step.id) ?? [];
+          const { done, total } = stepSummary(runs);
+          const isForeach = !!step.foreach;
+          const meta = stepIcon(step, runs);
+          const Icon = meta.icon;
+          return (
+            <li key={step.id}>
+              <div className="flex items-start gap-2">
+                <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${meta.cls}`} />
+                <div className="flex-1 min-w-0">
+                  <code className="text-xs font-medium text-text-primary">{step.id}</code>
+                  {isForeach && total > 0 && (
+                    <span className="ml-2 text-[11px] text-text-muted">{done}/{total}</span>
+                  )}
+                  <p className="text-[11px] text-text-muted line-clamp-1">{step.do}</p>
+                  {step.handler_cases.length > 0 && (
+                    <p className="text-[10px] text-text-muted/70">
+                      cas prévus : {step.handler_cases.join(", ")}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {/* Items (foreach) ou run unique avec note */}
+              {runs.length > 0 && (isForeach || runs.some((r) => r.note || r.status === "waiting_user")) && (
+                <ul className="ml-6 mt-1 border-l border-border-dim pl-3">
+                  {runs.map((r) => (
+                    <RunRow
+                      key={`${r.step_id}:${r.item_index}`}
+                      missionId={missionId}
+                      run={r}
+                      onAnswered={onAnswered}
+                    />
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

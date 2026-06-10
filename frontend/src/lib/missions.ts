@@ -38,6 +38,8 @@ export interface Mission {
   autonomous: boolean;
   final_summary: string | null;
   failure_reason: string | null;
+  /** Sprint 4c — présent = mission structurée (viewer liste). */
+  spec_yaml?: string | null;
 }
 
 export interface MissionStep {
@@ -65,6 +67,33 @@ export interface MissionPlan {
   created_at: string;
 }
 
+// ── Sprint 4c — missions structurées ────────────────────────────────────────
+
+/** Un step de la spec (outline du viewer — tous les steps, même futurs). */
+export interface SpecStepOutline {
+  id: string;
+  do: string;
+  foreach: string | null;
+  handler_cases: string[];
+}
+
+/** Statut d'exécution d'un item de step (✓/⏳/⏸/⊝/✗). */
+export interface StepRun {
+  step_id: string;
+  item_index: number;
+  item_value: string | null;
+  status: "pending" | "running" | "done" | "skipped" | "waiting_user" | "failed";
+  note: string | null;
+  output: string | null;
+  answer: string | null;
+  attempts: number;
+}
+
+export interface MissionStructure {
+  steps: SpecStepOutline[];
+  runs: StepRun[];
+}
+
 export interface CreateMissionBody {
   title: string;
   goal: string;
@@ -74,6 +103,8 @@ export interface CreateMissionBody {
   tick_interval_seconds?: number | null;
   deadline?: string | null;
   autonomous?: boolean;
+  /** Sprint 4c — spec structurée YAML (optionnelle, validée serveur). */
+  spec_yaml?: string | null;
 }
 
 /** Editable subset for PATCH — all optional, only sent fields change. */
@@ -120,6 +151,15 @@ export const missionsApi = {
   update: (id: string, body: UpdateMissionBody): Promise<Mission> =>
     call(`/api/missions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   steps: (id: string): Promise<MissionStep[]> => call(`/api/missions/${id}/steps`),
+  /** Sprint 4c J4 — outline de la spec + statuts par item (viewer liste). */
+  structure: (id: string): Promise<MissionStructure> => call(`/api/missions/${id}/structure`),
+  /** Sprint 4c J3 — répondre à une question ask_user : l'item repart, la
+   *  mission reprend immédiatement. */
+  answerStepRun: (id: string, stepId: string, itemIndex: number, answer: string): Promise<StepRun> =>
+    call(`/api/missions/${id}/step-runs/${stepId}/${itemIndex}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ answer }),
+    }),
   plan: (id: string): Promise<MissionPlan | null> => call(`/api/missions/${id}/plan`),
   start: (id: string): Promise<Mission> => call(`/api/missions/${id}/start`, { method: "POST" }),
   pause: (id: string): Promise<Mission> => call(`/api/missions/${id}/pause`, { method: "POST" }),

@@ -349,6 +349,9 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
   const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 15);
   const [budgetTok, setBudgetTok]   = useState(mission?.budget_tokens ?? 50_000);
   const [autonomous, setAutonomous] = useState(mission?.autonomous ?? false);
+  // Sprint 4c — spec structurée optionnelle (création uniquement)
+  const [specYaml, setSpecYaml] = useState("");
+  const [showSpec, setShowSpec] = useState(false);
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState<string | null>(null);
 
@@ -365,6 +368,8 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
       budget_iterations: budgetIter,
       budget_tokens: budgetTok,
       autonomous,
+      // Sprint 4c — le serveur valide la spec (422 avec TOUTES les erreurs)
+      ...(!isEdit && specYaml.trim() ? { spec_yaml: specYaml } : {}),
     };
     try {
       if (isEdit) {
@@ -410,6 +415,31 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
               className="w-full text-sm bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 resize-none"
             />
           </div>
+
+          {!isEdit && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowSpec(!showSpec)}
+                className="text-[11px] text-cyber-cyan hover:underline"
+              >
+                {showSpec ? "▾ " : "▸ "}{t("specToggle")}
+              </button>
+              {showSpec && (
+                <div className="mt-1">
+                  <textarea
+                    value={specYaml}
+                    onChange={(e) => setSpecYaml(e.target.value)}
+                    placeholder={t("specPlaceholder")}
+                    rows={10}
+                    spellCheck={false}
+                    className="w-full text-[12px] font-mono bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 resize-y"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">{t("specHint")}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
