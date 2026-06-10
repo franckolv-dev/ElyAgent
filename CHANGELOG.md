@@ -21,6 +21,15 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.6] — 2026-06-10 — Phase 2 (lot 2) revue multi-utilisateurs : équité entre utilisateurs
+
+### Fixed
+- **Le rate limit global est enfin branché (A-6a).** `RATE_LIMIT=60/minute` existait dans le compose et `settings.rate_limit` dans la config **depuis le début, sans jamais être relié au limiter** : seuls 3 endpoints d'auth étaient limités, tout le reste était illimité. `default_limits` + `SlowAPIMiddleware` appliquent désormais la limite à toutes les routes HTTP (multi-bornes acceptées : `120/minute,2000/hour`). `/health` est exempté (sondé par le healthcheck Docker — un 429 ferait flapper le conteneur). Les WebSockets ne sont pas concernés : leur débit est borné par B-15. *(2026-06-10)*
+- **Cap de runs agent concurrents par utilisateur (B-15).** 1 user × 10 onglets = 10 runs LLM simultanés (coût cloud, RAM, contention) payés en latence par les autres. Nouveau `services/run_gate.py` : sémaphore par user (défaut 2, `ELY_MAX_AGENT_RUNS_PER_USER`), acquis par chat et voice — les runs excédentaires du même user font la queue sans impacter les autres. *(2026-06-10)*
+- **Heartbeat missions : équitable et non bloquant (B-3).** Les missions étaient tickées séquentiellement sous un lock global : la mission lente d'un user (tick de 3 min) bloquait les missions de **tous** les autres, et le beat suivant était sauté tant que le précédent tournait (débit max théorique ~5 ticks/30 s, bien moins en pratique). Désormais : dispatch **round-robin par user** (un user avec 5 missions dues n'affame plus les autres), ticks en tâches de fond bornées par `MISSION_TICK_CONCURRENCY` (défaut 3), garde-fou `_in_flight` par mission (jamais deux ticks simultanés de la même mission), et le beat rend la main immédiatement. *(2026-06-10)*
+
+---
+
 ## [1.14.5] — 2026-06-10 — Phase 2 (lot 1) revue multi-utilisateurs : hygiène disque & données
 
 ### Fixed

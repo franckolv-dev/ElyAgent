@@ -18,10 +18,15 @@
 # =============================================================================
 from fastapi import APIRouter
 
+from app.middleware.rate_limit import limiter
+
 router = APIRouter()
 
 
 @router.get("/health")
+@limiter.exempt
 async def health_check():
     # LOW-1: Do not expose service name or version to unauthenticated callers
+    # Exempté du rate limit global (A-6) : sondé par le healthcheck Docker
+    # et le monitoring — un 429 ici ferait flapper le conteneur.
     return {"status": "ok"}

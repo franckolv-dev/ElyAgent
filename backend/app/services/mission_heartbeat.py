@@ -17,10 +17,15 @@ default 30 s). On each beat :
      e. If `failed` flag set → fail mission + notify
      f. Otherwise → schedule next tick at now + tick_interval_seconds
 
-Concurrency : we run missions sequentially per beat (simple, predictable).
-A mission that takes longer than the heartbeat interval will just delay
-the next beat — no overlap, no race conditions on the SqliteSaver
-checkpointer.
+Concurrency (B-3, revue 2026-06-10) : les ticks sont dispatchés en tâches
+de fond bornées par un sémaphore global (``MISSION_TICK_CONCURRENCY``,
+défaut 3) avec un garde-fou ``_in_flight`` par mission — jamais deux ticks
+simultanés de la même mission (le SqliteSaver reste cohérent ; ses
+écritures se sérialisent sur sa connexion unique). Avant ce changement,
+les missions étaient traitées séquentiellement sous un lock global : la
+mission lente d'un user (tick de 3 min) bloquait les missions de TOUS les
+autres, et le beat suivant était sauté tant que le précédent tournait.
+L'ordre de dispatch est round-robin par user (équité inter-utilisateurs).
 
 Notifications : when a mission terminates, we attempt to push the result
 via the channel that originated it (source_ref → conversation_id /
@@ -45,8 +50,14 @@ HEARTBEAT_INTERVAL_SECONDS = int(os.environ.get("MISSION_HEARTBEAT_SECONDS", "30
 # where dozens of missions queue up and starve the event loop
 MAX_MISSIONS_PER_BEAT = int(os.environ.get("MISSION_MAX_PER_BEAT", "5"))
 
-# Process-wide lock so two overlapping beats never run the same mission twice
-_beat_lock = asyncio.Lock()
+# B-3 — parallélisme global des ticks (toutes missions confondues)
+MISSION_TICK_CONCURRENCY = max(1, int(os.environ.get("MISSION_TICK_CONCURRENCY", "3")))
+_tick_semaphore = asyncio.Semaphore(MISSION_TICK_CONCURRENCY)
+
+# Garde-fou par mission : ajout SYNCHRONE au dispatch (atomique sur la
+# loop) → deux beats ne peuvent jamais ticker la même mission en même
+# temps, même si un tick dure plus longtemps que l'intervalle de beat.
+_in_flight: set[str] = set()
 
 
 def _utcnow() -> datetime:
@@ -152,38 +163,85 @@ async def _notify_terminal(mission, kind: str, summary: str) -> None:
             logger.warning("Mission %s: ntfy push failed: %s", mission.id, exc)
 
 
+def _interleave_by_user(missions: list) -> list:
+    """Round-robin par user : [a1, a2, a3, b1] → [a1, b1, a2, a3].
+
+    Sans ça, un user avec 5 missions dues monopolise tout le quota du
+    beat (MAX_MISSIONS_PER_BEAT) et affame les missions des autres."""
+    from collections import OrderedDict, deque
+
+    buckets: "OrderedDict[str, deque]" = OrderedDict()
+    for m in missions:
+        buckets.setdefault(m.user_id, deque()).append(m)
+    ordered: list = []
+    while buckets:
+        for uid in list(buckets):
+            ordered.append(buckets[uid].popleft())
+            if not buckets[uid]:
+                del buckets[uid]
+    return ordered
+
+
 async def heartbeat_tick() -> None:
-    """One iteration of the heartbeat. Called by APScheduler every N seconds."""
-    if _beat_lock.locked():
-        # Previous beat still running (long mission tick). Skip this beat.
-        logger.debug("Mission heartbeat: previous beat still running, skipping")
+    """One iteration of the heartbeat. Called by APScheduler every N seconds.
+
+    B-3 : le beat DISPATCHE puis rend la main — il n'attend plus la fin
+    des ticks. Un tick lent n'empêche ni les autres missions de ce beat
+    (gather borné par ``_tick_semaphore``) ni les beats suivants (la
+    mission encore en vol est simplement sautée via ``_in_flight``).
+    """
+    from app.services import mission_service
+    from app.services.background_tasks import spawn
+
+    try:
+        due = await mission_service.list_due_missions()
+    except Exception as exc:
+        logger.exception("Mission heartbeat: list_due_missions failed: %s", exc)
         return
 
-    async with _beat_lock:
-        from app.services import mission_service
+    if not due:
+        return
 
-        try:
-            due = await mission_service.list_due_missions()
-        except Exception as exc:
-            logger.exception("Mission heartbeat: list_due_missions failed: %s", exc)
-            return
+    dispatched = 0
+    skipped_in_flight = 0
+    for mission in _interleave_by_user(due):
+        if dispatched >= MAX_MISSIONS_PER_BEAT:
+            break
+        if mission.id in _in_flight:
+            skipped_in_flight += 1
+            continue
+        # Ajout SYNCHRONE (pas d'await entre le test et l'ajout) — deux
+        # beats ne peuvent pas dispatcher la même mission.
+        _in_flight.add(mission.id)
+        spawn(_process_one_mission(mission), label=f"mission-tick-{mission.id}")
+        dispatched += 1
 
-        if not due:
-            return
+    logger.info(
+        "Mission heartbeat: %d due, %d dispatched, %d still in flight",
+        len(due), dispatched, skipped_in_flight,
+    )
+    if len(due) - skipped_in_flight > MAX_MISSIONS_PER_BEAT:
+        logger.info(
+            "Mission heartbeat: %d more due mission(s) deferred to next beat",
+            len(due) - skipped_in_flight - MAX_MISSIONS_PER_BEAT,
+        )
 
-        logger.info("Mission heartbeat: %d due mission(s)", len(due))
-        processed = 0
 
-        for mission in due[:MAX_MISSIONS_PER_BEAT]:
-            mid = mission.id
+async def _process_one_mission(mission) -> None:
+    """Budget guard → one tick → decide what's next. One mission, owned
+    ``_in_flight`` entry (released in the ``finally``)."""
+    from app.services import mission_service
 
+    mid = mission.id
+    try:
+        async with _tick_semaphore:
             # Budget guard before each tick — single source of truth for limits
             reason = await mission_service.check_budget(mid)
             if reason:
                 logger.info("Mission %s: budget exhausted (%s) — failing", mid, reason)
                 await mission_service.fail_mission(mid, reason)
                 await _notify_terminal(mission, "failed", reason)
-                continue
+                return
 
             try:
                 t0 = datetime.now()
@@ -195,8 +253,7 @@ async def heartbeat_tick() -> None:
                 logger.exception("Mission %s: tick crashed: %s", mid, exc)
                 await mission_service.fail_mission(mid, f"graph crashed: {exc}")
                 await _notify_terminal(mission, "failed", f"Erreur d'exécution : {exc}")
-                processed += 1
-                continue
+                return
 
             # Decide what's next
             if result.get("done") and result.get("final_summary"):
@@ -235,14 +292,8 @@ async def heartbeat_tick() -> None:
                         update(_M).where(_M.id == mid).values(next_tick_at=next_at)
                     )
                     await db.commit()
-
-            processed += 1
-
-        if len(due) > MAX_MISSIONS_PER_BEAT:
-            logger.info(
-                "Mission heartbeat: %d more due mission(s) deferred to next beat",
-                len(due) - MAX_MISSIONS_PER_BEAT,
-            )
+    finally:
+        _in_flight.discard(mid)
 
 
 async def schedule_first_tick(mission_id: str) -> None:
