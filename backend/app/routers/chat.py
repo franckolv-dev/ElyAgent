@@ -45,6 +45,7 @@ from app.auth.jwt import decode_token
 from app.database import async_session
 from app.models.conversation import Conversation, Message
 from app.models.user import User
+from app.services.background_tasks import spawn
 from app.services.memory_manager import get_memory_manager
 from app.services.security_filter import SecurityFilter
 from app.services import ws_registry
@@ -484,10 +485,21 @@ async def websocket_chat(websocket: WebSocket):
                             token = str(raw)
                         if token:
                             ai_content += token
-                            await websocket.send_text(_dumps({
-                                "type": "token",
-                                "content": token,
-                            }))
+                            # B-14 (revue 2026-06-10) — un client lent ou
+                            # zombie ne doit pas bloquer la consommation du
+                            # stream LLM (connexion provider maintenue
+                            # ouverte, tokens facturés). Au-delà de 10 s
+                            # d'envoi on traite la socket comme morte.
+                            try:
+                                await asyncio.wait_for(
+                                    websocket.send_text(_dumps({
+                                        "type": "token",
+                                        "content": token,
+                                    })),
+                                    timeout=10.0,
+                                )
+                            except asyncio.TimeoutError:
+                                raise WebSocketDisconnect(code=1011)
                 elif event["event"] == "on_chat_model_end":
                     node = event.get("metadata", {}).get("langgraph_node", "")
                     if node != "router":
@@ -696,7 +708,7 @@ async def websocket_chat(websocket: WebSocket):
                     # Sprint 3.7 Jalon 2 — persist as learning signal
                     try:
                         from app.services.learning import record_hallucination_block
-                        asyncio.create_task(record_hallucination_block(
+                        spawn(record_hallucination_block(
                             user_id=user_id,
                             conversation_id=conversation_id,
                             model_used=model_used_out or "unknown",
@@ -815,7 +827,7 @@ async def websocket_chat(websocket: WebSocket):
                         max(set(tools_called), key=tools_called.count)
                         if tools_called else None
                     )
-                    asyncio.create_task(log_usage(
+                    spawn(log_usage(
                         user_id=user_id,
                         model=_model,
                         provider=_provider,
@@ -842,12 +854,10 @@ async def websocket_chat(websocket: WebSocket):
         except Exception:
             pass  # Socket may already be closed; swallow the secondary error
     finally:
-        ws_registry.unregister(user_id)
+        ws_registry.unregister(user_id, websocket)
         # On disconnect: summarize conversation into long-term memory
         if conversation_id:
-            asyncio.create_task(
-                _summarize_conversation(conversation_id, user_id)
-            )
+            spawn(_summarize_conversation(conversation_id, user_id))
             # Sprint 2.5 Jalon 6 — event-driven rapid maintenance:
             # extract 3-5 salient facts via Ministral 3B local and write
             # them directly into the typed SemanticUserStore. Runs in

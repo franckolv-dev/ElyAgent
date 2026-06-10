@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import OrderedDict
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -500,16 +501,41 @@ async def _start_polling(token: str) -> None:
     logger.info("Telegram bot started — polling mode")
 
 
+# B-8 (revue 2026-06-10) — dedup des updates rejouées par Telegram.
+# Borné : on garde les ~1000 derniers update_id (un id Telegram est
+# strictement croissant, le set suffit).
+_SEEN_UPDATE_IDS: "OrderedDict[int, None]" = OrderedDict()
+_SEEN_UPDATE_IDS_MAX = 1000
+
+
 async def receive_telegram_update(data: dict) -> None:
-    """Process an incoming webhook update from Telegram.
+    """Accept an incoming webhook update from Telegram and return FAST.
 
     Called by the /webhook/telegram FastAPI route.
+
+    B-8 (revue 2026-06-10) : le traitement était inline — la réponse HTTP
+    au webhook ne partait qu'APRÈS le run agent complet (souvent > 60 s).
+    Telegram considérait le webhook en échec et REJOUAIT le même update →
+    agent exécuté 2-3× pour un seul message (actions et coûts dupliqués).
+    Désormais : dédup par ``update_id`` puis traitement en tâche de fond
+    (référence forte via ``spawn``) — la route répond 200 immédiatement.
     """
     if _bot_app is None:
         logger.warning("Received Telegram webhook but bot is not initialized")
         return
     update = Update.de_json(data, _bot_app.bot)
-    await _bot_app.process_update(update)
+
+    update_id = getattr(update, "update_id", None)
+    if update_id is not None:
+        if update_id in _SEEN_UPDATE_IDS:
+            logger.info("Telegram update %s already seen — duplicate dropped", update_id)
+            return
+        _SEEN_UPDATE_IDS[update_id] = None
+        while len(_SEEN_UPDATE_IDS) > _SEEN_UPDATE_IDS_MAX:
+            _SEEN_UPDATE_IDS.popitem(last=False)
+
+    from app.services.background_tasks import spawn
+    spawn(_bot_app.process_update(update), label=f"telegram-update-{update_id}")
 
 
 async def stop_telegram_bot() -> None:

@@ -179,9 +179,8 @@ async def _notify_change(task: WatchTask, preview: str) -> None:
     try:
         import json
         from app.services import ws_registry
-        ws = ws_registry.get(task.user_id)
-        if ws:
-            await ws.send_text(json.dumps({
+        if ws_registry.get(task.user_id):
+            await ws_registry.send_text_all(task.user_id, json.dumps({
                 "type": "watchdog_alert",
                 "task_name": task.name,
                 "target": task.target,

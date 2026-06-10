@@ -189,10 +189,32 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# B-10 (revue 2026-06-10) — borne de concurrence. Sans elle, N runs
+# simultanés (N users) cumulent N × ELY_SANDBOX_MEM_BYTES (256 Mio chacun)
+# dans un conteneur plafonné à 512 Mio → OOM-kill du conteneur ENTIER, tous
+# les runs de tous les users échouent d'un coup. Défaut 2 = exactement le
+# cap mémoire ; au-delà de la file d'attente bornée, on répond 503 (le
+# client retombe sur son chemin « sandbox indisponible » au lieu de geler).
+_MAX_CONCURRENCY = int(os.environ.get("ELY_SANDBOX_MAX_CONCURRENCY", "2"))
+_QUEUE_TIMEOUT_S = float(os.environ.get("ELY_SANDBOX_QUEUE_TIMEOUT_S", "10"))
+_RUN_SEMAPHORE = asyncio.Semaphore(_MAX_CONCURRENCY)
+
+
 @app.post("/run", response_model=RunResponse)
 async def run(req: RunRequest) -> RunResponse:
     """Execute one python_tool job in a fresh subprocess."""
-    return await _run_subprocess(req)
+    try:
+        await asyncio.wait_for(_RUN_SEMAPHORE.acquire(), timeout=_QUEUE_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            503,
+            f"sandbox busy — {_MAX_CONCURRENCY} concurrent runs already in "
+            f"flight and queue wait exceeded {_QUEUE_TIMEOUT_S}s",
+        )
+    try:
+        return await _run_subprocess(req)
+    finally:
+        _RUN_SEMAPHORE.release()
 
 
 async def _run_subprocess(req: RunRequest) -> RunResponse:

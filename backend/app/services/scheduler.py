@@ -329,10 +329,9 @@ async def _deliver_result(task: ScheduledTask, content: str) -> None:
     # ── WebSocket push (best-effort, runs for ALL channels including unknown) ──
     try:
         from app.services import ws_registry
-        ws = ws_registry.get(task.user_id)
-        if ws:
+        if ws_registry.get(task.user_id):
             import json
-            await ws.send_text(json.dumps({
+            await ws_registry.send_text_all(task.user_id, json.dumps({
                 "type": "scheduled_task",
                 "task_name": task.name,
                 "content": content,

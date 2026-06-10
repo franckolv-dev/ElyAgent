@@ -64,14 +64,13 @@ async def _push_browser_frame(page, user_id: str) -> None:
         import json
         from app.services import ws_registry
 
-        ws = ws_registry.get(user_id)
-        if ws is None:
+        if ws_registry.get(user_id) is None:
             return  # user not connected — nothing to push
 
         png_bytes = await page.screenshot(full_page=False)
         b64 = base64.b64encode(png_bytes).decode("utf-8")
 
-        await ws.send_text(json.dumps({
+        await ws_registry.send_text_all(user_id, json.dumps({
             "type": "browser_frame",
             "data": b64,
             "url": page.url,
