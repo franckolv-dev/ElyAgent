@@ -31,13 +31,18 @@ import remarkGfm from "remark-gfm";
 import {
   Sparkles, Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   CheckCircle2, XCircle, Archive, RotateCcw, ShieldCheck, CheckCircle,
-  Code2, FileText, Globe,
+  Code2, FileText, Globe, GraduationCap, ExternalLink,
 } from "lucide-react";
 
 import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
-import { api, type LearnedSkillCandidate } from "@/lib/api";
+import {
+  api,
+  type GraduationDryRun,
+  type GraduationReport,
+  type LearnedSkillCandidate,
+} from "@/lib/api";
 
 // ── Status filters offered as chips ─────────────────────────────────────────
 // `candidate` is the default (the promotion queue). The others let an admin
@@ -223,6 +228,172 @@ function IoDeclarationsPanel({ skill }: { skill: LearnedSkillCandidate }) {
         </div>
       </dl>
       <p className="mt-2 text-[10px] text-text-muted">{t("ioReviewHint")}</p>
+    </div>
+  );
+}
+
+// ── Sprint 4d V4 — panneau de graduation (python_tool ACTIF uniquement) ─────
+// Trois temps : (1) les gates J1 en chips au dépliage, (2) un dry-run qui
+// rejoue la revalidation + montre les fichiers qui sortiraient, (3) la
+// livraison réelle — Ely ouvre la PR, l'humain la review et la merge.
+function GraduationPanel({ skill }: { skill: LearnedSkillCandidate }) {
+  const t = useTranslations("learningCandidates");
+  const [report, setReport] = useState<GraduationReport | null>(null);
+  const [dryRun, setDryRun] = useState<GraduationDryRun | null>(null);
+  const [phase, setPhase] = useState<"idle" | "loading" | "dryrun" | "delivering">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPhase("loading");
+    api.adminLearningGraduationReport(skill.id)
+      .then((r) => { if (!cancelled) { setReport(r); setPhase("idle"); } })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : t("gradError"));
+          setPhase("idle");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [skill.id, t]);
+
+  const runDryRun = async () => {
+    setPhase("dryrun");
+    setError(null);
+    try {
+      setDryRun(await api.adminLearningGraduate(skill.id, { dryRun: true }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("gradError"));
+    } finally {
+      setPhase("idle");
+    }
+  };
+
+  const deliver = async () => {
+    if (!window.confirm(t("gradConfirm", { name: skill.name }))) return;
+    setPhase("delivering");
+    setError(null);
+    try {
+      setDryRun(await api.adminLearningGraduate(skill.id, { dryRun: false }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("gradError"));
+    } finally {
+      setPhase("idle");
+    }
+  };
+
+  const delivered = dryRun?.delivery;
+
+  return (
+    <div className="mb-3 rounded border border-violet-500/30 bg-violet-500/5 p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <GraduationCap className="w-3.5 h-3.5 text-violet-300" />
+        <span className="text-[11px] font-medium text-text-secondary">{t("gradTitle")}</span>
+        {report && (
+          <span className={`ml-auto text-[10px] font-mono ${report.eligible ? "text-emerald-300" : "text-text-muted"}`}>
+            {report.eligible ? t("gradEligible") : t("gradNotEligible")}
+          </span>
+        )}
+      </div>
+
+      {phase === "loading" && (
+        <p className="text-[11px] text-text-muted"><Loader2 className="w-3 h-3 animate-spin inline mr-1" />{t("gradLoading")}</p>
+      )}
+
+      {/* Gates J1 en chips */}
+      {report && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {report.gates.map((g) => (
+            <span
+              key={g.key}
+              title={`${g.label} — ${String(g.value)} / ${String(g.threshold)}`}
+              className={`px-1.5 py-0.5 text-[10px] font-mono rounded border inline-flex items-center gap-1 ${
+                g.ok
+                  ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                  : "bg-red-500/10 text-red-300 border-red-500/30"
+              }`}
+            >
+              {g.ok ? <CheckCircle2 className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
+              {g.key}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Résultat du dry-run */}
+      {dryRun && !delivered && (
+        <div className="mb-2 space-y-1 text-[11px]">
+          <p className={dryRun.revalidation.ok ? "text-emerald-300" : "text-red-300"}>
+            {dryRun.revalidation.ok
+              ? t("gradRevalidationOk")
+              : t("gradRevalidationKo", { stage: dryRun.revalidation.failed_stage ?? "?" })}
+          </p>
+          {!dryRun.composition.ok && (
+            <p className="text-red-300">{t("gradCompositionKo", { tools: dryRun.composition.missing.join(", ") })}</p>
+          )}
+          <div className="text-text-muted">
+            {t("gradFiles")}
+            <ul className="mt-0.5 space-y-0.5">
+              {dryRun.files.map((f) => (
+                <li key={f.path}><code className="font-mono text-[10px]">{f.path}</code></li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Livraison faite — le lien PR (ou l'export) */}
+      {delivered && (
+        <p className="mb-2 text-[11px] text-emerald-300">
+          {delivered.status === "pr_created" && delivered.pr_url ? (
+            <>
+              {t("gradPrOpened")}{" "}
+              <a
+                href={delivered.pr_url}
+                target="_blank"
+                rel="noreferrer"
+                className="underline inline-flex items-center gap-1 hover:text-emerald-200"
+              >
+                {delivered.pr_url.split("/").slice(-2).join("/")}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </>
+          ) : (
+            t("gradExported", { path: delivered.export_path ?? "?" })
+          )}
+        </p>
+      )}
+
+      {error && (
+        <p className="mb-2 text-[11px] text-red-300 break-words">{error}</p>
+      )}
+
+      {/* Actions */}
+      {!delivered && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runDryRun}
+            disabled={phase !== "idle"}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 transition-colors disabled:opacity-50"
+            title={t("gradDryRunHint")}
+          >
+            {phase === "dryrun" ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+            {t("gradDryRun")}
+          </button>
+          {dryRun?.ready && (
+            <button
+              onClick={deliver}
+              disabled={phase !== "idle"}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+              title={t("gradDeliverHint")}
+            >
+              {phase === "delivering" ? <Loader2 className="w-3 h-3 animate-spin" /> : <GraduationCap className="w-3 h-3" />}
+              {t("gradDeliver")}
+            </button>
+          )}
+        </div>
+      )}
+      <p className="mt-2 text-[10px] text-text-muted">{t("gradHint")}</p>
     </div>
   );
 }
@@ -558,6 +729,7 @@ function CandidateRow({
         isPython ? (
           <div className="mt-3 ml-7">
             {skill.tool_profile === "io" && <IoDeclarationsPanel skill={skill} />}
+            {skill.status === "active" && <GraduationPanel skill={skill} />}
             <ValidationReport raw={skill.validation_report_json} />
             <pre className="overflow-x-auto rounded bg-bg-primary border border-border-dim p-3 text-[11px] leading-relaxed">
               <code className="font-mono text-text-secondary whitespace-pre">
