@@ -505,6 +505,19 @@ export const api = {
       method: "POST",
     }) as Promise<LearnedSkillCandidate>,
 
+  // ── Admin: graduation learned tool → core (Sprint 4d V4) ────────────────
+  /** Stats + verdict gate par gate d'un python_tool actif (J1). */
+  adminLearningGraduationReport: (id: string) =>
+    fetchAPI(`/admin/learning/skills/${id}/graduation`) as Promise<GraduationReport>,
+
+  /** Dry-run (gates + revalidation + aperçu fichiers) ou livraison réelle
+   *  (branche + PR GitHub par Ely — J5). 409 si le dry-run n'est pas vert. */
+  adminLearningGraduate: (id: string, opts: { dryRun: boolean; smokeKwargs?: Record<string, unknown> | null }) =>
+    fetchAPI(`/admin/learning/skills/${id}/graduate`, {
+      method: "POST",
+      body: JSON.stringify({ dry_run: opts.dryRun, smoke_kwargs: opts.smokeKwargs ?? null }),
+    }) as Promise<GraduationDryRun>,
+
   /** List capability gaps recorded by find_tool Phase 2 (tool_absent signals). */
   adminLearningToolGaps: (status: "open" | "all" = "open") =>
     fetchAPI(
@@ -703,6 +716,52 @@ export interface LearnedSkillCandidate {
   v3_network_allow?: string[] | null;
   v3_requires?: string[] | null;
   v3_requires_secrets?: string[] | null;
+}
+
+// ── Graduation learned tool → core (Sprint 4d V4) ───────────────────────────
+
+export interface GraduationGate {
+  key: string;
+  label: string;
+  ok: boolean;
+  value: string | number;
+  threshold: string | number;
+}
+
+/** Stats + gates J1 — GET /admin/learning/skills/{id}/graduation. */
+export interface GraduationReport {
+  skill_id: string;
+  tool_name: string;
+  thresholds: Record<string, number>;
+  stats: {
+    invocations: number;
+    use_count: number;
+    io_dispatches: number;
+    errors_recent: number;
+    refusals_recent: number;
+    age_days: number;
+    last_error_at: string | null;
+    last_used_at: string | null;
+  };
+  gates: GraduationGate[];
+  eligible: boolean;
+}
+
+/** Dry-run / livraison — POST /admin/learning/skills/{id}/graduate. */
+export interface GraduationDryRun {
+  ready: boolean;
+  graduation: GraduationReport;
+  revalidation: { ok: boolean; failed_stage: string | null };
+  composition: { targets: string[]; missing: string[]; ok: boolean };
+  manifest: Record<string, unknown>;
+  files: { path: string; content: string; create_only: boolean }[];
+  /** Présent uniquement après une livraison réelle (dry_run=false). */
+  delivery?: {
+    status: "pr_created" | "exported";
+    pr_url: string | null;
+    branch: string | null;
+    export_path?: string | null;
+  };
 }
 
 /** A capability ELY's `find_tool` searched for but couldn't surface — the
