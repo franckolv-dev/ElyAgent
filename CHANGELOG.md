@@ -21,6 +21,14 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.10] — 2026-06-10 — Phase 3 (lot 2) revue multi-utilisateurs : secrets chiffrés & ACL outils d'instance
+
+### Security
+- **Secrets d'instance chiffrés au repos (B-11).** Le flag `is_secret` de `system_config` ne faisait que masquer l'UI : le Google client_secret, les clés provider `api_key_*` et les `llm_instances.api_key` étaient **en clair dans SQLite** — une fuite du fichier (backup égaré, volume copié) exposait toutes les clés. Nouveau `services/secrets_at_rest.py` : AES-256-GCM, valeurs préfixées `enc:gcm:` (déchiffrement auto-descriptif, legacy en clair toléré), **migration de boot idempotente** qui chiffre l'existant en une passe. Clé maître : `ELY_SECRETS_KEY` (recommandé), sinon dérivée de `JWT_SECRET_KEY` via HKDF avec tag d'usage distinct. ⚠️ **Changer `JWT_SECRET_KEY` sans avoir posé `ELY_SECRETS_KEY` rendra les secrets chiffrés illisibles** (re-saisie des clés API nécessaire) — pose `ELY_SECRETS_KEY` dès maintenant. *(2026-06-10)*
+- **Outils d'instance réservés au rôle admin (B-12).** Les hôtes SSH (`hosts.yaml`, clés montées) et les serveurs MCP (lancés avec les secrets `env_json` de l'admin) étaient invocables par **tout utilisateur** routé sur le bon domaine — avec l'identité et les credentials de l'admin. Nouveau `services/tool_acl.py` branché dans `tool_node` : `ssh_*` + outils MCP chargés → rôle `admin` requis (cache rôle TTL 60 s, fail-closed), refus propre restitué par l'agent. Une ACL per-user (façon `tool_policy_service` de la branche salvage) reste la cible si le besoin émerge. *(2026-06-10)*
+
+---
+
 ## [1.14.9] — 2026-06-10 — Phase 3 (lot 1) revue multi-utilisateurs : invariants & observabilité
 
 ### Added

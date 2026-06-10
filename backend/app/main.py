@@ -130,6 +130,12 @@ async def lifespan(app: FastAPI):
 
     await init_db()
 
+    # B-11 (revue 2026-06-10) — chiffre en une passe les secrets encore en
+    # clair (system_config is_secret + llm_instances.api_key). Idempotent.
+    # AVANT load_llm_settings_from_db pour que les lectures déchiffrent.
+    from app.services.system_config import migrate_plaintext_secrets
+    await migrate_plaintext_secrets()
+
     # Load LLM provider/model/key overrides from DB into in-memory runtime
     from app.services.llm_provider import load_llm_settings_from_db
     await load_llm_settings_from_db()

@@ -519,12 +519,16 @@ async def create_llm_instance(
             detail="model must not be empty.",
         )
 
+    # B-11 — la clé est stockée chiffrée (AES-GCM) ; le cache mémoire
+    # reçoit le clair (c'est lui que les providers consomment).
+    from app.services.secrets_at_rest import encrypt as _encrypt_key
+    _plain_key = _validate_api_key(body.api_key)
     inst = LLMInstance(
         id=str(uuid.uuid4()),
         label=body.label.strip(),
         provider=body.provider,
         model=body.model.strip(),
-        api_key=_validate_api_key(body.api_key),
+        api_key=_encrypt_key(_plain_key),
         created_at=datetime.now(timezone.utc),
     )
     async with async_session() as db:
@@ -533,7 +537,7 @@ async def create_llm_instance(
         await db.refresh(inst)
 
     # Update in-memory instance cache so tier routing can use this instance immediately
-    register_instance_cache(inst.id, inst.provider, inst.model, inst.api_key)
+    register_instance_cache(inst.id, inst.provider, inst.model, _plain_key)
 
     logger.info("LLM instance created by admin %s: id=%s provider=%s model=%s", admin.id, inst.id, inst.provider, inst.model)
     return LLMInstanceResponse(
@@ -568,13 +572,15 @@ async def update_llm_instance(
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="model must not be empty.")
             inst.model = body.model.strip()
         if body.api_key is not None:
-            inst.api_key = _validate_api_key(body.api_key)
+            from app.services.secrets_at_rest import encrypt as _encrypt_key
+            inst.api_key = _encrypt_key(_validate_api_key(body.api_key))
 
         await db.commit()
         await db.refresh(inst)
 
-    # Sync in-memory cache
-    register_instance_cache(inst.id, inst.provider, inst.model, inst.api_key)
+    # Sync in-memory cache (clé en clair — B-11)
+    from app.services.secrets_at_rest import decrypt as _decrypt_key
+    register_instance_cache(inst.id, inst.provider, inst.model, _decrypt_key(inst.api_key))
 
     logger.info("LLM instance updated by admin %s: id=%s", admin.id, instance_id)
     return LLMInstanceResponse(
