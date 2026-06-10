@@ -231,6 +231,10 @@ class MissionStepRun(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # extrait du résultat (done) — nourrit le viewer et les steps suivants
     output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Sprint 4c J3 — réponse de l'utilisateur à une question ask_user.
+    # Injectée au prompt acteur quand l'item est retraité ; conservée
+    # ensuite (audit : « pourquoi l'agent a fait ce choix »).
+    answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
