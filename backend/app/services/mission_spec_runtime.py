@@ -342,3 +342,142 @@ __all__ = [
     "set_step_run_status",
     "step_progress",
 ]
+
+
+# ── J3 — hook ask_user : notification + réponse + reprise ───────────────────
+
+
+async def notify_ask_user(
+    mission_id: str, user_id: str, step_id: str, item_index: int,
+    question: str, item_value: Optional[str] = None,
+) -> None:
+    """Notifie l'utilisateur qu'une mission attend sa réponse.
+
+    Multicanal best-effort, calqué sur ``_notify_terminal`` du heartbeat :
+    chaque canal est isolé — l'échec de l'un n'empêche ni les autres ni la
+    mission de continuer sur les items suivants.
+
+    1. **Web UI** : event ``mission_question`` poussé sur TOUTES les
+       sockets du user (fan-out B-6) — le viewer J4 affiche ⏸ + le champ
+       de réponse.
+    2. **ntfy** : push mobile si ``NTFY_URL`` est configurée.
+    3. **Telegram** : DM si la mission vient de Telegram (source_ref).
+    """
+    async with async_session() as db:
+        mission = (await db.execute(
+            select(Mission).where(Mission.id == mission_id)
+        )).scalar_one_or_none()
+    title = getattr(mission, "title", mission_id)
+
+    # 1. Web (fan-out toutes sockets)
+    try:
+        from app.services import ws_registry
+        payload = json.dumps({
+            "type": "mission_question",
+            "mission_id": mission_id,
+            "mission_title": title,
+            "step_id": step_id,
+            "item_index": item_index,
+            "item_value": item_value,
+            "question": question,
+        }, ensure_ascii=False)
+        delivered = await ws_registry.send_text_all(user_id, payload)
+        logger.info(
+            "mission %s : question ask_user poussée (ws=%d socket(s))",
+            mission_id, delivered,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("mission %s : push ws de la question échoué : %s", mission_id, exc)
+
+    # 2. ntfy push
+    import os
+    ntfy_url = os.environ.get("NTFY_URL")
+    if ntfy_url:
+        try:
+            import httpx
+            body = question if not item_value else f"{item_value} — {question}"
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.post(
+                    ntfy_url,
+                    headers={
+                        "Title": f"Mission « {title} » — question"[:120],
+                        "Tags": "question",
+                        "Priority": "high",
+                    },
+                    content=body[:500].encode("utf-8"),
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mission %s : ntfy question échoué : %s", mission_id, exc)
+
+    # 3. Telegram (si la mission vient de Telegram)
+    if (
+        mission is not None
+        and getattr(mission, "source", "") == "channel"
+        and (getattr(mission, "source_ref", "") or "").startswith("telegram:")
+    ):
+        try:
+            tg_chat_id = int(mission.source_ref.split(":", 1)[1])
+            from app.channels import telegram_bot as _tb
+            if _tb._bot_app is not None:
+                text = (
+                    f"⏸ Mission « {title} » — question :\n\n{question}\n\n"
+                    "Réponds depuis la page Missions de l'interface web."
+                )
+                # parse_mode=None volontaire (texte user-controlled)
+                await _tb._bot_app.bot.send_message(chat_id=tg_chat_id, text=text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mission %s : Telegram question échoué : %s", mission_id, exc)
+
+
+def answer_context(run: Any) -> str:
+    """Bloc injecté au prompt acteur quand l'item retraité porte une
+    réponse utilisateur — c'est la moitié « reprise » du mode chat
+    automatisé."""
+    answer = getattr(run, "answer", None)
+    if not answer:
+        return ""
+    question = getattr(run, "note", None) or "(question précédente)"
+    return (
+        f"\n\nRÉPONSE DE L'UTILISATEUR (à la question « {question} ») : "
+        f"{answer}\nTiens-en compte pour traiter cet item — ne repose pas "
+        f"la même question."
+    )
+
+
+async def submit_answer(
+    mission_id: str, step_id: str, item_index: int, answer: str,
+) -> Optional[MissionStepRun]:
+    """Enregistre la réponse et relance l'item : waiting_user → pending,
+    tentatives remises à zéro (la réponse mérite une chance fraîche),
+    next_tick immédiat sur la mission. None si l'item n'existe pas ou
+    n'attend pas de réponse."""
+    async with async_session() as db:
+        run = (await db.execute(
+            select(MissionStepRun).where(
+                MissionStepRun.mission_id == mission_id,
+                MissionStepRun.step_id == step_id,
+                MissionStepRun.item_index == item_index,
+            )
+        )).scalar_one_or_none()
+        if run is None or run.status != "waiting_user":
+            return None
+        run.answer = answer[:4000]
+        run.status = "pending"
+        run.attempts = 0
+        await db.commit()
+        await db.refresh(run)
+
+    # Reprise immédiate : la mission redevient due au prochain beat.
+    try:
+        from app.services.mission_heartbeat import schedule_first_tick
+        await schedule_first_tick(mission_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "mission %s : next_tick immédiat non posé (%s) — reprise au "
+            "prochain tick planifié", mission_id, exc,
+        )
+    logger.info(
+        "mission %s : réponse reçue pour %s[%d] — item relancé",
+        mission_id, step_id, item_index,
+    )
+    return run

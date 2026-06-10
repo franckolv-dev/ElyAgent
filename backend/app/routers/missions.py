@@ -253,6 +253,7 @@ class StepRunOut(BaseModel):
     status: str
     note: Optional[str]
     output: Optional[str]
+    answer: Optional[str] = None  # J3 — réponse utilisateur (audit + viewer)
     attempts: int
 
     model_config = {"from_attributes": True}
@@ -275,6 +276,41 @@ async def list_step_runs_endpoint(
     from app.services.mission_spec_runtime import list_step_runs
     runs = await list_step_runs(mission_id)
     return [StepRunOut.model_validate(r) for r in runs]
+
+
+class StepRunAnswerIn(BaseModel):
+    """Sprint 4c J3 — réponse de l'utilisateur à une question ask_user."""
+    answer: str = Field(..., min_length=1, max_length=4000)
+
+
+@router.post("/{mission_id}/step-runs/{step_id}/{item_index}/answer", response_model=StepRunOut)
+async def answer_step_run(
+    mission_id: str,
+    step_id: str,
+    item_index: int,
+    body: StepRunAnswerIn,
+    current_user: User = Depends(get_current_user),
+) -> StepRunOut:
+    """Sprint 4c J3 — répondre à une question posée par la mission.
+
+    L'item ⏸ ``waiting_user`` repasse en ``pending`` avec la réponse
+    (injectée au prompt acteur du prochain tick), tentatives remises à
+    zéro, et la mission redevient due immédiatement — c'est le « mode
+    chat fait à la main », automatisé : Ely hésite → question → réponse
+    → reprise.
+    """
+    m = await mission_service.get_mission(mission_id)
+    if not m or m.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Mission introuvable")
+
+    from app.services.mission_spec_runtime import submit_answer
+    run = await submit_answer(mission_id, step_id, item_index, body.answer)
+    if run is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cet item n'attend pas de réponse (déjà traité ou inexistant).",
+        )
+    return StepRunOut.model_validate(run)
 
 
 @router.get("/{mission_id}/steps", response_model=list[MissionStepOut])

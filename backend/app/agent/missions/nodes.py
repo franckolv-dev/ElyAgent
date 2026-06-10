@@ -1027,12 +1027,16 @@ async def act_node(state: MissionState) -> dict:
                 current_step_desc = (
                     f"[Item {_run.item_index + 1} : {_run.item_value}] {current_step_desc}"
                 )
+            # J3 — l'item relancé porte une réponse utilisateur : on
+            # l'injecte (« mode chat » automatisé, moitié reprise).
+            current_step_desc += msr.answer_context(_run)
         else:
-            await msr.ensure_step_run(mission_id, current_step_id, 0, None)
+            _run = await msr.ensure_step_run(mission_id, current_step_id, 0, None)
             await msr.set_step_run_status(
                 mission_id, current_step_id, 0, status="running", bump_attempts=True,
             )
             _current_item_index = 0
+            current_step_desc += msr.answer_context(_run)
 
     # Build prompt and invoke primary tool-bound LLM, with fallback.
     # Tool list is pre-filtered to ~15 tools max (smaller models choke on
@@ -1339,9 +1343,15 @@ async def eval_node(state: MissionState) -> dict:
             "last_eval_reason": f"cas {_name} → {_call.action}",
         }
         if _call.action == "ask_user":
+            _question = _message or _detail or _name
             await msr.set_step_run_status(
                 mission_id, current_step_id or "?", _idx,
-                status="waiting_user", note=_message or _detail or _name,
+                status="waiting_user", note=_question,
+            )
+            # J3 — ping multicanal : la mission attend une réponse humaine.
+            await msr.notify_ask_user(
+                mission_id, state.get("user_id", ""),
+                current_step_id or "?", _idx, _question, _item_value,
             )
         elif _call.action == "fail":
             await msr.set_step_run_status(
@@ -1456,10 +1466,17 @@ async def eval_node(state: MissionState) -> dict:
                         "failure_reason": reason or "Échec (handler on_error → fail)",
                     }
                 if _call.action == "ask_user":
+                    _question = _call.message or reason or "Échec — que faire ?"
                     await msr.set_step_run_status(
                         mission_id, current_step_id or "?", _idx,
-                        status="waiting_user",
-                        note=(_call.message or reason or "Échec — que faire ?"),
+                        status="waiting_user", note=_question,
+                    )
+                    _item_value_err = next(
+                        (r.item_value for r in _runs if r.item_index == _idx), None,
+                    )
+                    await msr.notify_ask_user(
+                        mission_id, state.get("user_id", ""),
+                        current_step_id or "?", _idx, _question, _item_value_err,
                     )
                 else:
                     await msr.set_step_run_status(
