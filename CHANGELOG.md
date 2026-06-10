@@ -21,6 +21,26 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.18.0] — 2026-06-10 — Couche 2 PII (NER), re-rank outils missions, voix affinée
+
+> Trois chantiers du jour : la frontière PII gagne une **couche NER** pour les noms / organisations / adresses en texte libre (ce que les regex ne peuvent pas voir), les missions choisissent leurs outils par **re-rank hybride lexical+sémantique**, et la voix d'Ely devient plus naturelle (Vivienne, débit calmé). Plus un tri de printemps : les docs internes quittent le dépôt public.
+
+### Security
+- **Couche 2 PII NER** (`1d0d770`) : GLiNER `urchade/gliner_multi_pii-v1` en **ONNX int8** détecte personnes / organisations / adresses avant tout envoi à un LLM cloud — emails, téléphones, IBAN, CB restent à la couche 1 regex (déterministe). Flag `PII_NER_ENABLED` **défaut OFF** : sans lui, comportement strictement identique (pinné par test). Design issu du bench du jour : remplacement **vault-first** (une valeur connue est masquée à chaque occurrence, quel que soit le score NER), **cache** hash→entités (l'historique ré-anonymisé à chaque tour ne paie l'inférence qu'une fois), placeholders `[PERSON_n]`/`[ORG_n]`/`[ADDRESS_n]` réversibles, fail-open vers la couche 1 si le modèle manque. Le faux positif « Pierre qui roule » (0.99) est documenté et **accepté** : le placeholder est réversible, ne pas « corriger » en montant le seuil. Activation en 3 étapes (build `PII_NER_INSTALL=1` → export ONNX **sur l'hôte** via `backend/scripts/export_gliner_onnx.py` → `PII_NER_ENABLED=true`), détail dans `.env.example`. 31 tests pins.
+
+### Added
+- **Re-rank hybride des outils missions** (`f594f28`) : `_filter_tools_for_step` combine recouvrement de tokens (mène) et cosine fastembed ×0.5 (affine) — le matching mots-clés seul ratait les accents (incident briefing du 31 mai, corrigé par `_norm`) et le pur sémantique échoue en cross-lingual FR. Embeddings du catalogue cachés par `tools_version`, fail-open lexical-only, kill-switch `MISSION_SEMANTIC_TOOLS_DISABLED`. 10 tests.
+- **Débit TTS réglable** (`e70d109`) : `settings.tts_rate`, override env `TTS_RATE` sans rebuild — source unique partagée par le routeur `/tts` et le service voix WebSocket (le débit était codé en dur dans 2 constantes séparées, même piège que la voix avant son câblage).
+
+### Changed
+- **Débit TTS +20 % → +10 %** (`e70d109`) : +20 % était perçu trop rapide / pas naturel avec la voix Vivienne.
+- **Dockerfile backend : layer caching** (`1d0d770`) : `COPY app/` & co déplacés **après** les grosses couches (Chromium ~150 Mo, fastembed ~90 Mo) avec `--chown=appuser`, `.dockerignore` passé en patterns récursifs `**/` — un changement de code seul ne rebuilde plus que les couches COPY. Le pin v1.17.1 tolère désormais les flags `COPY --chown`.
+
+### Docs
+- **Tri des docs publiques** (`1d0d770`) : seules les docs d'install / configuration / utilisation restent sur GitHub. Retirés du dépôt (conservés localement) : `ADDING_A_TOOL`, checklists release/testing, READMEs bench & screenshots, note Sprint 2.5, doublon `docs/roadmap.md`. Le `.gitignore` couvre les familles récurrentes (`docs/audit-*`, `docs/code-review-*`, …). `ROUTING.md` reste public à dessein : il est lu par les tests. Liens morts nettoyés (`CONTRIBUTING`, `ROADMAP`, `docs/architecture.md`).
+
+---
+
 ## [1.17.1] — 2026-06-10 — Hotfix : les migrations Alembic n'étaient pas dans l'image Docker
 
 > Bug de déploiement découvert en prod le jour même de la v1.17.0 : la page Missions entière répondait **HTTP 500** (`no such column: missions.spec_yaml`) et le heartbeat missions échouait toutes les 10 s. Cause : le Dockerfile backend copie sélectivement (`app/`, `scripts/`) et n'embarquait ni `alembic.ini` ni `migrations/` — `ensure_migrations()` échouait au boot **en best-effort comme conçu** (CRITICAL loggé, boot continue), donc la base prod n'a jamais reçu les révisions 0002→0004 du Sprint 4c. Le rebuild post-fix applique les migrations automatiquement au boot : aucune intervention manuelle sur la base.
