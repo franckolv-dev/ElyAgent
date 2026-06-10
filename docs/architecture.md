@@ -432,13 +432,9 @@ Cf. `infra_2026-05-07.md` (mémoire utilisateur) pour la décision et le détail
 |---|---|
 | [security.md](security.md) | HITL, anti-confabulation, sandbox, anonymisation |
 | [features.md](features.md) | Liste des capacités utilisateur |
-| [plan-hermes.md](plan-hermes.md) | 10 chantiers de fiabilité — état d'avancement |
-| [memory.md](memory.md) | Journal des sessions de développement (versionné) |
 | [SETUP_DESKTOP.md](SETUP_DESKTOP.md) | Installation du daemon ELY Desktop |
 | [SETUP_GOOGLE.md](SETUP_GOOGLE.md) | OAuth Google |
 | [SETUP_AI_PROVIDERS.md](SETUP_AI_PROVIDERS.md) | Config des providers LLM |
-| [LAUNCH_PLAN.md](LAUNCH_PLAN.md) | Plan d'ouverture publique |
-| [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md) | Checklist tests pré-déploiement |
 
 ---
 

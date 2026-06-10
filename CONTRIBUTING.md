@@ -12,7 +12,7 @@ This contribution guide focuses on what's *welcome* in PRs and how to set up a d
 
 - **Bug fixes** with a clear repro (steps + expected vs actual)
 - **Documentation improvements** (typos, clarifications, missing sections)
-- **New skills** that follow the existing pattern in `backend/app/skills/` — see [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md) for the modern `@register` decorator pattern (Sprint 2+)
+- **New skills** that follow the existing pattern in `backend/app/skills/` — use the modern `@register` decorator pattern (any file in `backend/app/skills/builtin/` is a working example)
 - **Channel adapters** for chat platforms not yet supported (Mattermost, Rocket.Chat, etc.)
 - **Translations** of the user guide / README
 - **Performance improvements** on the agent loop or memory consolidation
