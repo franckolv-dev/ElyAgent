@@ -21,6 +21,17 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.11] — 2026-06-10 — Phase 3 (lot 3) : Alembic + chemin Postgres documenté — **revue multi-utilisateurs SOLDÉE**
+
+### Added
+- **Alembic branché (B-4).** La dépendance existait depuis toujours sans échafaudage : toute évolution de schéma passait par `create_all` + des `ALTER TABLE` ad hoc aux exceptions avalées — drift silencieux modèle/DB (le bug `critic_run_at` : 676 erreurs en prod). Échafaudage complet (`alembic.ini`, `migrations/env.py` async branché sur `Base.metadata` + `settings.database_url`, baseline `0001_baseline` vide) + **intégration au boot** : les bases jamais vues sont stampées sur la baseline, les révisions postérieures appliquées par `upgrade head` (exécuté en thread, best-effort — un échec ne tue pas le boot). Règle d'équipe : les nouvelles colonnes passent par `alembic revision --autogenerate`, plus par `_safe_columns`. *(2026-06-10)*
+- **Chemin PostgreSQL documenté (décision du 10 juin : opt-in, pas de migration par défaut).** Nouvelle section dans `docs/DEPLOYMENT.md` : pourquoi SQLite reste le bon défaut (5-10 actifs simultanés), ce que Postgres apporte/coûte, activation par `DATABASE_URL`, limites connues (checkpointer missions, mono-process). *(2026-06-10)*
+
+### Fixed
+- **Les `ALTER TABLE` ad hoc n'avalent plus toutes les exceptions (B-4 court terme).** Seul « duplicate column » est l'état nominal ; disque plein, lock ou faute de frappe SQL sont désormais **loggés** au lieu de produire du drift silencieux. *(2026-06-10)*
+
+---
+
 ## [1.14.10] — 2026-06-10 — Phase 3 (lot 2) revue multi-utilisateurs : secrets chiffrés & ACL outils d'instance
 
 ### Security
