@@ -17,6 +17,7 @@
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
@@ -69,7 +70,10 @@ class Settings(BaseSettings):
     # Auth
     jwt_secret_key: str = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60
+    # 15 min (revue 2026-06-10, B-18/D2) : les access tokens ne sont pas
+    # révocables (pas de jti) — seule l'expiration borne un token volé.
+    # Le refresh est transparent côté frontend. Override : ACCESS_TOKEN_EXPIRE_MINUTES.
+    access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
     # Database
@@ -95,8 +99,9 @@ class Settings(BaseSettings):
     ntfy_url: str = ""
     ntfy_topic: str = "ely"
 
-    # TTS
-    tts_voice: str = "fr-FR-DeniseNeural"
+    # TTS — voix multilingue HD, nettement plus naturelle que DeniseNeural
+    # (test Franck 2026-06-10). Override : TTS_VOICE.
+    tts_voice: str = "fr-FR-VivienneMultilingualNeural"
 
     # Cookie security — set True in production behind HTTPS.
     # Automatically enabled when COOKIE_SECURE=true is set in the environment,
@@ -204,6 +209,32 @@ class Settings(BaseSettings):
             _log.warning(
                 "cookie_secure=False — refresh token cookie is not Secure. "
                 "Set COOKIE_SECURE=true in production or add an HTTPS origin to CORS_ORIGINS."
+            )
+
+        # Revue 2026-06-10 (B-18/M3) — en prod HTTPS sans CORS_ORIGINS
+        # explicite, le runtime retombe sur [frontend_url]. Pas bloquant
+        # (déploiement nginx même-origine = CORS jamais déclenché), mais
+        # une allowlist explicite reste la posture attendue en multi-user.
+        if self.frontend_url.startswith("https://") and not self.cors_origins:
+            _log.warning(
+                "FRONTEND_URL est en HTTPS mais CORS_ORIGINS est vide — le "
+                "CORS retombe sur [%s]. En production multi-utilisateurs, "
+                "déclare une allowlist explicite via CORS_ORIGINS.",
+                self.frontend_url,
+            )
+
+        # Revue 2026-06-10 (mineur §4) — le chemin SQLite relatif par défaut
+        # dépend du cwd : lancé depuis la racine vs backend/, on lit/écrit
+        # DEUX bases divergentes (constaté en réel le 9 juin). On ancre le
+        # défaut sur le répertoire backend/ ; toute URL fournie via
+        # DATABASE_URL (Docker : chemin absolu) passe inchangée.
+        _DEFAULT_SQLITE_URL = "sqlite+aiosqlite:///./cyberentity.db"
+        if self.database_url == _DEFAULT_SQLITE_URL:
+            _backend_dir = Path(__file__).resolve().parents[1]
+            object.__setattr__(
+                self,
+                "database_url",
+                f"sqlite+aiosqlite:///{_backend_dir / 'cyberentity.db'}",
             )
 
         return self

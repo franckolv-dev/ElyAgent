@@ -17,6 +17,29 @@ Categories used:
 
 ## [Unreleased]
 
+_(empty — next batch starts here)_
+
+---
+
+## [1.14.2] — 2026-06-10 — Phase 0 revue multi-utilisateurs : durcissement + voix Vivienne
+
+### Security
+- **PII : l'historique assistant du canal vocal est ré-anonymisé avant le LLM (B-13, revue 2026-06-10).** Le fix #55 (`4af483b`) couvrait le chat mais pas `/ws/voice` : les réponses passées de l'agent (stockées dé-anonymisées pour l'affichage) repartaient **en clair** vers les LLM cloud à chaque tour vocal — emails, téléphones inclus. Le canal vocal applique désormais le même `sf.anonymize(...)` que le chat (helper `_anonymized_history`, testé). *(2026-06-10)*
+- **Headers de sécurité HTTP sur toutes les réponses backend (B-18/D1).** Nouveau middleware `app/middleware/security_headers.py` : `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, et `Strict-Transport-Security` quand le déploiement est HTTPS (`cookie_secure`). Pas de CSP (casserait Swagger UI pour zéro gain — les pages utilisateur sont servies par Next.js). *(2026-06-10)*
+- **TTL des access tokens : 60 → 15 minutes par défaut (B-18/D2).** Les access tokens n'ont pas de `jti` et ne sont pas révocables — seule l'expiration borne un token volé (le logout ne blackliste que le refresh). Le refresh étant transparent côté frontend, on aligne sur la durée que `docs/architecture.md` documentait déjà. Override possible : `ACCESS_TOKEN_EXPIRE_MINUTES`. *(2026-06-10)*
+- **Warning de démarrage si HTTPS sans `CORS_ORIGINS` explicite (B-18/M3).** Le runtime retombe sur `[frontend_url]` (pas un wildcard, donc pas bloquant — et les déploiements nginx même-origine ne déclenchent jamais le CORS), mais une allowlist explicite est la posture attendue en multi-utilisateurs. *(2026-06-10)*
+
+### Fixed
+- **Chemin SQLite par défaut ancré sur `backend/` (revue §4, mineur).** Le défaut relatif `./cyberentity.db` dépendait du cwd : lancé depuis la racine vs depuis `backend/`, le backend lisait/écrivait **deux bases divergentes** (constaté en réel le 9 juin : 798 Ko à la racine, 978 Ko dans backend/). Le défaut est désormais absolu ; toute `DATABASE_URL` explicite (Docker) passe inchangée. *(2026-06-10)*
+- **`recursion_limit` du canal vocal aligné sur `CHAT_RECURSION_LIMIT`** au lieu d'un `100` codé en dur (divergence chat/voice, revue B-13). *(2026-06-10)*
+
+### Changed
+- **Voix TTS par défaut : `fr-FR-DeniseNeural` → `fr-FR-VivienneMultilingualNeural`.** Le réglage `settings.tts_voice` existait mais n'était **lu nulle part** — la voix restait épinglée sur Denise dans deux constantes séparées (`routers/tts.py`, `services/voice_service.py`). Les deux sont désormais câblées sur le setting (override : `TTS_VOICE`), et le défaut passe sur la voix multilingue HD, nettement plus naturelle. Retour utilisateur : « voix trop artificielle » → à re-tester. *(2026-06-10)*
+
+---
+
+## [1.14.1] — 2026-06-10 — Sécurité multi-utilisateurs Phase 0 : IDOR + Whisper
+
 ### Security
 - **Conversation ownership enforced on the chat WebSocket (IDOR A-1, revue 2026-06-10).** The `/ws/chat` handler accepted any client-supplied `conversation_id` without checking it belongs to the authenticated user — any logged-in user could write into (and have the agent read from) another user's conversation by replaying its UUID, including the per-conversation PII vault and frozen-memory snapshot keyed by that id. A foreign or unknown id now closes the socket with code 4003, indistinguishable from "not found" (no existence oracle), mirroring `conversations._get_owned_conversation`. Regression-pinned by `tests/test_idor_conversation_ownership.py` (real WS round-trip). *(2026-06-10)*
 - **Ownership check on `POST /api/me/state/recompute` (IDOR A-2, revue 2026-06-10).** The `conversation_id` query param was passed straight to `compute_user_state`, whose `_load_recent_messages` has no user filter — the MAINTENANCE LLM could read a foreign conversation. Foreign/unknown ids now 404 before any read. *(2026-06-10)*

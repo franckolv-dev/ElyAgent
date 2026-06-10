@@ -436,6 +436,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Headers de sécurité standard (revue 2026-06-10, B-18/D1)
+from app.middleware.security_headers import add_security_headers  # noqa: E402
+
+add_security_headers(app)
+
 setup_rate_limiter(app)
 
 app.include_router(health.router)

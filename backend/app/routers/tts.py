@@ -29,6 +29,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.config import get_settings
+
 try:
     import edge_tts
     _EDGE_TTS_AVAILABLE = True
@@ -38,7 +40,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tts", tags=["tts"])
 
-DEFAULT_VOICE = "fr-FR-DeniseNeural"
+# Wired to settings.tts_voice (env TTS_VOICE) — the setting existed but was
+# never read until 2026-06-10; the voice was silently pinned to DeniseNeural.
+DEFAULT_VOICE = get_settings().tts_voice
 DEFAULT_RATE = "+20%"   # slightly faster than natural pace — more pleasant for a personal assistant
 
 
