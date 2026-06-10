@@ -71,6 +71,17 @@ async def _execute_task(task_id: str) -> None:
 
         logger.info("Executing scheduled task '%s' for user %s", task.name, task.user_id)
 
+        # A-6b — budget LLM quotidien du user : une tâche planifiée saute
+        # son exécution du jour (la tâche reste programmée, le cron la
+        # relancera à la prochaine occurrence).
+        from app.services.budget_guard import check_user_budget
+        if await check_user_budget(task.user_id):
+            logger.warning(
+                "Scheduled task '%s' (user %s) skipped — budget LLM "
+                "quotidien épuisé", task.name, task.user_id,
+            )
+            return
+
         # Create a conversation for this execution
         async with async_session() as db:
             conv = Conversation(

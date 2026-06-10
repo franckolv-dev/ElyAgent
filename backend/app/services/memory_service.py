@@ -161,6 +161,17 @@ async def extract_and_store_facts(
         )
         raw = getattr(response, "content", "") or ""
 
+        # A-6b — chemin background compté dans UsageLog (best-effort)
+        try:
+            from app.services.analytics_service import log_response_usage
+            await log_response_usage(
+                user_id, response,
+                skill_used="memory_extraction",
+                conversation_id=conversation_id,
+            )
+        except Exception:
+            pass
+
         # Parse JSON response
         raw = raw.strip()
         if raw.startswith("```"):
@@ -395,6 +406,15 @@ async def consolidate_user_memory(user_id: str) -> int:
             config={"callbacks": []},
         )
         raw = getattr(response, "content", "") or ""
+
+        # A-6b — consolidation nocturne comptée dans UsageLog (best-effort)
+        try:
+            from app.services.analytics_service import log_response_usage
+            await log_response_usage(
+                user_id, response, skill_used="memory_consolidation",
+            )
+        except Exception:
+            pass
 
         # Parse JSON
         raw = raw.strip()
