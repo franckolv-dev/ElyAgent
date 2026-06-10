@@ -35,8 +35,27 @@ RUN uv sync --frozen --no-dev --no-editable
 # new `google-genai` SDK, then this override can be removed.
 RUN uv pip install --force-reinstall "neonize>=0.3.17.post0" "protobuf>=6.32.1"
 
+# ── Couche 2 PII NER — install opt-in (PII_NER_ENABLED) ───────────────
+# Le package gliner tire torch (~800 Mo installés) : on ne l'embarque QUE
+# si le build est lancé avec PII_NER_INSTALL=1 (via .env, cf. docker-compose
+# build args). Installé hors lockfile comme neonize — gliner pousse
+# transformers/torch que le projet ne veut pas dans ses deps par défaut.
+# Le modèle ONNX int8 lui-même n'est PAS dans l'image : il est exporté sur
+# l'hôte (scripts/export_gliner_onnx.py) vers ./data/pii_ner, monté en volume.
+ARG PII_NER_INSTALL=0
+RUN if [ "$PII_NER_INSTALL" = "1" ]; then \
+        uv pip install "gliner>=0.2.26"; \
+    fi
+
 # Copy application code
 COPY app/ ./app/
+
+# Alembic — ensure_migrations() au boot exige ces deux chemins dans l'image.
+# Sans eux il échoue en best-effort (CRITICAL dans les logs, boot continue)
+# et la base prod ne reçoit JAMAIS les révisions post-baseline — vécu en
+# v1.17.0 : missions.spec_yaml absente → HTTP 500 sur toute la page Missions.
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
 
 # Copy operational scripts (backfill, admin, migrations…)
 # Run from the container with: docker compose exec backend python scripts/<name>.py

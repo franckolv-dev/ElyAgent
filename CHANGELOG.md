@@ -21,6 +21,18 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.17.1] — 2026-06-10 — Hotfix : les migrations Alembic n'étaient pas dans l'image Docker
+
+> Bug de déploiement découvert en prod le jour même de la v1.17.0 : la page Missions entière répondait **HTTP 500** (`no such column: missions.spec_yaml`) et le heartbeat missions échouait toutes les 10 s. Cause : le Dockerfile backend copie sélectivement (`app/`, `scripts/`) et n'embarquait ni `alembic.ini` ni `migrations/` — `ensure_migrations()` échouait au boot **en best-effort comme conçu** (CRITICAL loggé, boot continue), donc la base prod n'a jamais reçu les révisions 0002→0004 du Sprint 4c. Le rebuild post-fix applique les migrations automatiquement au boot : aucune intervention manuelle sur la base.
+
+### Fixed
+- **`backend/Dockerfile` embarque Alembic** : `COPY alembic.ini` + `COPY migrations/` — sans eux, toute révision post-baseline est silencieusement perdue en prod Docker alors qu'elle fonctionne en dev (où `backend/` complet est présent). Pin source-level dans les tests pour que la régression soit impossible. *(2026-06-10)*
+
+### Added
+- **`/health/deep` expose le drift de migrations** : nouveau check `migrations` (la base est-elle au `head` des révisions ?) à côté de `db` et `qdrant` — 503 `degraded` si la base est en retard. C'est le signal qui manquait : l'échec best-effort du boot n'était visible que dans un CRITICAL de log que personne ne regarde ; désormais le monitoring le voit avant le premier 500 utilisateur. Helper `migrations_current_sync()` dans `alembic_runner`. 6 tests pin (Dockerfile, drift détecté/à jour/en retard, sonde degraded/ok). *(2026-06-10)*
+
+---
+
 ## [1.17.0] — 2026-06-10 — Sprint 4c : missions structurées (spec YAML + ask_user + viewer)
 
 > Sprint complet en 5 jalons (PRs #86-#90) : J1 format+parser · J2 exécuteur · J3 hook ask_user · J4 viewer liste · J5 docs. Fin du prompt-monolithe des missions : ajouter un cas oublié = ajouter UNE ligne, et quand Ely hésite, elle pose la question puis reprend sur la réponse — le « mode chat fait à la main », automatisé.
