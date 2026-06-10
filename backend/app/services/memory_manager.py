@@ -91,6 +91,22 @@ class MemoryManager:
                             size=VECTOR_DIM, distance=Distance.COSINE
                         ),
                     )
+                # Index payload user_id (revue 2026-06-10 §4) — toutes les
+                # recherches filtrent par user_id ; sans index keyword,
+                # Qdrant scanne le payload des candidats HNSW et chaque
+                # recherche ralentit pour tout le monde quand les
+                # collections grossissent (×N users). Idempotent : appliqué
+                # aussi aux collections déjà existantes.
+                try:
+                    from qdrant_client.models import PayloadSchemaType
+                    await asyncio.to_thread(
+                        client.create_payload_index,
+                        name,
+                        field_name="user_id",
+                        field_schema=PayloadSchemaType.KEYWORD,
+                    )
+                except Exception:
+                    pass  # déjà indexé — c'est le cas nominal après le 1er boot
             logger.info("Qdrant collections ready")
         except Exception as exc:
             logger.warning("Qdrant unavailable — memory disabled: %s", exc)

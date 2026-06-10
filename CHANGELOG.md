@@ -21,6 +21,20 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.9] — 2026-06-10 — Phase 3 (lot 1) revue multi-utilisateurs : invariants & observabilité
+
+### Added
+- **Verrou mono-process au boot (A-7).** L'architecture est mono-process par construction (HITL, ws_registry, schedulers, bots en RAM) — `--workers 2` ou deux conteneurs sur le même volume cassaient silencieusement au moins 8 composants (HITL split-brain, crons en double, Telegram 409, double tick de missions). L'hypothèse devient un **invariant vérifié** : `flock` exclusif sur `<db_dir>/.ely-singleton.lock` au démarrage, échec de boot explicite si déjà tenu. Échappatoire documentée : `ELY_ALLOW_MULTIPROCESS=true` (réservée à l'état externalisé). *(2026-06-10)*
+- **`GET /health/deep`** — `/health` répondait « ok » avec une DB corrompue ou un Qdrant mort. La sonde profonde teste réellement les deux (timeout 5 s) et renvoie 503 + booléens en cas de dégradation. Exemptée du rate limit. *(2026-06-10)*
+- **`GET /admin/metrics`** — photo instantanée de la charge du process (sockets WS par user, tâches de fond en vol, ticks missions, filtres PII actifs, caches, sessions navigateur) : de quoi répondre à « pourquoi c'est lent depuis 14 h » sans grep de logs Docker. Admin-only. *(2026-06-10)*
+
+### Fixed
+- **Sessions navigateur : TTL d'inactivité + relance auto de Chromium (B-17).** Chaque user qui touchait un tool `browser_*` gardait un BrowserContext Chromium résident **à vie** ; et si Chromium crashait, `is_available()` restait vrai et le browsing était cassé pour tous jusqu'au restart backend. Cron d'éviction (15 min d'inactivité, passage toutes les 10 min) + relance automatique du browser quand `new_context` échoue. *(2026-06-10)*
+- **Pool de connexions dimensionné pour le chemin Postgres (B-5).** Le défaut SQLAlchemy (5+10) serait le premier goulot invisible après une migration : `pool_size=20`, `max_overflow=30`, `pool_pre_ping` (connexions mortes écartées après un restart du serveur PG). Sans effet sur SQLite. *(2026-06-10)*
+- **Index payload Qdrant sur `user_id` (§4).** Toutes les recherches filtrent par `user_id`, mais sans index keyword Qdrant scanne le payload des candidats HNSW — chaque recherche ralentit pour tout le monde quand les collections grossissent (×N users). Index créé idempotent sur les 6 collections (appliqué aussi aux collections existantes au premier boot). *(2026-06-10)*
+
+---
+
 ## [1.14.8] — 2026-06-10 — Phase 2 (lot 3b) revue multi-utilisateurs : caches LRU+TTL & rétention — **Phase 2 complète**
 
 ### Security

@@ -255,3 +255,44 @@ async def ab_score_endpoint(
     window_td = _parse_window(window)
     result = await score_variants(key, window_td)
     return result
+
+
+# ── Métriques de charge (revue 2026-06-10 §4 — observabilité) ───────────────
+
+@router.get("/metrics")
+async def runtime_metrics(admin: User = Depends(require_admin)):
+    """Photo instantanée de la charge du process — répond à « pourquoi
+    c'est lent depuis 14 h » sans grep de logs Docker. Compteurs maison
+    (pas de dépendance Prometheus) ; admin-only pour ne pas exposer la
+    topologie interne."""
+    from app.services import ws_registry
+    from app.services.background_tasks import pending_count
+    from app.services.conversation_filters import filter_count
+    from app.services.mission_heartbeat import _in_flight as _missions_in_flight
+    from app.services.run_gate import _semaphores as _run_semaphores
+
+    try:
+        from app.services.browser_manager import get_browser_manager
+        browser_sessions = get_browser_manager().session_count()
+    except Exception:
+        browser_sessions = -1
+
+    try:
+        from app.services import frozen_memory as _fm
+        from app.services import system_prompt_cache as _spc
+        snapshots = len(_fm._snapshots)
+        prompt_cache = len(_spc._cache)
+    except Exception:
+        snapshots = prompt_cache = -1
+
+    return {
+        "ws_users_connected": len(ws_registry._registry),
+        "ws_sockets_total": sum(len(s) for s in ws_registry._registry.values()),
+        "background_tasks_pending": pending_count(),
+        "missions_ticks_in_flight": len(_missions_in_flight),
+        "users_with_run_slots": len(_run_semaphores),
+        "pii_filters_active": filter_count(),
+        "frozen_memory_snapshots": snapshots,
+        "system_prompt_cache_entries": prompt_cache,
+        "browser_sessions": browser_sessions,
+    }

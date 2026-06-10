@@ -73,6 +73,7 @@ _USER_AGENT = (
 class _Session:
     context: object   # playwright BrowserContext
     page: object      # playwright Page
+    last_used: float = 0.0  # time.monotonic() du dernier get_page (B-17)
 
 
 class BrowserManager:
@@ -135,19 +136,41 @@ class BrowserManager:
             )
 
         if user_id not in self._sessions:
-            context = await self._browser.new_context(
-                viewport={"width": 1280, "height": 720},
-                user_agent=_USER_AGENT,
-                java_script_enabled=True,
-                ignore_https_errors=False,
-                # Completely isolated storage — no host cookies, no local storage
-                storage_state=None,
-            )
+            try:
+                context = await self._browser.new_context(
+                    viewport={"width": 1280, "height": 720},
+                    user_agent=_USER_AGENT,
+                    java_script_enabled=True,
+                    ignore_https_errors=False,
+                    # Completely isolated storage — no host cookies, no local storage
+                    storage_state=None,
+                )
+            except Exception as exc:
+                # B-17 (revue 2026-06-10) — Chromium peut crasher alors que
+                # is_available() reste vrai : sans relance, le browsing
+                # restait cassé pour TOUS les users jusqu'au restart
+                # backend. Une relance, puis on retente une fois.
+                logger.warning(
+                    "new_context a échoué (%s) — relance de Chromium", exc,
+                )
+                await self.stop()
+                await self.start()
+                if not self.is_available():
+                    raise RuntimeError("Chromium n'a pas pu être relancé") from exc
+                context = await self._browser.new_context(
+                    viewport={"width": 1280, "height": 720},
+                    user_agent=_USER_AGENT,
+                    java_script_enabled=True,
+                    ignore_https_errors=False,
+                    storage_state=None,
+                )
             page = await context.new_page()
             self._sessions[user_id] = _Session(context=context, page=page)
             logger.debug("New browser session for user %s", user_id)
 
         session = self._sessions[user_id]
+        import time as _time
+        session.last_used = _time.monotonic()
         # Reopen page if it was closed
         if session.page.is_closed():
             session.page = await session.context.new_page()
@@ -160,6 +183,31 @@ class BrowserManager:
             with suppress(Exception):
                 await session.context.close()
             logger.debug("Browser session closed for user %s", user_id)
+
+    async def cleanup_idle_sessions(self, max_idle_seconds: float = 900.0) -> int:
+        """B-17 (revue 2026-06-10) — évince les contextes inactifs.
+
+        Chaque user qui touchait un tool ``browser_*`` gardait un
+        BrowserContext Chromium résident À VIE (RAM par contexte, ×N
+        users sur un Mac 32 Go). Appelé par un cron (main.py) toutes les
+        10 min ; 15 min d'inactivité par défaut. Retourne le nombre de
+        sessions fermées.
+        """
+        import time as _time
+
+        now = _time.monotonic()
+        idle = [
+            uid for uid, s in self._sessions.items()
+            if now - (s.last_used or 0.0) > max_idle_seconds
+        ]
+        for uid in idle:
+            await self.close_session(uid)
+        if idle:
+            logger.info("Browser: %d session(s) inactives fermées", len(idle))
+        return len(idle)
+
+    def session_count(self) -> int:
+        return len(self._sessions)
 
     # ------------------------------------------------------------------ #
     # Utilities                                                            #

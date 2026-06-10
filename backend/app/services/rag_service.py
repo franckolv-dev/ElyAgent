@@ -315,6 +315,18 @@ class RAGService:
                 logger.info("Qdrant collection '%s' created", _COLLECTION_KNOWLEDGE)
             else:
                 logger.info("Qdrant collection '%s' already exists", _COLLECTION_KNOWLEDGE)
+            # Index payload user_id (revue 2026-06-10 §4) — idempotent,
+            # appliqué aussi à une collection existante.
+            try:
+                from qdrant_client.models import PayloadSchemaType
+                await asyncio.to_thread(
+                    self.client.create_payload_index,
+                    _COLLECTION_KNOWLEDGE,
+                    field_name="user_id",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+            except Exception:
+                pass
         except Exception as exc:
             logger.warning("Failed to init knowledge collection: %s", exc)
 

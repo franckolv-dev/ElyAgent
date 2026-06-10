@@ -58,8 +58,18 @@ def _make_engine():
             cur.execute("PRAGMA foreign_keys=ON")
             cur.close()
         return _engine
-    # PostgreSQL / other — no special args needed.
-    return create_async_engine(url, echo=False)
+    # PostgreSQL / other (B-5, revue 2026-06-10) — le pool par défaut
+    # (5+10) serait le premier goulot invisible après une migration : gels
+    # de 30 s aléatoires quand crons + WS + webhooks dépassent 15 connexions.
+    # pool_pre_ping écarte les connexions mortes (restart du serveur PG).
+    return create_async_engine(
+        url,
+        echo=False,
+        pool_size=20,
+        max_overflow=30,
+        pool_timeout=30,
+        pool_pre_ping=True,
+    )
 
 
 engine = _make_engine()
