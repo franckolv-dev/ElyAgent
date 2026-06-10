@@ -364,6 +364,10 @@ async def websocket_voice(websocket: WebSocket):
                         stop_event.set()
                         return
 
+            # B-15 — même cap de runs concurrents par user que chat.py
+            from app.services.run_gate import get_user_run_semaphore
+            _run_sem = get_user_run_semaphore(user_id)
+            await _run_sem.acquire()
             watcher_task = asyncio.create_task(_watch_for_stop())
             try:
                 async for event in agent.astream_events(
@@ -450,6 +454,7 @@ async def websocket_voice(websocket: WebSocket):
                                     ai_content = _candidate
                                     break
             finally:
+                _run_sem.release()  # B-15 — libère le slot de run du user
                 stop_event.set()
                 watcher_task.cancel()
                 try:

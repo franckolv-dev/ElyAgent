@@ -449,6 +449,12 @@ async def websocket_chat(websocket: WebSocket):
                         stop_event.set()
                         return
 
+            # B-15 (revue 2026-06-10) — cap de runs agent concurrents par
+            # user : au-delà de ELY_MAX_AGENT_RUNS_PER_USER (2), les runs
+            # supplémentaires du même user font la queue ici.
+            from app.services.run_gate import get_user_run_semaphore
+            _run_sem = get_user_run_semaphore(user_id)
+            await _run_sem.acquire()
             watcher_task = asyncio.create_task(_watch_for_stop())
             try:
               async for event in agent.astream_events(
@@ -594,6 +600,7 @@ async def websocket_chat(websocket: WebSocket):
                                 break
 
             finally:
+                _run_sem.release()  # B-15 — libère le slot de run du user
                 # Always clean up the stop watcher, whether agent finished or was interrupted
                 stop_event.set()
                 watcher_task.cancel()
