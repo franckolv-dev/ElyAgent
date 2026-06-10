@@ -103,9 +103,17 @@ def test_hsts_only_when_cookie_secure(monkeypatch) -> None:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-def _fresh_settings(**overrides):
+def _fresh_settings(monkeypatch, **overrides):
+    """Settings hermétiques : ni .env, ni les env vars du runner CI
+    (la CI exporte DATABASE_URL=:memory: qui écraserait les défauts
+    qu'on veut précisément tester)."""
     from app.config import Settings
 
+    for var in (
+        "DATABASE_URL", "TTS_VOICE", "ACCESS_TOKEN_EXPIRE_MINUTES",
+        "CORS_ORIGINS", "FRONTEND_URL", "COOKIE_SECURE",
+    ):
+        monkeypatch.delenv(var, raising=False)
     return Settings(
         _env_file=None,
         jwt_secret_key="x" * 32,
@@ -113,17 +121,17 @@ def _fresh_settings(**overrides):
     )
 
 
-def test_access_token_default_ttl_is_15_minutes() -> None:
-    assert _fresh_settings().access_token_expire_minutes == 15
+def test_access_token_default_ttl_is_15_minutes(monkeypatch) -> None:
+    assert _fresh_settings(monkeypatch).access_token_expire_minutes == 15
 
 
-def test_default_sqlite_url_is_anchored_to_backend_dir() -> None:
+def test_default_sqlite_url_is_anchored_to_backend_dir(monkeypatch) -> None:
     """Le défaut relatif dépendait du cwd → deux bases divergentes
     constatées en réel le 9 juin (racine + backend/). Le défaut est
     désormais absolu, ancré sur backend/."""
     from pathlib import Path
 
-    url = _fresh_settings().database_url
+    url = _fresh_settings(monkeypatch).database_url
     assert url.startswith("sqlite+aiosqlite:////"), url
     path = Path(url.split("sqlite+aiosqlite:///")[-1])
     assert path.is_absolute()
@@ -131,17 +139,17 @@ def test_default_sqlite_url_is_anchored_to_backend_dir() -> None:
     assert path.parent.name == "backend"
 
 
-def test_explicit_database_url_passes_through_unchanged() -> None:
+def test_explicit_database_url_passes_through_unchanged(monkeypatch) -> None:
     custom = "sqlite+aiosqlite:////app/data/cyberentity.db"
-    assert _fresh_settings(database_url=custom).database_url == custom
+    assert _fresh_settings(monkeypatch, database_url=custom).database_url == custom
     pg = "postgresql+asyncpg://ely:pw@db:5432/ely"
-    assert _fresh_settings(database_url=pg).database_url == pg
+    assert _fresh_settings(monkeypatch, database_url=pg).database_url == pg
 
 
-def test_tts_voice_default_is_vivienne_and_wired() -> None:
+def test_tts_voice_default_is_vivienne_and_wired(monkeypatch) -> None:
     """Le setting tts_voice existait mais n'était lu nulle part — la voix
     restait épinglée sur DeniseNeural dans 2 constantes séparées."""
-    assert _fresh_settings().tts_voice == "fr-FR-VivienneMultilingualNeural"
+    assert _fresh_settings(monkeypatch).tts_voice == "fr-FR-VivienneMultilingualNeural"
 
     from app.config import get_settings
     from app.routers import tts as tts_mod
@@ -151,9 +159,11 @@ def test_tts_voice_default_is_vivienne_and_wired() -> None:
     assert voice_service.DEFAULT_VOICE == get_settings().tts_voice
 
 
-def test_cors_warning_when_https_without_allowlist(caplog) -> None:
+def test_cors_warning_when_https_without_allowlist(monkeypatch, caplog) -> None:
     import logging
 
     with caplog.at_level(logging.WARNING):
-        _fresh_settings(frontend_url="https://ely.example.com", cors_origins="")
+        _fresh_settings(
+            monkeypatch, frontend_url="https://ely.example.com", cors_origins="",
+        )
     assert any("CORS_ORIGINS" in r.message for r in caplog.records)
