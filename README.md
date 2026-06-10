@@ -8,7 +8,7 @@
 
 ### The sovereign AI agent for people and organisations that can't afford to leak data.
 
-Self-hosted · GDPR-native · multi-user · multi-LLM · self-improving · 10 channels · 181 tools.
+Self-hosted · GDPR-native · multi-user · multi-LLM · **self-developing** · 10 channels · 181 built-in tools — plus the ones ELY writes herself.
 
 [**Website**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
@@ -96,7 +96,7 @@ ELY is the answer for the people and organisations who need an AI agent **that r
 ### Architecture
 **Multi-user. Multi-LLM. Built to scale across a family or an organisation.**
 
-- **Multi-user native** — one deployment serves a family, a team, or an SMB. Each user has their own memory, vault, approval queue.
+- **Multi-user native — and hardened for it** *(June 2026 campaign: 11 releases)* — one deployment serves a family, a team, or an SMB. Each user has their own memory, vault, approval queue, **daily LLM budget**, rate limits and storage quota. Secrets encrypted at rest, Alembic migrations, nightly backups, deep healthchecks.
 - **Multi-LLM with complexity tiers** — assign different models to Tier A (fast) / B (standard) / C (deep) / IMG / SYS. Local for simple tasks, Mistral or Anthropic for complex ones — your choice, no restart.
 - 11 LLM providers supported · auto-fallback on outage · Anthropic prompt caching enabled
 - Channel-to-user mapping prevents impersonation across messaging platforms
@@ -111,7 +111,8 @@ ELY is the answer for the people and organisations who need an AI agent **that r
 
 Most agents are static. **ELY watches its own failures and gets better — transparently, with you in control.**
 
-- **Self-developing agent (auto-learned skills).** When ELY repeatedly refuses, hallucinates, or botches a task, a background loop mines the failure, drafts a reusable *playbook* in plain Markdown, and an external LLM scores it. High-quality playbooks land as **candidates you review and promote** from the admin UI — nothing steers the agent until a human approves it. *(This is the foundation for V2: ELY writing and validating its own Python tools.)*
+- **Self-developing agent — ELY writes her own tools.** When ELY repeatedly hits a missing capability, she doesn't just draft a Markdown playbook (V1) — she **generates a real Python tool** (V2), and since v1.16 even **real network integrations** (V3): the generated tool declares its egress domains, its Vault secrets and its dependencies, passes a **7-stage validation pipeline** (AST guard → declarations → deps allow-list → ruff → mypy → sandboxed smoke test → registration), gets its *scope* reviewed by the admin (domains / secrets / deps panels), then runs in an **isolated sandbox** behind a filtering egress proxy — with **HITL on its first 10 invocations** (canary) before it's trusted. Nothing ever goes live without a human gate.
+- **Structured missions that ask instead of guessing** *(v1.17)*. Describe a multi-step workflow in simple YAML — `steps`, `foreach` over a previous step's results, and **edge-case handlers**: `on_ambiguous: ask_user("…")`, `on_not_found: skip_with_note("…")`. When ELY hesitates, she **pings you** (web, push, Telegram), you answer, she resumes — while the other items keep running. Forgot a case? Add **one line**, not a prompt rewrite. A live list viewer shows every step and item (✓ ⏳ ⏸ ⊝) with inline answers.
 - **LLM-as-judge self-critique.** Every autonomous mission is graded *post-mortem* by a separate model that reads the full step trace and flags **"façade success"** — when the agent claims it succeeded but the steps show it didn't. The verdict feeds the learning loop.
 - **Radical transparency.** Two dashboards — `/me/learning` and `/me/state` — show you exactly what ELY learned from you and the model it holds of you (mood, focus, open loops). Editable, killable, never hidden.
 - **Cognitive typed memory.** Five memory types (episodic · semantic · procedural · error · constraint) instead of one opaque blob — recalled per-type, across conversations, all local.
@@ -231,7 +232,7 @@ A real product UI on every surface — not a terminal dressed as a website. ELY 
 <details>
 <summary><strong>Security pipeline</strong> — PII masking · HITL · vault · audit trail</summary>
 
-- **PII masking pipeline.** Regex + ML-assisted detection of emails, IBANs, credit cards, API tokens, phone numbers, French SIRET, employee IDs. Deterministic placeholders. Reversed only when displayed back to you.
+- **PII masking pipeline.** Deterministic regex detection of emails, IBANs, credit cards, API tokens, phone numbers (all French formats), SIRET, employee IDs. Deterministic placeholders, reversed only when displayed back to you. A local NER layer (GLiNER) for names/organisations in free text is benchmarked and in evaluation.
 - **Human-in-the-loop.** Blocks 30+ tool categories by default. Three actions: allow once, deny once, **ban permanently** (persisted across sessions).
 - **Encrypted vault.** AES-256-GCM, per-user key derived from password. Zero-knowledge.
 - **Audit trail.** Immutable JSON Lines. Exportable for compliance.
@@ -260,16 +261,37 @@ Gmail · Calendar · Drive · Docs · Sheets · Tasks · Contacts. High-level to
 </details>
 
 <details>
-<summary><strong>Missions</strong> — goal-driven loop that survives restarts</summary>
+<summary><strong>Missions</strong> — goal-driven loop that survives restarts, now with structured specs</summary>
 
 Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures. Every terminal mission is graded by an external **LLM-as-judge** that flags "façade success".
+
+**Structured missions** *(v1.17)* — replace the monolithic prompt with a YAML spec:
+
+```yaml
+version: 1
+steps:
+  - id: enrich
+    foreach: "{{ read_companies.output }}"
+    do: "Find the CEO of {{ item }} on LinkedIn."
+    on_ambiguous: ask_user("Several results for {{ item }} — which one?")
+    on_not_found: skip_with_note("Not found")
+    on_error: resume_next
+```
+
+The LLM stays in the loop (the spec *frames* execution, it doesn't replace reasoning) ; declared edge cases are **signalled, not improvised** ; `ask_user` pauses the item, pings you on every channel, and resumes on your answer while the other items keep running. Live list viewer with inline replies. Deterministic completion — no LLM-judged "done". Legacy free-text missions unchanged.
 
 </details>
 
 <details>
-<summary><strong>Self-improvement & learned skills</strong> — ELY turns its own failures into playbooks you approve</summary>
+<summary><strong>Self-development & learned tools</strong> — ELY writes her own tools, you hold the gate</summary>
 
-Failure signals (HITL refusals, hallucination blocks, mission critiques) feed a learning loop. A Tier-S model drafts a reusable Markdown **playbook**, an external judge scores it, and high-quality ones become **candidates** you promote from the admin UI (`/admin/learning/candidates`). Only promoted (active) skills are injected into the agent's prompt — the human is always the gate. A 50-scenario regression bench + nightly CI keeps the whole loop honest. This is the foundation for **V2**: ELY generating and validating its own Python tools.
+Failure signals (HITL refusals, hallucination blocks, mission critiques, "missing tool" gaps) feed a learning loop with three maturity levels, **all shipped**:
+
+- **V1 — Markdown playbooks** drafted from mined failures, scored by an external judge, promoted by you.
+- **V2 — pure Python tools**: ELY generates a real `@tool` (composition + computation), validated by a 5-stage pipeline (AST whitelist → ruff → mypy → smoke → registration) before landing as a candidate.
+- **V3 — real network integrations** *(v1.15–v1.16)*: generated tools may call external APIs — with **declared egress domains** (enforced by a filtering Squid proxy), **Vault secrets** injected at runtime (never in the source), dependencies bound to an allow-list, execution in an **isolated sandbox** (read-only rootfs, no capabilities, resource limits), a per-call audit trail, **admin review of the scope** (domains/secrets/deps panels, not just the code), and **canary HITL on the first 10 invocations**.
+
+Only promoted (active) tools are ever bound to the agent — the human is always the gate. A 50-scenario regression bench + nightly CI keeps the whole loop honest. Next: **V4 — graduating battle-tested learned tools into core code** (→ v2.0).
 
 </details>
 
@@ -345,16 +367,19 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 ## Roadmap
 
 **Shipped** *(May–June 2026)*
+- **Auto-Developing Agent — complete (V1→V3)** — ELY writes her own Python tools, including sandboxed network integrations with declared egress, Vault secrets, 7-stage validation, admin scope review and canary HITL
+- **Structured missions** *(v1.17)* — YAML specs with `foreach` + edge-case handlers; `ask_user` pauses, pings you, resumes on your answer; live list viewer
+- **Multi-user hardening campaign** *(11 releases, v1.14.1→v1.14.11)* — cross-user isolation audit, per-user budgets/quotas/rate limits, secrets encrypted at rest, Alembic migrations, nightly backups, single-process lock, deep healthchecks
 - **Cognitive typed memory** — 5 memory types, cross-conversation recall
 - **Radical transparency** — `/me/learning` + `/me/state` dashboards
-- **Measured self-improvement loop** — failure signals, LLM-as-judge mission critic, auto-learned skill playbooks with admin review/promotion
+- **Measured self-improvement loop** — failure signals, LLM-as-judge mission critic, admin review/promotion
 - **MCP client** — consume any Model Context Protocol server
-- **50-scenario regression bench** + nightly CI
-- Auto-discovery tool registry · multi-domain scheduled-task routing · hardened anti-hallucination guards
+- **50-scenario regression bench** + nightly CI · 1,860+ automated tests
 
 **Next**
-- **V2 — Auto-Developing Agent.** ELY generates and validates its *own* Python tools: AST whitelist → ruff/mypy → sandbox eval → bench regression → admin HITL before anything goes live.
-- **MCP server** — expose ELY itself as an MCP server.
+- **V4 — Graduation** *(→ v2.0)*. Battle-tested learned tools promoted into core code, with bench-gated non-regression.
+- **MCP server** — expose ELY itself as an MCP server (your agent, pluggable into Claude Desktop / Cursor / Zed).
+- **PII layer 2 (NER)** — local GLiNER model to mask person/organisation names in free text (benchmarked, in evaluation).
 
 → [Full public roadmap →](https://agent-ely.fr/roadmap.html)
 
