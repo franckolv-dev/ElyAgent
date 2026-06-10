@@ -487,6 +487,72 @@ If the local model fails (rare — it falls back gracefully), the mission tries 
 
 The tool inventory (151 ELY tools) is automatically pre-filtered down to ~15 most relevant tools per step (based on the tool hint from the plan + keywords in the goal), so smaller local models can handle the bind without choking.
 
+### 8.6. Structured missions (YAML) — Sprint 4c, v1.17.0
+
+For repeatable multi-step workflows, the free-text goal can be replaced by a
+**structured spec**. Why : with a monolithic prompt, forgetting one edge case
+("company name is ambiguous", "company not found") means rewriting and
+re-testing the whole prompt. With a spec, **adding a forgotten case = adding
+ONE line**.
+
+In the **Nouvelle mission** modal, expand *« Mission structurée (YAML) —
+optionnel »* :
+
+```yaml
+version: 1
+steps:
+  - id: read_companies
+    do: "Lis les noms d'entreprises du Google Sheet « Prospection »."
+
+  - id: enrich
+    foreach: "{{ read_companies.output }}"
+    do: |
+      Trouve le dirigeant de {{ item }} sur LinkedIn et récupère
+      nom + email professionnel.
+    on_ambiguous: ask_user("Plusieurs résultats pour {{ item }} — lequel ?")
+    on_not_found: skip_with_note("{{ item }} introuvable")
+    on_in_liquidation: ask_user("{{ item }} est en redressement — continuer ?")
+    on_error: resume_next
+```
+
+**The contract :**
+
+| Element | Meaning |
+|---------|---------|
+| `do` | The step instruction, in natural language — the LLM stays in the loop, the spec *frames* execution |
+| `foreach` | Iterate over a previous step's result (`{{ step.output }}`) or a free-text source ; one item per tick |
+| `on_<case>` | Edge-case handler. **Case names are free** (`on_ambiguous`, `on_in_liquidation`, anything) ; **actions are a closed vocabulary** |
+| `ask_user("…")` | Mission pauses on THIS item, pings you (web + ntfy + Telegram), resumes on your answer — the other items keep running |
+| `skip_with_note("…")` | Item skipped, note shown in the viewer |
+| `resume_next` | Log and move on (also the default for `on_error`) |
+| `fail` | Hard-stop the mission |
+
+`{{ item }}` is substituted everywhere (instructions and handler messages).
+The spec is validated at creation : **all** errors are listed at once, in
+French.
+
+**The execution viewer** — the mission detail page shows a live list (not a
+canvas) :
+
+```
+✓ read_companies          done
+⏳ enrich  5/47            Trouve le dirigeant de {{ item }}…
+    ✓ Acme Corp           — Jean Dupont, jean@acme.fr
+    ⏸ Gamma SARL          ⚠ Plusieurs résultats pour Gamma SARL — lequel ?
+    ⊝ Delta Industries    — Delta Industries introuvable
+```
+
+Click the answer field under a ⏸ item, type your reply, press Enter : the
+item restarts immediately with your answer injected into the agent's prompt
+("RÉPONSE DE L'UTILISATEUR : …"), and the answer stays visible on the item
+afterwards (`↳ …`) so you can audit why the agent chose what it chose.
+
+**Guarantees** : structured missions never replan (the spec IS the plan) ;
+a repeatedly-failing item is auto-skipped after 2 attempts unless you
+declared `on_error` ; the mission completes when every step is done/skipped
+— deterministically, not by LLM judgment. Legacy free-text missions are
+untouched : `spec_yaml` is optional.
+
 ---
 
 ## 9. HITL Validation
