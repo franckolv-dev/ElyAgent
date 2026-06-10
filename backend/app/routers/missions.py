@@ -245,6 +245,38 @@ async def get_mission(
     return MissionOut.model_validate(m)
 
 
+class StepRunOut(BaseModel):
+    """Sprint 4c — statut d'un item de step structuré (viewer J4)."""
+    step_id: str
+    item_index: int
+    item_value: Optional[str]
+    status: str
+    note: Optional[str]
+    output: Optional[str]
+    attempts: int
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/{mission_id}/step-runs", response_model=list[StepRunOut])
+async def list_step_runs_endpoint(
+    mission_id: str,
+    current_user: User = Depends(get_current_user),
+) -> list[StepRunOut]:
+    """Sprint 4c — statuts par step/item d'une mission structurée.
+
+    La matière première du viewer LISTE (J4) :
+    ✓ done · ⏳ running/pending · ⏸ waiting_user · ⊝ skipped · ✗ failed.
+    Liste vide pour une mission legacy (prompt monolithe).
+    """
+    m = await mission_service.get_mission(mission_id)
+    if not m or m.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Mission introuvable")
+    from app.services.mission_spec_runtime import list_step_runs
+    runs = await list_step_runs(mission_id)
+    return [StepRunOut.model_validate(r) for r in runs]
+
+
 @router.get("/{mission_id}/steps", response_model=list[MissionStepOut])
 async def list_steps(
     mission_id: str,

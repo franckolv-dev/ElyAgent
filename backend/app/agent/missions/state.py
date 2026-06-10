@@ -39,6 +39,10 @@ class MissionState(TypedDict, total=False):
     current_step_id: Optional[str]  # which subtask we're working on
     iteration: int                  # tick counter (1, 2, 3…)
 
+    # ── Sprint 4c (missions structurées) — contexte d'item ──
+    current_item_index: Optional[int]   # index dans mission_step_runs (foreach)
+    last_edge_case: Optional[dict]      # {"name": …, "detail": …} signalé par l'acteur
+
     # ── Last action telemetry (set by `act_node`, read by `eval_node`) ──
     last_tool_name: Optional[str]
     last_tool_input: Optional[dict]

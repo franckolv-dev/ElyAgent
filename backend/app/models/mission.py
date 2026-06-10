@@ -198,3 +198,44 @@ class MissionStep(Base):
     __table_args__ = (
         Index("ix_mission_steps_mission_iter", "mission_id", "iteration"),
     )
+
+
+class MissionStepRun(Base):
+    """Sprint 4c J2 — statut d'exécution d'un step de spec structurée,
+    par item quand le step a un ``foreach``.
+
+    C'est la matière première du viewer (J4) :
+
+        ✓ read_companies        done
+        ⏳ enrich_company       5/47
+             ✓ Acme Corp        done — Jean Dupont, jean@acme.fr
+             ⏸ Gamma SARL       waiting_user — 3 résultats, lequel ?
+             ⊝ Delta Industries skipped — Entreprise introuvable
+
+    Un step sans foreach a UNE ligne (item_index=0, item_value NULL).
+    Statuts : pending / running / done / skipped / waiting_user / failed.
+    """
+    __tablename__ = "mission_step_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    mission_id: Mapped[str] = mapped_column(
+        String, ForeignKey("missions.id", ondelete="CASCADE"), index=True,
+    )
+    step_id: Mapped[str] = mapped_column(String(64), index=True)
+
+    item_index: Mapped[int] = mapped_column(Integer, default=0)
+    item_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # skip reason / question ask_user / message d'erreur — affiché tel quel
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # extrait du résultat (done) — nourrit le viewer et les steps suivants
+    output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        Index("ix_mission_step_runs_lookup", "mission_id", "step_id", "item_index", unique=True),
+    )
