@@ -13,13 +13,13 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v8
         with:
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
@@ -49,9 +49,9 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -71,7 +71,7 @@ jobs:
     name: Sandbox image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build sandbox image
         run: docker build -t ely-sandbox:ci -f sandbox/Dockerfile .
@@ -113,7 +113,7 @@ jobs:
     name: Egress proxy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run egress invariants smoke
         run: bash sandbox/test-egress.sh
 
@@ -126,6 +126,6 @@ jobs:
     name: Sandbox run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run sandbox runner E2E
         run: bash sandbox/test-sandbox-run.sh
