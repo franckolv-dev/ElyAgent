@@ -25,6 +25,7 @@ import re
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agent.state import AgentState
+from app.services.background_tasks import spawn
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_llm, get_fallback_llms
@@ -990,7 +991,7 @@ def create_agent_node():
                         if _new_provider_id:
                             try:
                                 from app.services.learning import record_provider_switch
-                                asyncio.create_task(record_provider_switch(
+                                spawn(record_provider_switch(
                                     user_id=user_id,
                                     conversation_id=_conv_id_fb,
                                     tier_llm=_tier.value if hasattr(_tier, "value") else str(_tier),
@@ -1130,7 +1131,7 @@ def create_agent_node():
                 except Exception as exc:
                     logger.debug("Memory extraction failed: %s", exc)
 
-            asyncio.create_task(_safe_memory_extract(user_id, messages + [response]))
+            spawn(_safe_memory_extract(user_id, messages + [response]))
 
         # Hermes Chantier 9 — increment the iteration counter when the
         # response carries tool_calls (i.e. the loop will bounce back here

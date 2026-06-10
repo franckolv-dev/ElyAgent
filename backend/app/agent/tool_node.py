@@ -44,6 +44,7 @@ from app.agent.helpers.message_sanitizer import _tool_result
 from app.agent.helpers.tool_history import _sanitize_tool_result_for_history
 from app.agent.state import AgentState
 from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS
+from app.services.background_tasks import spawn
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.security_filter import (
@@ -243,7 +244,7 @@ async def tool_node(state: AgentState) -> dict:
                 # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
                 try:
                     from app.services.learning import record_hitl_refusal
-                    asyncio.create_task(record_hitl_refusal(
+                    spawn(record_hitl_refusal(
                         user_id=user_id,
                         conversation_id=_conv_id,
                         tool_name=tool_name,
@@ -294,7 +295,7 @@ async def tool_node(state: AgentState) -> dict:
                 # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
                 try:
                     from app.services.learning import record_hitl_refusal
-                    asyncio.create_task(record_hitl_refusal(
+                    spawn(record_hitl_refusal(
                         user_id=user_id,
                         conversation_id=_conv_id,
                         tool_name=tool_name,
@@ -349,7 +350,7 @@ async def tool_node(state: AgentState) -> dict:
                 try:
                     import traceback as _tb
                     from app.services.learning import record_tool_error
-                    asyncio.create_task(record_tool_error(
+                    spawn(record_tool_error(
                         user_id=user_id,
                         tool_name=tool_name,
                         args=args,

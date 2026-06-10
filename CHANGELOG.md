@@ -21,6 +21,17 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.3] — 2026-06-10 — Phase 1 (lot 1) revue multi-utilisateurs : fiabilité temps réel
+
+### Fixed
+- **`ws_registry` multi-sockets + bug des deux onglets (B-6).** Un user avec deux connexions (deux onglets, PWA + desktop, chat + voix) perdait des pushes : la 2ᵉ connexion *remplaçait* la 1ʳᵉ, et — pire — fermer l'ancien onglet désinscrivait la socket du nouveau (`pop(user_id)` aveugle), laissant l'utilisateur connecté mais injoignable (cartes HITL, résultats de tâches planifiées, alertes watchdog, frames navigateur). Registre `dict[str, set[WebSocket]]`, `unregister(user_id, ws)` ciblé, et fan-out `send_text_all()` avec purge des sockets mortes — adopté par hitl_manager, scheduler, watchdog et browser_skill. *(2026-06-10)*
+- **Webhook Telegram : réponse immédiate + dédup par `update_id` (B-8).** Le traitement tournait inline — la réponse HTTP ne partait qu'après le run agent complet (souvent > 60 s) ; Telegram considérait le webhook en échec et **rejouait le même update** → agent exécuté 2-3× pour un message (actions et coûts dupliqués). Désormais : dédup bornée (1000 ids) puis traitement en tâche de fond, la route répond 200 instantanément. *(2026-06-10)*
+- **Sandbox : concurrence bornée (B-10).** Aucune limite sur `/run` alors que chaque subprocess a droit à 256 Mio dans un conteneur plafonné à 512 Mio : deux runs gourmands simultanés (deux users) suffisaient à OOM-kill **le conteneur entier**, faisant échouer tous les runs de tous les users d'un coup. Sémaphore (défaut 2, env `ELY_SANDBOX_MAX_CONCURRENCY`) + file d'attente bornée 10 s puis 503 propre. *(2026-06-10)*
+- **Backpressure sur le stream de tokens (B-14).** Un client lent ou zombie bloquait `websocket.send_text` par token, ce qui gelait la consommation du stream LLM (connexion provider maintenue ouverte, tokens facturés pour rien). Timeout d'envoi 10 s → socket traitée comme morte, sur les deux canaux chat et voix. *(2026-06-10)*
+- **Fire-and-forget fiabilisé : `background_tasks.spawn()` (§4 mineurs).** 9 sites `asyncio.create_task(...)` sans référence forte (signaux learning, extraction mémoire, log usage, résumés de fin de conversation) pouvaient être garbage-collectés en vol sous pression mémoire — perte silencieuse. Module central avec registre de références fortes + log des exceptions (pattern repris de `sub_agents/factory.py`). *(2026-06-10)*
+
+---
+
 ## [1.14.2] — 2026-06-10 — Phase 0 revue multi-utilisateurs : durcissement + voix Vivienne
 
 ### Security

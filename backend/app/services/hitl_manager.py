@@ -355,13 +355,12 @@ class HITLManager:
         msg_type: str,
         **extra,
     ) -> None:
-        from app.services.ws_registry import get as ws_get
-        ws = ws_get(user_id)
-        if not ws:
-            return
+        # Fan-out to EVERY open socket (B-6, revue 2026-06-10) — a HITL card
+        # must reach all tabs/devices, not just the most recent connection.
+        from app.services.ws_registry import send_text_all
         payload = {"type": msg_type, "action_id": action_id, "description": description, **extra}
         try:
-            await ws.send_text(json.dumps(payload))
+            await send_text_all(user_id, json.dumps(payload))
         except Exception:
             pass
 
