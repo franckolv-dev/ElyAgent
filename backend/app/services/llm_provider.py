@@ -364,7 +364,61 @@ def get_slm() -> BaseChatModel:
     from langchain_ollama import ChatOllama
     return ChatOllama(model=settings.slm_model,
         base_url=settings.ollama_base_url,
-        temperature=0.7, keep_alive="24h")
+        temperature=0.7, keep_alive="24h",
+        async_client_kwargs=_local_ollama_limits())
+
+
+# ── A-5 (revue 2026-06-10) — porte de concurrence LLM local ─────────────
+# LM Studio / MLX sur Mac ne sert qu'UNE requête à la fois : N requêtes
+# simultanées (N users, ou chat + cron MAINTENANCE) s'empilent côté serveur
+# sans aucun signal, chacune payant le prompt processing complet des
+# précédentes, jusqu'au timeout 900 s. On borne au niveau TRANSPORT : un
+# httpx.AsyncClient PARTAGÉ par base_url avec max_connections=N — la N+1ᵉ
+# requête attend une connexion du pool (file d'attente côté client) au lieu
+# de s'empiler côté serveur. Couvre ainvoke/astream/bind_tools sans wrapper.
+# Env : LOCAL_LLM_MAX_CONCURRENCY (défaut 1 — c'est la réalité du serveur).
+
+_LOCAL_HTTPX_CLIENTS: dict[str, "httpx.AsyncClient"] = {}
+
+# B-1 — référence forte sur le chargement paresseux des settings LLM
+# (programmé en fond par get_llm_for_tier quand le cache est froid).
+_lazy_settings_task = None
+
+
+def _local_llm_async_client(base_url: str) -> "httpx.AsyncClient":
+    import os
+
+    import httpx
+
+    client = _LOCAL_HTTPX_CLIENTS.get(base_url)
+    if client is None or client.is_closed:
+        n = max(1, int(os.environ.get("LOCAL_LLM_MAX_CONCURRENCY", "1")))
+        client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=n, max_keepalive_connections=n),
+            # pool=900 : une requête en file peut attendre jusqu'au deadline
+            # global — c'est voulu, la file est bornée par le timeout requête.
+            timeout=httpx.Timeout(900.0, connect=10.0),
+        )
+        _LOCAL_HTTPX_CLIENTS[base_url] = client
+    return client
+
+
+def _local_ollama_limits() -> dict:
+    """``async_client_kwargs`` pour ChatOllama — même borne que LM Studio.
+
+    Scope par-instance (le client ollama construit son propre httpx.Client),
+    donc moins strict que le client partagé LM Studio, mais borne quand même
+    l'empilement d'une instance donnée. La stack locale documentée est
+    LM Studio ; Ollama reste un chemin legacy/fallback.
+    """
+    import os
+
+    import httpx
+
+    n = max(1, int(os.environ.get("LOCAL_LLM_MAX_CONCURRENCY", "1")))
+    return {
+        "limits": httpx.Limits(max_connections=n, max_keepalive_connections=n),
+    }
 
 
 def _make_lm_studio(model: str, base_url: str, max_tokens: int = 4096, temperature: float = 0.1) -> BaseChatModel:
@@ -441,6 +495,10 @@ def _make_lm_studio(model: str, base_url: str, max_tokens: int = 4096, temperatu
         # de bug LM Studio. Voir audit H-4.
         "timeout": 900.0,
         "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+        # A-5 — client async partagé par base_url, max_connections borné :
+        # la concurrence vers le serveur local mono-requête est sérialisée
+        # côté client au lieu de s'empiler côté LM Studio.
+        "http_async_client": _local_llm_async_client(base_url),
     }
     if _stops:
         _kwargs["model_kwargs"] = {"stop": _stops}
@@ -608,7 +666,8 @@ def get_llm() -> BaseChatModel:
         from langchain_ollama import ChatOllama
         return ChatOllama(model=model,
             base_url=settings.ollama_base_url,
-            temperature=0.7, keep_alive="24h")
+            temperature=0.7, keep_alive="24h",
+            async_client_kwargs=_local_ollama_limits())
 
     elif provider == "lm_studio":
         return _make_lm_studio(model=model, base_url=settings.lm_studio_base_url)
@@ -1229,28 +1288,40 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     this branch is a no-op (the ``if`` short-circuits).
     """
     if not _instance_cache and not _runtime.get("provider"):
+        # B-1 (revue 2026-06-10) — l'ancien code bloquait ici l'event loop
+        # jusqu'à 10 s (`fut.result(timeout=10)` depuis du code sync exécuté
+        # SUR la loop) : tous les WebSockets de tous les users gelaient,
+        # précisément au cold start. Désormais : si une loop tourne, on
+        # programme le chargement en tâche de fond (référence forte) et CE
+        # tour utilise les défauts — le tour suivant a le cache chaud. Hors
+        # loop (script `docker compose exec`, cron isolé), on charge en
+        # synchrone comme avant.
         try:
             import asyncio
-            # We're in an async context (every caller of this function is),
-            # but get_llm_for_tier itself is sync. Use the running loop to
-            # await the loader in a way that doesn't deadlock.
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We can't await from sync code inside a running loop —
-                # schedule it and block briefly. Acceptable here because
-                # this branch only fires once per process at most.
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    fut = pool.submit(
-                        lambda: asyncio.run(load_llm_settings_from_db())
+            try:
+                asyncio.get_running_loop()
+                _in_loop = True
+            except RuntimeError:
+                _in_loop = False
+
+            if _in_loop:
+                global _lazy_settings_task
+                if _lazy_settings_task is None or _lazy_settings_task.done():
+                    from app.services.background_tasks import spawn
+                    _lazy_settings_task = spawn(
+                        load_llm_settings_from_db(),
+                        label="llm-settings-lazy-load",
                     )
-                    fut.result(timeout=10)
+                logger.warning(
+                    "get_llm_for_tier: settings LLM pas encore chargés — "
+                    "chargement lancé en fond, défauts utilisés pour ce tour"
+                )
             else:
-                loop.run_until_complete(load_llm_settings_from_db())
-            logger.info(
-                "get_llm_for_tier: lazily loaded LLM settings from DB "
-                "(cache had 0 instances, now %d)", len(_instance_cache),
-            )
+                asyncio.run(load_llm_settings_from_db())
+                logger.info(
+                    "get_llm_for_tier: lazily loaded LLM settings from DB "
+                    "(cache had 0 instances, now %d)", len(_instance_cache),
+                )
         except Exception as exc:
             logger.warning(
                 "get_llm_for_tier: lazy load failed (will use defaults): %s",

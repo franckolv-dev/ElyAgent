@@ -21,6 +21,14 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.4] — 2026-06-10 — Phase 1 (lot 2) revue multi-utilisateurs : event loop & LLM local
+
+### Fixed
+- **`get_llm_for_tier` ne bloque plus l'event loop au cold start (B-1).** La branche de chargement paresseux des settings LLM faisait `fut.result(timeout=10)` depuis du code sync exécuté **sur** la loop : cache froid + premier appel = toute l'application gelée (tous les WebSockets, tous les users) jusqu'à 10 s — précisément au moment du rush post-redémarrage. Désormais : si une loop tourne, le chargement part en tâche de fond (référence forte via `spawn`) et le tour courant utilise les défauts ; hors loop (script `docker compose exec`, cron isolé), chargement synchrone comme avant. *(2026-06-10)*
+- **Porte de concurrence devant le LLM local (A-5).** LM Studio/MLX ne sert qu'**une** requête à la fois : N requêtes simultanées (N users, ou chat + cron MAINTENANCE) s'empilaient côté serveur sans signal, chacune payant le prompt processing complet des précédentes jusqu'au timeout 900 s. Borne au niveau **transport** : `httpx.AsyncClient` partagé par base_url avec `max_connections=1` (env `LOCAL_LLM_MAX_CONCURRENCY`) — la file d'attente vit côté client, couvre `ainvoke`/`astream`/`bind_tools` sans wrapper. Même borne (`async_client_kwargs`) sur les chemins Ollama legacy. *(2026-06-10)*
+
+---
+
 ## [1.14.3] — 2026-06-10 — Phase 1 (lot 1) revue multi-utilisateurs : fiabilité temps réel
 
 ### Fixed
