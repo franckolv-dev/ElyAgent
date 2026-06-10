@@ -19,8 +19,11 @@
 """File upload endpoint — stores files server-side for use by agent tools (pdf_read, etc.)."""
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
+import os
+import time
 import uuid
 from pathlib import Path
 from typing import Annotated
@@ -35,6 +38,74 @@ logger = logging.getLogger(__name__)
 
 UPLOADS_DIR = Path(__file__).parents[2] / "uploads"
 MAX_FILE_SIZE = 50 * 1024 * 1024   # 50 MB
+
+# B-9 (revue 2026-06-10) — quota disque PAR USER. La limite par fichier
+# existait mais rien ne bornait le cumul : N users × captures d'écran à
+# chaque message + uploads 50 Mo = croissance non bornée sur le disque hôte.
+# 0 = désactivé.
+UPLOAD_QUOTA_MB = int(os.environ.get("ELY_UPLOAD_QUOTA_MB", "500"))
+
+# Purge des fichiers plus vieux que N jours (cron quotidien programmé dans
+# main.py). 90 j par défaut : les chemins restent référencés dans
+# l'historique des conversations — une purge agressive casserait des liens
+# encore consultés. 0 = désactivé.
+UPLOADS_RETENTION_DAYS = int(os.environ.get("ELY_UPLOADS_RETENTION_DAYS", "90"))
+
+
+def _dir_size_bytes(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _check_user_quota(user_dir: Path, incoming_size: int) -> None:
+    """Raise 413 when accepting ``incoming_size`` would exceed the per-user
+    quota. Separate helper so the policy is unit-testable without the
+    HTTP/auth round-trip."""
+    if UPLOAD_QUOTA_MB <= 0:
+        return
+    quota = UPLOAD_QUOTA_MB * 1024 * 1024
+    used = _dir_size_bytes(user_dir)
+    if used + incoming_size > quota:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Quota de stockage atteint ({used // (1024*1024)} Mo utilisés "
+                f"sur {UPLOAD_QUOTA_MB} Mo). Supprime des fichiers ou augmente "
+                f"ELY_UPLOAD_QUOTA_MB."
+            ),
+        )
+
+
+async def purge_old_uploads() -> int:
+    """Delete uploaded files older than the retention window.
+
+    Scheduled daily from main.py (B-9). Runs the filesystem scan in a
+    thread — UPLOADS_DIR can hold thousands of screenshots."""
+    if UPLOADS_RETENTION_DAYS <= 0:
+        return 0
+    cutoff = time.time() - UPLOADS_RETENTION_DAYS * 86400
+
+    def _scan() -> int:
+        removed = 0
+        if not UPLOADS_DIR.exists():
+            return 0
+        for f in UPLOADS_DIR.rglob("*"):
+            try:
+                if f.is_file() and f.stat().st_mtime < cutoff:
+                    f.unlink(missing_ok=True)
+                    removed += 1
+            except OSError:
+                continue
+        return removed
+
+    removed = await asyncio.to_thread(_scan)
+    if removed:
+        logger.info(
+            "uploads purge: %d fichier(s) > %d jours supprimés",
+            removed, UPLOADS_RETENTION_DAYS,
+        )
+    return removed
 
 # Extensions + MIME types accepted
 ALLOWED_EXTENSIONS = {
@@ -136,6 +207,9 @@ async def upload_file(
     # Create per-user directory
     user_dir = UPLOADS_DIR / user_id
     user_dir.mkdir(parents=True, exist_ok=True)
+
+    # B-9 — quota par user (le scan disque part en thread, pas sur la loop)
+    await asyncio.to_thread(_check_user_quota, user_dir, size)
 
     # Store with a UUID prefix to avoid collisions
     file_id = str(uuid.uuid4())

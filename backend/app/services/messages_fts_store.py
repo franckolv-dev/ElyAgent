@@ -65,7 +65,8 @@ import logging
 import re
 from functools import lru_cache
 
-import aiosqlite
+import aiosqlite  # noqa: F401  (kept: Row/static typing helpers)
+from app.services.sqlite_aio import connect as _connect
 
 from app.config import get_settings
 
@@ -147,7 +148,7 @@ class MessagesFTSStore:
         is a no-op when the table is already there.
         """
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.execute(_CREATE_TABLE)
                 await db.commit()
             logger.info("messages_fts index ready")
@@ -179,7 +180,7 @@ class MessagesFTSStore:
         if not text or not text.strip():
             return
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.execute(
                     "INSERT INTO messages_fts"
                     " (text, message_id, conversation_id, user_id, role, created_at_ts)"
@@ -204,7 +205,7 @@ class MessagesFTSStore:
         if not valid:
             return 0
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.executemany(
                     "INSERT INTO messages_fts"
                     " (text, message_id, conversation_id, user_id, role, created_at_ts)"
@@ -246,7 +247,7 @@ class MessagesFTSStore:
         if not fts_query:
             return []
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 cursor = await db.execute(
                     """
                     SELECT   message_id, conversation_id, role,
@@ -287,7 +288,7 @@ class MessagesFTSStore:
         deleted that conversation" intent fully propagates.
         """
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.execute(
                     "DELETE FROM messages_fts WHERE conversation_id = ?",
                     (conversation_id,),
@@ -302,7 +303,7 @@ class MessagesFTSStore:
     async def delete_user_data(self, user_id: str) -> None:
         """Remove all FTS entries for a user (GDPR / account deletion)."""
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 await db.execute(
                     "DELETE FROM messages_fts WHERE user_id = ?", (user_id,)
                 )
@@ -314,7 +315,7 @@ class MessagesFTSStore:
     async def count_for_user(self, user_id: str) -> int:
         """Return the number of indexed messages for diagnostics."""
         try:
-            async with aiosqlite.connect(_db_path()) as db:
+            async with _connect(_db_path()) as db:
                 cursor = await db.execute(
                     "SELECT COUNT(*) FROM messages_fts WHERE user_id = ?",
                     (user_id,),

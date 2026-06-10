@@ -6,10 +6,21 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    # B-16 (revue 2026-06-10) — le backend est LE service dont la RAM croît
+    # avec le nombre d'utilisateurs (faster-whisper, fastembed, Chromium
+    # Playwright, clients WhatsApp par user, caches). Sans cap, il peut
+    # pousser le Mac hôte en swap et dégrader LM Studio — exactement le
+    # scénario que le mem_limit du frontend visait déjà. À recalibrer si
+    # OOM-kill constaté (docker inspect → OOMKilled: true).
+    mem_limit: 4g
     ports:
       - "${ELY_BACKEND_PORT:-8000}:8000"
     volumes:
       - ./data/db:/app/data
+      # B-9 (revue 2026-06-10) — /app/uploads n'était PAS persisté : chaque
+      # rebuild perdait les fichiers uploadés et les captures d'écran dont
+      # les chemins restent référencés dans l'historique des conversations.
+      - ./data/uploads:/app/uploads
       - ./config:/config:ro
       # SSH keys mount for ssh_* tools. DEFAULT is ./data/ssh (a local empty
       # directory) — NOT your personal ~/.ssh — so a fresh `make up` doesn't
@@ -34,14 +45,17 @@ services:
       - UV_TOOL_DIR=/tmp/uv-tools
       - UV_CACHE_DIR=/tmp/uv-cache
       # ACCESS_TOKEN_EXPIRE_MINUTES + REFRESH_TOKEN_EXPIRE_DAYS purposely
-      # NOT set here — let .env values win. Default is 60 min / 7 days,
-      # see app/config.py. Setting them here would override .env silently.
+      # NOT set here — let .env values win. Default is 15 min / 7 days
+      # (15 min depuis v1.14.2, B-18/D2), see app/config.py. Setting them
+      # here would override .env silently.
       - DATABASE_URL=sqlite+aiosqlite:////app/data/cyberentity.db
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - BACKEND_URL=${BACKEND_URL:-http://localhost:8000}
       - RATE_LIMIT=60/minute
       - QDRANT_URL=http://qdrant:6333
-      - TTS_VOICE=${TTS_VOICE:-fr-FR-DeniseNeural}
+      # Aligné sur le défaut applicatif (v1.14.2) — l'ancien défaut compose
+      # DeniseNeural écrasait silencieusement le nouveau défaut du code.
+      - TTS_VOICE=${TTS_VOICE:-fr-FR-VivienneMultilingualNeural}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - SLM_ENABLED=${SLM_ENABLED:-false}
       - SLM_MODEL=${SLM_MODEL:-qwen2.5:3b-instruct}
