@@ -17,7 +17,13 @@ Categories used:
 
 ## [Unreleased]
 
-> Sprint 4c — missions structurées (→ v1.17.0). Jalons : J1 ✅ format+parser+modèle · J2 ✅ exécuteur · J3 ✅ hook ask_user · J4 ✅ viewer liste · J5 rétrocompat+docs.
+_(empty — next batch starts here)_
+
+---
+
+## [1.17.0] — 2026-06-10 — Sprint 4c : missions structurées (spec YAML + ask_user + viewer)
+
+> Sprint complet en 5 jalons (PRs #86-#90) : J1 format+parser · J2 exécuteur · J3 hook ask_user · J4 viewer liste · J5 docs. Fin du prompt-monolithe des missions : ajouter un cas oublié = ajouter UNE ligne, et quand Ely hésite, elle pose la question puis reprend sur la réponse — le « mode chat fait à la main », automatisé.
 
 ### Added (J4 — viewer liste, la fonctionnalité devient visible)
 - **Le viewer LISTE** (pas de canvas — choix de design explicite du backlog) : sur la page de détail d'une mission structurée, panneau « Exécution structurée » — chaque step de la spec avec son icône d'état, la progression `done/total` des `foreach`, les items dessous (✓ done avec extrait de résultat · ⏳ en cours · ⏸ **attend ta réponse** avec champ inline « Répondre » (Entrée pour envoyer) · ⊝ sauté avec sa note · ✗ échec), les cas prévus du step, et la réponse passée affichée sur l'item traité (« ↳ Celle de Bordeaux »). Badge « N questions en attente » en tête. Auto-refresh 3 s pendant l'exécution (poll existant). Endpoint `GET /missions/{id}/structure` (outline de la spec — TOUS les steps, même futurs — + runs, un seul round-trip ; remplace `step-runs`). **Création depuis l'UI** : zone repliable « Mission structurée (YAML) » dans le modal Nouvelle mission, avec exemple canonique en placeholder — 422 listant toutes les erreurs si la spec est invalide. i18n FR/EN, `sw.js` v14→v15. *(2026-06-10)*
