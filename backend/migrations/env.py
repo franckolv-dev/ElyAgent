@@ -21,7 +21,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False : le défaut de fileConfig DÉSACTIVE
+    # tous les loggers déjà créés — au boot in-process (alembic_runner)
+    # ça éteindrait les loggers de l'app entière (et ça rendait muets les
+    # tests caplog exécutés après une migration).
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Importe tous les modèles pour que Base.metadata soit complet
 from app import models  # noqa: F401,E402
