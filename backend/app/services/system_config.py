@@ -34,20 +34,32 @@ logger = logging.getLogger(__name__)
 
 
 async def get_config(key: str, fallback: str = "") -> str:
-    """Read a config value from DB, fallback to provided default."""
+    """Read a config value from DB, fallback to provided default.
+
+    B-11 (revue 2026-06-10) : ``decrypt`` est auto-descriptif (préfixe
+    ``enc:gcm:``) — les valeurs legacy en clair passent telles quelles.
+    """
     try:
         async with async_session() as db:
             result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
             row = result.scalar_one_or_none()
             if row and row.value:
-                return row.value
+                from app.services.secrets_at_rest import decrypt
+                return decrypt(row.value)
     except Exception as exc:
         logger.warning("system_config get failed for key=%s: %s", key, exc)
     return fallback
 
 
 async def set_config(key: str, value: str, *, is_secret: bool = False, description: str = "") -> None:
-    """Upsert a config value in DB."""
+    """Upsert a config value in DB.
+
+    B-11 : ``is_secret=True`` ne faisait que masquer l'UI — la valeur
+    restait en CLAIR dans SQLite. Désormais chiffrée AES-GCM au repos.
+    """
+    if is_secret and value:
+        from app.services.secrets_at_rest import encrypt
+        value = encrypt(value)
     async with async_session() as db:
         result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
         row = result.scalar_one_or_none()
@@ -64,6 +76,42 @@ async def set_config(key: str, value: str, *, is_secret: bool = False, descripti
                 description=description or key,
             ))
         await db.commit()
+
+
+async def migrate_plaintext_secrets() -> int:
+    """Chiffre en une passe les secrets encore en clair (boot, B-11).
+
+    Couvre ``system_config`` (``is_secret=True``) et
+    ``llm_instances.api_key``. Idempotent — les valeurs déjà ``enc:gcm:``
+    sont laissées telles quelles. Retourne le nombre de valeurs migrées.
+    """
+    from app.models.llm_instance import LLMInstance
+    from app.services.secrets_at_rest import encrypt, is_encrypted
+
+    migrated = 0
+    try:
+        async with async_session() as db:
+            rows = (await db.execute(
+                select(SystemConfig).where(SystemConfig.is_secret == True)  # noqa: E712
+            )).scalars().all()
+            for row in rows:
+                if row.value and not is_encrypted(row.value):
+                    row.value = encrypt(row.value)
+                    migrated += 1
+            instances = (await db.execute(select(LLMInstance))).scalars().all()
+            for inst in instances:
+                if inst.api_key and not is_encrypted(inst.api_key):
+                    inst.api_key = encrypt(inst.api_key)
+                    migrated += 1
+            await db.commit()
+        if migrated:
+            logger.info(
+                "secrets_at_rest: %d secret(s) en clair chiffrés (migration B-11)",
+                migrated,
+            )
+    except Exception as exc:
+        logger.warning("migrate_plaintext_secrets failed: %s", exc)
+    return migrated
 
 
 async def delete_config(key: str) -> None:

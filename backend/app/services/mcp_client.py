@@ -42,6 +42,19 @@ from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
+# B-12 (revue 2026-06-10) — slug serveur → noms d'outils exposés. Permet à
+# tool_acl de réserver les outils MCP (lancés avec les secrets admin) au
+# rôle admin sans coupler tool_node au cycle de vie MCP.
+_MCP_TOOL_NAMES: dict[str, set[str]] = {}
+
+
+def mcp_tool_names() -> set[str]:
+    """Noms de TOUS les outils MCP actuellement chargés."""
+    names: set[str] = set()
+    for tool_set in _MCP_TOOL_NAMES.values():
+        names |= tool_set
+    return names
+
 
 # ── Env scrubbing constants for the spawned MCP process ─────────────────────
 #
@@ -288,6 +301,9 @@ class MCPClientManager:
                 author="mcp",
             )
             get_skill_registry().register_or_replace(skill)
+            # B-12 — les outils MCP tournent avec les secrets env_json de
+            # l'admin : tool_acl les réserve au rôle admin via ce registre.
+            _MCP_TOOL_NAMES[srv.slug] = {t.name for t in tools}
             logger.info("MCP skill loaded: %s (%d tools)", srv.slug, len(tools))
         except Exception as exc:
             logger.error("Failed to load MCP server %s: %s", srv.slug, exc)
@@ -297,6 +313,7 @@ class MCPClientManager:
         """Supprime la Skill MCP du registry et ferme la connexion."""
         from app.skills.registry import get_skill_registry
         get_skill_registry().unregister(f"mcp_{slug}")
+        _MCP_TOOL_NAMES.pop(slug, None)
 
         conn = self._connections.pop(slug, None)
         if conn:

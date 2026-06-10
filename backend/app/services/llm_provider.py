@@ -1083,7 +1083,12 @@ async def load_llm_instances_from_db() -> None:
             instances = result.scalars().all()
 
         for inst in instances:
-            register_instance_cache(inst.id, inst.provider, inst.model, inst.api_key)
+            # B-11 — api_key chiffrée au repos depuis 2026-06-10 ;
+            # decrypt() laisse passer le legacy en clair tel quel.
+            from app.services.secrets_at_rest import decrypt as _decrypt_key
+            register_instance_cache(
+                inst.id, inst.provider, inst.model, _decrypt_key(inst.api_key)
+            )
 
         logger.info("Loaded %d LLM instances from DB into cache", len(instances))
     except Exception as exc:

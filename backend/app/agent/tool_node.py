@@ -311,6 +311,15 @@ async def tool_node(state: AgentState) -> dict:
                 ))
                 continue
 
+        # B-12 (revue 2026-06-10) — outils à ressources d'INSTANCE (hôtes
+        # SSH de l'admin, serveurs MCP avec secrets env_json admin) :
+        # réservés au rôle admin tant qu'il n'y a pas d'ACL per-user.
+        from app.services.tool_acl import check_tool_access
+        _acl_refusal = await check_tool_access(user_id, tool_name)
+        if _acl_refusal:
+            results.append(_tool_result(_acl_refusal, tc_id))
+            continue
+
         tool = tool_map.get(tool_name)
         if tool:
             try:
