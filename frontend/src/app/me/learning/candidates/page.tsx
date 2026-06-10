@@ -31,7 +31,7 @@ import remarkGfm from "remark-gfm";
 import {
   Sparkles, Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   CheckCircle2, XCircle, Archive, RotateCcw, ShieldCheck, CheckCircle,
-  Code2, FileText,
+  Code2, FileText, Globe,
 } from "lucide-react";
 
 import { AdminGuard } from "@/components/layout/AuthGuard";
@@ -167,6 +167,62 @@ function ValidationReport({ raw }: { raw: string }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// Sprint 4b V3 J8 — un candidat `io` déclare un PÉRIMÈTRE (domaines egress,
+// libs, labels Vault) en plus de son code : promouvoir, c'est valider les
+// deux. Ce panneau rend les trois listes en chips pour que la revue se fasse
+// en un coup d'œil, sans lire le décorateur dans la source.
+function IoDeclarationsPanel({ skill }: { skill: LearnedSkillCandidate }) {
+  const t = useTranslations("learningCandidates");
+  const chips = (
+    items: string[] | null | undefined,
+    tone: string,
+  ) =>
+    items && items.length > 0 ? (
+      items.map((item) => (
+        <code
+          key={item}
+          className={`px-1.5 py-0.5 text-[10px] font-mono rounded border ${tone}`}
+        >
+          {item}
+        </code>
+      ))
+    ) : (
+      <span className="text-[10px] text-text-muted italic">{t("ioNone")}</span>
+    );
+
+  return (
+    <div className="mb-3 rounded border border-orange-500/30 bg-orange-500/5 p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <Globe className="w-3.5 h-3.5 text-orange-300" />
+        <span className="text-[11px] font-medium text-text-secondary">
+          {t("ioPanelTitle")}
+        </span>
+      </div>
+      <dl className="space-y-1.5 text-[11px]">
+        <div className="flex items-start gap-2 flex-wrap">
+          <dt className="text-text-muted w-28 shrink-0">{t("ioEgress")}</dt>
+          <dd className="flex gap-1 flex-wrap">
+            {chips(skill.v3_network_allow, "bg-orange-500/10 text-orange-200 border-orange-500/30")}
+          </dd>
+        </div>
+        <div className="flex items-start gap-2 flex-wrap">
+          <dt className="text-text-muted w-28 shrink-0">{t("ioDeps")}</dt>
+          <dd className="flex gap-1 flex-wrap">
+            {chips(skill.v3_requires, "bg-violet-500/10 text-violet-200 border-violet-500/30")}
+          </dd>
+        </div>
+        <div className="flex items-start gap-2 flex-wrap">
+          <dt className="text-text-muted w-28 shrink-0">{t("ioSecrets")}</dt>
+          <dd className="flex gap-1 flex-wrap">
+            {chips(skill.v3_requires_secrets, "bg-cyber-cyan/10 text-cyber-cyan border-cyber-cyan/30")}
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-[10px] text-text-muted">{t("ioReviewHint")}</p>
     </div>
   );
 }
@@ -405,6 +461,15 @@ function CandidateRow({
               {isPython ? <Code2 className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
               {isPython ? t("formatPython") : t("formatPlaybook")}
             </span>
+            {skill.tool_profile === "io" && (
+              <span
+                className="px-1.5 py-0.5 text-[10px] font-mono rounded border inline-flex items-center gap-1 bg-orange-500/10 text-orange-300 border-orange-500/30"
+                title={t("ioBadgeHint")}
+              >
+                <Globe className="w-3 h-3" />
+                {t("ioBadge")}
+              </span>
+            )}
             {skill.last_eval_score !== null ? (
               <span className={`px-1.5 py-0.5 text-[10px] font-mono rounded border ${scoreBadgeClass(skill.last_eval_score)}`}>
                 {t("scoreLabel", { score: skill.last_eval_score })}
@@ -492,6 +557,7 @@ function CandidateRow({
       {expanded && (
         isPython ? (
           <div className="mt-3 ml-7">
+            {skill.tool_profile === "io" && <IoDeclarationsPanel skill={skill} />}
             <ValidationReport raw={skill.validation_report_json} />
             <pre className="overflow-x-auto rounded bg-bg-primary border border-border-dim p-3 text-[11px] leading-relaxed">
               <code className="font-mono text-text-secondary whitespace-pre">

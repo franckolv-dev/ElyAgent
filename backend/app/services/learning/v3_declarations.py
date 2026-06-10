@@ -56,6 +56,26 @@ BAKED_LIBS: Final[frozenset[str]] = frozenset({
 })
 
 _REQUIREMENTS_PATH = Path(__file__).resolve().parents[3].parent / "sandbox" / "requirements.txt"
+_SQUID_CONF_PATH = Path(__file__).resolve().parents[3].parent / "sandbox" / "squid.conf"
+
+
+def squid_allowed_domains() -> list[str]:
+    """Domaines autorisés par l'ACL egress de la sandbox (J7, v1.16.0).
+
+    Parse la ligne ``acl allowed_domains dstdomain .a.tld .b.tld`` de
+    ``sandbox/squid.conf`` — la même source de vérité que le proxy au
+    runtime. Retourne ``[]`` si le fichier est illisible (le prompt du
+    générateur dégrade en avertissement explicite plutôt qu'en liste
+    inventée).
+    """
+    try:
+        for line in _SQUID_CONF_PATH.read_text().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("acl allowed_domains dstdomain"):
+                return stripped.split()[3:]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("squid_allowed_domains: %s illisible (%s)", _SQUID_CONF_PATH, exc)
+    return []
 
 
 # ── Validation regexes ───────────────────────────────────────────────────────

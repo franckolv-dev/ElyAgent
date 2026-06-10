@@ -671,7 +671,7 @@ async def test_run_tool_creator_endpoint_creates_candidate(_seeded_user, monkeyp
         '''
     ).strip()
 
-    async def _fake_gen(*, task_description, user_id, prior_errors=None):  # noqa: ARG001
+    async def _fake_gen(*, task_description, user_id, prior_errors=None, **_kw):  # noqa: ARG001
         return source, {"status": "generated", "provider_pick": "deepseek"}
 
     monkeypatch.setattr(tool_creator, "generate_tool_source", _fake_gen)
@@ -725,6 +725,7 @@ async def test_run_tool_creator_endpoint_threads_params_and_echoes_flag(_seeded_
         "user_id": _seeded_user,
         "smoke_kwargs": {"n": 10},
         "max_iterations": 2,
+        "profile": "pure",  # J7 — défaut rétrocompatible
     }
     assert result["python_tools_enabled"] is True
 

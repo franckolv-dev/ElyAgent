@@ -697,6 +697,12 @@ export interface LearnedSkillCandidate {
   /** JSON-encoded list of failure_case ids this skill addresses. */
   from_failure_case_ids: string;
   created_at: string;
+  /** Sprint 4b V3 J8 — `pure` (in-process) ou `io` (sandbox, egress réel). */
+  tool_profile?: string;
+  /** Déclarations V3 d'un tool io — la promotion valide AUSSI ce périmètre. */
+  v3_network_allow?: string[] | null;
+  v3_requires?: string[] | null;
+  v3_requires_secrets?: string[] | null;
 }
 
 /** A capability ELY's `find_tool` searched for but couldn't surface — the

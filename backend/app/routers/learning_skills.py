@@ -138,6 +138,16 @@ class ToolCreatorRunRequest(BaseModel):
             "fed back into the next generation. Default 3."
         ),
     )
+    profile: str = Field(
+        "pure",
+        pattern="^(pure|io)$",
+        description=(
+            "Sprint 4b V3 J7 — 'pure' (V2: composition + calcul, in-process) "
+            "ou 'io' (V3: intégration réseau réelle, exécutée en sandbox avec "
+            "egress déclaré, secrets Vault et deps bornées). Les candidats io "
+            "affichent leurs déclarations sur la page de revue."
+        ),
+    )
 
 
 class CandidateOut(BaseModel):
@@ -163,6 +173,13 @@ class CandidateOut(BaseModel):
     last_eval_score: Optional[int]
     rationale: Optional[str]
     from_failure_case_ids: str  # JSON string
+    # Sprint 4b V3 J8 — la revue d'un outil io exige de voir ce qu'il
+    # DÉCLARE (la promotion valide aussi un périmètre réseau/secrets/deps,
+    # pas seulement du code). None pour les playbooks et les tools pure.
+    tool_profile: str = "pure"
+    v3_network_allow: Optional[list[str]] = None
+    v3_requires: Optional[list[str]] = None
+    v3_requires_secrets: Optional[list[str]] = None
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -247,6 +264,7 @@ async def run_tool_creator(
             user_id=body.user_id,
             smoke_kwargs=body.smoke_kwargs,
             max_iterations=body.max_iterations,
+            profile=body.profile,
         )
     except Exception as exc:
         # generate_and_persist_tool is built to never raise; this is
@@ -294,6 +312,26 @@ async def list_candidates(
     query = query.order_by(LearnedSkill.created_at.desc()).limit(limit)
 
     rows = (await db.execute(query)).scalars().all()
+
+    def _v3_fields(r: LearnedSkill) -> dict[str, Any]:
+        """Déclarations V3 pour la revue J8 — uniquement pour les tools io."""
+        if (
+            r.content_format != SkillContentFormat.PYTHON_TOOL
+            or getattr(r, "tool_profile", "pure") != "io"
+        ):
+            return {"tool_profile": getattr(r, "tool_profile", "pure") or "pure"}
+        try:
+            from app.services.learning.v3_declarations import parse_v3_declarations
+            decls = parse_v3_declarations(r.content or "")
+            return {
+                "tool_profile": "io",
+                "v3_network_allow": list(decls.network_allow),
+                "v3_requires": list(decls.requires),
+                "v3_requires_secrets": list(decls.requires_secrets),
+            }
+        except Exception:  # noqa: BLE001 — la revue reste possible sans le panneau
+            return {"tool_profile": "io"}
+
     return [
         CandidateOut(
             id=r.id,
@@ -309,6 +347,7 @@ async def list_candidates(
             rationale=r.rationale,
             from_failure_case_ids=r.from_failure_case_ids,
             created_at=r.created_at.isoformat() if r.created_at else "",
+            **_v3_fields(r),
         )
         for r in rows
     ]

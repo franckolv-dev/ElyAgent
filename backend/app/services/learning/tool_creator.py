@@ -60,6 +60,21 @@ def _existing_tool_names() -> set[str]:
         return set()
 
 
+async def _vault_labels_best_effort(user_id: str) -> list[str]:
+    """Labels Vault du user pour le prompt io (J7). [] sur toute erreur —
+    le prompt dégrade en « aucun label provisionné »."""
+    try:
+        from app.services.vault_service import get_vault_service
+        entries = await get_vault_service().list_secrets(user_id)
+        return sorted({
+            (e.get("label") if isinstance(e, dict) else getattr(e, "label", None))
+            for e in entries
+        } - {None})
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("tool_creator: vault labels unavailable (%s)", exc)
+        return []
+
+
 async def generate_and_persist_tool(
     *,
     task_description: str,
@@ -68,6 +83,7 @@ async def generate_and_persist_tool(
     max_iterations: int = 3,
     existing_names: set[str] | None = None,
     from_failure_case_ids: list[int] | None = None,
+    profile: str = "pure",
 ) -> dict[str, Any]:
     """Run the generate→validate→iterate→persist loop once.
 
@@ -86,9 +102,26 @@ async def generate_and_persist_tool(
     if not user_id:
         return {"status": "error", "error": "user_id is required", "attempts": []}
 
+    if profile not in ("pure", "io"):
+        return {
+            "status": "error",
+            "error": f"unknown profile {profile!r} (pure | io)",
+            "attempts": [],
+        }
+
     max_iterations = max(1, min(int(max_iterations or 1), 5))
     names = existing_names if existing_names is not None else _existing_tool_names()
     run_smoke = smoke_kwargs is not None
+
+    # Contexte io (J7) : la source de vérité egress (Squid) + les labels
+    # Vault réellement provisionnés pour ce user — le modèle ne déclare
+    # que ce qui existe.
+    allowed_egress: list[str] | None = None
+    secret_labels: list[str] | None = None
+    if profile == "io":
+        from app.services.learning.v3_declarations import squid_allowed_domains
+        allowed_egress = squid_allowed_domains()
+        secret_labels = await _vault_labels_best_effort(user_id)
 
     attempts: list[dict[str, Any]] = []
     prior_errors: str | None = None
@@ -98,6 +131,9 @@ async def generate_and_persist_tool(
             task_description=task_description,
             user_id=user_id,
             prior_errors=prior_errors,
+            profile=profile,
+            allowed_egress=allowed_egress,
+            available_secret_labels=secret_labels,
         )
         attempt: dict[str, Any] = {"iteration": i, "gen_status": gen_info.get("status")}
 
@@ -119,6 +155,7 @@ async def generate_and_persist_tool(
             existing_names=names,
             smoke_kwargs=smoke_kwargs,
             run_smoke=run_smoke,
+            profile=profile,
         )
         attempt["validation"] = report.summary()
         attempt["tool_name"] = report.tool_name
@@ -128,13 +165,41 @@ async def generate_and_persist_tool(
             prior_errors = report.summary()
             continue
 
+        # ── Gate secrets async (J7) — hors chaîne sync de J5 ───────────
+        # Un label déclaré mais non provisionné n'est PAS réparable par le
+        # modèle (c'est un acte admin) : on retente UNE reformulation en
+        # listant les labels réellement disponibles, et si le besoin
+        # persiste on persiste quand même le candidat — la revue J8
+        # affiche les labels manquants et le bind-time gate (J6.c.1)
+        # tiendra l'outil hors du LLM tant que le Vault n'est pas prêt.
+        if profile == "io":
+            from app.services.learning.v3_declarations import (
+                check_secrets_exist,
+                parse_v3_declarations,
+            )
+            decls = parse_v3_declarations(source)
+            gate = await check_secrets_exist(decls, user_id=user_id)
+            attempt["secrets_gate"] = gate.summary()
+            if not gate.ok and i < max_iterations:
+                prior_errors = (
+                    f"requires_secrets references unprovisioned Vault labels "
+                    f"({gate.summary()}). Use ONLY labels from the AVAILABLE "
+                    f"VAULT SECRET LABELS list, or drop the secret if the API "
+                    f"works without it."
+                )
+                continue
+
         # ── success → persist a candidate ──────────────────────────────
+        from app.models.learned_skill import SkillToolProfile
         skill = LearnedSkill(
             user_id=user_id,
             name=(report.tool_name or "generated_tool")[:64],
             description=task_description.strip()[:1024],
             content=source,
             content_format=SkillContentFormat.PYTHON_TOOL,
+            tool_profile=(
+                SkillToolProfile.IO if profile == "io" else SkillToolProfile.PURE
+            ),
             frontmatter_json=json.dumps(
                 {"tool_name": report.tool_name, "provider": gen_info.get("provider_pick")},
                 ensure_ascii=False,

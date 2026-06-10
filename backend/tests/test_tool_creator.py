@@ -73,7 +73,9 @@ def _patch_generator(monkeypatch, responses):
     records the prior_errors it received each call."""
     state = {"n": 0, "prior_errors": []}
 
-    async def _fake(*, task_description, user_id, prior_errors=None):
+    async def _fake(*, task_description, user_id, prior_errors=None, **_kw):
+        # **_kw absorbe les kwargs J7 (profile, allowed_egress,
+        # available_secret_labels) sans coupler ces tests au contrat io.
         state["prior_errors"].append(prior_errors)
         idx = min(state["n"], len(responses) - 1)
         state["n"] += 1

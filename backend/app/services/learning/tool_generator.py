@@ -136,6 +136,103 @@ Hard requirements (the validator checks every one)
 """
 
 
+# ── Prompt io (Sprint 4b V3 J7 — v1.16.0) ───────────────────────────────────
+# Même writer, contrat différent : l'outil tourne DANS LA SANDBOX (subprocess
+# python -S, réseau via proxy egress filtrant, secrets injectés par le
+# wrapper). Le validateur correspondant est validate_tool_source(profile="io")
+# (7 étages, J5) + le gate async check_secrets_exist côté créateur.
+
+_SYSTEM_PROMPT_IO = """\
+You are ELY's autonomous TOOL writer. ELY is a sovereign AI agent
+(FastAPI + LangGraph). When ELY needs a genuinely NEW external integration
+(a public HTTP API, a web page to parse), you write a reusable Python
+`@tool` that runs inside ELY's SANDBOX with real — but strictly declared —
+network access.
+
+V3 IO SCOPE — read carefully, the validator WILL reject violations
+===================================================================
+Your tool runs in an isolated sandbox subprocess. It:
+  - MAY do real HTTP(S) calls with `httpx` — ONLY to the domains you
+    declare in `network_allow` (every domain must come from the ALLOWED
+    EGRESS DOMAINS list in the task message; anything else is refused by
+    the egress proxy at runtime).
+  - MAY parse responses with `beautifulsoup4` (`from bs4 import
+    BeautifulSoup`) and `lxml` — declare what you import in `requires`.
+  - MAY use pure-compute stdlib: math, json, re, datetime, statistics,
+    itertools, collections, decimal, functools, string, typing.
+  - reads API keys with `get_secret("vault_label")` — this helper is
+    INJECTED by the sandbox at runtime: do NOT import it, do NOT define
+    it. Declare every label you read in `requires_secrets`. NEVER hardcode
+    a credential, NEVER return or log a secret value.
+  - MUST NOT: import os/sys/subprocess/socket/shutil/pathlib/urllib/
+    requests, call open()/eval()/exec()/compile()/__import__, touch dunder
+    attributes, or call other ELY tools (`call_tool` does NOT exist in the
+    sandbox — an io tool is self-contained).
+
+Declarations contract (the three V3 kwargs on @register)
+---------------------------------------------------------
+    network_allow   = ["api.example.com"]   # exact domains you call
+    requires        = ["httpx"]              # pip distributions you import
+    requires_secrets = ["my_api_key"]        # Vault labels you get_secret()
+
+Declare EXACTLY what you use — no more (gates reject undeclared usage and
+unused declarations are confusing for the human reviewer), no less.
+
+Output contract
+---------------
+Reply with EXACTLY one fenced ```python code block and NOTHING else.
+The module MUST follow this shape:
+
+```python
+from __future__ import annotations
+
+import httpx
+from langchain_core.tools import tool
+
+from app.skills.base import Domain
+from app.skills.decorator import register
+
+
+@register(
+    domain=Domain.RESEARCH,                  # pick the most fitting Domain
+    skill_name="snake_case_slug",
+    skill_display_name="Human Readable Name",
+    skill_description="One sentence on what it does.",
+    skill_icon="🌐",
+    enabled_by_default=False,
+    network_allow=["api.example.com"],
+    requires=["httpx"],
+    requires_secrets=["example_api_key"],    # omit if no secret needed
+)
+@tool
+def snake_case_slug(query: str) -> dict:
+    \"\"\"Precise docstring: tell the LLM WHEN to call this tool.\"\"\"
+    api_key = get_secret("example_api_key")  # injected — do not import
+    r = httpx.get(
+        "https://api.example.com/v1/search",
+        params={"q": query, "key": api_key},
+        timeout=10,
+    )
+    r.raise_for_status()
+    return r.json()
+```
+
+Hard requirements (the validator checks every one)
+---------------------------------------------------
+- `@register` ABOVE `@tool`; the three V3 kwargs present and consistent
+  with the code (declared domains/libs/labels = used ones).
+- The function is a plain SYNC `def` (the sandbox runs it directly).
+- EVERY parameter and the return type are annotated; non-empty docstring
+  saying WHEN to call it.
+- `httpx` calls always set an explicit `timeout` and handle non-200
+  responses (`raise_for_status()` or a clear error return).
+- Serialisable, reasonably sized return value (str / int / list / dict of
+  primitives) — never raw bytes, never a full HTML page (extract what's
+  useful).
+- Keep it small and single-purpose.
+"""
+
+
 def _format_tool_list(tools: list[str]) -> str:
     if not tools:
         return "(no tools available — write a pure-computation tool only)"
@@ -153,15 +250,53 @@ def compose_user_prompt(
     *,
     available_tools: list[str],
     prior_errors: str | None = None,
+    profile: str = "pure",
+    allowed_egress: list[str] | None = None,
+    available_secret_labels: list[str] | None = None,
 ) -> str:
     """Build the user message. ``prior_errors`` (a validation report
-    summary) is included on retries so the model fixes the exact failure."""
+    summary) is included on retries so the model fixes the exact failure.
+
+    ``profile="io"`` (J7) : remplace la liste d'outils composables par le
+    contexte sandbox — domaines egress autorisés (la source de vérité
+    Squid) et labels Vault disponibles pour ce user.
+    """
     parts = [
         "Write a tool for this recurring need:\n",
         task_description.strip(),
-        "\n\nAVAILABLE TOOLS (compose ONLY these; inventing a tool name is forbidden):\n",
-        _format_tool_list(available_tools),
     ]
+    if profile == "io":
+        if allowed_egress:
+            parts.append(
+                "\n\nALLOWED EGRESS DOMAINS (declare network_allow as a "
+                "subset of EXACTLY these — any other domain is refused by "
+                "the proxy at runtime; if the API you need is missing, say "
+                "so in a comment instead of inventing a domain):\n  "
+                + " ".join(allowed_egress)
+            )
+        else:
+            parts.append(
+                "\n\nALLOWED EGRESS DOMAINS: (list unavailable — declare the "
+                "exact domains your code calls; the admin will review them)"
+            )
+        if available_secret_labels:
+            parts.append(
+                "\n\nAVAILABLE VAULT SECRET LABELS for this user (use "
+                "get_secret() ONLY with labels from this list):\n  "
+                + ", ".join(sorted(available_secret_labels))
+            )
+        else:
+            parts.append(
+                "\n\nAVAILABLE VAULT SECRET LABELS: (none provisioned — "
+                "prefer a keyless API; if a key is unavoidable, declare the "
+                "label you need in requires_secrets and the admin will "
+                "provision it before promotion)"
+            )
+    else:
+        parts.append(
+            "\n\nAVAILABLE TOOLS (compose ONLY these; inventing a tool name "
+            "is forbidden):\n" + _format_tool_list(available_tools)
+        )
     if prior_errors:
         parts.append(
             "\n\nYOUR PREVIOUS ATTEMPT FAILED VALIDATION. Fix exactly this and "
@@ -238,14 +373,21 @@ async def generate_tool_source(
     user_id: str = "",
     available_tools: list[str] | None = None,
     prior_errors: str | None = None,
+    profile: str = "pure",
+    allowed_egress: list[str] | None = None,
+    available_secret_labels: list[str] | None = None,
 ) -> tuple[str | None, dict[str, Any]]:
     """Ask the tier-S LLM (model per ``LLM_TIER_S_CHAIN``) to write a tool.
 
     Returns ``(source, info)``. ``source`` is the parsed Python module or
     None on failure. ``info`` carries the picked provider, token/cost
     accounting, and a status string. Never raises.
+
+    ``profile="io"`` (Sprint 4b V3 J7) : enseigne le contrat sandbox
+    (egress déclaré, secrets via ``get_secret``, libs bornées) au lieu du
+    contrat composition V2.
     """
-    info: dict[str, Any] = {"status": "pending"}
+    info: dict[str, Any] = {"status": "pending", "profile": profile}
     tools = available_tools if available_tools is not None else get_available_tool_names()
     info["available_tool_count"] = len(tools)
 
@@ -260,10 +402,17 @@ async def generate_tool_source(
         from langchain_core.messages import HumanMessage, SystemMessage
 
         messages = [
-            SystemMessage(content=_SYSTEM_PROMPT),
+            SystemMessage(
+                content=_SYSTEM_PROMPT_IO if profile == "io" else _SYSTEM_PROMPT
+            ),
             HumanMessage(
                 content=compose_user_prompt(
-                    task_description, available_tools=tools, prior_errors=prior_errors
+                    task_description,
+                    available_tools=tools,
+                    prior_errors=prior_errors,
+                    profile=profile,
+                    allowed_egress=allowed_egress,
+                    available_secret_labels=available_secret_labels,
                 )
             ),
         ]

@@ -92,7 +92,7 @@ def _enable(monkeypatch):
 
 
 def _patch_generator(monkeypatch, source):
-    async def _fake(*, task_description, user_id, prior_errors=None):  # noqa: ARG001
+    async def _fake(*, task_description, user_id, prior_errors=None, **_kw):  # noqa: ARG001
         return source, _GEN_OK
 
     monkeypatch.setattr(tool_creator, "generate_tool_source", _fake)
