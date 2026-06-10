@@ -21,6 +21,17 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.15.0] — 2026-06-10 — Sprint 4b V3 : intégration agent du pipeline io + canary HITL
+
+### Added
+- **L'agent peut enfin utiliser ses outils io auto-générés (Sprint 4b V3, intégration agent).** Le pipeline V3 (PRs #67-#71 : code_guard profil io, déclarations egress/secrets/deps, validation sandboxée, dispatch sandbox, secrets bag, audit per-call) était fonctionnellement complet mais **dormant** — l'agent n'appelait jamais `load_active_io_tools`. Les outils io rejoignent désormais les **deux coutures partagées** (`append_learned_tools` au bind, `merge_into_tool_map` au dispatch) : chat **et** missions en héritent sans câblage supplémentaire. Ordre déterministe : builtins > pure > io (un outil appris ne shadow jamais un builtin ; en collision pure/io, le pure in-process gagne). Toujours derrière `LEARNED_PYTHON_TOOLS_IO_ENABLED` (off par défaut) — zéro changement de comportement tant que le flag n'est pas posé. *(2026-06-10)*
+- **Période canary HITL (design V3 §5.6).** Les outils io sont intrinsèquement plus risqués (egress réel, code auto-généré) : leurs **N premières invocations passent par HITL** (`LEARNED_IO_TOOLS_CANARY_CALLS`, défaut 10, 0 = off) avant que l'outil ne soit de confiance. Le compteur s'appuie sur la table d'audit `io_tool_dispatches` (une ligne par appel, déjà écrite par le dispatcher) — aucun nouvel état. **Fail-closed** : historique illisible → HITL conservé. Les consentements explicites (« autoriser pour cette tâche », « toujours autoriser ») restent honorés. *(2026-06-10)*
+
+### Notes
+- Reste pour la v1.16.0 : **J7** (le tool_creator génère du profil `io`) et **J8** (panneaux admin de revue egress/secrets/deps). Limitation connue : le canary HITL couvre le chemin chat (`tool_node`) ; les missions autonomes utilisent leur propre plancher HITL.
+
+---
+
 ## [1.14.11] — 2026-06-10 — Phase 3 (lot 3) : Alembic + chemin Postgres documenté — **revue multi-utilisateurs SOLDÉE**
 
 ### Added

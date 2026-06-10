@@ -417,6 +417,7 @@ async def load_active_io_tools(
 
     out: list[StructuredTool] = []
     seen: set[str] = set()
+    _bound: set[str] = set()
     for skill in rows:
         # ── Secrets gate AT BIND TIME (Sprint 4b V3 J6.c.1) ──────────
         # Different from the per-call gate inside the dispatcher: this
@@ -466,9 +467,87 @@ async def load_active_io_tools(
             continue
         seen.add(tool.name)
         out.append(tool)
+        _bound.add(tool.name)
+    # Registre des noms io bindés (v1.15.0) — consommé par le canary HITL
+    # de tool_node pour distinguer un outil io d'un builtin homonyme.
+    # Rafraîchi à CHAQUE bind (y compris vers set() vide : une démotion ou
+    # le flag repassé off purgent l'entrée au tour suivant).
+    _BOUND_IO_NAMES[user_id] = _bound
     if out:
         logger.info(
             "load_active_io_tools: loaded %d io tool(s) for user %s",
             len(out), user_id[:8],
         )
     return out
+
+
+# ── Canary HITL (Sprint 4b V3, design §5.6 — v1.15.0) ───────────────────────
+# Les outils io sont intrinsèquement plus risqués (egress réel, code
+# auto-généré) : leurs N premières invocations passent par HITL avant que
+# l'outil ne soit « de confiance ». Le compteur s'appuie sur la table
+# d'audit io_tool_dispatches (J6.c.1) — une ligne par appel, déjà écrite
+# par le dispatcher : aucun nouvel état à maintenir.
+
+# user_id → noms des outils io actuellement bindés (rafraîchi à chaque bind)
+_BOUND_IO_NAMES: dict[str, set[str]] = {}
+
+_CANARY_DEFAULT_CALLS = 10
+
+
+def canary_calls_threshold() -> int:
+    """Nombre d'appels sous HITL avant confiance. 0 (ou invalide) = désactivé.
+    Env : LEARNED_IO_TOOLS_CANARY_CALLS (défaut 10)."""
+    try:
+        return int(os.environ.get(
+            "LEARNED_IO_TOOLS_CANARY_CALLS", str(_CANARY_DEFAULT_CALLS),
+        ))
+    except ValueError:
+        return _CANARY_DEFAULT_CALLS
+
+
+def is_bound_io_tool(user_id: str, tool_name: str) -> bool:
+    return tool_name in _BOUND_IO_NAMES.get(user_id, ())
+
+
+async def _dispatch_count(user_id: str, tool_name: str) -> int:
+    from sqlalchemy import func, select
+
+    from app.database import async_session
+    from app.models.io_tool_dispatch import IoToolDispatch
+
+    async with async_session() as db:
+        return int((await db.execute(
+            select(func.count()).select_from(IoToolDispatch).where(
+                IoToolDispatch.user_id == user_id,
+                IoToolDispatch.tool_name == tool_name,
+            )
+        )).scalar_one() or 0)
+
+
+async def io_canary_requires_hitl(user_id: str, tool_name: str) -> bool:
+    """True si ``tool_name`` est un outil io de ce user encore en période
+    canary. Fail-closed : un outil io dont l'historique est illisible
+    (erreur DB) reste sous HITL — un outil auto-généré avec egress réel ne
+    s'exécute jamais sans validation par défaut de panne."""
+    if not io_tools_enabled():
+        return False
+    if not user_id or not is_bound_io_tool(user_id, tool_name):
+        return False
+    threshold = canary_calls_threshold()
+    if threshold <= 0:
+        return False
+    try:
+        count = await _dispatch_count(user_id, tool_name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "io_canary: comptage des dispatches illisible pour %s/%s (%s) — "
+            "HITL conservé (fail-closed)", user_id[:8], tool_name, exc,
+        )
+        return True
+    if count < threshold:
+        logger.info(
+            "io_canary: %s en période canary pour %s (%d/%d appels) — HITL",
+            tool_name, user_id[:8], count, threshold,
+        )
+        return True
+    return False
