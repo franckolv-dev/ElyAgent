@@ -747,6 +747,38 @@ async def plan_node(state: MissionState) -> dict:
         logger.info("[mission %s] plan: existing v%d, skipping (iter=%d)", mission_id, plan_version, iteration)
         return {"iteration": iteration}
 
+    # ── Sprint 4c J2 — mission structurée : le plan EST la spec ─────────
+    # Aucun appel LLM : la spec validée à la création devient le plan v1,
+    # déterministe. Les missions legacy (spec_yaml NULL) continuent vers
+    # le planner LLM ci-dessous, à l'identique.
+    from app.services.mission_spec_runtime import (
+        build_plan_from_spec,
+        load_spec_for_mission,
+    )
+    _spec = await load_spec_for_mission(mission_id)
+    if _spec is not None:
+        plan_text, plan_json = build_plan_from_spec(_spec)
+        await mission_service.add_plan(mission_id, plan_text=plan_text, plan_json=plan_json)
+        await mission_service.add_step(
+            mission_id, phase="plan",
+            thought=f"Spec structurée v{_spec.version} — {len(_spec.steps)} step(s)",
+            evaluation=f"Plan déterministe depuis la spec ({len(_spec.steps)} étapes, 0 LLM)",
+            success=True,
+            duration_ms=0,
+            model_used="spec",
+        )
+        logger.info(
+            "[mission %s] plan: from spec, %d steps (deterministic)",
+            mission_id, len(_spec.steps),
+        )
+        return {
+            "iteration": iteration,
+            "plan_version": 1,
+            "plan_text": plan_text,
+            "plan_json": plan_json,
+            "consecutive_failures": 0,
+        }
+
     # Generate v1 plan
     t0 = time.monotonic()
     llm = _get_planner_llm()
@@ -905,6 +937,16 @@ async def _load_recent_step_outputs(mission_id: str, max_steps: int = 8, max_cha
     )
 
 
+def _mark_plan_step(plan_json: dict, step_id: str, status: str) -> dict:
+    """Copie de plan_json avec le statut d'un step mis à jour (Sprint 4c)."""
+    out = dict(plan_json)
+    out["steps"] = [
+        {**s, "status": status} if s.get("id") == step_id else s
+        for s in out.get("steps", [])
+    ]
+    return out
+
+
 def _next_pending_step(plan_json: Optional[dict]) -> Optional[dict]:
     """Return the first step with status != 'done' (or no status)."""
     if not plan_json:
@@ -936,6 +978,62 @@ async def act_node(state: MissionState) -> dict:
     current_step_desc = current_step.get("description", "?")
     current_tool_hint = current_step.get("tool_hint")
 
+    # ── Sprint 4c J2 — exécution pilotée par la spec ────────────────────
+    # Tout est gardé derrière from_spec : une mission legacy ne touche
+    # JAMAIS ce bloc. Un step foreach est étendu paresseusement en items
+    # (mission_step_runs) ; un tick traite UN item.
+    _is_spec = bool(plan_json.get("from_spec"))
+    _current_item_index: Optional[int] = None
+    if _is_spec:
+        from app.services import mission_spec_runtime as msr
+        if current_step.get("foreach"):
+            _expand_ctx = await _load_recent_step_outputs(mission_id)
+            _runs = await msr.expand_foreach(
+                mission_id, user_id, current_step, _expand_ctx,
+            )
+            _run = await msr.next_pending_run(mission_id, current_step_id)
+            if _run is None:
+                _done_n, _waiting_n, _total_n = msr.step_progress(_runs)
+                if _waiting_n:
+                    # Des items attendent une réponse utilisateur (J3) —
+                    # tick no-op sur ce step, la mission ne force rien.
+                    logger.info(
+                        "[mission %s] act: step %s — %d item(s) waiting_user",
+                        mission_id, current_step_id, _waiting_n,
+                    )
+                    return {
+                        "current_step_id": current_step_id,
+                        "last_tool_name": None,
+                        "last_eval_success": True,
+                        "last_eval_reason": (
+                            f"{_waiting_n} item(s) en attente de réponse utilisateur"
+                        ),
+                    }
+                # Tous les items terminaux → le step foreach est terminé.
+                return {
+                    "plan_json": _mark_plan_step(plan_json, current_step_id, "done"),
+                    "current_step_id": current_step_id,
+                    "last_tool_name": None,
+                    "last_eval_success": True,
+                    "last_eval_reason": f"foreach terminé ({_done_n}/{_total_n} items)",
+                }
+            await msr.set_step_run_status(
+                mission_id, current_step_id, _run.item_index,
+                status="running", bump_attempts=True,
+            )
+            _current_item_index = _run.item_index
+            current_step_desc = msr.render_item(current_step_desc, _run.item_value)
+            if _run.item_value:
+                current_step_desc = (
+                    f"[Item {_run.item_index + 1} : {_run.item_value}] {current_step_desc}"
+                )
+        else:
+            await msr.ensure_step_run(mission_id, current_step_id, 0, None)
+            await msr.set_step_run_status(
+                mission_id, current_step_id, 0, status="running", bump_attempts=True,
+            )
+            _current_item_index = 0
+
     # Build prompt and invoke primary tool-bound LLM, with fallback.
     # Tool list is pre-filtered to ~15 tools max (smaller models choke on
     # 76 simultaneous tool schemas — payload too big for LM Studio etc.)
@@ -952,8 +1050,13 @@ async def act_node(state: MissionState) -> dict:
     # context window into what weather_get had returned earlier in the run).
     prev_context = await _load_recent_step_outputs(mission_id)
 
+    _edge_block = ""
+    if _is_spec:
+        from app.services.mission_spec_runtime import edge_protocol_prompt
+        _edge_block = edge_protocol_prompt(current_step.get("handlers") or {})
+
     messages: list[BaseMessage] = [
-        SystemMessage(content=_ACT_SYSTEM.format(plan_text=plan_text, current_step_desc=current_step_desc)),
+        SystemMessage(content=_ACT_SYSTEM.format(plan_text=plan_text, current_step_desc=current_step_desc) + _edge_block),
         HumanMessage(content=f"Goal : {state.get('goal','?')}"),
     ]
     if prev_context:
@@ -973,12 +1076,19 @@ async def act_node(state: MissionState) -> dict:
         logger.warning("[mission %s] act: primary LLM raised %s — falling back", mission_id, type(exc).__name__)
         response = None
 
+    # Sprint 4c — l'acteur a signalé un cas particulier prévu par la spec :
+    # pas de tool_call, pas de fallback, l'évaluateur applique le handler.
+    _edge: Optional[tuple] = None
+    if _is_spec and response is not None and not tool_calls:
+        from app.services.mission_spec_runtime import parse_edge_case
+        _edge = parse_edge_case(getattr(response, "content", "") or "")
+
     # Fallback if primary didn't emit a tool_call OR raised. Typical for
     # Gemma 4 21B REAP : either crashes on tool binding (MLX bug) or
     # silently returns text (tool_choice ignored). Try each fallback
     # until one returns ≥1 tool_call. Mirrors chat-mode pattern in
     # app/agent/sub_agents/factory.py.
-    if not tool_calls:
+    if not tool_calls and _edge is None:
         logger.warning(
             "[mission %s] act: primary LLM emitted 0 tool_calls — falling back",
             mission_id,
@@ -1000,6 +1110,30 @@ async def act_node(state: MissionState) -> dict:
                 logger.warning("[mission %s] act.fallback %s failed: %s", mission_id, label, exc)
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+    if _edge is not None:
+        _edge_name, _edge_detail = _edge
+        await mission_service.add_step(
+            mission_id, phase="act",
+            thought=f"EDGE_CASE {_edge_name} sur « {current_step_desc[:200]} » : {_edge_detail}",
+            evaluation=f"Cas particulier signalé : {_edge_name}",
+            success=True,
+            duration_ms=elapsed_ms,
+            model_used=model_used,
+        )
+        logger.info(
+            "[mission %s] act: edge case %s (item=%s) — handler à appliquer",
+            mission_id, _edge_name, _current_item_index,
+        )
+        return {
+            "current_step_id": current_step_id,
+            "current_item_index": _current_item_index,
+            "last_edge_case": {"name": _edge_name, "detail": _edge_detail},
+            "last_tool_name": None,
+            "last_tool_output": None,
+            "last_eval_success": None,
+            "last_eval_reason": None,
+        }
 
     if not tool_calls:
         # All providers refused to emit a tool call — count as iteration failure
@@ -1051,6 +1185,8 @@ async def act_node(state: MissionState) -> dict:
 
     return {
         "current_step_id": current_step_id,
+        "current_item_index": _current_item_index,
+        "last_edge_case": None,
         "last_tool_name": tool_name,
         "last_tool_input": tool_args,
         "last_tool_output": output,
@@ -1170,6 +1306,74 @@ async def eval_node(state: MissionState) -> dict:
     # If act_node already concluded (mission done or unrecoverable in-tick failure)
     if state.get("done"):
         return {}
+
+    # ── Sprint 4c J2 — cas particulier signalé par l'acteur ─────────────
+    # Pas d'évaluation LLM : la spec a PRÉVU ce cas, on applique son
+    # handler. ask_user parque l'item en waiting_user (le ping + la
+    # reprise arrivent en J3) ; skip_with_note/resume_next journalisent et
+    # avancent ; fail termine la mission franchement.
+    _is_spec = bool((state.get("plan_json") or {}).get("from_spec"))
+    if _is_spec and state.get("last_edge_case"):
+        from app.services import mission_spec_runtime as msr
+        _edge = state["last_edge_case"] or {}
+        _name = str(_edge.get("name") or "inconnu")
+        _detail = str(_edge.get("detail") or "")
+        _idx = state.get("current_item_index") or 0
+        _step = next(
+            (s for s in (state.get("plan_json") or {}).get("steps", [])
+             if s.get("id") == current_step_id),
+            {},
+        )
+        _call = msr.resolve_handler(_step.get("handlers") or {}, _name)
+        _runs = await msr.list_step_runs(mission_id, current_step_id or "?")
+        _item_value = next(
+            (r.item_value for r in _runs if r.item_index == _idx), None,
+        )
+        _message = (
+            msr.render_item(_call.message, _item_value) if _call.message else None
+        )
+        out: dict = {
+            "last_edge_case": None,
+            "consecutive_failures": 0,
+            "last_eval_success": True,
+            "last_eval_reason": f"cas {_name} → {_call.action}",
+        }
+        if _call.action == "ask_user":
+            await msr.set_step_run_status(
+                mission_id, current_step_id or "?", _idx,
+                status="waiting_user", note=_message or _detail or _name,
+            )
+        elif _call.action == "fail":
+            await msr.set_step_run_status(
+                mission_id, current_step_id or "?", _idx,
+                status="failed", note=_message or _detail or _name,
+            )
+            out["failed"] = True
+            out["failure_reason"] = _message or f"Cas « {_name} » → fail (spec)"
+        else:  # skip_with_note / resume_next
+            await msr.set_step_run_status(
+                mission_id, current_step_id or "?", _idx,
+                status="skipped", note=_message or _detail or _name,
+            )
+        # Step non-foreach : son unique item est terminal → statut du plan.
+        if not _step.get("foreach") and _call.action in ("skip_with_note", "resume_next", "ask_user"):
+            if _call.action != "ask_user":
+                out["plan_json"] = _mark_plan_step(
+                    state.get("plan_json") or {}, current_step_id or "?", "skipped",
+                )
+        await mission_service.add_step(
+            mission_id, phase="eval",
+            evaluation=f"Handler spec : {_name} → {_call.action}"
+                       + (f" ({_message})" if _message else ""),
+            success=_call.action != "fail",
+            duration_ms=0,
+            model_used="spec-handler",
+        )
+        logger.info(
+            "[mission %s] eval: edge %s → %s (item=%s)",
+            mission_id, _name, _call.action, _idx,
+        )
+        return out
     # If act_node concluded a failure in THIS tick (e.g. no tool_call),
     # `last_tool_name` will be None but `last_eval_reason` will be set.
     # Note : act_node clears stale eval flags at entry so checkpointed
@@ -1207,6 +1411,105 @@ async def eval_node(state: MissionState) -> dict:
     except Exception as exc:
         logger.warning("[mission %s] eval: JSON parse failed (%s) — assuming success", mission_id, exc)
         success, reason, all_done = True, "Parse failed, assumed success", False
+
+    # ── Sprint 4c J2 — mission structurée : statuts par item, jamais de
+    # replan (la spec est le contrat). Le step foreach n'est marqué done
+    # que par act_node quand TOUS ses items sont terminaux.
+    if _is_spec:
+        from app.services import mission_spec_runtime as msr
+        _idx = state.get("current_item_index") or 0
+        new_plan_json = dict(plan_json)
+        if success:
+            await msr.set_step_run_status(
+                mission_id, current_step_id or "?", _idx,
+                status="done",
+                output=(state.get("last_tool_output") or "")[:1500],
+                note=reason[:500] if reason else None,
+            )
+            _step = next(
+                (s for s in plan_json.get("steps", []) if s.get("id") == current_step_id),
+                {},
+            )
+            if not _step.get("foreach"):
+                new_plan_json = _mark_plan_step(plan_json, current_step_id or "?", "done")
+        else:
+            _runs = await msr.list_step_runs(mission_id, current_step_id or "?")
+            _cur = next((r for r in _runs if r.item_index == _idx), None)
+            _attempts = getattr(_cur, "attempts", 1)
+            _step = next(
+                (s for s in plan_json.get("steps", []) if s.get("id") == current_step_id),
+                {},
+            )
+            _handlers = _step.get("handlers") or {}
+            if "error" in _handlers or _attempts >= msr.AUTO_SKIP_ATTEMPTS:
+                _call = msr.resolve_handler(_handlers, "error")
+                if _call.action == "fail":
+                    await msr.set_step_run_status(
+                        mission_id, current_step_id or "?", _idx,
+                        status="failed", note=reason,
+                    )
+                    return {
+                        "last_eval_success": False,
+                        "last_eval_reason": reason,
+                        "consecutive_failures": 0,
+                        "failed": True,
+                        "failure_reason": reason or "Échec (handler on_error → fail)",
+                    }
+                if _call.action == "ask_user":
+                    await msr.set_step_run_status(
+                        mission_id, current_step_id or "?", _idx,
+                        status="waiting_user",
+                        note=(_call.message or reason or "Échec — que faire ?"),
+                    )
+                else:
+                    await msr.set_step_run_status(
+                        mission_id, current_step_id or "?", _idx,
+                        status="skipped",
+                        note=(_call.message or f"Échec ({_attempts} tentative(s)) : {reason}")[:500],
+                    )
+                    if not _step.get("foreach"):
+                        new_plan_json = _mark_plan_step(
+                            plan_json, current_step_id or "?", "skipped",
+                        )
+            else:
+                # Pas de handler et tentatives restantes : l'item repasse
+                # pending — il sera retenté au prochain tick.
+                await msr.set_step_run_status(
+                    mission_id, current_step_id or "?", _idx,
+                    status="pending", note=f"Tentative échouée : {reason}"[:500],
+                )
+
+        await mission_service.add_step(
+            mission_id, phase="eval",
+            evaluation=reason,
+            success=success,
+            duration_ms=elapsed_ms,
+            model_used="medium-tier",
+        )
+        # Terminaison DÉTERMINISTE : tous les steps du plan terminaux —
+        # on n'utilise PAS le all_done du LLM, la spec est le contrat.
+        _all_terminal = all(
+            s.get("status") in {"done", "skipped"}
+            for s in new_plan_json.get("steps", [])
+        )
+        out = {
+            "last_eval_success": success,
+            "last_eval_reason": reason,
+            "consecutive_failures": 0,  # jamais de replan sur une spec
+            "plan_json": new_plan_json,
+            "current_item_index": None,
+        }
+        if _all_terminal:
+            out["done"] = True
+            out["final_summary"] = (
+                "Mission structurée terminée — tous les steps de la spec "
+                "sont done/skipped."
+            )
+        logger.info(
+            "[mission %s] eval(spec): success=%s done=%s",
+            mission_id, success, _all_terminal,
+        )
+        return out
 
     # Mutate plan_json to mark step done/failed
     new_plan_json = dict(plan_json)
