@@ -21,6 +21,17 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.16.0] — 2026-06-10 — Sprint 4b V3 J7+J8 : le générateur produit des outils io + revue admin du périmètre
+
+### Added
+- **J7 — le `tool_creator` génère le profil `io`.** Dernier verrou du pipeline V3 : le générateur ne produisait que du `pure`. Nouveau prompt système io qui enseigne le contrat sandbox (httpx vers les **domaines egress déclarés uniquement**, `get_secret()` injecté par le wrapper — jamais importé, jamais loggé —, deps bornées à httpx/bs4/lxml, fonction sync auto-contenue, pas de `call_tool`). Le prompt utilisateur embarque la **vraie ACL Squid** (`squid_allowed_domains()` parse `sandbox/squid.conf` — même source de vérité que le proxy au runtime) et les **labels Vault réellement provisionnés** du user. Validation via la chaîne 7 étages de J5 (`profile="io"`) + gate async `check_secrets_exist` : un label manquant déclenche une reformulation (labels disponibles re-listés), et s'il persiste le candidat est quand même persisté — la revue J8 l'affiche et le bind-time gate (J6.c.1) tient l'outil hors du LLM tant que le Vault n'est pas prêt. Persistance avec `tool_profile=io`. API : `POST /admin/learning/tool-creator/run` accepte `profile: "pure"|"io"` (défaut `pure`, rétrocompatible). *(2026-06-10)*
+- **J8 — la revue admin expose le périmètre déclaré.** Promouvoir un outil io, c'est valider **aussi** son périmètre, pas seulement son code. `CandidateOut` porte `tool_profile` + les déclarations parsées (`v3_network_allow`, `v3_requires`, `v3_requires_secrets`) ; la page candidates affiche un badge `io` et un panneau « Périmètre déclaré » (chips domaines egress / dépendances / secrets Vault + rappel du canary HITL 10 appels). i18n FR/EN, `sw.js` bumpé v13→v14 (gotcha PWA). *(2026-06-10)*
+
+### Notes
+- Le pipeline V3 est désormais complet de bout en bout : génération io (J7) → validation 7 étages (J5) → revue admin du périmètre (J8) → promotion → bind agent (v1.15.0) → canary HITL → exécution sandbox avec audit per-call (J6). Activation : `LEARNED_PYTHON_TOOLS_IO_ENABLED=true`. Pour ouvrir un nouveau domaine egress : `sandbox/squid.conf` (ACL `allowed_domains`) + rebuild sandbox.
+
+---
+
 ## [1.15.0] — 2026-06-10 — Sprint 4b V3 : intégration agent du pipeline io + canary HITL
 
 ### Added
