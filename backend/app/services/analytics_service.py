@@ -245,6 +245,44 @@ async def get_provider_breakdown(user_id: str, days: int = 30) -> list[dict]:
     ]
 
 
+async def log_response_usage(
+    user_id: str,
+    response,
+    *,
+    provider: str = "",
+    model: str = "",
+    channel: str = "background",
+    skill_used: str | None = None,
+    conversation_id: str | None = None,
+) -> None:
+    """Best-effort usage logging from a LangChain response object.
+
+    Revue 2026-06-10 (A-6b) : les chemins background (résumés de fin de
+    conversation, consolidation mémoire, critic de missions) n'appelaient
+    pas log_usage — la facture cloud réelle par user était sous-estimée
+    précisément sur ce qui scale avec le nombre d'utilisateurs, et le
+    budget quotidien (budget_guard) aurait été contournable par ces
+    chemins. Extrait ``usage_metadata`` quand le provider le fournit ;
+    no-op silencieux sinon.
+    """
+    um = getattr(response, "usage_metadata", None) or {}
+    input_tokens = int(um.get("input_tokens") or 0)
+    output_tokens = int(um.get("output_tokens") or 0)
+    if not (input_tokens or output_tokens):
+        return
+    meta = getattr(response, "response_metadata", {}) or {}
+    await log_usage(
+        user_id=user_id,
+        model=model or meta.get("model_name") or "unknown",
+        provider=provider or "unknown",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        conversation_id=conversation_id,
+        skill_used=skill_used,
+        channel=channel,
+    )
+
+
 async def log_usage(
     user_id: str,
     model: str,

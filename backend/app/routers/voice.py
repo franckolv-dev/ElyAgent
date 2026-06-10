@@ -364,6 +364,16 @@ async def websocket_voice(websocket: WebSocket):
                         stop_event.set()
                         return
 
+            # A-6b — budget LLM quotidien par user (même garde que chat.py)
+            from app.services.budget_guard import check_user_budget
+            _budget_refusal = await check_user_budget(user_id)
+            if _budget_refusal:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "content": _budget_refusal,
+                }))
+                continue
+
             # B-15 — même cap de runs concurrents par user que chat.py
             from app.services.run_gate import get_user_run_semaphore
             _run_sem = get_user_run_semaphore(user_id)

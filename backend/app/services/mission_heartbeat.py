@@ -243,6 +243,28 @@ async def _process_one_mission(mission) -> None:
                 await _notify_terminal(mission, "failed", reason)
                 return
 
+            # A-6b — budget LLM quotidien du USER (distinct du budget de la
+            # mission ci-dessus). On ne tue PAS la mission : un user
+            # temporairement à sec ne doit pas perdre son travail — le tick
+            # est reporté d'une heure.
+            from app.services.budget_guard import check_user_budget
+            user_budget_refusal = await check_user_budget(mission.user_id)
+            if user_budget_refusal:
+                logger.info(
+                    "Mission %s: budget quotidien du user %s épuisé — tick "
+                    "reporté d'une heure", mid, mission.user_id,
+                )
+                next_at = _utcnow() + timedelta(hours=1)
+                from app.database import async_session
+                from app.models.mission import Mission as _M
+                from sqlalchemy import update
+                async with async_session() as db:
+                    await db.execute(
+                        update(_M).where(_M.id == mid).values(next_tick_at=next_at)
+                    )
+                    await db.commit()
+                return
+
             try:
                 t0 = datetime.now()
                 result = await _tick_one_mission(mid, mission.user_id, mission.goal)

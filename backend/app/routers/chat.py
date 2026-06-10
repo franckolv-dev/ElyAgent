@@ -449,6 +449,18 @@ async def websocket_chat(websocket: WebSocket):
                         stop_event.set()
                         return
 
+            # A-6b — budget LLM quotidien par user (opt-in,
+            # ELY_USER_DAILY_BUDGET_USD ; 0 = désactivé). Refus doux :
+            # le message du user est déjà persisté, l'agent ne tourne pas.
+            from app.services.budget_guard import check_user_budget
+            _budget_refusal = await check_user_budget(user_id)
+            if _budget_refusal:
+                await websocket.send_text(_dumps({
+                    "type": "error",
+                    "content": _budget_refusal,
+                }))
+                continue
+
             # B-15 (revue 2026-06-10) — cap de runs agent concurrents par
             # user : au-delà de ELY_MAX_AGENT_RUNS_PER_USER (2), les runs
             # supplémentaires du même user font la queue ici.
@@ -981,6 +993,20 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
             llm.ainvoke([{"role": "user", "content": facts_prompt}]),
             llm.ainvoke([{"role": "user", "content": prefs_prompt}]),
         )
+
+        # A-6b — ces 3 appels n'étaient pas comptés dans UsageLog : la
+        # facture par user était sous-estimée sur un chemin qui tourne à
+        # CHAQUE fin de conversation.
+        try:
+            from app.services.analytics_service import log_response_usage
+            for _resp in (summary_resp, facts_resp, prefs_resp):
+                await log_response_usage(
+                    user_id, _resp,
+                    skill_used="conversation_summary",
+                    conversation_id=conversation_id,
+                )
+        except Exception:
+            pass
 
         memory = get_memory_manager()
 

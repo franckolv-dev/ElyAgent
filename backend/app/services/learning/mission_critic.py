@@ -228,7 +228,7 @@ def parse_verdict(raw: str) -> dict | None:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-async def _call_critic_llm(prompt: str) -> tuple[str, int, str]:
+async def _call_critic_llm(prompt: str, user_id: str | None = None) -> tuple[str, int, str]:
     """Run the critic LLM. Returns (raw_response, tokens_used, model_name).
 
     Token count is best-effort (LangChain ``response_metadata`` often
@@ -252,6 +252,20 @@ async def _call_critic_llm(prompt: str) -> tuple[str, int, str]:
         config={"callbacks": []},
     )
     raw = getattr(response, "content", "") or ""
+
+    # A-6b — le critic tourne toutes les 5 min sur un tier cloud : compté
+    # dans UsageLog (best-effort), sinon la facture par user est aveugle
+    # sur un chemin qui scale avec le nombre de missions.
+    if user_id:
+        try:
+            from app.services.analytics_service import log_response_usage
+            await log_response_usage(
+                user_id, response, model=str(model_name),
+                skill_used="mission_critic",
+            )
+        except Exception:
+            pass
+
     md = getattr(response, "response_metadata", None) or {}
     tokens = 0
     if isinstance(md, dict):
@@ -318,10 +332,15 @@ async def critique_mission(mission_id: str) -> int | None:
 
         prompt_text = compose_prompt(mission, steps)
         critic_prompt_hash = prompt_hash(_CRITIC_PROMPT)  # version of the TEMPLATE
+        # Capturé DANS la session — hors session, l'attribut peut être
+        # expiré (DetachedInstanceError).
+        mission_user_id = str(mission.user_id)
 
     # LLM call outside the session — providers can be slow
     try:
-        raw, tokens, model_name = await _call_critic_llm(prompt_text)
+        raw, tokens, model_name = await _call_critic_llm(
+            prompt_text, user_id=mission_user_id,
+        )
     except Exception as exc:
         logger.warning(
             "mission_critic: LLM call failed for mission=%s : %s",

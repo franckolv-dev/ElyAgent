@@ -21,6 +21,16 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.14.7] — 2026-06-10 — Phase 2 (lot 3a) revue multi-utilisateurs : budget LLM par utilisateur
+
+### Added
+- **Budget LLM quotidien par utilisateur, opt-in (A-6b).** Rien ne bornait la dépense cloud d'un user (ou d'un script avec un token volé) — c'est l'opérateur de l'instance qui paie. Nouveau `services/budget_guard.py` (inspiré du `budget_guard.py` Phase 5A de la branche salvage, dont le volet tracking est déjà couvert par `UsageLog.cost_usd`) : somme des coûts du jour (minuit UTC), refus au-delà de `ELY_USER_DAILY_BUDGET_USD`. **Désactivé par défaut (0)** — une install solo ne doit jamais s'auto-bloquer sur une table de prix heuristique ; les instances multi-utilisateurs l'activent via env. Application : chat et voice (refus doux avec message explicite), tâches planifiées (exécution du jour sautée, tâche préservée), missions (tick **reporté d'une heure** — un user temporairement à sec ne perd pas sa mission). Best-effort : une erreur DB ne bloque jamais un run. *(2026-06-10)*
+
+### Fixed
+- **Les coûts LLM background sont enfin comptés dans `UsageLog`.** Les résumés de fin de conversation (3 appels LLM à chaque déconnexion), l'extraction + consolidation mémoire et le critic de missions (cron 5 min sur tier cloud) n'appelaient pas `log_usage` : la facture réelle par user était sous-estimée précisément sur les chemins qui scalent avec le nombre d'utilisateurs — et le budget A-6b aurait été contournable par ces chemins. Nouveau helper `analytics_service.log_response_usage()` (extraction `usage_metadata` best-effort, no-op silencieux si le provider ne l'expose pas), branché sur les 4 sites. *(2026-06-10)*
+
+---
+
 ## [1.14.6] — 2026-06-10 — Phase 2 (lot 2) revue multi-utilisateurs : équité entre utilisateurs
 
 ### Fixed
