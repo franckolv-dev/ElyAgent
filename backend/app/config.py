@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # (test Franck 2026-06-10). Override : TTS_VOICE.
     tts_voice: str = "fr-FR-VivienneMultilingualNeural"
 
+    # Débit TTS (format edge-tts : "+10%" = 10 % plus rapide, "-10%" = plus
+    # lent). +20% était perçu trop rapide / pas naturel avec Vivienne
+    # (retour Franck 2026-06-10) → +10% : un soupçon au-dessus du rythme
+    # naturel sans donner l'impression de presser. Override : TTS_RATE.
+    tts_rate: str = "+10%"
+
     # Cookie security — set True in production behind HTTPS.
     # Automatically enabled when COOKIE_SECURE=true is set in the environment,
     # or when any CORS origin uses HTTPS (auto-detected).

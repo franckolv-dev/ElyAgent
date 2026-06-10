@@ -43,7 +43,8 @@ router = APIRouter(prefix="/tts", tags=["tts"])
 # Wired to settings.tts_voice (env TTS_VOICE) — the setting existed but was
 # never read until 2026-06-10; the voice was silently pinned to DeniseNeural.
 DEFAULT_VOICE = get_settings().tts_voice
-DEFAULT_RATE = "+20%"   # slightly faster than natural pace — more pleasant for a personal assistant
+# Wired to settings.tts_rate (env TTS_RATE) — shared with voice_service.py.
+DEFAULT_RATE = get_settings().tts_rate
 
 
 class TTSRequest(BaseModel):

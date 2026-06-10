@@ -159,6 +159,20 @@ def test_tts_voice_default_is_vivienne_and_wired(monkeypatch) -> None:
     assert voice_service.DEFAULT_VOICE == get_settings().tts_voice
 
 
+def test_tts_rate_default_and_wired(monkeypatch) -> None:
+    """+20% était perçu trop rapide / pas naturel avec Vivienne (retour
+    Franck 2026-06-10) → +10%, câblé aux DEUX chemins (router TTS + voice
+    WebSocket) via settings.tts_rate, override env TTS_RATE."""
+    assert _fresh_settings(monkeypatch).tts_rate == "+10%"
+
+    from app.config import get_settings
+    from app.routers import tts as tts_mod
+    from app.services import voice_service
+
+    assert tts_mod.DEFAULT_RATE == get_settings().tts_rate
+    assert voice_service.DEFAULT_RATE == get_settings().tts_rate
+
+
 def test_cors_warning_when_https_without_allowlist(monkeypatch, caplog) -> None:
     import logging
 

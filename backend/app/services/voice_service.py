@@ -42,11 +42,11 @@ VOICE_PROMPT_HINT: str = (
     "sauf si on te demande explicitement plus de détail."
 )
 
-# Wired to settings.tts_voice (env TTS_VOICE) — single source of truth shared
-# with routers/tts.py since 2026-06-10 (the voice was pinned to DeniseNeural
-# in separate hardcoded constants before that).
+# Wired to settings.tts_voice/tts_rate (env TTS_VOICE / TTS_RATE) — single
+# source of truth shared with routers/tts.py since 2026-06-10 (voice and
+# rate were pinned in separate hardcoded constants before that).
 DEFAULT_VOICE: str = get_settings().tts_voice
-DEFAULT_RATE: str = "+20%"
+DEFAULT_RATE: str = get_settings().tts_rate
 
 
 # ---------------------------------------------------------------------------
