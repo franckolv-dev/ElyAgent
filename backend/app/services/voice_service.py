@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import logging
 
+from app.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -40,7 +42,10 @@ VOICE_PROMPT_HINT: str = (
     "sauf si on te demande explicitement plus de détail."
 )
 
-DEFAULT_VOICE: str = "fr-FR-DeniseNeural"
+# Wired to settings.tts_voice (env TTS_VOICE) — single source of truth shared
+# with routers/tts.py since 2026-06-10 (the voice was pinned to DeniseNeural
+# in separate hardcoded constants before that).
+DEFAULT_VOICE: str = get_settings().tts_voice
 DEFAULT_RATE: str = "+20%"
 
 

@@ -53,6 +53,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy import select
 
+from app.agent.routing import CHAT_RECURSION_LIMIT
 from app.auth.jwt import decode_token
 from app.database import async_session
 from app.models.conversation import Conversation, Message
@@ -93,6 +94,26 @@ _filters: _BoundedDict = _BoundedDict(maxsize=1000)
 # ---------------------------------------------------------------------------
 # Audio helpers
 # ---------------------------------------------------------------------------
+
+def _anonymized_history(history_rows, sf: SecurityFilter) -> list:
+    """History rows → LangChain messages, PII-anonymized BOTH ways.
+
+    Assistant messages are STORED deanonymized (real values, for display) —
+    so they must be re-anonymized before being fed back to the LLM, exactly
+    like chat.py does since fix #55. The voice channel skipped that step
+    until 2026-06-10 (revue multi-utilisateurs, constat B-13): real emails /
+    phones from past assistant replies leaked to cloud LLMs on every voice
+    turn. The last row (the current user message) is excluded — the caller
+    appends it separately with the voice hint.
+    """
+    msgs: list = []
+    for row in history_rows[:-1]:
+        if row.role == "user":
+            msgs.append(HumanMessage(content=sf.anonymize(row.content)))
+        elif row.role == "assistant":
+            msgs.append(AIMessage(content=sf.anonymize(row.content)))
+    return msgs
+
 
 async def _transcribe_audio(audio_b64: str, audio_format: str = "webm") -> str:
     """Transcribe base64-encoded audio to text using faster-whisper."""
@@ -297,13 +318,7 @@ async def websocket_voice(websocket: WebSocket):
                 )
                 history_rows = list(reversed(hist_result.scalars().all()))
 
-            history_msgs = []
-            for row in history_rows[:-1]:
-                if row.role == "user":
-                    history_msgs.append(HumanMessage(content=sf.anonymize(row.content)))
-                elif row.role == "assistant":
-                    history_msgs.append(AIMessage(content=row.content))
-            history_msgs = history_msgs[-_MAX_HISTORY:]
+            history_msgs = _anonymized_history(history_rows, sf)[-_MAX_HISTORY:]
 
             # Inject voice-optimized system hint into the user message
             voice_hint = voice_system_hint()
@@ -357,7 +372,7 @@ async def websocket_voice(websocket: WebSocket):
                         "conversation_id": conversation_id,
                     },
                     version="v2",
-                    config={"recursion_limit": 100},
+                    config={"recursion_limit": CHAT_RECURSION_LIMIT},
                 ):
                     if stop_event.is_set():
                         break
