@@ -71,7 +71,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import OrderedDict
+from app.services.bounded_cache import BoundedLRUDict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Final, Optional
@@ -225,25 +225,14 @@ class _ConversationFallbackState:
 _MAX_STATES: Final[int] = 1000
 
 
-class _BoundedDict(OrderedDict):
-    """OrderedDict with a hard cap — oldest entries evicted FIFO when size
-    exceeds ``maxsize``. Same pattern as ``conversation_filters._BoundedDict``.
-    """
-
-    def __init__(self, maxsize: int) -> None:
-        super().__init__()
-        self._maxsize = maxsize
-
-    def __setitem__(self, key, value) -> None:  # type: ignore[override]
-        super().__setitem__(key, value)
-        if len(self) > self._maxsize:
-            self.popitem(last=False)
 
 
 # conversation_id → state
-_states: _BoundedDict = _BoundedDict(maxsize=_MAX_STATES)
+# B-7 — LRU + TTL 24 h (était FIFO : perdre l'état fallback d'une
+# conversation active = retour silencieux au primary en panne).
+_states: BoundedLRUDict = BoundedLRUDict(maxsize=_MAX_STATES, ttl_seconds=24 * 3600)
 # conversation_id → list of pending WS events to drain
-_pending_events: _BoundedDict = _BoundedDict(maxsize=_MAX_STATES)
+_pending_events: BoundedLRUDict = BoundedLRUDict(maxsize=_MAX_STATES, ttl_seconds=24 * 3600)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
