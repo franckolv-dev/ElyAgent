@@ -95,6 +95,43 @@ _CHUNK_CHARS = 1200
 # Garde-fou valeurs : une « entité » d'1 caractère est du bruit, pas une PII.
 _MIN_VALUE_LEN = 2
 
+# ── Allow-list de services (retour terrain 2026-06-11) ─────────────────────
+# Les noms des plateformes qu'Ely intègre ne sont PAS de la PII : les masquer
+# casse le fonctionnement même de l'agent (« vérifie mon dépôt GitHub » →
+# [ORG_0] → le LLM ne sait plus quel outil appeler). Extensible sans rebuild
+# via PII_NER_ALLOWLIST="nom1,nom2" (+ redémarrage). Match EXACT sur la
+# valeur normalisée (minuscules, accents retirés) — pas de sous-chaîne :
+# « GitHub SARL » (une vraie société cliente) resterait masqué.
+_DEFAULT_SERVICE_ALLOWLIST: tuple[str, ...] = (
+    "github", "google", "gmail", "google drive", "google calendar",
+    "google one", "google play", "youtube", "telegram", "slack", "discord",
+    "whatsapp", "linkedin", "doctolib", "ely", "claude", "anthropic",
+    "deepseek", "mistral", "gemini", "openai", "ollama", "lm studio",
+    "docker", "hugging face", "qdrant",
+)
+
+_allowlist_cache: tuple[str, frozenset[str]] | None = None
+
+
+def _norm_value(s: str) -> str:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", (s or "").strip().lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def is_service_allowlisted(value: str) -> bool:
+    """True si ``value`` est un nom de service que la couche 2 ne doit
+    JAMAIS masquer (défauts + env ``PII_NER_ALLOWLIST``, cache par valeur
+    d'env)."""
+    global _allowlist_cache
+    env = os.environ.get("PII_NER_ALLOWLIST", "")
+    if _allowlist_cache is None or _allowlist_cache[0] != env:
+        extra = (x for x in env.split(",") if x.strip())
+        _allowlist_cache = (env, frozenset(
+            _norm_value(x) for x in (*_DEFAULT_SERVICE_ALLOWLIST, *extra)
+        ))
+    return _norm_value(value) in _allowlist_cache[1]
+
 
 def _truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in ("1", "true", "yes", "on")
@@ -184,6 +221,10 @@ class PIINEREngine:
                 # Jamais de placeholder existant comme « entité » (le texte
                 # post-couche-1 contient des [EMAIL_0], etc.).
                 if value.startswith("[") and value.endswith("]"):
+                    continue
+                # Noms de services intégrés : nécessaires au fonctionnement
+                # de l'agent, jamais masqués (retour terrain 2026-06-11).
+                if is_service_allowlisted(value):
                     continue
                 seen.setdefault(value, label)
         elapsed_ms = (time.perf_counter() - t0) * 1000
