@@ -271,10 +271,11 @@ async def orchestrate(
         try:
             from app.services.conversation_filters import get_filter
             sf = get_filter(conv_id)
+            # ner_detection=False : sorties machine (cf. tool_node).
             if result.stdout:
-                result.stdout = sf.anonymize(result.stdout)
+                result.stdout = sf.anonymize(result.stdout, ner_detection=False)
             if result.stderr:
-                result.stderr = sf.anonymize(result.stderr)
+                result.stderr = sf.anonymize(result.stderr, ner_detection=False)
         except Exception as anon_exc:  # noqa: BLE001
             logger.warning(
                 "orchestrate: stdout/stderr re-anonymization skipped (%s) — "

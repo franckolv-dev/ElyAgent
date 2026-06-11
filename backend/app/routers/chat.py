@@ -401,7 +401,9 @@ async def websocket_chat(websocket: WebSocket):
                     # the LLM, exactly like the user history above. Without this,
                     # any PII the assistant restated leaked to the model (cloud
                     # incl.) on every subsequent turn.
-                    history_msgs.append(AIMessage(content=sf.anonymize(row.content)))
+                    # ner_detection=False : contenu machine — la PII connue
+                    # (vault) reste masquée, pas de détection fraîche.
+                    history_msgs.append(AIMessage(content=sf.anonymize(row.content, ner_detection=False)))
             # Keep only last _MAX_HISTORY messages to stay within context limits
             history_msgs = history_msgs[-_MAX_HISTORY:]
             history_msgs.append(HumanMessage(content=clean_content))

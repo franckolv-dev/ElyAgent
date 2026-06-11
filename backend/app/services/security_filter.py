@@ -210,8 +210,19 @@ class SecurityFilter:
     # Anonymization                                                         #
     # ------------------------------------------------------------------ #
 
-    def anonymize(self, text: str) -> str:
+    def anonymize(self, text: str, *, ner_detection: bool = True) -> str:
         """Replace sensitive values with opaque placeholders.
+
+        ``ner_detection=False`` (contenu MACHINE : résultats d'outils,
+        stdout sandbox, historique assistant) : la couche 1 regex et le
+        remplacement vault-first de la couche 2 s'appliquent (la PII déjà
+        connue de l'utilisateur reste masquée partout), mais AUCUNE
+        détection NER fraîche — le contenu machine est majoritairement
+        public (web, GitHub, en-têtes d'emails) et y masquer chaque
+        personne/organisation détruit l'utilité de l'agent (retour terrain
+        2026-06-11 : briefing du matin truffé de [ORG_n], GitHub cassé).
+        La détection fraîche ne s'applique qu'au texte TAPÉ par
+        l'utilisateur — le trou documenté qu'elle ferme.
 
         Each unique sensitive value is mapped to exactly one placeholder.
         Substitutions are performed using match positions (start/end offsets)
@@ -264,9 +275,9 @@ class SecurityFilter:
             result = result[:start] + placeholder + result[end:]
 
         # ── Couche 2 : NER (personnes / organisations / adresses) ────────
-        return self._apply_ner_layer(result)
+        return self._apply_ner_layer(result, detect=ner_detection)
 
-    def _apply_ner_layer(self, text: str) -> str:
+    def _apply_ner_layer(self, text: str, *, detect: bool = True) -> str:
         """Couche 2 NER — no-op strict si ``PII_NER_ENABLED`` n'est pas
         posé ou si le moteur n'a pas pu être chargé au boot (fail-open,
         la couche 1 regex reste le filet).
@@ -286,6 +297,7 @@ class SecurityFilter:
         from app.services.pii_ner import (
             NER_PLACEHOLDER_LABELS,
             get_ner_engine,
+            is_service_allowlisted,
             pii_ner_enabled,
         )
         if not pii_ner_enabled():
@@ -296,13 +308,21 @@ class SecurityFilter:
 
         # value → label, le vault d'abord (priorité au label historique :
         # même valeur revue → même placeholder, quoi que dise le NER).
+        # Les noms de services allowlistés sont écartés MÊME s'ils sont au
+        # vault (entrées créées avant l'allow-list : on cesse de les
+        # re-masquer, les conversations polluées guérissent d'elles-mêmes).
         candidates: dict[str, str] = {}
         for placeholder, value in self._vault.items():
             label = placeholder.strip("[]").rsplit("_", 1)[0]
-            if label in NER_PLACEHOLDER_LABELS and len(value) >= 2:
+            if (
+                label in NER_PLACEHOLDER_LABELS
+                and len(value) >= 2
+                and not is_service_allowlisted(value)
+            ):
                 candidates.setdefault(value, label)
-        for value, label in engine.extract(text):
-            candidates.setdefault(value, label)
+        if detect:
+            for value, label in engine.extract(text):
+                candidates.setdefault(value, label)
         if not candidates:
             return text
         return self._replace_values(text, candidates)

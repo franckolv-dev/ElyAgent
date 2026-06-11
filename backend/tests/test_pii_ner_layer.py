@@ -314,6 +314,74 @@ class TestEngineInternals:
         assert fake.calls == 0
 
 
+# ── Pin : contenu machine = vault-first seulement, pas de détection fraîche ──
+
+class TestMachineContentMode:
+    """Retour terrain 2026-06-11 : la détection NER fraîche sur les résultats
+    d'outils masquait chaque personne/org du web, des emails et de GitHub —
+    briefing illisible ([ORG_n] partout) et agent cassé. Le contenu machine
+    passe en ``ner_detection=False`` : regex + vault-first restent actifs."""
+
+    def test_no_fresh_detection_on_machine_content(self, ner_on, sf):
+        text = "Stargazers : Mme Élodie Rousseau (TotalEnergies), contact elodie@total.fr"
+        result = sf.anonymize(text, ner_detection=False)
+        # regex couche 1 : toujours active
+        assert "[EMAIL_0]" in result
+        # PAS de détection fraîche : la personne et l'org restent lisibles
+        assert "Mme Élodie Rousseau" in result and "TotalEnergies" in result
+        assert ner_on.calls == 0
+
+    def test_vault_first_still_masks_known_user_pii(self, ner_on, sf):
+        """La PII que l'utilisateur a TAPÉE reste masquée partout — y compris
+        quand elle réapparaît dans un résultat d'outil."""
+        sf.anonymize("Je m'appelle Mme Élodie Rousseau.")          # texte user → détection
+        result = sf.anonymize(
+            "Résultat outil : dossier de Mme Élodie Rousseau trouvé (réf 81).",
+            ner_detection=False,
+        )
+        assert "Élodie Rousseau" not in result
+        assert "[PERSON_0]" in result
+
+
+# ── Pin : allow-list des services intégrés ───────────────────────────────────
+
+class TestServiceAllowlist:
+    """« Vérifie mon dépôt GitHub » → [ORG_0] cassait le routage d'outils.
+    Les noms des plateformes intégrées ne sont jamais masqués."""
+
+    def test_github_never_masked_even_if_detected(self, monkeypatch, sf):
+        monkeypatch.setenv("PII_NER_ENABLED", "1")
+        fake = FakeGLiNERModel([("GitHub", "organization", 0.97),
+                                ("TotalEnergies", "organization", 0.99)])
+        monkeypatch.setattr(pii_ner, "_engine", PIINEREngine(fake))
+        result = sf.anonymize("Compare mon dépôt GitHub avec celui de TotalEnergies.")
+        assert "GitHub" in result                 # service : jamais masqué
+        assert "TotalEnergies" not in result      # vraie org : masquée
+        assert "[ORG_" in result
+
+    def test_env_extension(self, monkeypatch):
+        monkeypatch.setenv("PII_NER_ALLOWLIST", "MonServicePerso, AutreOutil")
+        assert pii_ner.is_service_allowlisted("monserviceperso") is True
+        assert pii_ner.is_service_allowlisted("Gmail") is True   # défauts conservés
+        assert pii_ner.is_service_allowlisted("Capgemini") is False
+
+    def test_exact_match_only(self):
+        """« GitHub SARL » (vraie société) n'est PAS couverte par l'entrée
+        « github » — match exact sur la valeur normalisée, pas de sous-chaîne."""
+        assert pii_ner.is_service_allowlisted("GitHub") is True
+        assert pii_ner.is_service_allowlisted("GitHub SARL") is False
+
+    def test_polluted_vault_entry_heals(self, monkeypatch, sf):
+        """Une entrée vault créée AVANT l'allow-list ([ORG_0]=GitHub) cesse
+        d'être re-masquée : les conversations polluées guérissent."""
+        monkeypatch.setenv("PII_NER_ENABLED", "1")
+        monkeypatch.setattr(pii_ner, "_engine", PIINEREngine(FakeGLiNERModel([])))
+        sf._vault["[ORG_0]"] = "GitHub"
+        sf._counter = 1
+        result = sf.anonymize("Regarde sur GitHub stp.")
+        assert result == "Regarde sur GitHub stp."
+
+
 # ── Pin de périmètre : la couche 2 ne gère QUE person/org/address ────────────
 
 class TestLayerScope:

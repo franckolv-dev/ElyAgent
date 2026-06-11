@@ -365,7 +365,11 @@ async def tool_node(state: AgentState) -> dict:
                 # passes [EMAIL_5] back as a tool arg it's deanonymized above
                 # (line ~130). Capped at the filter's 50k ReDoS guard.
                 if _vault_sf is not None:
-                    _safe_result = _vault_sf.anonymize(_safe_result)
+                    # ner_detection=False : contenu MACHINE — regex + vault
+                    # seulement, pas de détection NER fraîche (les résultats
+                    # web/GitHub/emails sont publics ; les masquer casse
+                    # l'agent — retour terrain 2026-06-11).
+                    _safe_result = _vault_sf.anonymize(_safe_result, ner_detection=False)
                 results.append(_tool_result(_safe_result, tc_id))
             except Exception as exc:
                 logger.warning("Tool %s failed: %s", tool_name, exc)
@@ -386,7 +390,7 @@ async def tool_node(state: AgentState) -> dict:
                 # Error strings can echo PII-bearing args → anonymize too.
                 _err = f"Erreur d'exécution: {exc}"
                 if _vault_sf is not None:
-                    _err = _vault_sf.anonymize(_err)
+                    _err = _vault_sf.anonymize(_err, ner_detection=False)
                 results.append(_tool_result(_err, tc_id))
         else:
             from langchain_core.messages import ToolMessage

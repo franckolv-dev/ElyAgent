@@ -106,7 +106,8 @@ def _anonymized_history(history_rows, sf: SecurityFilter) -> list:
         if row.role == "user":
             msgs.append(HumanMessage(content=sf.anonymize(row.content)))
         elif row.role == "assistant":
-            msgs.append(AIMessage(content=sf.anonymize(row.content)))
+            # ner_detection=False : contenu machine (cf. chat.py).
+            msgs.append(AIMessage(content=sf.anonymize(row.content, ner_detection=False)))
     return msgs
 
 
