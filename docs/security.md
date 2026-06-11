@@ -38,6 +38,45 @@ Avant d'envoyer un message au LLM cloud, les données sensibles sont remplacées
 
 La réponse du LLM est **dé-anonymisée** avant d'être renvoyée à l'utilisateur.
 
+#### Couche 2 (optionnelle) : noms, organisations, adresses en texte libre
+
+En plus des regex ci-dessus (toujours actives), une **couche NER locale**
+(GLiNER, modèle ONNX exécuté sur votre machine — rien ne sort) peut masquer
+les PII en texte libre avant tout envoi à un LLM cloud :
+
+| Type | Exemple | Placeholder |
+|---|---|---|
+| Personne | `Mme Élodie Rousseau` | `[PERSON_0]` |
+| Organisation | `cabinet Durand & Associés` | `[ORG_0]` |
+| Adresse postale (niveau rue) | `12 rue de la République, 33000 Bordeaux` | `[ADDRESS_0]` |
+
+**Périmètre calibré par l'usage réel** (pour que l'agent reste utilisable) :
+
+- La détection ne s'applique qu'au **texte que vous tapez** — pas aux
+  résultats d'outils (web, GitHub, emails), qui sont majoritairement
+  publics. Votre PII déjà connue reste masquée partout où elle réapparaît.
+- Les **villes / régions / pays restent en clair** (« la météo à Toulouse »
+  doit fonctionner) : seules les adresses de niveau rue sont masquées.
+- Les **noms des services intégrés** (GitHub, Gmail, Telegram…) ne sont
+  jamais masqués — extensible via `PII_NER_ALLOWLIST="nom1,nom2"`.
+
+**Activation** (3 étapes, voir `.env.example`) : build avec
+`PII_NER_INSTALL=1`, export du modèle ONNX sur l'hôte
+(`backend/scripts/export_gliner_onnx.py`), puis `PII_NER_ENABLED=true`.
+
+**Désactivation immédiate** (kill-switch) si la couche gêne votre usage :
+
+```bash
+# .env
+PII_NER_ENABLED=false
+```
+```bash
+docker compose up -d backend   # recreate — un simple restart ne relit pas l'env
+```
+
+Aucune perte : les regex de la couche 1 restent actives, et les
+conversations en cours continuent normalement.
+
 #### Limites assumées de l'anonymisation déterministe
 
 L'anonymisation utilise un mapping **déterministe par session** : la même valeur (`Jean Dupont`) est toujours remplacée par le même placeholder (`[PERSON_0]`) à l'intérieur d'une conversation, pour que le LLM puisse raisonner sur les relations entre entités (« le PERSON_0 a envoyé un mail au PERSON_1 »). Ce choix a un coût en termes de garanties, qu'il faut documenter clairement :

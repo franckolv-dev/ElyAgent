@@ -21,6 +21,34 @@ _(empty — next batch starts here)_
 
 ---
 
+## [1.19.0] — 2026-06-11 — Mécanique de graduation (V4) + couche PII calibrée terrain + avatar réparé
+
+> Deux histoires dans cette release. **La graduation** : toute la mécanique qui permettra à Ely de convertir un outil qu'elle a elle-même généré et éprouvé en code core livré **par une pull request qu'elle ouvre** — gates, codegen, garde d'unicité, canal GitHub, UI de revue (la v2.0.0 sera la première graduation réelle de bout en bout). **Le calibrage PII** : la couche 2 activée en conditions réelles a montré en quelques heures qu'un filtre trop zélé rend l'agent inutilisable — trois corrections terrain le jour même, et un principe gravé : *masquer ce qui identifie quelqu'un, jamais ce qui décrit le monde*.
+
+### Added (graduation — Sprint 4d J1+J3+J4+J5, PRs #95-#98)
+- **Instrumentation par outil** (`537ba8e`) : colonne `tool_origin` (learned|builtin) posée à la capture sur `error_log` + `hitl_refusals` (migration 0005), service de gates env-tunables (`GRADUATION_MIN_INVOCATIONS=10`, `GRADUATION_ERROR_FREE_DAYS=14`, `GRADUATION_MIN_AGE_DAYS=7`), endpoint `GET /admin/learning/skills/{id}/graduation`, scénario bench qui **exécute** un python_tool.
+- **Codegen + garde d'unicité** (`319abb7`) : statut `graduated`, dry-run complet (gates + revalidation 7 étages + dépendances de composition), génération du fichier core (provenance embarquée) + test pytest livré dans la même PR + manifest des preuves ; au boot, un tool core homonyme bascule automatiquement la row en `graduated` — jamais deux outils du même nom bindés.
+- **Livraison PR GitHub** (`cbc3722`) : branche + commits + pull request ouverts par Ely via l'API (token fine-grained chiffré en base, clé `github_graduation_token`), corps de PR = manifest ; fallback export local sans token ; livraison refusée (409) si le dry-run n'est pas vert.
+- **UI de graduation** (`c1a2c75`) : panneau dans la revue des candidates — gates en chips, dry-run avec aperçu des fichiers, « Ouvrir la PR de graduation » confirmé.
+
+### Fixed
+- **`use_count` bumpé à chaque invocation d'un python_tool pur** (`82b986d`) : le compteur n'était câblé que pour les playbooks — la gate « invocations » ne pouvait jamais passer (constaté en réel sur le premier outil amorcé).
+- **Avatar 3D : fuite de contextes WebGL** (`f946648`) : la sonde de disponibilité créait un contexte par render sans le libérer — Chrome (~16 contextes max) finissait par tuer celui du vrai avatar, fallback « WebGL indisponible » définitif au bout de quelques minutes. Sonde mémoïsée + contexte de test libéré + remontage automatique (3 tentatives). sw.js v17.
+
+### Security (couche 2 PII — calibrage terrain, PRs #101-#103)
+- **Pas de détection NER fraîche sur le contenu machine** (`f3d74ed`) : résultats d'outils, erreurs, stdout sandbox et historique assistant passent en vault-first-only — la PII que l'utilisateur a tapée reste masquée partout, mais le contenu public (web, GitHub, en-têtes d'emails) n'est plus mutilé. Corrige le briefing illisible (`[ORG_n]` partout) et le routage d'outils cassé.
+- **Allow-list des services intégrés** (`f3d74ed`, défense en profondeur `01423d1`) : GitHub, Gmail, Telegram… jamais masqués (extensible via `PII_NER_ALLOWLIST`), appliquée au moteur ET dans SecurityFilter ET aux entrées vault pré-existantes (guérison automatique des conversations polluées).
+- **Le label ADDRESS ne masque que le niveau rue** (`d10c403`) : ville/région/pays restent en clair (« la météo à Toulouse » fonctionne) ; l'adresse postale complète du bench reste couverte, pinnée.
+- **Kill-switch documenté** : `PII_NER_ENABLED=false` + `docker compose up -d backend` — voir `docs/security.md`, `docs/TROUBLESHOOTING.md` et `.env.example`.
+
+### Changed
+- `mem_limit` backend 4g → 5g (`4f1db60`) : la couche 2 charge le GLiNER ONNX **fp32** (~1,2 Go) — toutes les quantizations (int8 ×2, fp16, int8 communautaire) ont échoué la validation qualité de l'export.
+
+### Docs
+- `docs/security.md` : section couche 2 (périmètre calibré, activation, kill-switch) ; `docs/TROUBLESHOOTING.md` : entrée « Ely répond avec des [PERSON_0] » ; `.env.example` : kill-switch + allow-list.
+
+---
+
 ## [1.18.0] — 2026-06-10 — Couche 2 PII (NER), re-rank outils missions, voix affinée
 
 > Trois chantiers du jour : la frontière PII gagne une **couche NER** pour les noms / organisations / adresses en texte libre (ce que les regex ne peuvent pas voir), les missions choisissent leurs outils par **re-rank hybride lexical+sémantique**, et la voix d'Ely devient plus naturelle (Vivienne, débit calmé). Plus un tri de printemps : les docs internes quittent le dépôt public.
