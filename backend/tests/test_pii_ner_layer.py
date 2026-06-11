@@ -397,6 +397,52 @@ class TestServiceAllowlist:
         assert result == "Regarde sur GitHub stp."
 
 
+# ── Pin : adresses au niveau RUE uniquement (retour terrain météo 11 juin) ───
+
+class TestStreetLevelAddresses:
+    """« Météo à Vendeuvre-du-Poitou, Vienne, France » → [ADDRESS_1] rendait
+    l'agent inutilisable (il ne sait plus OÙ chercher). Ville/région/pays =
+    géographie publique, pas PII. Seul le niveau rue est masqué."""
+
+    @pytest.mark.parametrize("value,expected", [
+        ("12 rue de la République, 33000 Bordeaux", True),   # bench original
+        ("4 avenue des Champs-Élysées, 75008 Paris", True),
+        ("87 boulevard Saint-Germain", True),
+        ("33000 Bordeaux", True),                            # code postal
+        ("résidence Les Lilas, Poitiers", True),
+        ("Vendeuvre du Poitou, Vienne, France", False),      # ville/région/pays
+        ("Toulouse", False),
+        ("Bordeaux, France", False),
+        ("Provence-Alpes-Côte d'Azur", False),
+    ])
+    def test_street_level_heuristic(self, value, expected):
+        assert pii_ner.is_street_level_address(value) is expected
+
+    def test_city_in_weather_request_not_masked(self, monkeypatch, sf):
+        monkeypatch.setenv("PII_NER_ENABLED", "1")
+        fake = FakeGLiNERModel([
+            ("Vendeuvre du Poitou, Vienne, France", "address", 0.92),
+        ])
+        monkeypatch.setattr(pii_ner, "_engine", PIINEREngine(fake))
+        text = "Quelle sera la météo aujourd'hui à Vendeuvre du Poitou, Vienne, France ?"
+        assert sf.anonymize(text) == text
+
+    def test_full_postal_address_still_masked(self, ner_on, sf):
+        """Le cas que la couche DOIT couvrir (pin bench) reste couvert."""
+        result = sf.anonymize("Envoyez tout au 12 rue de la République, 33000 Bordeaux.")
+        assert result == "Envoyez tout au [ADDRESS_0]."
+
+    def test_polluted_city_vault_entry_heals(self, monkeypatch, sf):
+        """Une ville déjà au vault ([ADDRESS_1] d'avant le fix) cesse d'être
+        re-masquée — les conversations en cours guérissent seules."""
+        monkeypatch.setenv("PII_NER_ENABLED", "1")
+        monkeypatch.setattr(pii_ner, "_engine", PIINEREngine(FakeGLiNERModel([])))
+        sf._vault["[ADDRESS_1]"] = "Vendeuvre du Poitou, Vienne, France"
+        sf._counter = 2
+        text = "Et demain à Vendeuvre du Poitou, Vienne, France ?"
+        assert sf.anonymize(text) == text
+
+
 # ── Pin de périmètre : la couche 2 ne gère QUE person/org/address ────────────
 
 class TestLayerScope:

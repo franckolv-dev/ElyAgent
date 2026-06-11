@@ -60,6 +60,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import time
 
 from app.services.bounded_cache import BoundedLRUDict
@@ -111,6 +112,41 @@ _DEFAULT_SERVICE_ALLOWLIST: tuple[str, ...] = (
 )
 
 _allowlist_cache: tuple[str, frozenset[str]] | None = None
+
+# ── Adresses : seul le niveau RUE est de la PII (retour terrain 11 juin) ───
+# « Quelle météo à Vendeuvre-du-Poitou, Vienne, France » → [ADDRESS_1] →
+# l'agent ne sait plus OÙ chercher. Une ville/région/pays est de la
+# géographie publique, pas une donnée personnelle ; ce qui identifie
+# quelqu'un, c'est la rue (le cas validé au bench : « 12 rue de la
+# République, 33000 Bordeaux »). On ne masque une détection ADDRESS que si
+# elle contient un mot de voirie ou un code postal à 5 chiffres.
+_STREET_WORDS = (
+    r"rue|avenue|av\.|bd\.?|boulevard|chemin|impasse|all[ée]e|place|route|"
+    r"quai|cours|square|faubourg|villa|hameau|lotissement|r[ée]sidence|"
+    r"chauss[ée]e|sentier|passage|esplanade"
+)
+_STREET_RE = re.compile(rf"\b(?:{_STREET_WORDS})\b", re.IGNORECASE)
+_POSTAL_CODE_RE = re.compile(r"\b\d{5}\b")
+
+
+def is_street_level_address(value: str) -> bool:
+    """True si la détection ADDRESS contient un marqueur de niveau rue
+    (mot de voirie ou code postal) — le seul niveau qui justifie le
+    masquage. Ville / région / pays seuls restent en clair."""
+    v = value or ""
+    return bool(_STREET_RE.search(v) or _POSTAL_CODE_RE.search(v))
+
+
+def should_mask_entity(value: str, label: str) -> bool:
+    """Verdict unique de la couche 2 pour une détection (valeur, label
+    placeholder) — partagé par le moteur ET SecurityFilter (défense en
+    profondeur) : allow-list des services, et adresses au niveau rue
+    uniquement."""
+    if is_service_allowlisted(value):
+        return False
+    if label == "ADDRESS" and not is_street_level_address(value):
+        return False
+    return True
 
 
 def _norm_value(s: str) -> str:
@@ -222,9 +258,9 @@ class PIINEREngine:
                 # post-couche-1 contient des [EMAIL_0], etc.).
                 if value.startswith("[") and value.endswith("]"):
                     continue
-                # Noms de services intégrés : nécessaires au fonctionnement
-                # de l'agent, jamais masqués (retour terrain 2026-06-11).
-                if is_service_allowlisted(value):
+                # Verdict partagé : allow-list services + adresses au
+                # niveau rue uniquement (retours terrain 2026-06-11).
+                if not should_mask_entity(value, label):
                     continue
                 seen.setdefault(value, label)
         elapsed_ms = (time.perf_counter() - t0) * 1000
