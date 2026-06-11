@@ -21,6 +21,23 @@ _(empty — next batch starts here)_
 
 ---
 
+## [2.0.0] — 2026-06-11 — Ely contribue à son propre code source 🎓
+
+> Le saut majeur que la roadmap promettait depuis le Sprint 4b. La [PR #105](https://github.com/franckolv-dev/ElyAgent/pull/105) est la **première pull request générée, commitée et ouverte de manière autonome par Ely** sur son propre dépôt — et mergée par un humain après revue, avec sa CI verte. Le cycle complet de l'auto-developing agent est fermé :
+>
+> *Ely s'écrit un outil → le valide en 7 étages → le fait promouvoir par l'admin → l'éprouve à l'usage réel (gates : invocations, zéro erreur, ancienneté) → le convertit en code core avec test pytest et manifest de preuves → **ouvre la PR** → la CI exécute son test → un humain review et merge → au boot suivant, la garde de chargement retire la version dynamique et le code core prend le relais.*
+>
+> Le garde-fou est structurel : Ely ne peut pas merger — la revue et le merge restent humains, et chaque artefact (provenance dans l'en-tête du fichier, manifest dans le corps de la PR) est conçu pour cette revue.
+
+### Added
+- **Premier outil gradué** : `app/agent/tools/graduated/fibonacci_tool.py` + `tests/test_graduated_fibonacci.py` (`6666d7c`, PR #105 — par Ely). Outil volontairement trivial : c'est le **pipeline** qu'on éprouvait, pas l'outil. La row `learned_skills` d'origine est conservée en `graduated` (trace d'audit complète : génération → usage → graduation).
+
+### Notes de version
+- La mécanique complète (gates, codegen, garde d'unicité, canal PR GitHub, UI) a été livrée en v1.19.0 (PRs #95-#98) — la v2.0.0 est sa première exécution réelle de bout en bout.
+- Prochaines étapes du chantier : amorçage du funnel en régime de croisière (≥ 3 outils réels avec usage), graduation des outils io (V4.1, sandbox conservée), et calibrage des seuils sur données réelles.
+
+---
+
 ## [1.19.0] — 2026-06-11 — Mécanique de graduation (V4) + couche PII calibrée terrain + avatar réparé
 
 > Deux histoires dans cette release. **La graduation** : toute la mécanique qui permettra à Ely de convertir un outil qu'elle a elle-même généré et éprouvé en code core livré **par une pull request qu'elle ouvre** — gates, codegen, garde d'unicité, canal GitHub, UI de revue (la v2.0.0 sera la première graduation réelle de bout en bout). **Le calibrage PII** : la couche 2 activée en conditions réelles a montré en quelques heures qu'un filtre trop zélé rend l'agent inutilisable — trois corrections terrain le jour même, et un principe gravé : *masquer ce qui identifie quelqu'un, jamais ce qui décrit le monde*.
