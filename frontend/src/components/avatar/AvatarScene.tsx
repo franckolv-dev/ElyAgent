@@ -192,6 +192,16 @@ function FaceModel({ state }: { state: AvatarState }) {
     return { geometry: safeGeo, material: mat };
   }, [gltf.scene]);
 
+  // Libère la VRAM au démontage — sans ça, chaque remontage (récupération
+  // de contexte) empilait une géométrie + un shader orphelins côté GPU.
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose();
+    },
+    [geometry, material],
+  );
+
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     const s = stateRef.current;
@@ -244,16 +254,30 @@ class WebGLErrorBoundary extends Component<EBProps, EBState> {
 }
 
 // ─── WebGL availability check ───────────────────────────────────────────────
+// Mémoïsée au niveau module + contexte de test LIBÉRÉ explicitement.
+// L'ancienne version créait un canvas + un contexte WebGL à CHAQUE render
+// (le ticker idle du parent re-rend toutes les quelques secondes) sans
+// jamais le libérer — Chrome plafonne à ~16 contextes par page et tue le
+// plus ancien au-delà : au bout de quelques minutes c'était le contexte du
+// VRAI avatar qui sautait (webglcontextlost) → fallback définitif. Le bug
+// « l'avatar disparaît après quelques questions ».
+let _webglProbe: boolean | null = null;
 function isWebGLAvailable(): boolean {
+  if (_webglProbe !== null) return _webglProbe;
   try {
     const canvas = document.createElement("canvas");
-    return !!(
-      window.WebGLRenderingContext &&
-      (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"))
-    );
+    const ctx =
+      canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+    _webglProbe = !!(window.WebGLRenderingContext && ctx);
+    // Rend le contexte de sonde au navigateur — sinon il compte dans la
+    // limite des ~16 contextes actifs.
+    (ctx as WebGLRenderingContext | null)
+      ?.getExtension("WEBGL_lose_context")
+      ?.loseContext();
   } catch {
-    return false;
+    _webglProbe = false;
   }
+  return _webglProbe;
 }
 
 // ─── CSS fallback when WebGL is unavailable ─────────────────────────────────
@@ -308,10 +332,18 @@ function DeferredPostFX() {
 }
 
 // ─── Scene wrapper ─────────────────────────────────────────────────────────
+// Une perte de contexte GPU n'est plus un arrêt de mort : on remonte un
+// Canvas neuf (key={generation}) jusqu'à 3 fois avant de se résigner au
+// fallback CSS. Couvre les pertes légitimes (GPU sous pression, onglet
+// déprioritisé, mise en veille) — plus la fuite de sonde, corrigée ci-dessus.
+const MAX_CONTEXT_RECOVERIES = 3;
+
 export function AvatarScene({ state }: { state: AvatarState }) {
   const [failed, setFailed] = useState(false);
+  const [generation, setGeneration] = useState(0);
+  const recoveries = useRef(0);
 
-  // Check WebGL availability before even mounting Canvas
+  // Check WebGL availability before even mounting Canvas (probe mémoïsée)
   const webglOk = typeof window !== "undefined" && isWebGLAvailable();
 
   const fallback = <AvatarFallback state={state} />;
@@ -321,17 +353,28 @@ export function AvatarScene({ state }: { state: AvatarState }) {
   }
 
   return (
-    <WebGLErrorBoundary fallback={fallback}>
+    <WebGLErrorBoundary key={generation} fallback={fallback}>
       <Canvas
         camera={{ position: [0, -0.18, 3.1], fov: 38 }}
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         style={{ background: "#060c16" }}
         onCreated={({ scene, gl }) => {
           scene.background = new THREE.Color("#060c16");
-          // Handle GPU context loss: switch to CSS fallback instead of crashing
+          // Perte de contexte GPU : on retente un remontage complet après
+          // 1,5 s (le navigateur a besoin d'un battement pour libérer),
+          // fallback CSS seulement après MAX_CONTEXT_RECOVERIES échecs.
           gl.domElement.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();
-            setFailed(true);
+            recoveries.current += 1;
+            if (recoveries.current <= MAX_CONTEXT_RECOVERIES) {
+              console.warn(
+                `[AvatarScene] WebGL context lost — remontage ${recoveries.current}/${MAX_CONTEXT_RECOVERIES} dans 1,5 s`,
+              );
+              setTimeout(() => setGeneration((g) => g + 1), 1500);
+            } else {
+              console.warn("[AvatarScene] WebGL context lost — fallback CSS définitif");
+              setFailed(true);
+            }
           });
         }}
         onError={() => setFailed(true)}
