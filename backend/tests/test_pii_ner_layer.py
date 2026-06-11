@@ -371,6 +371,21 @@ class TestServiceAllowlist:
         assert pii_ner.is_service_allowlisted("GitHub") is True
         assert pii_ner.is_service_allowlisted("GitHub SARL") is False
 
+    def test_allowlist_holds_even_with_raw_engine(self, monkeypatch, sf):
+        """Ceinture-bretelles : même si un moteur NE filtre PAS l'allow-list
+        à l'extraction (moteur custom, régression future), SecurityFilter
+        l'applique lui-même — le contrat ne dépend pas du moteur."""
+        monkeypatch.setenv("PII_NER_ENABLED", "1")
+
+        class RawEngine:  # extract() brut, sans le filtre de PIINEREngine
+            def extract(self, text):
+                return [("GitHub", "ORG"), ("TotalEnergies", "ORG")]
+
+        monkeypatch.setattr(pii_ner, "_engine", RawEngine())
+        result = sf.anonymize("Compare GitHub et TotalEnergies.")
+        assert "GitHub" in result
+        assert "TotalEnergies" not in result
+
     def test_polluted_vault_entry_heals(self, monkeypatch, sf):
         """Une entrée vault créée AVANT l'allow-list ([ORG_0]=GitHub) cesse
         d'être re-masquée : les conversations polluées guérissent."""
