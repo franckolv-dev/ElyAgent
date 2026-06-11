@@ -118,6 +118,32 @@ docker compose logs --no-color | grep -E "pull|download|fetch" | tail -20
 
 ---
 
+## 🕶️ Ely répond avec des `[PERSON_0]` / `[ORG_0]`, ou « ne comprend plus » des demandes simples
+
+Vous avez activé la **couche 2 d'anonymisation PII** (`PII_NER_ENABLED=true`)
+et elle masque quelque chose dont l'agent a besoin (un nom de service, un
+lieu…). Deux options :
+
+1. **Affiner** : ajoutez les termes à ne jamais masquer dans le `.env` —
+   `PII_NER_ALLOWLIST="MonEntreprise,MonOutil"` — puis
+   `docker compose up -d backend`.
+2. **Désactiver** (kill-switch, aucune perte — les regex email/téléphone/
+   IBAN/CB restent actives) :
+   ```bash
+   # .env
+   PII_NER_ENABLED=false
+   ```
+   ```bash
+   docker compose up -d backend
+   ```
+   ⚠️ `up -d` (recreate), pas `restart` — un simple restart ne relit pas
+   les variables d'environnement.
+
+Le périmètre de la couche et ses réglages sont détaillés dans
+[`security.md`](security.md#couche-2-optionnelle--noms-organisations-adresses-en-texte-libre).
+
+---
+
 ## 🌍 Browser extension doesn't connect
 
 See [`extension/chrome/README.md`](../extension/chrome/README.md). The most common issues:
