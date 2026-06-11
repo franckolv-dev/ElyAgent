@@ -322,7 +322,11 @@ class SecurityFilter:
                 candidates.setdefault(value, label)
         if detect:
             for value, label in engine.extract(text):
-                candidates.setdefault(value, label)
+                # Ceinture-bretelles : le moteur filtre déjà l'allow-list à
+                # l'extraction, mais le contrat « un service intégré n'est
+                # JAMAIS masqué » doit tenir quel que soit le moteur.
+                if not is_service_allowlisted(value):
+                    candidates.setdefault(value, label)
         if not candidates:
             return text
         return self._replace_values(text, candidates)
