@@ -297,8 +297,8 @@ class SecurityFilter:
         from app.services.pii_ner import (
             NER_PLACEHOLDER_LABELS,
             get_ner_engine,
-            is_service_allowlisted,
             pii_ner_enabled,
+            should_mask_entity,
         )
         if not pii_ner_enabled():
             return text
@@ -308,24 +308,25 @@ class SecurityFilter:
 
         # value → label, le vault d'abord (priorité au label historique :
         # même valeur revue → même placeholder, quoi que dise le NER).
-        # Les noms de services allowlistés sont écartés MÊME s'ils sont au
-        # vault (entrées créées avant l'allow-list : on cesse de les
-        # re-masquer, les conversations polluées guérissent d'elles-mêmes).
+        # Le verdict partagé (allow-list services, adresses niveau rue
+        # uniquement) s'applique MÊME aux entrées déjà au vault — créées
+        # avant ces règles : on cesse de les re-masquer, les conversations
+        # polluées guérissent d'elles-mêmes.
         candidates: dict[str, str] = {}
         for placeholder, value in self._vault.items():
             label = placeholder.strip("[]").rsplit("_", 1)[0]
             if (
                 label in NER_PLACEHOLDER_LABELS
                 and len(value) >= 2
-                and not is_service_allowlisted(value)
+                and should_mask_entity(value, label)
             ):
                 candidates.setdefault(value, label)
         if detect:
             for value, label in engine.extract(text):
-                # Ceinture-bretelles : le moteur filtre déjà l'allow-list à
-                # l'extraction, mais le contrat « un service intégré n'est
-                # JAMAIS masqué » doit tenir quel que soit le moteur.
-                if not is_service_allowlisted(value):
+                # Ceinture-bretelles : le moteur applique déjà le verdict à
+                # l'extraction, mais le contrat doit tenir quel que soit le
+                # moteur (cf. #102).
+                if should_mask_entity(value, label):
                     candidates.setdefault(value, label)
         if not candidates:
             return text
