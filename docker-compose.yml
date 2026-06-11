@@ -16,7 +16,11 @@ services:
     # pousser le Mac hôte en swap et dégrader LM Studio — exactement le
     # scénario que le mem_limit du frontend visait déjà. À recalibrer si
     # OOM-kill constaté (docker inspect → OOMKilled: true).
-    mem_limit: 4g
+    # 4g → 5g le 2026-06-11 : la couche 2 PII charge le GLiNER ONNX fp32
+    # (~1,2 Go) — les quantizations int8/fp16 dégradaient trop le rappel
+    # (validation de l'export rejetée). À redescendre si un int8 propre
+    # est trouvé un jour.
+    mem_limit: 5g
     ports:
       - "${ELY_BACKEND_PORT:-8000}:8000"
     volumes:
