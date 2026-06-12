@@ -159,6 +159,7 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     # corrigé la semaine dernière — preuve qu'il faut une CI qui détecte
     # automatiquement les tools avec InjectedToolArg absents de cette set.
     "memory_archive",
+    "memory_view_profile",
     "memory_search",
     "memory_recent",
     # Sprint 2.5 (2026-05-21) — unified typed memory recall.

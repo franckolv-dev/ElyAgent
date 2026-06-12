@@ -20,7 +20,7 @@ from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.memory_tool import save_user_preference, save_constraint
 from app.agent.tools.memgpt_tool import (
-    memory_archive, memory_search, memory_recent,
+    memory_archive, memory_search, memory_recent, memory_view_profile,
 )
 
 get_skill_registry().register(Skill(
@@ -50,7 +50,7 @@ get_skill_registry().register(Skill(
     icon="🗄️",
     scopes=[],
     domains=[Domain.MEMORY],
-    tools=[memory_archive, memory_search, memory_recent],
+    tools=[memory_archive, memory_search, memory_recent, memory_view_profile],
     enabled_by_default=True,
 ))
 

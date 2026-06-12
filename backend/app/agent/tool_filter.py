@@ -175,6 +175,7 @@ ALWAYS_KEEP: tuple[str, ...] = (
     "memory_archive",
     "memory_search",
     "memory_recent",
+    "memory_view_profile",
     "knowledge_search",
     "knowledge_list",
     "smart_knowledge_query",

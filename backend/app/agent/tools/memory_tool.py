@@ -200,6 +200,10 @@ async def save_user_preference(
     - "réponds toujours en anglais" → preference="Répondre en anglais"
     - "tu peux me tutoyer" → preference="Tutoyer l'utilisateur"
 
+    ⚠️ Pour une DONNÉE FACTUELLE à retenir (URL de profil, contact, référence,
+    date, nom de serveur…), ce n'est PAS le bon outil : utilise
+    `memory_archive` (category=contact/fact/event).
+
     La préférence est stockée de façon permanente et sera appliquée à toutes les
     conversations futures.
 

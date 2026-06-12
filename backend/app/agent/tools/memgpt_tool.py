@@ -70,15 +70,26 @@ async def memory_archive(
     category: str,
     user_id: Annotated[str, InjectedToolArg],
 ) -> str:
-    """Archive un fait durable dans la mémoire long-terme (Qdrant).
+    """Enregistre DURABLEMENT une information que l'utilisateur demande de retenir.
 
-    Utilise cet outil quand un fait mérite d'être RETROUVABLE plus tard via
-    recherche sémantique mais n'a PAS besoin d'être injecté dans chaque prompt.
-    Exemples :
-    - Anniversaires, dates importantes
-    - Noms de proches, collègues, projets
-    - Préférences fines (ex: "préfère le café filtre")
-    - Faits techniques appris en conversation
+    C'EST L'OUTIL À APPELER dès que l'utilisateur dit « retiens », « enregistre »,
+    « souviens-toi », « mémorise », « garde en mémoire », « note pour plus tard »
+    à propos d'une information factuelle. RÈGLE ABSOLUE : ne JAMAIS confirmer
+    qu'une information est enregistrée sans avoir réellement appelé cet outil
+    dans ce tour — une confirmation sans appel est un mensonge à l'utilisateur.
+
+    Exemples de déclencheurs :
+    - "Retiens mes profils sociaux : https://linkedin.com/in/x et https://x.com/y"
+      → UN appel PAR profil, category="contact"
+        (fact="Profil LinkedIn de l'utilisateur : https://linkedin.com/in/x")
+    - "Souviens-toi que mon médecin est Dr Martin (doctolib.fr/...)" → category="contact"
+    - "Mémorise que le serveur de prod s'appelle atlas" → category="fact"
+    - "Mon anniversaire est le 12 mars, retiens-le" → category="event"
+    - "Garde en mémoire que je préfère le café filtre" → category="preference"
+
+    L'information devient RETROUVABLE dans toutes les conversations futures
+    (via `memory_search`). Si l'utilisateur redonne une information déjà
+    archivée, ré-archiver est sans danger (déduplication automatique).
 
     Pour les **préférences de communication** (ton, format, emojis, langue),
     utilise plutôt `save_user_preference` — celles-ci sont injectées à chaque
@@ -118,6 +129,35 @@ async def memory_archive(
     except Exception as exc:
         logger.warning("memory_archive failed: %s", exc)
         return f"Échec de l'archivage : {exc}"
+
+
+@tool
+async def memory_view_profile(
+    user_id: Annotated[str, InjectedToolArg],
+) -> str:
+    """Affiche ce qui est enregistré en mémoire permanente sur l'utilisateur.
+
+    Utilise cet outil quand l'utilisateur demande « affiche mes préférences »,
+    « qu'est-ce que tu sais de moi ? », « montre ce que tu as retenu »,
+    « vérifie que c'est bien enregistré ». C'est le moyen de PROUVER à
+    l'utilisateur ce qui est réellement stocké — ne jamais répondre de
+    mémoire à ces questions, toujours appeler cet outil.
+
+    Retourne les préférences permanentes (injectées à chaque conversation).
+    Pour retrouver un FAIT archivé précis (URL, contact, date…), utilise
+    `memory_search` avec une requête ciblée.
+    """
+    if not user_id:
+        return "Échec : identification utilisateur requise."
+    try:
+        prefs = await get_semantic_user_store().get_preferences(user_id, limit=50)
+    except Exception as exc:
+        logger.warning("memory_view_profile failed: %s", exc)
+        return f"Échec de la lecture du profil : {exc}"
+    if not prefs:
+        return "Aucune préférence permanente enregistrée pour le moment."
+    lines = "\n".join(f"- {p}" for p in prefs)
+    return f"Préférences permanentes enregistrées ({len(prefs)}) :\n{lines}"
 
 
 def _safe_int(value, default: int, lo: int, hi: int) -> int:
