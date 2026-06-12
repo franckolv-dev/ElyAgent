@@ -226,6 +226,11 @@ services:
       # urllib / requests all honour these automatically.
       HTTP_PROXY: "http://egress-proxy:3128"
       HTTPS_PROXY: "http://egress-proxy:3128"
+      # Sans ça, le HEALTHCHECK (urllib → localhost:8080) passe LUI AUSSI
+      # par Squid qui refuse localhost → 403 → conteneur « unhealthy » en
+      # permanence alors que le runner est sain (constaté 2 jours durant).
+      NO_PROXY: "localhost,127.0.0.1"
+      no_proxy: "localhost,127.0.0.1"
       # Tuneable resource limits applied via setrlimit inside the wrapper
       # (CPU in seconds, memory in bytes). The docker-level mem_limit /
       # pids_limit / cpus below are the harder outer wall.
