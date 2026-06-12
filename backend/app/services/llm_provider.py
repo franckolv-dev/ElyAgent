@@ -1230,6 +1230,12 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
 
         from app.services.openai_codex_auth import CODEX_BASE_URL, CodexBearerAuth
         _codex_auth = CodexBearerAuth()
+        # Contraintes du backend codex, validées par spike live (12 juin) :
+        # stream=true OBLIGATOIRE, store=false OBLIGATOIRE (stateless),
+        # `instructions` top-level OBLIGATOIRE (les SystemMessage de la conv
+        # restent honorés en plus), max_output_tokens REJETÉ (ne pas passer
+        # max_tokens). temperature acceptée. output_version="v0" épure le
+        # content des blocs reasoning (sinon ils partent au TTS/sanitizer).
         return ChatOpenAI(
             model=model,
             # Placeholder jamais accepté côté serveur : l'Authorization
@@ -1238,8 +1244,13 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
             api_key="codex-subscription",
             base_url=CODEX_BASE_URL,
             use_responses_api=True,
-            max_tokens=max_tokens,
+            streaming=True,
+            store=False,
+            output_version="v0",
             temperature=temperature,
+            model_kwargs={
+                "instructions": "Suis les messages système fournis dans la conversation.",
+            },
             http_async_client=_httpx.AsyncClient(auth=_codex_auth, timeout=120.0),
             http_client=_httpx.Client(auth=_codex_auth, timeout=120.0),
         )

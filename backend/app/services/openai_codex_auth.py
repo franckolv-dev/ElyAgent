@@ -86,7 +86,18 @@ class CodexAuthError(RuntimeError):
 def _parse_auth_json(raw: str | dict) -> dict[str, Any]:
     """Accepte le ``~/.codex/auth.json`` du CLI officiel (clé ``tokens``)
     ou un dict plat {access_token, refresh_token[, account_id]}."""
-    data = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            # Collage depuis un terminal/nano : le repli visuel des lignes
+            # longues injecte des sauts de ligne au milieu des tokens
+            # (cas réel, 12 juin). Un JSON valide n'a JAMAIS de saut de
+            # ligne brut à l'intérieur d'une chaîne → les retirer tous est
+            # sans risque et répare exactement ce cas.
+            data = json.loads(raw.replace("\n", "").replace("\r", ""))
+    else:
+        data = dict(raw)
     tokens = data.get("tokens") if isinstance(data.get("tokens"), dict) else data
     access = (tokens.get("access_token") or "").strip()
     refresh = (tokens.get("refresh_token") or "").strip()
