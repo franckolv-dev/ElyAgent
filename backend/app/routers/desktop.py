@@ -26,6 +26,7 @@ GET /api/desktop/config         — get sandbox_dirs config      (api_router)
 PUT /api/desktop/config         — save sandbox_dirs config     (api_router)
 GET /api/desktop/download-config— generate ely-config.json     (api_router)
 GET /api/desktop/binaries       — list available binaries      (api_router)
+GET /api/desktop/binaries/{filename} — download one binary     (api_router)
 
 Two separate APIRouter instances are exported so main.py can mount them under
 the correct prefixes (/ws and /api respectively).
@@ -35,9 +36,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -311,6 +313,31 @@ async def desktop_download_config(
 # GET /api/desktop/binaries
 # ---------------------------------------------------------------------------
 
+_BINARY_CATALOG = [
+    {"os": "linux",   "arch": "amd64", "filename": "ely-desktop-linux-amd64",       "installer_filename": "install.sh"},
+    {"os": "macos",   "arch": "amd64", "filename": "ely-desktop-macos-amd64",       "installer_filename": "install.sh"},
+    {"os": "macos",   "arch": "arm64", "filename": "ely-desktop-macos-arm64",       "installer_filename": "install.sh"},
+    {"os": "windows", "arch": "amd64", "filename": "ely-desktop-windows-amd64.exe", "installer_filename": "install.bat"},
+]
+
+# Allowlist stricte de GET /desktop/binaries/{filename} : uniquement les
+# fichiers du catalogue (binaires + installeurs), rien d'autre du dossier.
+_DOWNLOADABLE_FILENAMES = frozenset(
+    entry["filename"] for entry in _BINARY_CATALOG
+) | frozenset(entry["installer_filename"] for entry in _BINARY_CATALOG)
+
+
+def _desktop_static_dir() -> Path:
+    # Le volume Docker pointe sur backend/static/desktop côté container,
+    # qui est lui-même monté sur ./desktop/dist côté host.
+    # Si le dossier n'existe pas (très early dev), on évite le crash.
+    static_dir = Path("/app/static/desktop")
+    if not static_dir.is_dir():
+        # Fallback dev local hors Docker
+        static_dir = Path(__file__).resolve().parents[3] / "desktop" / "dist"
+    return static_dir
+
+
 @api_router.get("/desktop/binaries")
 async def desktop_binaries(
     request: Request,
@@ -328,27 +355,13 @@ async def desktop_binaries(
     pour que l'UI puisse afficher des instructions de build au lieu de
     boutons cassés.
     """
-    from pathlib import Path
     settings = get_settings()
     base = settings.backend_url or str(request.base_url).rstrip("/")
 
-    # Le mount FastAPI pointe sur backend/static/desktop côté container,
-    # qui est lui-même un volume monté sur ./desktop/dist côté host.
-    # Si le dossier n'existe pas (très early dev), on évite le crash.
-    static_dir = Path("/app/static/desktop")
-    if not static_dir.is_dir():
-        # Fallback dev local hors Docker
-        static_dir = Path(__file__).resolve().parents[3] / "desktop" / "dist"
-
-    catalog = [
-        {"os": "linux",   "arch": "amd64", "filename": "ely-desktop-linux-amd64",       "installer_filename": "install.sh"},
-        {"os": "macos",   "arch": "amd64", "filename": "ely-desktop-macos-amd64",       "installer_filename": "install.sh"},
-        {"os": "macos",   "arch": "arm64", "filename": "ely-desktop-macos-arm64",       "installer_filename": "install.sh"},
-        {"os": "windows", "arch": "amd64", "filename": "ely-desktop-windows-amd64.exe", "installer_filename": "install.bat"},
-    ]
+    static_dir = _desktop_static_dir()
 
     binaries = []
-    for entry in catalog:
+    for entry in _BINARY_CATALOG:
         bin_path = static_dir / entry["filename"]
         if not bin_path.is_file():
             continue  # build manquant — on n'expose pas un lien cassé
@@ -356,8 +369,8 @@ async def desktop_binaries(
         binaries.append({
             **entry,
             "size_bytes": bin_path.stat().st_size,
-            "url": f"{base}/static/desktop/{entry['filename']}",
-            "installer": f"{base}/static/desktop/{entry['installer_filename']}" if installer_path.is_file() else None,
+            "url": f"{base}/api/desktop/binaries/{entry['filename']}",
+            "installer": f"{base}/api/desktop/binaries/{entry['installer_filename']}" if installer_path.is_file() else None,
         })
 
     response: dict = {"binaries": binaries}
@@ -369,3 +382,36 @@ async def desktop_binaries(
             "build_doc": "/docs/SETUP_DESKTOP.md",
         }
     return response
+
+
+# ---------------------------------------------------------------------------
+# GET /api/desktop/binaries/{filename}
+# ---------------------------------------------------------------------------
+
+@api_router.get("/desktop/binaries/{filename}")
+async def desktop_binary_download(filename: str) -> FileResponse:
+    """Sert un binaire/installeur ELY Desktop en téléchargement forcé.
+
+    Servis par le mount statique /static/desktop, les binaires sans
+    extension (ely-desktop-macos-arm64, …) recevaient un MIME deviné
+    text/plain → Safari/Chrome enregistraient « ely-desktop-macos-arm64.txt »
+    (ticket juin 2026). Ici : application/octet-stream + Content-Disposition
+    attachment, qui force le nom exact côté navigateur.
+
+    Pas d'authentification : l'UI déclenche le téléchargement via un
+    <a href> brut qui ne porte pas le header Authorization — parité avec
+    le mount statique public que cette route remplace (les binaires sont
+    de toute façon publiés sur les GitHub Releases).
+    """
+    if filename not in _DOWNLOADABLE_FILENAMES:
+        raise HTTPException(status_code=404, detail="Fichier inconnu")
+
+    path = _desktop_static_dir() / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Binaire non buildé")
+
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=filename,
+    )
