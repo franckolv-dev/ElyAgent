@@ -363,6 +363,16 @@ async def notify_ask_user(
     2. **ntfy** : push mobile si ``NTFY_URL`` est configurée.
     3. **Telegram** : DM si la mission vient de Telegram (source_ref).
     """
+    # Cycle PII missions — la question DOIT arriver en clair à
+    # l'utilisateur (ceinture défensive, no-op si l'invariant tient).
+    try:
+        from app.agent.missions.pii import mission_filter
+        _sf = mission_filter(mission_id)
+        question = _sf.deanonymize(question or "")
+        if item_value:
+            item_value = _sf.deanonymize(item_value)
+    except Exception:  # noqa: BLE001 — la notification prime
+        pass
     async with async_session() as db:
         mission = (await db.execute(
             select(Mission).where(Mission.id == mission_id)

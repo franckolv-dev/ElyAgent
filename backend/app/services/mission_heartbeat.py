@@ -93,6 +93,15 @@ async def _notify_terminal(mission, kind: str, summary: str) -> None:
     must not block the others or the heartbeat loop.
     """
     emoji = {"completed": "✅", "failed": "❌", "aborted": "🛑"}.get(kind, "ℹ️")
+    # Cycle PII missions (2026-06-12) — ceinture défensive : l'invariant
+    # garantit que summary/goal sont déjà en clair (dé-anonymisés à la
+    # sortie des nodes), mais une notification est le PIRE endroit pour
+    # découvrir un placeholder résiduel. deanonymize = no-op si tout va bien.
+    try:
+        from app.agent.missions.pii import mission_filter
+        summary = mission_filter(mission.id).deanonymize(summary or "")
+    except Exception:  # noqa: BLE001 — la notification prime
+        pass
     msg_content = (
         f"{emoji} **Mission « {mission.title} » {kind}**\n\n"
         f"{summary}\n\n"
