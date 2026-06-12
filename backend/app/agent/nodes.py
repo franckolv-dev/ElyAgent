@@ -552,6 +552,32 @@ def create_agent_node():
                 _tier == ComplexityTier.COMPLEX or
                 bool(_tool_kw.search(user_query))
             )
+            # ── Escalade bind (2026-06-12) — règle absolue du bench
+            # Ministral 26/05 : un modèle LOCAL ne reçoit JAMAIS un toolset
+            # bindé. Le prompt processing des ~80 schémas coûte ~1 min/tour
+            # en local ET les petits modèles répondent en texte (« Je vais
+            # faire une recherche web ») au lieu d'émettre le tool_call —
+            # vécu : tier simple + Gemma 4bit + « C'est quoi Choose France
+            # 2026 ? » = 57 s pour une annonce sans action, tour mort.
+            # Si SIMPLE est local et que des outils vont être bindés →
+            # MEDIUM pour ce tour. HALLUCINATION_GUARD_DISABLED (bench de
+            # modèles locaux) désactive aussi cette escalade.
+            if (
+                _bind_tools_flag
+                and _tier == ComplexityTier.SIMPLE
+                and (os.getenv("HALLUCINATION_GUARD_DISABLED") or "").strip().lower()
+                not in {"1", "true", "yes", "on"}
+            ):
+                try:
+                    from app.services.qwen_no_think import is_local_openai_llm as _is_local_probe
+                    if _is_local_probe(get_llm_for_tier(ComplexityTier.SIMPLE)):
+                        logger.warning(
+                            "[bind-escalation] tier simple LOCAL + outils requis "
+                            "→ tier medium (règle : jamais de toolset bindé en local)"
+                        )
+                        _tier = ComplexityTier.MEDIUM
+                except Exception as _esc_exc:  # noqa: BLE001 — sonde best-effort
+                    logger.debug("bind-escalation probe failed: %s", _esc_exc)
             _tier_key = _tier.value
             # Cache key differentiates with/without tools bound
             # FIX 2026-05-06 (audit H-5): apply keyword-based tool filtering
@@ -843,9 +869,10 @@ def create_agent_node():
                     _correction_msg = {
                         "role": "system",
                         "content": (
-                            "⚠️ Tu viens d'écrire que tu télécharges/envoies/sauvegardes "
-                            "le fichier MAIS tu n'as appelé AUCUN outil dans ton dernier "
-                            "message. Cette promesse est vide — l'utilisateur ne reçoit rien.\n\n"
+                            "⚠️ Tu viens d'annoncer une action (téléchargement, envoi, "
+                            "sauvegarde, RECHERCHE, vérification…) MAIS tu n'as appelé "
+                            "AUCUN outil dans ton dernier message. Cette annonce est "
+                            "vide — rien ne s'exécute, l'utilisateur ne reçoit rien.\n\n"
                             "DEUX OPTIONS :\n"
                             "1. Si tu DOIS livrer le fichier maintenant, réémets ta "
                             "réponse en appelant explicitement l'outil approprié "
@@ -923,6 +950,15 @@ def create_agent_node():
                     "capture", "screenshot", "photographie",
                 )
                 _query_has_action = any(v in user_query.lower() for v in _action_verbs)
+                # 2026-06-12 — le signal le plus fort n'est pas dans la
+                # QUESTION mais dans la RÉPONSE : un modèle qui écrit « je
+                # vais faire une recherche web » sans tool_call doit
+                # déclencher H-1 même si la question n'a aucun verbe
+                # d'action (« C'est quoi Choose France 2026 ? »).
+                _resp_announces = (not _has_tool_calls) and detect_empty_promise(
+                    response.content if isinstance(response.content, str)
+                    else str(response.content or "")
+                )
                 # Detailed log so any future false-positive is easy to debug
                 _h1_base_url = (
                     getattr(_base_llm, "openai_api_base", None)
@@ -934,17 +970,17 @@ def create_agent_node():
                     or getattr(_base_llm, "model", None)
                     or ""
                 )
-                if _query_has_action and _bind_tools_flag:
+                if (_query_has_action or _resp_announces) and _bind_tools_flag:
                     logger.info(
                         "[H-1.eval] tier=%s local=%s tool_calls=%d action=%s "
-                        "model=%r base_url=%r",
+                        "resp_announces=%s model=%r base_url=%r",
                         _tier_key, _is_local, len(getattr(response, "tool_calls", []) or []),
-                        _query_has_action, _h1_model_name, _h1_base_url,
+                        _query_has_action, _resp_announces, _h1_model_name, _h1_base_url,
                     )
                 if (
                     _is_local
                     and not _has_tool_calls
-                    and _query_has_action
+                    and (_query_has_action or _resp_announces)
                     and _bind_tools_flag
                     and not _h1_disabled
                 ):

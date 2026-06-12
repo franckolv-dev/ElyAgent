@@ -363,14 +363,49 @@ _DELIVERY_TARGETS = re.compile(
     re.IGNORECASE,
 )
 
+# Annonces d'INVESTIGATION sans action (2026-06-12) — « Je vais faire une
+# recherche web… » + zéro tool_call + fin de tour : l'utilisateur voit
+# l'annonce puis plus rien, et les tours suivants confabulent (« j'attends
+# les résultats du tool » — un résultat d'outil est synchrone, rien
+# n'attend jamais). Vécu en prod sur « C'est quoi Choose France 2026 ? ».
+# Ancrés sur l'INTENTION (je vais / en train de / laisse-moi / j'attends) —
+# « voici les résultats de la recherche » ou « d'après mes recherches »
+# ne matchent pas (compte rendu, pas promesse).
+_SEARCH_INTENT = re.compile(
+    r"\b("
+    # FR — futur / présent progressif d'investigation
+    r"je\s+vais\s+(faire\s+une\s+recherche|chercher|rechercher|v[ée]rifier|"
+    r"regarder|consulter|lancer\s+(une\s+|la\s+)?recherche|me\s+renseigner)|"
+    r"je\s+(suis\s+en\s+train\s+de|commence\s+[àa])\s+"
+    r"(chercher|rechercher|lire|regarder|v[ée]rifier|consulter)|"
+    r"laisse[z]?-moi\s+(chercher|rechercher|v[ée]rifier|regarder|lire|consulter)|"
+    r"j['e]?\s*attends\s+(les\s+r[ée]sultats|la\s+r[ée]ponse\s+du\s+tool)|"
+    r"j['e]?\s*ai\s+lanc[ée]\s+(une\s+|la\s+)?recherche|"
+    # EN
+    r"let\s+me\s+(search|check|look)|"
+    r"i'?m\s+(searching|looking\s+(up|into)|checking)|"
+    r"i(?:'ll|\s+will)\s+(search|look\s+(up|into)|check)|"
+    r"searching\s+(for|the\s+web)|"
+    r"i'?m\s+waiting\s+for\s+the\s+(results|tool)"
+    r")",
+    re.IGNORECASE,
+)
+
 
 def detect_empty_promise(content: str) -> bool:
-    """Return True if the response promises a delivery action without
-    actually calling a tool. Caller must also verify ``tool_calls == []``
-    before treating this as a hallucination.
+    """Return True if the response ANNOUNCES an action without actually
+    calling a tool. Caller must also verify ``tool_calls == []`` before
+    treating this as a hallucination.
+
+    Deux familles : promesse de LIVRAISON (verbe + cible : « je télécharge
+    sur ton Drive ») et annonce d'INVESTIGATION (« je vais faire une
+    recherche web ») — la seconde se suffit à elle-même, chercher implique
+    l'outil.
     """
     if not content or not isinstance(content, str):
         return False
+    if _SEARCH_INTENT.search(content):
+        return True
     return bool(_PROMISE_VERBS.search(content) and _DELIVERY_TARGETS.search(content))
 
 
