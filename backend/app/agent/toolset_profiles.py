@@ -72,6 +72,7 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # Memory — durable facts via MemGPT-style hierarchical store
     "memory_archive",
     "memory_search",
+    "memory_view_profile",
     # Sprint 1 (2026-05-15) — cross-conversation recall.
     # Lets the agent answer "do you remember…", "what did we say
     # about…" by searching past conversations via FTS5 + summarising
