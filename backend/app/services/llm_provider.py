@@ -1215,6 +1215,35 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
             kw["base_url"] = _base
         return ChatOpenAI(**kw)
 
+    if provider == "openai_codex":
+        # GPT-5.x via l'ABONNEMENT ChatGPT (forfait, 2026-06-12) — backend
+        # Responses API de chatgpt.com/backend-api/codex. AUCUNE clé API :
+        # connexion par import des tokens du CLI Codex officiel (Settings →
+        # Admin → OpenAI Codex), Bearer injecté PAR REQUÊTE via httpx.Auth
+        # avec refresh auto → l'instance reste cachable par tier sans
+        # jamais servir un token périmé. Usage cible : GPT-5.5 primaire du
+        # tier C, DeepSeek pro en fallback de chaîne (codex_rate_limited /
+        # 429 classifiés recoverable par le FallbackManager).
+        import httpx as _httpx
+
+        from langchain_openai import ChatOpenAI
+
+        from app.services.openai_codex_auth import CODEX_BASE_URL, CodexBearerAuth
+        _codex_auth = CodexBearerAuth()
+        return ChatOpenAI(
+            model=model,
+            # Placeholder jamais accepté côté serveur : l'Authorization
+            # réelle est posée (écrasée) par CodexBearerAuth à chaque
+            # requête. Requis car le SDK refuse une clé vide.
+            api_key="codex-subscription",
+            base_url=CODEX_BASE_URL,
+            use_responses_api=True,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            http_async_client=_httpx.AsyncClient(auth=_codex_auth, timeout=120.0),
+            http_client=_httpx.Client(auth=_codex_auth, timeout=120.0),
+        )
+
     logger.warning("_make_llm_for_instance: unknown provider '%s' for instance '%s'", provider, instance_id)
     return None
 

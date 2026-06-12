@@ -91,6 +91,20 @@ PROVIDERS_META = [
         ],
     },
     {
+        "id": "openai_codex",
+        "name": "OpenAI — abonnement ChatGPT (Codex)",
+        # AUCUNE clé API : la connexion se fait par import des tokens du CLI
+        # Codex officiel (`codex login` → ~/.codex/auth.json) via
+        # POST /api/settings/llm/codex/import — voir openai_codex_auth.py.
+        # Forfait mensuel au lieu de la facturation au token ; quota
+        # fair-use → prévoir un fallback de chaîne (DeepSeek pro) sur le tier.
+        "env_key": None,
+        "config_key": None,
+        # Ids acceptés par le backend chatgpt.com/backend-api/codex
+        # (mêmes valeurs que le CLI officiel / Hermes, juin 2026).
+        "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"],
+    },
+    {
         "id": "deepseek",
         "name": "DeepSeek",
         "env_key": "DEEPSEEK_API_KEY",
@@ -875,3 +889,50 @@ async def update_mono_agent(
     await save_mono_agent_flag(body.enabled)
     logger.info("Mono-agent mode set to %s by admin %s", body.enabled, admin.id)
     return {"ok": True, "enabled": body.enabled}
+
+
+# ---------------------------------------------------------------------------
+# Provider openai-codex — abonnement ChatGPT (2026-06-12)
+# Connexion par IMPORT des tokens du CLI Codex officiel (`codex login` écrit
+# ~/.codex/auth.json) ; Ely rafraîchit ensuite seul (rotation persistée,
+# stockage chiffré system_config). Voir services/openai_codex_auth.py.
+# ---------------------------------------------------------------------------
+
+
+class CodexImportRequest(BaseModel):
+    """Contenu de ~/.codex/auth.json (collé tel quel) ou dict de tokens."""
+    auth_json: str
+
+
+@router.get("/codex/status", status_code=status.HTTP_200_OK)
+async def codex_status_endpoint(admin: User = Depends(require_admin)) -> dict:
+    """Statut de la connexion abonnement ChatGPT (jamais les tokens)."""
+    from app.services.openai_codex_auth import codex_status
+    return await codex_status()
+
+
+@router.post("/codex/import", status_code=status.HTTP_200_OK)
+async def codex_import_endpoint(
+    body: CodexImportRequest,
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Importe les tokens du CLI Codex et VALIDE par un refresh immédiat —
+    un refresh_token mort échoue ICI, pas au premier appel LLM."""
+    from app.services.openai_codex_auth import CodexAuthError, import_codex_tokens
+    try:
+        result = await import_codex_tokens(body.auth_json)
+    except CodexAuthError as exc:
+        raise HTTPException(400, str(exc))
+    except ValueError:
+        raise HTTPException(400, "auth_json illisible — colle le contenu exact de ~/.codex/auth.json")
+    logger.info("openai-codex connecté par admin %s", admin.id[:8] if admin.id else "?")
+    return result
+
+
+@router.delete("/codex", status_code=status.HTTP_200_OK)
+async def codex_disconnect_endpoint(admin: User = Depends(require_admin)) -> dict:
+    """Déconnecte l'abonnement (tokens supprimés du stockage chiffré)."""
+    from app.services.openai_codex_auth import disconnect_codex
+    await disconnect_codex()
+    logger.info("openai-codex déconnecté par admin %s", admin.id[:8] if admin.id else "?")
+    return {"connected": False}

@@ -127,6 +127,17 @@ const PROVIDERS = [
     docsUrl: "https://platform.openai.com/api-keys",
   },
   {
+    // Abonnement ChatGPT (forfait mensuel) — PAS de clé API : connexion par
+    // import des tokens du CLI Codex (`codex login`) via la carte dédiée
+    // de l'onglet Modèles. Backend Responses API chatgpt.com/backend-api/codex.
+    id: "openai_codex",
+    label: "OpenAI — Abonnement ChatGPT",
+    flag: "💳",
+    needsKey: false,
+    defaultModel: "gpt-5.5",
+    docsUrl: "https://developers.openai.com/codex/",
+  },
+  {
     id: "moonshot",
     label: "Moonshot — Kimi K2.x",
     flag: "🌙",  // Endpoint default = international (.ai), drapeau neutre
@@ -272,6 +283,12 @@ export default function SettingsPage() {
   // Google state
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [googleLoading, setGoogleLoading]     = useState(false);
+
+  // OpenAI Codex (abonnement ChatGPT) state — connexion par import des
+  // tokens du CLI officiel, pas de clé API (voir carte onglet Modèles)
+  const [codexConnected, setCodexConnected] = useState<boolean | null>(null);
+  const [codexAuthJson, setCodexAuthJson]   = useState("");
+  const [codexBusy, setCodexBusy]           = useState(false);
 
   // Change password state
   const [currentPwd, setCurrentPwd]     = useState("");
@@ -583,6 +600,65 @@ export default function SettingsPage() {
   useEffect(() => {
     if (admin) loadInstances();
   }, [admin, loadInstances]);
+
+  // ---------------------------------------------------------------------------
+  // OpenAI Codex (abonnement ChatGPT) — statut + import + déconnexion
+  // ---------------------------------------------------------------------------
+  const loadCodexStatus = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/settings/llm/codex/status`);
+      if (!res.ok) return;
+      const d = await res.json();
+      setCodexConnected(!!d.connected);
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (admin) loadCodexStatus();
+  }, [admin, loadCodexStatus]);
+
+  const handleCodexImport = async () => {
+    if (!codexAuthJson.trim()) return;
+    setCodexBusy(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/settings/llm/codex/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auth_json: codexAuthJson.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        push("error", err.detail ?? t("errorStatus", { status: res.status }));
+        return;
+      }
+      setCodexConnected(true);
+      setCodexAuthJson("");
+      push("success", t("codexConnectedToast"));
+    } catch {
+      push("error", t("serverUnreachable"));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
+  const handleCodexDisconnect = async () => {
+    setCodexBusy(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/settings/llm/codex`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setCodexConnected(false);
+        push("success", t("codexDisconnectedToast"));
+      }
+    } catch {
+      push("error", t("serverUnreachable"));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
 
   // Load tier routing config
   const loadTierConfig = useCallback(async () => {
@@ -1266,6 +1342,56 @@ export default function SettingsPage() {
                     })}
                   </div>
                 )}
+
+                {/* ── OpenAI Codex — abonnement ChatGPT (pas de clé API) ── */}
+                <div className="mt-6 bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base shrink-0">💳</span>
+                      <h3 className="text-xs font-medium text-text-primary truncate">{t("codexTitle")}</h3>
+                      {codexConnected !== null && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${
+                          codexConnected
+                            ? "bg-cyber-cyan/10 border-cyber-cyan/20 text-cyber-cyan"
+                            : "bg-bg-primary border-border-dim text-text-muted"
+                        }`}>
+                          {codexConnected ? t("codexBadgeConnected") : t("codexBadgeNotConnected")}
+                        </span>
+                      )}
+                    </div>
+                    {codexConnected && (
+                      <button
+                        onClick={handleCodexDisconnect}
+                        disabled={codexBusy}
+                        className="text-[10px] px-2 py-1 rounded border border-border-dim text-text-muted hover:text-cyber-red hover:border-cyber-red/40 transition-all disabled:opacity-40"
+                      >
+                        {t("codexDisconnect")}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-text-muted whitespace-pre-line">
+                    {t("codexDescription")}
+                  </p>
+                  {!codexConnected && (
+                    <div className="space-y-2">
+                      <textarea
+                        value={codexAuthJson}
+                        onChange={(e) => setCodexAuthJson(e.target.value)}
+                        placeholder={t("codexPlaceholder")}
+                        rows={4}
+                        spellCheck={false}
+                        className="w-full text-[10px] font-mono bg-bg-primary border border-border-dim rounded px-3 py-2 text-text-primary focus:outline-none focus:border-cyber-cyan/40 resize-y"
+                      />
+                      <button
+                        onClick={handleCodexImport}
+                        disabled={codexBusy || !codexAuthJson.trim()}
+                        className="text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {codexBusy ? t("codexImporting") : t("codexImport")}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </section>
             )}
 
@@ -2559,6 +2685,14 @@ export default function SettingsPage() {
                 />
               )}
             </div>
+
+            {/* Step 3 bis: openai_codex n'a PAS de clé — connexion par la
+                carte « Abonnement ChatGPT » de l'onglet Modèles */}
+            {modalProvider === "openai_codex" && (
+              <p className={`text-[10px] ${codexConnected ? "text-text-muted" : "text-cyber-yellow"}`}>
+                {codexConnected ? t("codexModalHintConnected") : t("codexModalHintNotConnected")}
+              </p>
+            )}
 
             {/* Step 3: API Key (cloud providers only) */}
             {selectedModalProvider?.needsKey && (
