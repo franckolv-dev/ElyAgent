@@ -176,6 +176,117 @@ def _build_args_schema(sig_params: tuple) -> type:
 # ── The actual build ────────────────────────────────────────────────────────
 
 
+async def dispatch_io_source(
+    *,
+    source: str,
+    func_name: str,
+    tool_name: str,
+    kwargs: dict[str, Any],
+    secret_labels: tuple[str, ...],
+    network_allow: tuple[str, ...],
+    user_id: str,
+    skill_id: str,
+    vault_service: Any,
+    timeout_s: int,
+) -> str:
+    """L'opération io complète : secrets résolus à l'APPEL, dispatch
+    sandbox, audit, formatage LLM-lisible. Extraite de la closure
+    ``_make_dispatcher`` (V4.1, 2026-06-12) pour être réutilisée TELLE
+    QUELLE par les outils io GRADUÉS (``graduated/*_io_tool.py``) — un
+    outil gradué garde exactement ce chemin d'exécution sandboxé, seule
+    sa source vient d'un fichier core au lieu d'une row learned_skill.
+
+    Ne lève jamais : tout échec retourne une chaîne claire pour le LLM
+    (il peut demander à l'utilisateur ou se rabattre).
+    """
+    # Resolve secrets at CALL time (vault may unlock/lock between
+    # bind and call, labels may rotate). If resolution fails, return
+    # a clear LLM-visible string — don't raise — so the loop can
+    # continue (the LLM may ask the user, or fall back).
+    secrets: dict[str, str] = {}
+    if secret_labels and vault_service is not None:
+        for label in secret_labels:
+            try:
+                secrets[label] = await vault_service.get_secret(user_id, label)
+            except KeyError:
+                logger.info(
+                    "io dispatch %s: secret %r not in vault for %s",
+                    func_name, label, user_id[:8],
+                )
+                await record_dispatch(
+                    user_id=user_id, skill_id=skill_id,
+                    tool_name=tool_name, outcome="config_error",
+                    secrets_used=secret_labels,
+                    network_allow=network_allow,
+                    error=f"secret '{label}' not provisioned",
+                )
+                return f"[io tool config error] secret '{label}' not provisioned"
+            except PermissionError:
+                logger.info(
+                    "io dispatch %s: vault locked for %s",
+                    func_name, user_id[:8],
+                )
+                await record_dispatch(
+                    user_id=user_id, skill_id=skill_id,
+                    tool_name=tool_name, outcome="config_error",
+                    secrets_used=secret_labels,
+                    network_allow=network_allow,
+                    error="vault locked",
+                )
+                return f"[io tool config error] vault is locked; please unlock to use this tool"
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "io dispatch %s: vault crash on %r: %s",
+                    func_name, label, exc,
+                )
+                await record_dispatch(
+                    user_id=user_id, skill_id=skill_id,
+                    tool_name=tool_name, outcome="config_error",
+                    secrets_used=secret_labels,
+                    network_allow=network_allow,
+                    error=f"vault error: {exc}"[:500],
+                )
+                return f"[io tool config error] vault error: {exc}"
+    elif secret_labels and vault_service is None:
+        # Misconfiguration — the tool declares secrets but no vault
+        # service was injected. Don't pretend it worked.
+        await record_dispatch(
+            user_id=user_id, skill_id=skill_id,
+            tool_name=tool_name, outcome="config_error",
+            secrets_used=secret_labels,
+            network_allow=network_allow,
+            error="no vault service in session",
+        )
+        return (
+            "[io tool config error] tool requires secrets but vault "
+            "is not available in this session"
+        )
+
+    result = await run_in_sandbox(
+        source,
+        func_name,
+        kwargs=kwargs,
+        secrets=secrets,
+        timeout_s=timeout_s,
+    )
+
+    # Audit the call. The labels of secrets we resolved (not the
+    # values); the declared network domains (not the actual URLs);
+    # a 500-char error truncation. Best-effort — record_dispatch
+    # logs + swallows on any DB failure.
+    await record_dispatch(
+        user_id=user_id,
+        skill_id=skill_id,
+        tool_name=tool_name,
+        outcome=result.outcome,
+        duration_s=result.duration_s,
+        secrets_used=tuple(secrets.keys()),  # actually resolved
+        network_allow=network_allow,
+        error=(result.error or result.detail) if not result.is_ok else None,
+    )
+    return format_sandbox_result(result)
+
+
 def _make_dispatcher(
     *,
     source: str,
@@ -189,7 +300,9 @@ def _make_dispatcher(
     timeout_s: int,
 ):
     """Build the async coroutine that StructuredTool will call. Kept as a
-    factory so each tool gets its own closure (no shared mutable state)."""
+    factory so each tool gets its own closure (no shared mutable state).
+    Le corps réel vit dans :func:`dispatch_io_source` (partagé avec les
+    outils io gradués)."""
 
     # The audit takes a non-empty skill_id (the FK column is non-nullable).
     # For unit-test builds without a persisted skill we fall back to a
@@ -198,92 +311,18 @@ def _make_dispatcher(
     _skill_id = skill_id or f"<unsaved:{func_name}>"
 
     async def _dispatch(**kwargs: Any) -> str:
-        # Resolve secrets at CALL time (vault may unlock/lock between
-        # bind and call, labels may rotate). If resolution fails, return
-        # a clear LLM-visible string — don't raise — so the loop can
-        # continue (the LLM may ask the user, or fall back).
-        secrets: dict[str, str] = {}
-        if secret_labels and vault_service is not None:
-            for label in secret_labels:
-                try:
-                    secrets[label] = await vault_service.get_secret(user_id, label)
-                except KeyError:
-                    logger.info(
-                        "io dispatch %s: secret %r not in vault for %s",
-                        func_name, label, user_id[:8],
-                    )
-                    await record_dispatch(
-                        user_id=user_id, skill_id=_skill_id,
-                        tool_name=tool_name, outcome="config_error",
-                        secrets_used=secret_labels,
-                        network_allow=network_allow,
-                        error=f"secret '{label}' not provisioned",
-                    )
-                    return f"[io tool config error] secret '{label}' not provisioned"
-                except PermissionError:
-                    logger.info(
-                        "io dispatch %s: vault locked for %s",
-                        func_name, user_id[:8],
-                    )
-                    await record_dispatch(
-                        user_id=user_id, skill_id=_skill_id,
-                        tool_name=tool_name, outcome="config_error",
-                        secrets_used=secret_labels,
-                        network_allow=network_allow,
-                        error="vault locked",
-                    )
-                    return f"[io tool config error] vault is locked; please unlock to use this tool"
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "io dispatch %s: vault crash on %r: %s",
-                        func_name, label, exc,
-                    )
-                    await record_dispatch(
-                        user_id=user_id, skill_id=_skill_id,
-                        tool_name=tool_name, outcome="config_error",
-                        secrets_used=secret_labels,
-                        network_allow=network_allow,
-                        error=f"vault error: {exc}"[:500],
-                    )
-                    return f"[io tool config error] vault error: {exc}"
-        elif secret_labels and vault_service is None:
-            # Misconfiguration — the tool declares secrets but no vault
-            # service was injected. Don't pretend it worked.
-            await record_dispatch(
-                user_id=user_id, skill_id=_skill_id,
-                tool_name=tool_name, outcome="config_error",
-                secrets_used=secret_labels,
-                network_allow=network_allow,
-                error="no vault service in session",
-            )
-            return (
-                "[io tool config error] tool requires secrets but vault "
-                "is not available in this session"
-            )
-
-        result = await run_in_sandbox(
-            source,
-            func_name,
+        return await dispatch_io_source(
+            source=source,
+            func_name=func_name,
+            tool_name=tool_name,
             kwargs=kwargs,
-            secrets=secrets,
-            timeout_s=timeout_s,
-        )
-
-        # Audit the call. The labels of secrets we resolved (not the
-        # values); the declared network domains (not the actual URLs);
-        # a 500-char error truncation. Best-effort — record_dispatch
-        # logs + swallows on any DB failure.
-        await record_dispatch(
+            secret_labels=secret_labels,
+            network_allow=network_allow,
             user_id=user_id,
             skill_id=_skill_id,
-            tool_name=tool_name,
-            outcome=result.outcome,
-            duration_s=result.duration_s,
-            secrets_used=tuple(secrets.keys()),  # actually resolved
-            network_allow=network_allow,
-            error=(result.error or result.detail) if not result.is_ok else None,
+            vault_service=vault_service,
+            timeout_s=timeout_s,
         )
-        return format_sandbox_result(result)
 
     return _dispatch
 

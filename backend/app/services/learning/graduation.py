@@ -168,6 +168,22 @@ async def compute_graduation_stats(db: AsyncSession, skill: Any) -> dict[str, An
     ).scalar_one()
     invocations = int(skill.use_count or 0) + int(io_dispatches)
 
+    # ── V4.1 — distribution des outcomes sandbox (gates io) ──────────────
+    # Seules les métriques MESURABLES : l'audit trace les labels déclarés-
+    # résolus et les domaines déclarés, pas leur usage réel — les gates de
+    # « cohérence déclaré vs utilisé » seraient toujours trivialement
+    # vertes, donc on ne les pose pas.
+    io_outcomes: dict[str, int] = {}
+    if (getattr(skill, "tool_profile", "pure") or "pure") == "io":
+        rows = (
+            await db.execute(
+                select(IoToolDispatch.outcome, func.count())
+                .where(IoToolDispatch.skill_id == skill.id)
+                .group_by(IoToolDispatch.outcome)
+            )
+        ).all()
+        io_outcomes = {outcome: int(n) for outcome, n in rows}
+
     # ── Signaux récents (fenêtre error_free_days) ─────────────────────────
     # Match par (user, nom, origine learned) : tool_origin posé à la capture
     # garantit qu'on ne compte pas les erreurs d'un builtin homonyme ; les
@@ -218,11 +234,11 @@ async def compute_graduation_stats(db: AsyncSession, skill: Any) -> dict[str, An
             "threshold": SkillContentFormat.PYTHON_TOOL,
         },
         {
-            "key": "profile_pure",
-            "label": "Profil pure (io = V4.1, sandbox conservée)",
-            "ok": profile == "pure",
+            "key": "profile_supported",
+            "label": "Profil supporté par le codegen (pure in-process, io sandbox conservée)",
+            "ok": profile in ("pure", "io"),
             "value": profile,
-            "threshold": "pure",
+            "threshold": "pure|io",
         },
         {
             "key": "invocations",
@@ -254,6 +270,28 @@ async def compute_graduation_stats(db: AsyncSession, skill: Any) -> dict[str, An
         },
     ]
 
+    # ── V4.1 — gates spécifiques io (sandbox) ─────────────────────────────
+    # Zéro dispatch = zéro preuve : gates rouges (cohérent avec la gate
+    # invocations, qui échoue déjà à 0).
+    if profile == "io":
+        total = sum(io_outcomes.values())
+        returned = io_outcomes.get("returned", 0)
+        timeouts = io_outcomes.get("timeout", 0)
+        gates.append({
+            "key": "io_returned_rate",
+            "label": "≥ 80 % des dispatchs sandbox aboutis (returned)",
+            "ok": total > 0 and returned >= total * 0.8,
+            "value": f"{returned}/{total}",
+            "threshold": "80%",
+        })
+        gates.append({
+            "key": "io_timeout_rate",
+            "label": "< 5 % de timeouts sandbox",
+            "ok": total > 0 and timeouts < max(1, total * 0.05),
+            "value": f"{timeouts}/{total}",
+            "threshold": "<5%",
+        })
+
     return {
         "skill_id": skill.id,
         "tool_name": skill.name,
@@ -262,6 +300,7 @@ async def compute_graduation_stats(db: AsyncSession, skill: Any) -> dict[str, An
             "invocations": invocations,
             "use_count": int(skill.use_count or 0),
             "io_dispatches": int(io_dispatches),
+            "io_outcomes": io_outcomes,
             "errors_recent": int(errors_recent),
             "refusals_recent": int(refusals_recent),
             "age_days": age_days,

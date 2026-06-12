@@ -110,6 +110,141 @@ def build_manifest(skill: Any, stats: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _parse_io_tool_source(source: str) -> dict[str, Any]:
+    """Extrait par AST ce que le wrapper gradué doit reproduire du tool io
+    d'origine : nom, signature d'arguments (le LLM doit voir le VRAI
+    schéma), docstring, kwargs du @register (domaine, déclarations V3).
+
+    AST uniquement — la source io ne doit JAMAIS être exécutée in-process
+    (httpx top-level, get_secret injecté par la sandbox seulement).
+    """
+    import ast
+
+    tree = ast.parse(source)
+    func = None
+    register_kwargs: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for deco in node.decorator_list:
+                if isinstance(deco, ast.Name) and deco.id == "tool":
+                    func = node
+                if (
+                    isinstance(deco, ast.Call)
+                    and isinstance(deco.func, ast.Name)
+                    and deco.func.id == "register"
+                ):
+                    register_kwargs = {
+                        kw.arg: ast.unparse(kw.value)
+                        for kw in deco.keywords if kw.arg
+                    }
+            if func is not None:
+                break
+    if func is None:
+        raise ValueError("aucune fonction @tool dans la source io")
+    return {
+        "func_name": func.name,
+        "args_src": ast.unparse(func.args),          # ex. "city: str, n: int = 3"
+        "arg_names": [a.arg for a in func.args.args + func.args.kwonlyargs],
+        "docstring": ast.get_docstring(func) or "",
+        "register_kwargs": register_kwargs,
+    }
+
+
+def build_io_tool_file(skill: Any, manifest: dict[str, Any]) -> tuple[str, str]:
+    """(chemin, contenu) du fichier core d'un outil io gradué — V4.1.
+
+    Principe non négociable : **l'exécution reste sandboxée**. Le fichier
+    core est un WRAPPER : il embarque la source d'origine verbatim + le
+    périmètre V3 en constantes, et dispatch via
+    ``dispatch_io_source`` (exactement le chemin du runtime learned :
+    secrets résolus à l'appel par user, audit io_tool_dispatches, egress
+    Squid). Graduer un outil réseau ne le sort JAMAIS de sa cage.
+    """
+    parsed = _parse_io_tool_source(skill.content or "")
+    from app.services.learning.v3_declarations import parse_v3_declarations
+    decls = parse_v3_declarations(skill.content or "")
+
+    func_name = parsed["func_name"]
+    kwargs_forward = ", ".join(f'"{a}": {a}' for a in parsed["arg_names"])
+    reg_kwargs_src = ",\n    ".join(
+        f"{k}={v}" for k, v in parsed["register_kwargs"].items()
+    )
+    provenance = json.dumps(
+        {k: manifest[k] for k in (
+            "learned_skill_id", "origin_user", "graduated_at", "stats",
+        )},
+        ensure_ascii=False, indent=2,
+    )
+    provenance_block = "\n".join(f"# {line}" for line in provenance.splitlines())
+    docstring = (parsed["docstring"] or func_name).rstrip()
+
+    content = f'''\
+# =============================================================================
+# @project    ELY — Exactly Like You
+# @file       {graduated_tool_path(skill.name)[len("backend/"):]}
+# @brief      Tool io gradué — généré par Ely, éprouvé en sandbox, converti
+#             en code core par le pipeline de graduation (Sprint 4d V4.1).
+#             L'EXÉCUTION RESTE SANDBOXÉE : ce fichier est un wrapper qui
+#             dispatch la source d'origine vers le runner isolé (egress
+#             Squid, secrets Vault résolus par utilisateur à l'appel).
+#
+# @author     Ely (auto-developing agent) — revue humaine via PR
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
+# @license    Elastic License 2.0
+#
+# PROVENANCE (gates au moment de la graduation) :
+{provenance_block}
+# =============================================================================
+from __future__ import annotations
+
+from typing import Annotated
+
+from langchain_core.tools import InjectedToolArg, tool
+
+from app.skills.base import Domain
+from app.skills.decorator import register
+
+# ── Source d'origine — exécutée UNIQUEMENT dans la sandbox ──────────────────
+_IO_SOURCE = {json.dumps(skill.content or "", ensure_ascii=False)}
+
+# ── Périmètre V3 gelé à la graduation ────────────────────────────────────────
+_NETWORK_ALLOW: tuple[str, ...] = {tuple(decls.network_allow)!r}
+_REQUIRES_SECRETS: tuple[str, ...] = {tuple(decls.requires_secrets)!r}
+_TIMEOUT_S = 8
+
+
+@register(
+    {reg_kwargs_src},
+)
+@tool
+async def {func_name}(
+    {parsed["args_src"]},
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """{docstring}
+
+    (Outil io gradué — exécution sandboxée, périmètre egress/secrets gelé
+    à la graduation. Voir l'en-tête PROVENANCE.)
+    """
+    from app.services.learning.learned_tools_runtime_io import dispatch_io_source
+    from app.services.vault_service import get_vault_service
+
+    return await dispatch_io_source(
+        source=_IO_SOURCE,
+        func_name="{func_name}",
+        tool_name="{func_name}",
+        kwargs={{{kwargs_forward}}},
+        secret_labels=_REQUIRES_SECRETS,
+        network_allow=_NETWORK_ALLOW,
+        user_id=user_id,
+        skill_id="graduated:{func_name}",
+        vault_service=get_vault_service(),
+        timeout_s=_TIMEOUT_S,
+    )
+'''
+    return graduated_tool_path(skill.name), content
+
+
 def build_tool_file(skill: Any, manifest: dict[str, Any]) -> tuple[str, str]:
     """(chemin, contenu) du fichier core. Le content du skill est repris
     À L'IDENTIQUE — c'est la version éprouvée à l'usage qui gradue, pas
@@ -140,6 +275,58 @@ def build_tool_file(skill: Any, manifest: dict[str, Any]) -> tuple[str, str]:
     )
     content = (skill.content or "").lstrip("\n")
     return graduated_tool_path(skill.name), f"{header}{content}\n"
+
+
+def build_io_test_file(skill: Any) -> tuple[str, str]:
+    """Test pytest d'un outil io gradué — import, binding, périmètre gelé.
+
+    JAMAIS d'invocation en CI : l'exécution exige la sandbox (réseau réel).
+    Le contrat vérifiable statiquement : le module s'importe, expose un
+    tool async, la source embarquée est non vide et le périmètre V3 est
+    bien gelé en constantes.
+    """
+    slug = _slug(skill.name)
+    module = f"app.agent.tools.graduated.{slug}_tool"
+    content = f'''# =============================================================================
+# @project    ELY — Exactly Like You
+# @file       tests/test_graduated_{slug}.py
+# @brief      Pin de graduation io — généré avec le tool (Sprint 4d V4.1).
+# @license    Elastic License 2.0
+# =============================================================================
+"""Pin du tool io gradué ``{skill.name}`` : wrapper sandbox correct.
+
+Pas d'invocation en CI (le dispatch exige la sandbox + le réseau) — le
+runtime sandbox lui-même est pinné par sandbox/test-sandbox-run.sh.
+"""
+from __future__ import annotations
+
+import importlib
+
+
+def _load_module():
+    return importlib.import_module("{module}")
+
+
+def test_{slug}_is_an_async_bindable_tool():
+    module = _load_module()
+    tool = getattr(module, "{skill.name}", None)
+    assert tool is not None, "le module gradué doit exposer le tool"
+    assert tool.name == "{skill.name}"
+    assert (tool.description or "").strip() != ""
+    assert tool.coroutine is not None, "un outil io gradué est async (dispatch sandbox)"
+
+
+def test_{slug}_perimeter_is_frozen():
+    module = _load_module()
+    assert isinstance(module._IO_SOURCE, str) and module._IO_SOURCE.strip()
+    assert isinstance(module._NETWORK_ALLOW, tuple)
+    assert isinstance(module._REQUIRES_SECRETS, tuple)
+    # le wrapper n'exécute JAMAIS la source in-process
+    import inspect
+    src = inspect.getsource(module)
+    assert "dispatch_io_source" in src and "PROVENANCE" in src
+'''
+    return graduated_test_path(skill.name), content
 
 
 def build_test_file(skill: Any, smoke_kwargs: dict | None) -> tuple[str, str]:
@@ -243,19 +430,29 @@ async def dry_run_graduation(
         existing = frozenset(get_skill_registry().all_tool_names())
     except Exception:
         existing = frozenset()
+    _profile = getattr(skill, "tool_profile", "pure") or "pure"
     report = validate_tool_source(
         skill.content or "",
         existing_names=existing,
-        run_smoke=smoke_kwargs is not None,
+        # io : JAMAIS de smoke in-process (code réseau → sandbox only) ;
+        # les preuves d'exécution io sont les gates outcome (dispatches).
+        run_smoke=smoke_kwargs is not None and _profile != "io",
         smoke_kwargs=smoke_kwargs,
-        profile=getattr(skill, "tool_profile", "pure") or "pure",
+        profile=_profile,
     )
 
     composition = scan_composition_deps(skill.content or "")
 
     manifest = build_manifest(skill, stats)
-    tool_path, tool_content = build_tool_file(skill, manifest)
-    test_path, test_content = build_test_file(skill, smoke_kwargs)
+    profile = getattr(skill, "tool_profile", "pure") or "pure"
+    if profile == "io":
+        # V4.1 — wrapper sandbox : source embarquée, périmètre gelé,
+        # test sans invocation (la CI n'a pas de sandbox réseau).
+        tool_path, tool_content = build_io_tool_file(skill, manifest)
+        test_path, test_content = build_io_test_file(skill)
+    else:
+        tool_path, tool_content = build_tool_file(skill, manifest)
+        test_path, test_content = build_test_file(skill, smoke_kwargs)
 
     files = [
         {"path": f"{GRADUATED_PKG_DIR}/__init__.py", "content": _INIT_PY,

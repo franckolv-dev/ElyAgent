@@ -272,15 +272,66 @@ class TestGraduationGates:
             await _cleanup(seeded_user)
 
     @pytest.mark.asyncio
-    async def test_io_profile_blocked_until_v41(self, seeded_user):
+    async def test_io_profile_supported_with_io_gates(self, seeded_user):
+        """V4.1 : le profil io est supporté — gate profile verte, mais les
+        gates io (returned/timeout) exigent des PREUVES sandbox : à zéro
+        dispatch, elles sont rouges (zéro preuve = pas de graduation)."""
         skill = await _seed_skill(_make_skill(
             seeded_user, name="io_tool", profile="io", use_count=50, age_days=60,
         ))
         try:
             report = await self._stats_for(skill)
+            gate = next(g for g in report["gates"] if g["key"] == "profile_supported")
+            assert gate["ok"] is True
+            returned_gate = next(g for g in report["gates"] if g["key"] == "io_returned_rate")
+            timeout_gate = next(g for g in report["gates"] if g["key"] == "io_timeout_rate")
+            assert returned_gate["ok"] is False     # 0 dispatch = 0 preuve
+            assert timeout_gate["ok"] is False
             assert report["eligible"] is False
-            gate = next(g for g in report["gates"] if g["key"] == "profile_pure")
-            assert gate["ok"] is False
+        finally:
+            await _cleanup(seeded_user)
+
+    @pytest.mark.asyncio
+    async def test_io_gates_with_healthy_dispatch_history(self, seeded_user):
+        """20 dispatchs : 18 returned, 1 raised, 1 timeout → returned 90 % ✓,
+        timeout 5 % (= seuil max(1, 5%)=1, 1<1 faux) → la gate timeout est
+        STRICTE : exactement à la limite, elle bloque."""
+        from app.models.io_tool_dispatch import IoToolDispatch
+        skill = await _seed_skill(_make_skill(
+            seeded_user, name="io_proven", profile="io", use_count=0, age_days=60,
+        ))
+        try:
+            async with async_session() as db:
+                for outcome in (["returned"] * 18 + ["raised"] + ["timeout"]):
+                    db.add(IoToolDispatch(
+                        user_id=seeded_user, skill_id=skill.id,
+                        tool_name="io_proven", outcome=outcome, duration_ms=120,
+                        secrets_used_json="[]", network_allow_json="[]",
+                    ))
+                await db.commit()
+            report = await self._stats_for(skill)
+            returned_gate = next(g for g in report["gates"] if g["key"] == "io_returned_rate")
+            assert returned_gate["ok"] is True and returned_gate["value"] == "18/20"
+            timeout_gate = next(g for g in report["gates"] if g["key"] == "io_timeout_rate")
+            assert timeout_gate["ok"] is False and timeout_gate["value"] == "1/20"
+            # les invocations comptent les dispatchs sandbox
+            assert report["stats"]["invocations"] == 20
+            assert report["stats"]["io_outcomes"]["returned"] == 18
+        finally:
+            from sqlalchemy import delete
+            async with async_session() as db:
+                await db.execute(delete(IoToolDispatch).where(IoToolDispatch.user_id == seeded_user))
+                await db.commit()
+            await _cleanup(seeded_user)
+
+    @pytest.mark.asyncio
+    async def test_pure_profile_has_no_io_gates(self, seeded_user):
+        skill = await _seed_skill(_make_skill(
+            seeded_user, name="pure_tool", use_count=50, age_days=60,
+        ))
+        try:
+            report = await self._stats_for(skill)
+            assert not any(g["key"].startswith("io_") for g in report["gates"])
         finally:
             await _cleanup(seeded_user)
 
