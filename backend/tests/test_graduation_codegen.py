@@ -225,6 +225,101 @@ class TestDryRun:
         assert result["ready"] is False
 
 
+# ── V4.1 : codegen io (wrapper sandbox) ──────────────────────────────────────
+
+_VALID_IO_SOURCE = '''
+import httpx
+from langchain_core.tools import tool
+
+from app.skills.base import Domain
+from app.skills.decorator import register
+
+
+@register(
+    domain=Domain.RESEARCH,
+    skill_name="grad_weather_probe",
+    skill_display_name="Weather probe",
+    skill_description="Fetch weather for a city.",
+    skill_icon="🌐",
+    enabled_by_default=False,
+    network_allow=["api.openweathermap.org"],
+    requires=["httpx"],
+    requires_secrets=["openweather_api_key"],
+)
+@tool
+def grad_weather_probe(city: str, units: str = "metric") -> dict:
+    """Get current weather for a city."""
+    api_key = get_secret("openweather_api_key")
+    r = httpx.get(
+        f"https://api.openweathermap.org/data/2.5/weather?q={city}&units={units}&appid={api_key}",
+        timeout=10,
+    )
+    r.raise_for_status()
+    return r.json()
+'''
+
+
+class TestIoCodegen:
+    def _io_skill(self, uid):
+        return _make_skill(
+            uid, name="grad_weather_probe", content=_VALID_IO_SOURCE,
+            use_count=0, age_days=30, status=SkillStatus.ACTIVE,
+        )
+
+    def test_parse_io_source_extracts_contract(self):
+        from app.services.learning.graduation_codegen import _parse_io_tool_source
+        parsed = _parse_io_tool_source(_VALID_IO_SOURCE)
+        assert parsed["func_name"] == "grad_weather_probe"
+        assert "city: str" in parsed["args_src"] and "units: str" in parsed["args_src"]
+        assert parsed["arg_names"] == ["city", "units"]
+        assert "Get current weather" in parsed["docstring"]
+        assert parsed["register_kwargs"]["domain"] == "Domain.RESEARCH"
+        assert "api.openweathermap.org" in parsed["register_kwargs"]["network_allow"]
+
+    def test_io_wrapper_embeds_source_and_freezes_perimeter(self, seeded_user):
+        from app.services.learning.graduation_codegen import build_io_tool_file
+        skill = self._io_skill(seeded_user)
+        skill.tool_profile = "io"
+        manifest = build_manifest(skill, {"stats": {}, "thresholds": {}, "gates": []})
+        path, content = build_io_tool_file(skill, manifest)
+        assert path.endswith("grad_weather_probe_tool.py")
+        # source d'origine embarquée (échappée JSON) — jamais exécutée in-process
+        assert "api.openweathermap.org/data/2.5/weather" in content
+        assert "_NETWORK_ALLOW: tuple[str, ...] = ('api.openweathermap.org',)" in content
+        assert "_REQUIRES_SECRETS: tuple[str, ...] = ('openweather_api_key',)" in content
+        # dispatch sandbox, signature préservée (rendu ast.unparse), provenance
+        assert "dispatch_io_source" in content
+        assert "city: str, units: str='metric'" in content
+        assert "PROVENANCE" in content and skill.id in content
+        # le fichier généré est du Python valide
+        compile(content, "generated_io_tool.py", "exec")
+
+    def test_io_test_file_never_invokes(self, seeded_user):
+        from app.services.learning.graduation_codegen import build_io_test_file
+        skill = self._io_skill(seeded_user)
+        path, content = build_io_test_file(skill)
+        assert path == "backend/tests/test_graduated_grad_weather_probe.py"
+        assert "invoke" not in content          # jamais d'appel réseau en CI
+        assert "_NETWORK_ALLOW" in content
+        compile(content, "generated_io_test.py", "exec")
+
+    @pytest.mark.asyncio
+    async def test_dry_run_io_uses_sandbox_wrapper_template(self, seeded_user):
+        skill = self._io_skill(seeded_user)
+        skill.tool_profile = "io"
+        async with async_session() as db:
+            db.add(skill)
+            await db.commit()
+            await db.refresh(skill)
+            result = await dry_run_graduation(db, skill)
+        tool_file = next(f for f in result["files"] if f["path"].endswith("grad_weather_probe_tool.py"))
+        assert "dispatch_io_source" in tool_file["content"]
+        # zéro dispatch sandbox → gates io rouges → pas prêt
+        assert result["ready"] is False
+        io_gates = [g["key"] for g in result["graduation"]["gates"] if g["key"].startswith("io_")]
+        assert "io_returned_rate" in io_gates and "io_timeout_rate" in io_gates
+
+
 # ── Garde d'unicité au chargement ────────────────────────────────────────────
 
 class TestReconcileGraduated:
