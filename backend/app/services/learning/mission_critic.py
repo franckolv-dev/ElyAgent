@@ -336,11 +336,19 @@ async def critique_mission(mission_id: str) -> int | None:
         # expiré (DetachedInstanceError).
         mission_user_id = str(mission.user_id)
 
+    # Cycle PII missions (2026-06-12) — le critic tourne sur un tier CLOUD
+    # et reçoit tout l'audit trail (goal + sorties d'outils) : anonymisé
+    # avant l'appel, verdict dé-anonymisé avant parse/persist.
+    from app.agent.missions.pii import mission_filter
+    _sf = mission_filter(mission_id)
+    prompt_text = _sf.anonymize(prompt_text, ner_detection=False)
+
     # LLM call outside the session — providers can be slow
     try:
         raw, tokens, model_name = await _call_critic_llm(
             prompt_text, user_id=mission_user_id,
         )
+        raw = _sf.deanonymize(raw)
     except Exception as exc:
         logger.warning(
             "mission_critic: LLM call failed for mission=%s : %s",

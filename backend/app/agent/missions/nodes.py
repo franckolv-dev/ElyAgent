@@ -188,6 +188,15 @@ async def dispatch_tool(
     if not tool:
         return f"Outil inconnu : {tool_name!r}", False
 
+    # Cycle PII missions (2026-06-12) — les args émis par le LLM peuvent
+    # contenir des placeholders ([EMAIL_0], …) : dé-anonymisés AVANT le
+    # HITL display, les keyword-checks et l'exécution — miroir exact de
+    # tool_node._deanonymize_value côté chat. Couvre TOUS les chemins
+    # (graphe legacy, exécuteur spec, reprise ask_user).
+    if mission_id:
+        from app.agent.missions.pii import deanonymize_any, mission_filter
+        tool_args = deanonymize_any(mission_filter(mission_id), tool_args)
+
     # Injected args (never visible in logs/UI)
     args = dict(tool_args)
     if tool_name in GOOGLE_TOOLS:
@@ -951,10 +960,15 @@ async def plan_node(state: MissionState) -> dict:
         SystemMessage(content=sys_prompt),
         HumanMessage(content=f"Goal de l'utilisateur :\n\n{goal}"),
     ]
-    response = await llm.ainvoke(messages)
+    # Cycle PII missions (2026-06-12) — le LLM ne voit que des placeholders,
+    # sa sortie est dé-anonymisée AVANT parse/persist (invariant : la base
+    # et l'utilisateur vivent dans le monde réel).
+    from app.agent.missions.pii import anonymize_messages, deanonymize_any, mission_filter
+    _sf = mission_filter(mission_id)
+    response = await llm.ainvoke(anonymize_messages(_sf, messages))
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "plan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    raw = getattr(response, "content", "") or ""
+    raw = deanonymize_any(_sf, getattr(response, "content", "") or "")
 
     # Parse JSON
     try:
@@ -1205,6 +1219,14 @@ async def act_node(state: MissionState) -> dict:
     if prev_context:
         messages.append(HumanMessage(content=prev_context))
 
+    # Cycle PII missions — prompts anonymisés pour le primary ET le
+    # fallback (même liste). Les args des tool_calls émis sont
+    # dé-anonymisés dans dispatch_tool ; le content (EDGE_CASE, texte
+    # libre) l'est ci-dessous avant tout parse.
+    from app.agent.missions.pii import anonymize_messages, mission_filter
+    _sf = mission_filter(mission_id)
+    messages = anonymize_messages(_sf, messages)
+
     t0 = time.monotonic()
     response = None
     tool_calls = []
@@ -1221,10 +1243,13 @@ async def act_node(state: MissionState) -> dict:
 
     # Sprint 4c — l'acteur a signalé un cas particulier prévu par la spec :
     # pas de tool_call, pas de fallback, l'évaluateur applique le handler.
+    # Le content sort du LLM → dé-anonymisé avant parse (une question
+    # ask_user dérivée d'un EDGE_CASE doit arriver EN CLAIR à l'utilisateur).
     _edge: Optional[tuple] = None
     if _is_spec and response is not None and not tool_calls:
+        from app.agent.missions.pii import deanonymize_any
         from app.services.mission_spec_runtime import parse_edge_case
-        _edge = parse_edge_case(getattr(response, "content", "") or "")
+        _edge = parse_edge_case(deanonymize_any(_sf, getattr(response, "content", "") or ""))
 
     # Fallback if primary didn't emit a tool_call OR raised. Typical for
     # Gemma 4 21B REAP : either crashes on tool binding (MLX bug) or
@@ -1547,10 +1572,14 @@ async def eval_node(state: MissionState) -> dict:
         tool_name=state.get("last_tool_name", "?"),
         tool_output=(state.get("last_tool_output", "") or "")[:2000],
     )
-    response = await llm.ainvoke([HumanMessage(content=prompt)])
+    # Cycle PII missions — l'évaluateur voit des placeholders, son verdict
+    # (reason, final_summary) est dé-anonymisé avant parse/persist.
+    from app.agent.missions.pii import anonymize_messages, deanonymize_any, mission_filter
+    _sf = mission_filter(mission_id)
+    response = await llm.ainvoke(anonymize_messages(_sf, [HumanMessage(content=prompt)]))
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "eval", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    raw = getattr(response, "content", "") or ""
+    raw = deanonymize_any(_sf, getattr(response, "content", "") or "")
 
     try:
         verdict = json.loads(_strip_json_fence(raw))
@@ -1771,10 +1800,13 @@ async def replan_node(state: MissionState) -> dict:
         tools_catalog=_esc(_registry.tools_catalog(per_domain=True)),
         n_tools=len(_registry.all_tool_names()),
     )
-    response = await llm.ainvoke([HumanMessage(content=prompt)])
+    # Cycle PII missions — même couture que plan/act/eval.
+    from app.agent.missions.pii import anonymize_messages, deanonymize_any, mission_filter
+    _sf = mission_filter(mission_id)
+    response = await llm.ainvoke(anonymize_messages(_sf, [HumanMessage(content=prompt)]))
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "replan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    raw = getattr(response, "content", "") or ""
+    raw = deanonymize_any(_sf, getattr(response, "content", "") or "")
 
     try:
         new_plan = json.loads(_strip_json_fence(raw))
