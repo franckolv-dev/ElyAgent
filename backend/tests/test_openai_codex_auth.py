@@ -143,6 +143,15 @@ class TestParseAuthJson:
         with pytest.raises(ValueError):
             _parse_auth_json("pas du json {{{")
 
+    def test_terminal_wrapped_paste_is_repaired(self):
+        # Cas réel (12 juin) : copie depuis nano/terminal → le repli visuel
+        # des lignes longues injecte des \n au milieu des tokens JWT.
+        wrapped = "\n".join(_CLI_AUTH_JSON[i:i + 60]
+                            for i in range(0, len(_CLI_AUTH_JSON), 60))
+        state = _parse_auth_json(wrapped)
+        assert state["access_token"] == "at-from-cli"
+        assert state["refresh_token"] == "rt-1"
+
 
 # ── Import + validation par refresh immédiat ──────────────────────────────────
 
@@ -340,6 +349,14 @@ class TestProviderBuilder:
             assert llm.model_name == "gpt-5.5"
             assert llm.use_responses_api is True
             assert str(llm.openai_api_base) == CODEX_BASE_URL
+            # Contraintes du backend codex (spike live 12 juin) — chacune de
+            # ces valeurs est OBLIGATOIRE, le backend renvoie 400 sinon :
+            assert llm.streaming is True            # "Stream must be set to true"
+            assert llm.store is False               # "Store must be set to false"
+            assert llm.max_tokens is None           # "Unsupported parameter: max_output_tokens"
+            assert llm.model_kwargs.get("instructions")  # "Instructions are required"
+            # Épure le content des blocs reasoning (TTS/sanitizer)
+            assert llm.output_version == "v0"
             # L'Authorization réelle vient de CodexBearerAuth (par requête),
             # pas du placeholder api_key.
             assert isinstance(llm.http_async_client._auth, CodexBearerAuth)
