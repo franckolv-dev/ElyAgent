@@ -64,6 +64,15 @@ les PII en texte libre avant tout envoi à un LLM cloud :
 `PII_NER_INSTALL=1`, export du modèle ONNX sur l'hôte
 (`backend/scripts/export_gliner_onnx.py`), puis `PII_NER_ENABLED=true`.
 
+**Positionnement honnête** : cette couche protège la *confidence passive*
+(dicter des notes contenant des tiers vers un LLM cloud). Elle est
+structurellement en tension avec les usages **agentiques** : on ne peut pas
+demander à un agent d'agir sur des entités qu'on lui masque (« trouve le
+mail de [PERSON_0] chez [ORG_1] » ne mène nulle part). Pour un usage
+assistant/prospection/action, le réglage recommandé est **flag éteint** :
+la couche 1 regex (emails, téléphones, IBAN, CB, tokens) reste active et
+couvre l'essentiel sans jamais gêner l'agent.
+
 **Désactivation immédiate** (kill-switch) si la couche gêne votre usage :
 
 ```bash
