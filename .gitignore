@@ -152,6 +152,8 @@ TO_DELETE/
 # Docker volume mount doesn't fail on a fresh clone before binaries are built.
 desktop/dist/*
 !desktop/dist/.gitkeep
+# ... et le binaire posé à la racine de desktop/ par un `go build` sans -o
+desktop/ely-desktop
 
 # Canonical bench artefacts — produced at run-time, not source-of-truth
 bench/results/
