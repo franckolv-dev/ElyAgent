@@ -21,6 +21,24 @@ _(empty — next batch starts here)_
 
 ---
 
+## [2.1.0] — 2026-06-12 — Cycle PII des missions, mémoire qui dit vrai, choix de modèles sur mesures
+
+> Trois chantiers nés de l'usage réel. Le **cycle PII des missions** ferme le dernier trou documenté de la frontière souveraineté. Le **routage d'écriture mémoire** répare le cas le plus naturel (« retiens mes URLs ») qui produisait des confirmations hallucinées. Et deux **outils de mesure** font que plus aucun changement de modèle ne se décide au ressenti.
+
+### Security
+- **Cycle anonymise/dé-anonymise complet sur les missions** (`021aec7`, PR #108) : les missions autonomes envoyaient goal, sorties d'outils et audit trail **en clair** aux LLM cloud. Invariant appliqué (le même que le chat) : *la base et l'utilisateur vivent dans le monde réel ; seul le LLM voit des placeholders*. Prompts anonymisés avant chaque appel (plan/act/eval/replan + LLM-juge), args d'outils restaurés avant exécution, notifications protégées. Design sans vault persistant : aucun placeholder ne touche jamais le disque. 15 tests pins.
+- **Positionnement couche 2 NER documenté** (`b7d8324`) : protection de la *confidence passive*, structurellement en tension avec l'usage agentique — flag éteint = réglage recommandé, la couche 1 regex (emails/téléphones/IBAN/CB) reste toujours active.
+
+### Fixed
+- **« Retiens mes URLs » fonctionne enfin** (`82eb3f3`, PR #106) : `memory_archive` n'avait pas de phrases déclencheurs — le LLM ne le choisissait jamais et confirmait des enregistrements **hallucinés** (attrapés par le completion_guard). Docstring réécrit intention-d'abord + règle « ne jamais confirmer sans appel réel » + nouvel outil `memory_view_profile` (« qu'est-ce que tu sais de moi ? ») pour vérifier ce qui est réellement stocké.
+- **Sandbox « unhealthy » en permanence** (`3212eb5`) : le healthcheck passait par le proxy egress qui refuse localhost — `NO_PROXY` ajouté.
+
+### Added
+- **Gate d'extraction maintenance** (`287e708`, PR #107, tag bench `deep`) : tout changement de modèle sur le tiers MAINTENANCE passe un examen d'extraction (rappel de faits plantés, rejet du bruit, piège anti-fabrication) avant d'écrire dans la mémoire long-terme. A attrapé en conditions réelles une config encore sur un modèle défaillant.
+- **Probes tier A** (`backend/scripts/probe_tier_a_models.py`) : latence au premier token *utile* + correction sur 5 questions représentatives — l'outil qui a départagé Gemma 4bit/8bit/LFM2.5 sur données.
+
+---
+
 ## [2.0.0] — 2026-06-11 — Ely contribue à son propre code source 🎓
 
 > Le saut majeur que la roadmap promettait depuis le Sprint 4b. La [PR #105](https://github.com/franckolv-dev/ElyAgent/pull/105) est la **première pull request générée, commitée et ouverte de manière autonome par Ely** sur son propre dépôt — et mergée par un humain après revue, avec sa CI verte. Le cycle complet de l'auto-developing agent est fermé :
