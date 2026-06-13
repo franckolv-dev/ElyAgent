@@ -921,6 +921,50 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
 # Low-level provider factory — shared by tier routing and fallback helpers
 # ---------------------------------------------------------------------------
 
+def _make_openai_codex(model: str, temperature: float) -> "BaseChatModel":
+    """ChatOpenAI sur le backend codex (abonnement ChatGPT) — partagé par le
+    chemin instances ET le chemin legacy du Routage (bug 12 juin : l'entrée
+    legacy « openai_codex » du dropdown tombait dans _make_llm_for_provider
+    qui ne la connaissait pas → skip silencieux vers le fallback du tier).
+
+    Contraintes du backend codex, validées par spike live (12 juin) :
+    stream=true OBLIGATOIRE, store=false OBLIGATOIRE (stateless),
+    `instructions` top-level OBLIGATOIRE (les SystemMessage de la conv
+    restent honorés en plus), max_output_tokens REJETÉ (ne pas passer
+    max_tokens). temperature acceptée. output_version="v0" épure le
+    content des blocs reasoning (sinon ils partent au TTS/sanitizer).
+
+    Construit SANS vérifier la connexion (l'état vit en DB, illisible en
+    sync) : si l'abonnement n'est pas connecté, CodexAuthError part au
+    premier appel et classify_exception la route en AUTH → la chaîne du
+    tier bascule proprement au lieu de tuer le tour.
+    """
+    import httpx as _httpx
+
+    from langchain_openai import ChatOpenAI
+
+    from app.services.openai_codex_auth import CODEX_BASE_URL, CodexBearerAuth
+    _codex_auth = CodexBearerAuth()
+    return ChatOpenAI(
+        model=model,
+        # Placeholder jamais accepté côté serveur : l'Authorization réelle
+        # est posée (écrasée) par CodexBearerAuth à chaque requête. Requis
+        # car le SDK refuse une clé vide.
+        api_key="codex-subscription",
+        base_url=CODEX_BASE_URL,
+        use_responses_api=True,
+        streaming=True,
+        store=False,
+        output_version="v0",
+        temperature=temperature,
+        model_kwargs={
+            "instructions": "Suis les messages système fournis dans la conversation.",
+        },
+        http_async_client=_httpx.AsyncClient(auth=_codex_auth, timeout=120.0),
+        http_client=_httpx.Client(auth=_codex_auth, timeout=120.0),
+    )
+
+
 def _make_llm_for_provider(
     provider_id: str,
     settings,
@@ -948,6 +992,12 @@ def _make_llm_for_provider(
         return _make_lm_studio(model=settings.slm_model or "gemma-4-26B-A4B-it-MLX-4bit",
                                base_url=settings.lm_studio_base_url,
                                max_tokens=max_tokens, temperature=temperature)
+
+    if provider_id == "openai_codex":
+        # Abonnement ChatGPT — pas de clé API (connexion par import des
+        # tokens du CLI, voir openai_codex_auth). Modèle par défaut du
+        # provider ; pour en choisir un autre, créer une INSTANCE.
+        return _make_openai_codex(model="gpt-5.5", temperature=temperature)
 
     if provider_id == "qwen_api":
         key = _key("qwen_api", settings.qwen_api_key)
@@ -1224,36 +1274,7 @@ def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature
         # jamais servir un token périmé. Usage cible : GPT-5.5 primaire du
         # tier C, DeepSeek pro en fallback de chaîne (codex_rate_limited /
         # 429 classifiés recoverable par le FallbackManager).
-        import httpx as _httpx
-
-        from langchain_openai import ChatOpenAI
-
-        from app.services.openai_codex_auth import CODEX_BASE_URL, CodexBearerAuth
-        _codex_auth = CodexBearerAuth()
-        # Contraintes du backend codex, validées par spike live (12 juin) :
-        # stream=true OBLIGATOIRE, store=false OBLIGATOIRE (stateless),
-        # `instructions` top-level OBLIGATOIRE (les SystemMessage de la conv
-        # restent honorés en plus), max_output_tokens REJETÉ (ne pas passer
-        # max_tokens). temperature acceptée. output_version="v0" épure le
-        # content des blocs reasoning (sinon ils partent au TTS/sanitizer).
-        return ChatOpenAI(
-            model=model,
-            # Placeholder jamais accepté côté serveur : l'Authorization
-            # réelle est posée (écrasée) par CodexBearerAuth à chaque
-            # requête. Requis car le SDK refuse une clé vide.
-            api_key="codex-subscription",
-            base_url=CODEX_BASE_URL,
-            use_responses_api=True,
-            streaming=True,
-            store=False,
-            output_version="v0",
-            temperature=temperature,
-            model_kwargs={
-                "instructions": "Suis les messages système fournis dans la conversation.",
-            },
-            http_async_client=_httpx.AsyncClient(auth=_codex_auth, timeout=120.0),
-            http_client=_httpx.Client(auth=_codex_auth, timeout=120.0),
-        )
+        return _make_openai_codex(model=model, temperature=temperature)
 
     logger.warning("_make_llm_for_instance: unknown provider '%s' for instance '%s'", provider, instance_id)
     return None

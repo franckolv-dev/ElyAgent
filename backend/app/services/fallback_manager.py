@@ -120,6 +120,12 @@ _REASON_KEYWORDS: Final[tuple[tuple[str, FailoverReason], ...]] = (
     ("invalid api",   FailoverReason.AUTH),
     ("invalid_api",   FailoverReason.AUTH),
     ("unauthorized",  FailoverReason.AUTH),
+    # CodexAuthError (abonnement ChatGPT non connecté / refresh refusé) :
+    # tous ses messages contiennent « codex ». Placé APRÈS les mots-clés
+    # rate-limit pour que codex_rate_limited reste RATE_LIMIT. Sans cette
+    # entrée, un tier routé sur openai_codex non connecté tuerait le tour
+    # au lieu de basculer sur le fallback de chaîne.
+    ("codex",         FailoverReason.AUTH),
     # Unavailable
     ("503",           FailoverReason.UNAVAILABLE),
     ("unavailable",   FailoverReason.UNAVAILABLE),

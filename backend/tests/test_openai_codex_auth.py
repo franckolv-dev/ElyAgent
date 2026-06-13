@@ -329,6 +329,23 @@ class TestFallbackClassification:
         exc = Exception("Error code: 429 - too many requests")
         assert classify_exception(exc) == FailoverReason.RATE_LIMIT
 
+    def test_codex_not_connected_classified_auth(self):
+        # Tier routé sur openai_codex SANS connexion : CodexAuthError doit
+        # déclencher la bascule de chaîne (AUTH), pas tuer le tour.
+        from app.services.fallback_manager import FailoverReason, classify_exception
+        exc = CodexAuthError(
+            "Abonnement ChatGPT non connecté — Settings → Admin → "
+            "OpenAI Codex (coller ~/.codex/auth.json après `codex login`)."
+        )
+        assert classify_exception(exc) == FailoverReason.AUTH
+
+    def test_codex_keyword_does_not_shadow_rate_limit(self):
+        # Le mot-clé "codex" (AUTH) est APRÈS les mots-clés rate-limit :
+        # codex_rate_limited doit RESTER RATE_LIMIT.
+        from app.services.fallback_manager import FailoverReason, classify_exception
+        exc = Exception("codex_rate_limited: usage limit reached")
+        assert classify_exception(exc) == FailoverReason.RATE_LIMIT
+
 
 # ── Builder LLM ───────────────────────────────────────────────────────────────
 
@@ -363,3 +380,23 @@ class TestProviderBuilder:
             assert isinstance(llm.http_client._auth, CodexBearerAuth)
         finally:
             unregister_instance_cache("codex-test-inst")
+
+    def test_legacy_provider_path_builds_codex_too(self):
+        # Bug 12 juin : l'entrée legacy « openai_codex » du dropdown Routage
+        # passait par _make_llm_for_provider qui ne la connaissait pas →
+        # build None → skip silencieux vers le fallback du tier (DeepSeek).
+        # Le chemin legacy doit construire le même client que les instances.
+        from langchain_openai import ChatOpenAI
+
+        from app.config import get_settings
+        from app.services.llm_provider import _make_llm_for_provider
+
+        llm = _make_llm_for_provider("openai_codex", get_settings())
+        assert isinstance(llm, ChatOpenAI)
+        assert llm.model_name == "gpt-5.5"  # défaut du provider (sans instance)
+        assert str(llm.openai_api_base) == CODEX_BASE_URL
+        assert llm.streaming is True
+        assert llm.store is False
+        assert llm.max_tokens is None
+        assert llm.model_kwargs.get("instructions")
+        assert isinstance(llm.http_async_client._auth, CodexBearerAuth)
