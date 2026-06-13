@@ -59,6 +59,14 @@ _ARGON2_MEMORY_COST = 65536   # 64 MB
 _ARGON2_PARALLELISM = 4       # threads
 _ARGON2_HASH_LEN    = 32      # 256-bit → AES-256 key
 
+# M3 (audit 13/06) : valeur sentinelle chiffrée à l'init du vault pour
+# vérifier le mot de passe maître même quand le vault est vide. Sa seule
+# propriété requise est d'être constante et connue ; AES-GCM rejette déjà
+# une mauvaise clé par échec du tag (la comparaison plaintext est une
+# ceinture-bretelle). NE PAS modifier : changerait la validation des vaults
+# existants.
+_VAULT_VERIFIER_PLAINTEXT = "ELY_VAULT_VERIFIER_v1"
+
 
 # ── Secure erase helper ────────────────────────────────────────────────────────
 
@@ -146,28 +154,45 @@ class VaultService:
         async with self._lock:
             async with async_session() as db:
                 cfg = await db.get(VaultConfig, user_id)
-
-                if cfg is None:
-                    # First unlock — initialise vault
-                    salt = os.urandom(16)
-                    cfg = VaultConfig(user_id=user_id, argon2_salt=salt)
-                    db.add(cfg)
-                    await db.commit()
-                    logger.info("Vault initialised for user %s", user_id)
-                else:
-                    salt = cfg.argon2_salt
+                is_new = cfg is None
+                salt = os.urandom(16) if is_new else cfg.argon2_salt
+                # Snapshot du vérificateur avant de quitter la session.
+                v_blob = None if is_new else cfg.verifier
+                v_nonce = None if is_new else cfg.verifier_nonce
 
             # Derive key (CPU-bound ~0.5s — run in thread pool)
             key = await asyncio.to_thread(_derive_key, master_password, salt)
 
-            # Verify password against an existing secret (if any)
-            if cfg is not None:
+            if is_new:
+                # M3 (audit 13/06) : poser une sentinelle chiffrée DÈS l'init,
+                # pour qu'un vault vide refuse un mauvais mot de passe au
+                # prochain unlock (avant : rien à déchiffrer → tout passait).
+                n, ct = _encrypt(key, _VAULT_VERIFIER_PLAINTEXT)
+                async with async_session() as db:
+                    cfg = VaultConfig(user_id=user_id, argon2_salt=salt,
+                                      verifier=ct, verifier_nonce=n)
+                    db.add(cfg)
+                    await db.commit()
+                logger.info("Vault initialised for user %s (verifier set)", user_id)
+            elif v_blob is not None and v_nonce is not None:
+                # Vault avec vérificateur : la vérité, fonctionne même vide.
+                try:
+                    if _decrypt(key, v_nonce, v_blob) != _VAULT_VERIFIER_PLAINTEXT:
+                        raise ValueError("verifier mismatch")
+                except Exception:
+                    _secure_zero(key)
+                    logger.warning("Wrong master password for vault of user %s", user_id)
+                    return False
+            else:
+                # Vault LEGACY (sans vérificateur) : on retombe sur une entrée
+                # existante. Un vault legacy VIDE reste non vérifiable (état
+                # d'avant le fix) — mais dès qu'on valide le mot de passe, on
+                # pose le vérificateur pour fermer le trou définitivement.
                 async with async_session() as db:
                     from app.models.vault import VaultEntry
-                    result = await db.execute(
+                    test_entry = (await db.execute(
                         select(VaultEntry).where(VaultEntry.user_id == user_id).limit(1)
-                    )
-                    test_entry = result.scalar_one_or_none()
+                    )).scalar_one_or_none()
 
                 if test_entry is not None:
                     try:
@@ -176,6 +201,18 @@ class VaultService:
                         _secure_zero(key)
                         logger.warning("Wrong master password for vault of user %s", user_id)
                         return False
+                    # Backfill : le mot de passe est validé → poser le
+                    # vérificateur pour que les prochains unlocks soient
+                    # protégés même si cette entrée est supprimée.
+                    try:
+                        n, ct = _encrypt(key, _VAULT_VERIFIER_PLAINTEXT)
+                        async with async_session() as db:
+                            c = await db.get(VaultConfig, user_id)
+                            if c is not None:
+                                c.verifier, c.verifier_nonce = ct, n
+                                await db.commit()
+                    except Exception:
+                        logger.debug("Vault verifier backfill failed (non-fatal)")
 
             # Store key in RAM
             if user_id in self._keys:

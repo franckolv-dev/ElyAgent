@@ -63,11 +63,11 @@ ELY est la réponse pour les particuliers et les organisations qui ont besoin d'
 <td width="50%" valign="top">
 
 ### Sécurité
-**Les données sensibles n'atteignent jamais le LLM. Les actions irréversibles ne s'exécutent jamais sans autorisation.**
+**Les données sensibles sont masquées avant l'envoi à un LLM cloud. Les actions irréversibles ne s'exécutent jamais sans autorisation.**
 
-- **Anonymisation PII native** — e-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone, SIRET, identifiants salariés masqués avant la construction du prompt. Non désactivable silencieusement.
+- **Anonymisation PII native** — e-mails, IBAN, cartes bancaires, jetons d'API, numéros de téléphone, SIRET masqués par regex avant la construction du prompt sur le chemin agent. Couverture, couche NER optionnelle et limites détaillées dans [docs/security.md](docs/security.md).
 - **HITL structurel** — chaque outil irréversible (envoi de mail, suppression, SSH, partage) attend une validation explicite. Autoriser une fois · refuser une fois · **bannir définitivement**.
-- Coffre chiffré (AES-256-GCM, zero-knowledge) pour les identifiants.
+- Coffre chiffré côté serveur (AES-256-GCM, clé dérivée du mot de passe maître par Argon2id) pour les identifiants.
 - Journal d'audit immuable — chaque validation tracée, exportable pour la conformité.
 
 </td>
@@ -126,7 +126,7 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 | **Multi-utilisateur (famille / équipe / PME)** | ✅ | ❌ Souvent mono-user | ✅ (cloud éditeur) |
 | **Routage hybride local / cloud** | ✅ Tiers explicites | ⚠️ Manuel / partiel | ❌ |
 | Apps mobiles natives (iOS + Android) | ✅ | ❌ Rare | ✅ |
-| Coffre chiffré (zero-knowledge) | ✅ AES-256-GCM | ❌ Rare | ❌ |
+| Coffre chiffré côté serveur | ✅ AES-256-GCM | ❌ Rare | ❌ |
 | Interface française complète | ✅ | ⚠️ Souvent EN only | ⚠️ Partielle |
 | Licence | Source-available | Variable | Propriétaire |
 

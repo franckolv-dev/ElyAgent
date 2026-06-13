@@ -234,14 +234,43 @@ class SecurityFilter:
         2. Sort by start position; discard overlapping matches (first match wins).
         3. Process matches right-to-left so that earlier offsets stay valid.
 
-        Guard anti-ReDoS : le texte est tronqué à _MAX_REGEX_INPUT caractères
-        avant d'être soumis aux expressions régulières.
+        Guard anti-ReDoS : le texte est traité par blocs de _MAX_REGEX_INPUT
+        caractères (cf. _anonymize_regex_chunk) — borne le coût regex SANS
+        jeter de données au-delà du plafond.
         """
-        # ── Guard anti-ReDoS ─────────────────────────────────────────────
-        if len(text) > _MAX_REGEX_INPUT:
-            logger.warning("Text exceeds ReDoS guard (%d > %d). Data beyond limit NOT anonymized.", len(text), _MAX_REGEX_INPUT)
-            text = text[:_MAX_REGEX_INPUT]
+        # ── Couche 1 regex, traitée par BLOCS de _MAX_REGEX_INPUT ────────
+        # Le plafond borne le coût des regex (anti-ReDoS) SANS jeter de
+        # données. Avant (audit 13/06, M2), le texte au-delà de 50 000 car.
+        # était silencieusement SUPPRIMÉ alors que le log prétendait
+        # « non anonymisé » : un long email/document perdait sa fin sans
+        # marqueur. On découpe et on recolle ; le vault est partagé entre
+        # blocs → placeholders cohérents. Limite connue : une valeur PII
+        # chevauchant EXACTEMENT une frontière de bloc peut être manquée —
+        # cas rare, acceptable face à la perte totale d'avant.
+        if len(text) <= _MAX_REGEX_INPUT:
+            result = self._anonymize_regex_chunk(text)
+        else:
+            logger.info(
+                "Anonymize: texte de %d car. > %d → traité en %d blocs (aucune perte).",
+                len(text), _MAX_REGEX_INPUT,
+                (len(text) + _MAX_REGEX_INPUT - 1) // _MAX_REGEX_INPUT,
+            )
+            result = "".join(
+                self._anonymize_regex_chunk(text[i:i + _MAX_REGEX_INPUT])
+                for i in range(0, len(text), _MAX_REGEX_INPUT)
+            )
 
+        # ── Couche 2 : NER (personnes / organisations / adresses) ────────
+        return self._apply_ner_layer(result, detect=ner_detection)
+
+    def _anonymize_regex_chunk(self, text: str) -> str:
+        """Couche 1 (regex) sur UN bloc ``≤ _MAX_REGEX_INPUT`` caractères.
+
+        Réutilise et enrichit le vault partagé : une même valeur revue
+        (dans un autre bloc, un autre message, un autre tour) réutilise le
+        même placeholder. Substitution par offsets, de droite à gauche,
+        pour préserver les positions.
+        """
         # Build a reverse lookup: real-value → existing placeholder, so the
         # same value seen again in a new message reuses the same token.
         _seen: dict[str, str] = {v: k for k, v in self._vault.items()}
@@ -273,9 +302,7 @@ class SecurityFilter:
                 _seen[original] = placeholder
                 self._counter += 1
             result = result[:start] + placeholder + result[end:]
-
-        # ── Couche 2 : NER (personnes / organisations / adresses) ────────
-        return self._apply_ner_layer(result, detect=ner_detection)
+        return result
 
     def _apply_ner_layer(self, text: str, *, detect: bool = True) -> str:
         """Couche 2 NER — no-op strict si ``PII_NER_ENABLED`` n'est pas

@@ -49,6 +49,11 @@ class VaultConfig(Base):
     user_id    : str   = Column(String, ForeignKey("users.id"), primary_key=True)
     argon2_salt: bytes = Column(LargeBinary(16), nullable=False)  # 128-bit random salt
     created_at : datetime = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    # Audit M3 (13/06) : sentinelle chiffrée pour vérifier le mot de passe
+    # maître même quand le vault est vide. Nullable → vaults legacy lisibles
+    # (verifier posé au 1er unlock réussi). Voir vault_service.unlock_vault.
+    verifier      : bytes = Column(LargeBinary, nullable=True)
+    verifier_nonce: bytes = Column(LargeBinary(12), nullable=True)
 
     entries = relationship("VaultEntry", back_populates="config",
                            cascade="all, delete-orphan", passive_deletes=True)

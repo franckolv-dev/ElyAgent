@@ -209,10 +209,16 @@ class TestReset:
 # ── Edge cases ────────────────────────────────────────────────────────────────
 
 class TestEdgeCases:
-    def test_redos_guard_truncates(self, sf):
-        long_text = "a" * 100_000
-        result = sf.anonymize(long_text)
-        assert len(result) <= 50_000
+    def test_redos_guard_processes_in_chunks_without_data_loss(self, sf):
+        # Depuis l'audit 13/06 (M2) : le plafond _MAX_REGEX_INPUT borne le
+        # coût regex par BLOC, mais ne TRONQUE plus — le texte au-delà est
+        # traité par blocs successifs, jamais jeté. Une PII au-delà des
+        # 50 000 premiers caractères est donc bien masquée.
+        long_text = "a" * 100_000 + " contact@example.com"
+        result = sf.anonymize(long_text, ner_detection=False)
+        assert len(result) >= 100_000          # rien n'est jeté
+        assert "contact@example.com" not in result  # PII tardive masquée
+        assert "[EMAIL_" in result
 
     def test_no_mutation_of_input(self, sf):
         text = "user@example.com"
