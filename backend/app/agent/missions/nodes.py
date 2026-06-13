@@ -37,6 +37,7 @@ from langchain_core.messages import (
     AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage,
 )
 
+from app.agent.helpers.message_content import content_to_text
 from app.agent.missions.state import MissionState
 from app.services import mission_service
 
@@ -117,12 +118,12 @@ async def _log_mission_llm_usage(
 
         # Heuristic fallback when usage_metadata is empty (LM Studio streaming)
         if in_tok == 0 and out_tok == 0:
-            content = getattr(response, "content", "") or ""
-            out_tok = max(1, len(str(content)) // 4)
+            content = content_to_text(getattr(response, "content", ""))
+            out_tok = max(1, len(content) // 4)
             # Approximate input by adding a fixed slack — not perfect but
             # better than 0 for cost graphs (and most local models cost $0
             # anyway so the imprecision doesn't matter financially).
-            in_tok = max(1, len(str(content)) // 4)
+            in_tok = max(1, len(content) // 4)
 
         provider, model = _extract_provider_model(llm)
 
@@ -968,7 +969,11 @@ async def plan_node(state: MissionState) -> dict:
     response = await llm.ainvoke(anonymize_messages(_sf, messages))
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "plan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    raw = deanonymize_any(_sf, getattr(response, "content", "") or "")
+    # content_to_text AVANT deanonymize : certains providers (openai-codex /
+    # Responses API en tête) renvoient le content en LISTE de blocs → sans
+    # aplatissement, raw[:2000] plus bas est une liste tronquée et plante au
+    # binding SQL de `thought` (bug terrain missions, juin 2026).
+    raw = deanonymize_any(_sf, content_to_text(getattr(response, "content", "")))
 
     # Parse JSON
     try:
@@ -1249,7 +1254,7 @@ async def act_node(state: MissionState) -> dict:
     if _is_spec and response is not None and not tool_calls:
         from app.agent.missions.pii import deanonymize_any
         from app.services.mission_spec_runtime import parse_edge_case
-        _edge = parse_edge_case(deanonymize_any(_sf, getattr(response, "content", "") or ""))
+        _edge = parse_edge_case(deanonymize_any(_sf, content_to_text(getattr(response, "content", ""))))
 
     # Fallback if primary didn't emit a tool_call OR raised. Typical for
     # Gemma 4 21B REAP : either crashes on tool binding (MLX bug) or
@@ -1307,7 +1312,10 @@ async def act_node(state: MissionState) -> dict:
         # All providers refused to emit a tool call — count as iteration failure
         thought_txt = ""
         if response is not None:
-            thought_txt = getattr(response, "content", "") or "(no content)"
+            # content_to_text : un content en liste de blocs (codex/Responses)
+            # arriverait sinon tel quel dans la colonne SQL `thought` → crash
+            # « binding parameter: type 'list' is not supported ».
+            thought_txt = content_to_text(getattr(response, "content", "")) or "(no content)"
         await mission_service.add_step(
             mission_id, phase="act",
             thought=thought_txt or "(primary crashed, fallbacks exhausted)",
@@ -1579,7 +1587,7 @@ async def eval_node(state: MissionState) -> dict:
     response = await llm.ainvoke(anonymize_messages(_sf, [HumanMessage(content=prompt)]))
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "eval", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    raw = deanonymize_any(_sf, getattr(response, "content", "") or "")
+    raw = deanonymize_any(_sf, content_to_text(getattr(response, "content", "")))
 
     try:
         verdict = json.loads(_strip_json_fence(raw))
@@ -1806,7 +1814,7 @@ async def replan_node(state: MissionState) -> dict:
     response = await llm.ainvoke(anonymize_messages(_sf, [HumanMessage(content=prompt)]))
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "replan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    raw = deanonymize_any(_sf, getattr(response, "content", "") or "")
+    raw = deanonymize_any(_sf, content_to_text(getattr(response, "content", "")))
 
     try:
         new_plan = json.loads(_strip_json_fence(raw))

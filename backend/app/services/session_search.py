@@ -219,38 +219,13 @@ _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 def _content_to_text(content) -> str:
     """Normalise a LangChain ``response.content`` into a plain string.
 
-    LangChain types this as ``Union[str, List[Union[str, Dict]]]``: most
-    providers return a plain string but some (LM Studio, Anthropic with
-    extended reasoning, multimodal Gemini) return a list of typed
-    blocks — typically ``[{"type": "text", "text": "..."}, ...]`` —
-    or even a single dict. We flatten everything to a string so the
-    downstream JSON extractor has something it can ``.strip()``.
-
-    Discovered the hard way (audit 2026-05-15): Ministral 3B served by
-    LM Studio returned content as a list of dicts, ``str(list)`` gave
-    us the Python repr (not JSON), and the JSON parser then crashed.
+    Délègue au helper partagé ``agent.helpers.message_content.content_to_text``
+    (source de vérité unique — voir son docstring pour les providers
+    concernés : LM Studio, Anthropic reasoning, Gemini multimodal,
+    OpenAI Responses/codex). Alias conservé pour les imports/tests existants.
     """
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict):
-                # Common shapes: {"type": "text", "text": "..."} or
-                # {"content": "..."} or {"reasoning": "..."} — we
-                # pick the most likely text field, ignoring others.
-                txt = item.get("text") or item.get("content") or ""
-                if isinstance(txt, str):
-                    parts.append(txt)
-        return "".join(parts)
-    if isinstance(content, dict):
-        txt = content.get("text") or content.get("content") or ""
-        return txt if isinstance(txt, str) else str(content)
-    return str(content)
+    from app.agent.helpers.message_content import content_to_text
+    return content_to_text(content)
 
 
 def _flatten_to_summary(value, _depth: int = 0) -> str:
