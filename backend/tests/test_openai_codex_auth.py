@@ -374,6 +374,10 @@ class TestProviderBuilder:
             assert llm.model_kwargs.get("instructions")  # "Instructions are required"
             # Épure le content des blocs reasoning (TTS/sanitizer)
             assert llm.output_version == "v0"
+            # store=false : sans le reasoning CHIFFRÉ rejoué complet, tout
+            # prompt lourd 404 au 2e tour ("Item rs_… not found") et bascule
+            # fallback systématiquement (bug terrain 12 juin).
+            assert llm.include == ["reasoning.encrypted_content"]
             # L'Authorization réelle vient de CodexBearerAuth (par requête),
             # pas du placeholder api_key.
             assert isinstance(llm.http_async_client._auth, CodexBearerAuth)
@@ -399,4 +403,5 @@ class TestProviderBuilder:
         assert llm.store is False
         assert llm.max_tokens is None
         assert llm.model_kwargs.get("instructions")
+        assert llm.include == ["reasoning.encrypted_content"]
         assert isinstance(llm.http_async_client._auth, CodexBearerAuth)

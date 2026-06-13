@@ -957,6 +957,13 @@ def _make_openai_codex(model: str, temperature: float) -> "BaseChatModel":
         store=False,
         output_version="v0",
         temperature=temperature,
+        # store=false → le serveur ne persiste RIEN : sans ceci, dès que le
+        # modèle émet du reasoning (prompts lourds), le tour suivant rejoue
+        # l'item par référence rs_… → 404 « Item not found » → bascule
+        # fallback systématique (bug terrain 12 juin, repro + fix validés
+        # live). Avec, le reasoning revient CHIFFRÉ et se rejoue complet,
+        # sans persistance côté serveur.
+        include=["reasoning.encrypted_content"],
         model_kwargs={
             "instructions": "Suis les messages système fournis dans la conversation.",
         },
