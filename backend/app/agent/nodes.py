@@ -648,6 +648,34 @@ def create_agent_node():
                 _base_llm = _tier_llm_cache[_base_cache_key]
 
             if _bind_tools_flag:
+                # ⚠️ Query de FILTRAGE des outils. En exécution automatique
+                # (tâche planifiée / mission), c'est le PROMPT INITIAL — PAS
+                # user_query (= messages[-1]). Au tour 2+, messages[-1] est le
+                # RÉSULTAT du tool précédent : filtrer dessus jette les outils
+                # encore nécessaires (mails, news, météo…) et le modèle, en
+                # mode séquentiel (codex, parallel_tool_calls=False → 1 outil/
+                # tour), tombe sur « aucun outil pour X » au tour suivant. Bug
+                # terrain 13/06 (Daily : agenda OK au tour 1, puis mails/news/
+                # météo « pas d'outil »). Un prompt en langage naturel n'est
+                # pas rattrapé par l'union tools_named_in_text → il FAUT que le
+                # filtre lui-même reparte du prompt complet à chaque tour.
+                _filter_query = user_query
+                if state.get("automated_task"):
+                    from app.agent.helpers.message_content import content_to_text
+                    _first_human = next(
+                        (m for m in messages
+                         if (isinstance(m, dict) and m.get("role") == "user")
+                         or getattr(m, "type", None) == "human"),
+                        None,
+                    )
+                    if _first_human is not None:
+                        _ip = content_to_text(
+                            _first_human.get("content") if isinstance(_first_human, dict)
+                            else getattr(_first_human, "content", "")
+                        )
+                        if _ip:
+                            _filter_query = _ip
+
                 # FIX 2026-05-07 (Hermes Chantier 1): prefer the sticky
                 # toolset profile from state if defined. This binds the
                 # SAME ~30-tool catalog every turn for the conversation,
@@ -671,53 +699,30 @@ def create_agent_node():
                     from app.agent.tool_filter import filter_tools_by_query
                     _filtered_tools = filter_tools_by_query(
                         registry.all_tools,
-                        user_query,
+                        _filter_query,
                         threshold=20,
                         debug_label=f"general.{_tier_key}",
                     )
                     logger.warning(
                         "[diag.bind] tier=%s query=%r tools(%d)=%s [LEGACY]",
                         _tier_key,
-                        user_query[:80] if user_query else "",
+                        _filter_query[:80] if _filter_query else "",
                         len(_filtered_tools),
                         sorted(t.name for t in _filtered_tools),
                     )
 
                 # Automated / scheduled tasks run a FIXED, multi-domain prompt
-                # with no human to clarify with. The keyword filter above —
-                # tuned to keep local-model prompts short — is accent/word-
-                # boundary fragile and silently drops tools the prompt
-                # explicitly names (prod « Briefing quotidien 9h » lost
-                # calendar_list_events + system_list_scheduled_tasks, keeping
-                # only the matched gmail_ tools). Union in every registered
-                # tool whose exact name appears in the prompt so the agent
-                # binds the tools it was told to call. Cheap: runs once per
-                # scheduled task on the cloud tier where prompt processing
-                # is not the bottleneck.
-                #
-                # ⚠️ L'union se base sur le PROMPT INITIAL (premier message
-                # humain), PAS sur user_query : à partir du 2e tour,
-                # messages[-1] est le RÉSULTAT du dernier tool, où aucun nom
-                # d'outil n'apparaît → l'union retombait à vide et les outils
-                # nommés disparaissaient du binding. Invisible avec un modèle
-                # qui appelle tout en parallèle au tour 1 ; révélé par codex
-                # (parallel_tool_calls=False → UN outil par tour) : le tour où
-                # gmail_list_emails aurait été appelé, il n'était plus bindé →
-                # « Tool gmail_list_emails non disponible » (bug terrain 13/06).
+                # with no human to clarify with. En PLUS du filtre ci-dessus
+                # (déjà reparti du prompt initial via _filter_query), on UNIONNE
+                # tout outil dont le NOM EXACT apparaît dans le prompt — filet
+                # pour les prompts qui nomment leurs outils (« Briefing
+                # quotidien 9h » : calendar_list_events + system_list_scheduled_
+                # tasks que le filtre mots-clés droppait). _filter_query vaut
+                # déjà le prompt initial en mode automated → l'union reste
+                # stable à chaque tour.
                 if state.get("automated_task"):
                     from app.agent.tool_filter import tools_named_in_text
-                    from app.agent.helpers.message_content import content_to_text
-                    _first_human = next(
-                        (m for m in messages
-                         if (isinstance(m, dict) and m.get("role") == "user")
-                         or getattr(m, "type", None) == "human"),
-                        None,
-                    )
-                    _initial_prompt = content_to_text(
-                        _first_human.get("content") if isinstance(_first_human, dict)
-                        else getattr(_first_human, "content", "")
-                    ) if _first_human is not None else user_query
-                    _named = tools_named_in_text(registry.all_tools, _initial_prompt)
+                    _named = tools_named_in_text(registry.all_tools, _filter_query)
                     _have = {t.name for t in _filtered_tools}
                     _extra = [t for t in _named if t.name not in _have]
                     if _extra:
