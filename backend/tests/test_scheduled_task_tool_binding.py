@@ -176,6 +176,19 @@ def test_nodes_honours_automated_task_flag():
 # ─────────────────────────────────────────────────────────────────────────
 
 
+# Prompt « Daily » en LANGAGE NATUREL — ne nomme AUCUN outil (≠ Briefing).
+# C'est le cas que l'union seule ne rattrape pas : seul le re-filtrage sur le
+# prompt initial à chaque tour le sauve.
+_DAILY_PROMPT = (
+    "Chaque jour, prépare et envoie-moi sur Telegram un daily contenant :\n"
+    "1) Mes rendez-vous Google Calendar du jour.\n"
+    "2) Les emails reçus dans les dernières 24h, avec expéditeur et objet.\n"
+    "3) Une recherche sur les news IA, LLM et petits modèles locaux du jour.\n"
+    "4) L'horoscope du jour.\n"
+    "5) La météo du jour à Chasseneuil-du-Poitou."
+)
+
+
 def test_tool_result_text_names_no_tool_hence_the_bug(_registry):
     """Cœur du bug : au tour 2, messages[-1] est le RÉSULTAT du tool du tour
     1. Aucun nom d'outil n'y figure → une union basée dessus retombe à vide
@@ -195,11 +208,37 @@ def test_tool_result_text_names_no_tool_hence_the_bug(_registry):
     assert {"gmail_list_emails", "system_list_scheduled_tasks"} <= named_from_prompt
 
 
-def test_nodes_union_bases_on_initial_prompt():
-    """Source-grep : l'union automated_task extrait le PREMIER message humain
-    (prompt initial) au lieu de réutiliser user_query (= dernier message)."""
+def test_keyword_filter_on_prompt_keeps_tools_lost_on_tool_result(_registry):
+    """Le FILTRE PRINCIPAL (pas juste l'union) doit repartir du prompt à
+    chaque tour. Sur le prompt Daily (langage naturel) il garde gmail + web ;
+    sur le RÉSULTAT d'un tool il les perd → d'où « aucun outil pour les
+    mails/news » au tour 2 (bug terrain 13/06, prompt sans noms d'outils que
+    l'union ne couvre pas)."""
+    tools = _registry.all_tools
+    from_prompt = {t.name for t in filter_tools_by_query(tools, _DAILY_PROMPT)}
+    assert "gmail_list_emails" in from_prompt
+    assert ("web_search" in from_prompt or "web_search_news" in from_prompt)
+
+    tool_result = (
+        "1 événement(s):\n• Entraînement tennis de table — "
+        "2026-06-13T10:00:00+02:00"
+    )
+    from_result = {t.name for t in filter_tools_by_query(tools, tool_result)}
+    assert "gmail_list_emails" not in from_result  # perdu si on filtre sur le résultat
+    assert "web_search" not in from_result
+
+
+def test_nodes_filter_query_bases_on_initial_prompt():
+    """Source-grep : en automated_task, le FILTRE principal ET l'union se
+    basent sur _filter_query, qui dérive du PREMIER message humain (prompt
+    initial) — pas de user_query (= dernier message)."""
     assert 'getattr(m, "type", None) == "human"' in _NODES_PY
-    assert "tools_named_in_text(registry.all_tools, _initial_prompt)" in _NODES_PY
+    # _filter_query : défini (défaut user_query) puis réutilisé par le filtre
+    # ET l'union → au moins 3 occurrences.
+    assert "_filter_query = user_query" in _NODES_PY
+    assert _NODES_PY.count("_filter_query") >= 3
+    # L'union consomme _filter_query (plus _initial_prompt isolé).
+    assert "tools_named_in_text(registry.all_tools, _filter_query)" in _NODES_PY
 
 
 def test_nodes_has_automated_execution_guardrail():
