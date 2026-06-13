@@ -158,6 +158,20 @@ _KW_FILTERS: list[tuple[re.Pattern, tuple[str, ...]]] = [
     # Desktop / OS automation
     (re.compile(r"\b(bureau|desktop|écran(?!.*site)|fenêtre|cliqu|souris|clavier|raccourci)\b"),
      ("os_", "desktop_", "trainer_")),
+    # Fichiers LOCAUX (machine de l'utilisateur via ELY Desktop) — chemin
+    # absolu ou mention explicite « local / sur mon mac ». Sans cette règle,
+    # « ouvre le fichier /Users/.../x.rtf » ne bindait que drive_ (cloud) ;
+    # les outils desktop_read_file/desktop_write_file manquaient → l'agent ne
+    # pouvait NI lire NI écrire les fichiers du Mac (bug terrain 13/06, tâche
+    # Prospection : RTF/CSV jamais modifiés). Le chemin absolu est le signal
+    # fort ; « fichier » seul reste mappé sur drive_ (cas cloud le + courant).
+    (re.compile(
+        r"(/users/|/home/|(?:^|\s)~/"
+        r"|fichiers?\s+locaux?|sur (?:mon|ton|le|votre) (?:mac|disque|ordinateur|poste)"
+        r"|disque (?:dur )?local)",
+        re.I,
+    ),
+     ("desktop_",)),
     # MCP
     (re.compile(r"\b(mcp|model context protocol)\b"),
      ("mcp_",)),
