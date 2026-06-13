@@ -245,7 +245,11 @@ async def expand_foreach(
     items: list[str] = []
     try:
         response = await llm.ainvoke([{"role": "user", "content": prompt}])
-        raw = _strip_fence(getattr(response, "content", "") or "")
+        # content_to_text : sur tier codex (Responses API), content est une
+        # liste de blocs → sans aplatissement _strip_fence().strip() casse,
+        # l'except plus bas avalerait l'erreur et skipperait le foreach.
+        from app.agent.helpers.message_content import content_to_text
+        raw = _strip_fence(content_to_text(getattr(response, "content", "")))
         parsed = json.loads(raw)
         if isinstance(parsed, list):
             items = [str(x)[:300] for x in parsed[:MAX_FOREACH_ITEMS] if str(x).strip()]
