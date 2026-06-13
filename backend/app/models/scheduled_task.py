@@ -42,5 +42,10 @@ class ScheduledTask(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # État de la dernière (ou courante) exécution — feedback UI :
+    # "running" | "success" | "error" | None (jamais exécutée). Posé par
+    # _execute_task (running au début, success/error à la fin).
+    last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_run_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

@@ -13,6 +13,8 @@ import { authFetch } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export type RunStatus = "running" | "success" | "error";
+
 export interface ScheduledTask {
   id: string;
   name: string;
@@ -22,6 +24,8 @@ export interface ScheduledTask {
   enabled: boolean;
   last_run_at: string | null;
   last_result: string | null;
+  last_status: RunStatus | null;       // null = jamais exécutée
+  last_run_started_at: string | null;
   created_at: string;
 }
 
