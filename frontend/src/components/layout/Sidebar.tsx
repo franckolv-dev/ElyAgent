@@ -43,6 +43,7 @@ const isGroup = (e: NavEntry): e is NavGroup => "children" in e;
 const NAV: NavEntry[] = [
   { href: "/chat",      labelKey: "navChat",      icon: MessageSquare },
   { href: "/missions",  labelKey: "navMissions",  icon: Target },
+  { href: "/scheduled", labelKey: "navScheduled", icon: Clock },
   { href: "/knowledge", labelKey: "navKnowledge", icon: BookOpen },
   {
     groupKey: "skills", labelKey: "navGroupSkills", icon: Sparkles,
