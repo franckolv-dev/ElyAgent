@@ -101,8 +101,12 @@ async def _execute_task(task_id: str) -> None:
         # lost every tool outside the chosen sub-agent's domain and reported
         # « outil X non disponible pour cet agent » for the rest. The flat
         # graph binds every tool the prompt names (see create_agent_node's
-        # automated_task branch). recursion_limit mirrors the sub-agent
-        # dispatch value used previously.
+        # automated_task branch). recursion_limit configurable
+        # (scheduler_recursion_limit, défaut 60) — 25 était trop bas pour les
+        # tâches multi-étapes qui bouclaient avant d'atteindre leurs écritures
+        # (bug terrain 13/06, Prospection). Voir config.py.
+        from app.config import get_settings as _get_settings
+        _recursion = _get_settings().scheduler_recursion_limit
         agent = build_simple_agent_graph()
         invoke_result = await agent.ainvoke(
             {
@@ -112,7 +116,7 @@ async def _execute_task(task_id: str) -> None:
                 "google_credentials": google_credentials or "",
                 "automated_task": True,
             },
-            config={"recursion_limit": 25},
+            config={"recursion_limit": _recursion},
         )
 
         # `content` can be str OR list[dict] (multimodal blocks). Coerce

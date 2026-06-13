@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     openai_api_key: str = ""        # OpenAI — https://platform.openai.com (GPT-4o, GPT-5.x)
     openai_base_url: str = ""       # Optional override (e.g. Azure OpenAI proxy); empty = api.openai.com
 
+    # Plafond de tours (LangGraph recursion_limit) d'une tâche planifiée.
+    # 25 était trop bas (13/06 : la Prospection multi-étapes l'atteignait en
+    # bouclant sur web_search avant d'écrire ses fichiers) ET ignorait le
+    # budget voulu. 60 laisse respirer les tâches multi-domaines tout en
+    # gardant un garde-fou anti-runaway (coût LLM cloud). Les tâches VRAIMENT
+    # lourdes (Prospection 25×LinkedIn) doivent passer en mission structurée
+    # foreach, pas augmenter ce plafond sans fin.
+    scheduler_recursion_limit: int = 60
+
     # Public demo mode (set on the agent-ely.fr instance, false everywhere else).
     # When true:
     #   - non-admin users can NOT use system_get_logs (cross-tenant leak risk)
