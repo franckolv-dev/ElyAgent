@@ -36,7 +36,7 @@ Self-hosted · GDPR-native · multi-user · multi-LLM · **self-developing** · 
 <p align="center">
   ELY masks personal data before any LLM call
   <br>
-  <sub><i>PII masking in action — your sensitive values never reach the model.</i></sub>
+  <sub><i>PII masking in action — sensitive values are masked before cloud model calls (scope &amp; limits in <a href="docs/security.md">docs/security.md</a>).</i></sub>
 </p>
 
 ---
@@ -70,11 +70,11 @@ ELY is the answer for the people and organisations who need an AI agent **that r
 <td width="50%" valign="top">
 
 ### Security
-**Sensitive data never reaches the LLM. Irreversible actions never run unattended.**
+**Sensitive data is masked before cloud LLM calls. Irreversible actions never run unattended.**
 
-- **Native PII anonymisation** — emails, IBANs, credit cards, API tokens, phone numbers, French SIRET, employee IDs masked before any prompt is built. Cannot be silently disabled.
+- **Native PII anonymisation** — emails, IBANs, credit cards, API tokens, phone numbers, French SIRET masked by regex before the prompt is built on the agent path. Coverage, the optional NER layer and known limits are documented in [docs/security.md](docs/security.md).
 - **Structural HITL** — every irreversible tool (mail send, file delete, SSH, sharing) pauses for explicit approval. Allow once · deny once · **ban permanently** (persisted across sessions).
-- Encrypted vault (AES-256-GCM, zero-knowledge) for credentials.
+- Server-side encrypted vault (AES-256-GCM, key derived from your master password) for credentials.
 - Immutable audit trail — every approval logged, exportable for compliance.
 
 </td>

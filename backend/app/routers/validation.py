@@ -217,14 +217,12 @@ async def ban_action(
     t: str | None = Query(default=None),
     current_user: User | None = Depends(get_optional_user),
     reason: str = Body(default=None, embed=True),
-    user_id: str = Body(default=None, embed=True),
-    description: str = Body(default=None, embed=True),
 ):
     """Refuse and permanently memorise a security rule derived from this action.
 
-    When called from a push action button with an empty body (ntfy or FCM),
-    the constraint is stored via the pending action's own description so no
-    body params are required.
+    The constraint is always derived from the pending action itself (its
+    description and owner), so a push-action button with an empty body
+    (ntfy or FCM) works without any body params.
     """
     # If using signed token, verify before touching anything else
     if t and not _verify_action_token(action_id, t):
@@ -239,8 +237,16 @@ async def ban_action(
     if not t and pending and current_user and pending.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to resolve this action")
 
-    actual_desc = description or (pending.description if pending else action_id)
-    actual_user = user_id or (pending.user_id if pending else "")
+    # H1 (audit sécurité 13/06) — IDOR fermé : la description ET le
+    # propriétaire de la contrainte sont TOUJOURS dérivés de l'action en
+    # attente (figés côté serveur), jamais de paramètres du body. Avant,
+    # `user_id`/`description` étaient acceptés du corps → un utilisateur
+    # authentifié pouvait écrire une contrainte permanente au nom d'un autre.
+    actual_desc = pending.description if pending else action_id
+    actual_user = (
+        pending.user_id if pending
+        else (current_user.id if current_user else "")
+    )
 
     rule = f"INTERDICTION PERMANENTE: {actual_desc}"
     if reason:

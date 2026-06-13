@@ -8,9 +8,15 @@
 ## Principes fondamentaux
 
 1. **Aucune action irréversible sans validation humaine**
-2. **Les données sensibles ne quittent jamais le périmètre local** (anonymisation avant envoi au LLM)
+2. **Les données sensibles sont masquées avant l'envoi à un LLM cloud** sur le
+   chemin agent principal (chat + résultats d'outils + historique). Portée et
+   limites explicites plus bas — notamment : la couche NER est optionnelle
+   (off par défaut), et certains traitements secondaires de mémoire/maintenance
+   n'anonymisent pas (ils sont conçus pour tourner sur un tier **local**).
 3. **L'agent apprend de ses erreurs** (contraintes de sécurité persistantes)
-4. **Chaque canal a le même niveau de sécurité** (pas de raccourci pour Telegram vs Web)
+4. **Le chemin principal (Web) applique le pipeline d'anonymisation complet** ;
+   les autres canaux (Telegram, Slack, Discord, WhatsApp) visent la même
+   garantie mais leur couverture est en cours d'unification (voir « Limites »).
 5. **Least privilege** — l'agent ne peut faire QUE ce qui est explicitement autorisé
 
 ---
@@ -96,6 +102,8 @@ L'anonymisation utilise un mapping **déterministe par session** : la même vale
 | **Données hors patterns regex** | Les patterns couvrent : carte bancaire, email, IBAN, téléphone FR, token API, et noms via NER. Tout PII en dehors de ces catégories (numéro de SS, immatriculation, identifiant interne entreprise…) **passe non-anonymisé** par défaut. | Configuration ajoutable côté serveur (`security_filter.custom_patterns`) ; passe ultérieure prévue avec une NER multilingue plus large. |
 | **Inférence indirecte** | Même anonymisé, le LLM peut inférer des informations sensibles à partir du contexte (« le PERSON_0 travaille dans une banque parisienne et a 3 enfants »). L'anonymisation ne masque pas le contexte qualitatif. | Aucune mitigation technique simple ; en pratique : pour les secrets stricts, utiliser le **tier A 100% local** (Ministral 3B sur la machine de l'utilisateur, aucune donnée ne sort). |
 | **Réversibilité de hashe court** | Les placeholders comme `[PERSON_0]` numérotent dans l'ordre d'apparition, ce qui peut leak l'ordre conversationnel. | Acceptable pour le cas d'usage ; pour les paranos : tier local. |
+| **Couche NER off par défaut** | La couche 2 (noms/organisations/adresses en texte libre) est **désactivée par défaut** (`PII_NER_ENABLED=false`) car incompatible avec l'usage agentique (masquer chaque personne/organisation casse la prospection, le briefing, GitHub). Sans elle, seules les catégories regex (email, IBAN, CB, téléphone, token) sont masquées ; un prénom/nom tapé en clair **passe**. | Activable par l'utilisateur s'il accepte le compromis (`PII_NER_INSTALL=1` + `PII_NER_ENABLED=true`). |
+| **Traitements de maintenance / mémoire** | Les appels secondaires (résumé & extraction de faits/préférences à la fin d'une conversation, consolidation mémoire, recherche de sessions, apprentissage du routage) lisent la conversation **brute, sans ré-anonymisation**. Ils sont conçus pour tourner sur le **tier MAINTENANCE local** (Gemma local) — aucune donnée ne sort alors. **⚠️ Si vous routez le tier maintenance vers un fournisseur cloud, ces contenus bruts y sont envoyés.** | Garder le tier maintenance sur un modèle local (config par défaut) ; unification prévue derrière une passerelle LLM unique. |
 
 **Conclusion produit** : l'anonymisation déterministe est utile pour les cas d'usage standards (réduction de surface d'attaque, conformité raisonnable, raisonnement préservé). Pour les cas à très haut risque (secrets industriels, données HDS, professions réglementées), **la bonne réponse est le tier A 100% local**, pas l'anonymisation seule. La page Sovereignty détaille les 3 modes (local / 100% EU / mixte performant).
 
@@ -183,4 +191,4 @@ L'ajout d'un canal de messagerie ne compromet **pas** la sécurité car :
 | Access token | localStorage 60 min, refresh transparent |
 | Mots de passe | Argon2id via pwdlib |
 | JWT | HS256, secret 32-byte minimum imposé |
-| Vault user secrets | AES-256-GCM zero-knowledge (clé dérivée du mdp) |
+| Vault user secrets | AES-256-GCM, clé dérivée du mot de passe maître par Argon2id, chiffré au repos. ⚠️ Ce n'est PAS du *zero-knowledge* strict : le serveur reçoit le mot de passe à l'unlock, dérive la clé et manipule les secrets en clair en RAM (clé effacée à la déconnexion / auto-lock). La protection vise le vol de base au repos, pas un serveur compromis. |
