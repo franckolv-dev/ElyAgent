@@ -354,6 +354,31 @@ def create_agent_node():
         # Email / placeholder addendum — refactor Phase 4.2 (builders.system_prompt).
         system += extract_email_block_addendum(_sanitized)
 
+        # Garde-fou EXÉCUTION AUTOMATIQUE (tâches planifiées, missions) : il
+        # n'y a PAS d'humain pour répondre maintenant. Sans ça, un prompt qui
+        # contient « chaque jour » / « envoie-moi » est lu comme une demande
+        # de PLANIFIER → l'agent répond « à quelle heure ? » au lieu
+        # d'exécuter (bug terrain 13/06 : 2 dailies restés en attente). On
+        # force l'exécution directe et on interdit la re-planification (sinon
+        # boucle de tâches qui se recréent).
+        if state.get("automated_task"):
+            system += (
+                "\n\n## ⚠️ EXÉCUTION AUTOMATIQUE PROGRAMMÉE\n"
+                "Cette tâche s'exécute SEULE, à heure fixe, SANS utilisateur "
+                "disponible pour répondre maintenant. La récurrence "
+                "(« chaque jour », l'heure d'envoi) est DÉJÀ gérée par le "
+                "planificateur — ce n'est pas à toi de la configurer.\n"
+                "- EXÉCUTE la demande immédiatement et jusqu'au bout, en "
+                "appelant les outils nécessaires.\n"
+                "- NE pose AUCUNE question et NE demande AUCUNE confirmation : "
+                "personne ne la lira à temps. En cas d'ambiguïté, prends "
+                "l'option par défaut la plus raisonnable et continue.\n"
+                "- NE crée PAS et NE reprogramme PAS de tâche planifiée "
+                "(outils scheduler_*) : elle existe déjà, la recréer ferait "
+                "une boucle.\n"
+                "- Termine en produisant directement le livrable final demandé."
+            )
+
         # ── Inference ──────────────────────────────────────────────────────
         if use_slm:
             try:
@@ -669,15 +694,36 @@ def create_agent_node():
                 # binds the tools it was told to call. Cheap: runs once per
                 # scheduled task on the cloud tier where prompt processing
                 # is not the bottleneck.
+                #
+                # ⚠️ L'union se base sur le PROMPT INITIAL (premier message
+                # humain), PAS sur user_query : à partir du 2e tour,
+                # messages[-1] est le RÉSULTAT du dernier tool, où aucun nom
+                # d'outil n'apparaît → l'union retombait à vide et les outils
+                # nommés disparaissaient du binding. Invisible avec un modèle
+                # qui appelle tout en parallèle au tour 1 ; révélé par codex
+                # (parallel_tool_calls=False → UN outil par tour) : le tour où
+                # gmail_list_emails aurait été appelé, il n'était plus bindé →
+                # « Tool gmail_list_emails non disponible » (bug terrain 13/06).
                 if state.get("automated_task"):
                     from app.agent.tool_filter import tools_named_in_text
-                    _named = tools_named_in_text(registry.all_tools, user_query)
+                    from app.agent.helpers.message_content import content_to_text
+                    _first_human = next(
+                        (m for m in messages
+                         if (isinstance(m, dict) and m.get("role") == "user")
+                         or getattr(m, "type", None) == "human"),
+                        None,
+                    )
+                    _initial_prompt = content_to_text(
+                        _first_human.get("content") if isinstance(_first_human, dict)
+                        else getattr(_first_human, "content", "")
+                    ) if _first_human is not None else user_query
+                    _named = tools_named_in_text(registry.all_tools, _initial_prompt)
                     _have = {t.name for t in _filtered_tools}
                     _extra = [t for t in _named if t.name not in _have]
                     if _extra:
                         _filtered_tools = list(_filtered_tools) + _extra
                         logger.warning(
-                            "[automated_task] +%d named tool(s) bound: %s",
+                            "[automated_task] +%d named tool(s) bound (from initial prompt): %s",
                             len(_extra), sorted(t.name for t in _extra),
                         )
 

@@ -167,3 +167,43 @@ def test_nodes_honours_automated_task_flag():
     assert 'bool(state.get("automated_task"))' in _NODES_PY
     # Named-tool union.
     assert "tools_named_in_text" in _NODES_PY
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Régression 13/06 — l'union doit se baser sur le PROMPT INITIAL, pas sur
+# le dernier message (= résultat du tool au tour 2+), et le mode automated
+# doit interdire les questions / la re-planification.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_tool_result_text_names_no_tool_hence_the_bug(_registry):
+    """Cœur du bug : au tour 2, messages[-1] est le RÉSULTAT du tool du tour
+    1. Aucun nom d'outil n'y figure → une union basée dessus retombe à vide
+    et les outils du prompt disparaissent du binding. Révélé par codex
+    (parallel_tool_calls=False → 1 outil/tour, donc on ATTEINT le tour 2)."""
+    tools = _registry.all_tools
+    # Ce que calendar_list_events renvoie — devenu le "user_query" buggé :
+    tool_result_text = (
+        "1 événement(s):\n• Entraînement tennis de table — "
+        "2026-06-13T10:00:00+02:00\n  Lieu: Non spécifié"
+    )
+    named_from_result = {t.name for t in tools_named_in_text(tools, tool_result_text)}
+    assert "gmail_list_emails" not in named_from_result
+    assert "system_list_scheduled_tasks" not in named_from_result
+    # …alors qu'ils SONT nommés dans le prompt initial.
+    named_from_prompt = {t.name for t in tools_named_in_text(tools, _BRIEFING_PROMPT)}
+    assert {"gmail_list_emails", "system_list_scheduled_tasks"} <= named_from_prompt
+
+
+def test_nodes_union_bases_on_initial_prompt():
+    """Source-grep : l'union automated_task extrait le PREMIER message humain
+    (prompt initial) au lieu de réutiliser user_query (= dernier message)."""
+    assert 'getattr(m, "type", None) == "human"' in _NODES_PY
+    assert "tools_named_in_text(registry.all_tools, _initial_prompt)" in _NODES_PY
+
+
+def test_nodes_has_automated_execution_guardrail():
+    """Source-grep : en automated_task, le system prompt force l'exécution et
+    interdit questions / re-planification (bug 13/06 : daily demandait l'heure
+    au lieu d'exécuter, et 2 tâches dupliquées se recréaient)."""
+    assert "EXÉCUTION AUTOMATIQUE PROGRAMMÉE" in _NODES_PY
