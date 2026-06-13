@@ -843,7 +843,20 @@ Règles :
 - Chaque "description" doit être ce que l'agent doit FAIRE à cette étape (pas ce qu'il doit savoir).
 - "tool_hint" DOIT être un nom EXACT du catalogue d'outils ci-dessous, ou null. Utilise UNIQUEMENT des noms qui apparaissent littéralement dans le catalogue. Si aucun outil ne convient, mets null — n'invente JAMAIS de nom d'outil.
 - Maximum 8 étapes. Si le goal demande plus, regroupe.
-- Les étapes seront exécutées en ORDRE séquentiel."""
+- Les étapes seront exécutées en ORDRE séquentiel.
+
+⚠️ TU EXÉCUTES LE TRAVAIL MAINTENANT — TU NE LE PLANIFIES PAS.
+La mission consiste à RÉALISER concrètement ce que décrit le goal (chercher,
+lire, écrire des fichiers, envoyer, etc.), MAINTENANT, étape par étape.
+- Si le goal contient une récurrence (« tous les matins à 8h », « chaque
+  jour », « toutes les semaines »), IGNORE la partie planification : la
+  récurrence est gérée ailleurs, par le planificateur de tâches. Ton rôle est
+  de FAIRE le travail décrit pour CETTE exécution.
+- NE crée JAMAIS d'étape « créer/programmer une tâche planifiée » et n'utilise
+  JAMAIS `scheduler_create_task` / `scheduler_*` comme tool_hint : ce serait
+  déléguer le travail au lieu de le faire (et créer une boucle). Les étapes
+  doivent porter le travail RÉEL (recherche web, lecture/écriture de fichiers
+  locaux via desktop_*, Drive, mail, etc.)."""
 
 
 def _build_plan_system(date_str: str, tools_catalog: str, n_tools: int) -> str:
