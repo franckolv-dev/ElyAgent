@@ -57,6 +57,8 @@ class TaskResponse(BaseModel):
     enabled: bool
     last_run_at: str | None
     last_result: str | None
+    last_status: str | None       # "running" | "success" | "error" | None
+    last_run_started_at: str | None
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -216,5 +218,9 @@ def _to_response(task: ScheduledTask) -> TaskResponse:
         enabled=task.enabled,
         last_run_at=task.last_run_at.isoformat() if task.last_run_at else None,
         last_result=task.last_result,
+        last_status=task.last_status,
+        last_run_started_at=(
+            task.last_run_started_at.isoformat() if task.last_run_started_at else None
+        ),
         created_at=task.created_at.isoformat(),
     )

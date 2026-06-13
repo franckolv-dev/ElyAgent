@@ -82,6 +82,17 @@ async def _execute_task(task_id: str) -> None:
             )
             return
 
+        # Indicateur d'état (13/06) : marquer « running » dès le départ pour
+        # que l'UI montre une exécution en cours (avant : aucun feedback).
+        async with async_session() as db:
+            _t0 = (await db.execute(
+                select(ScheduledTask).where(ScheduledTask.id == task_id)
+            )).scalar_one_or_none()
+            if _t0:
+                _t0.last_status = "running"
+                _t0.last_run_started_at = datetime.now(timezone.utc)
+                await db.commit()
+
         # Create a conversation for this execution
         async with async_session() as db:
             conv = Conversation(
@@ -150,6 +161,7 @@ async def _execute_task(task_id: str) -> None:
             if t:
                 t.last_run_at = datetime.now(timezone.utc)
                 t.last_result = ai_content[:2000]
+                t.last_status = "success"
                 await db.commit()
 
         # Deliver result to all configured channels (email, telegram,
@@ -170,6 +182,7 @@ async def _execute_task(task_id: str) -> None:
                 if t:
                     t.last_run_at = datetime.now(timezone.utc)
                     t.last_result = f"Erreur: {exc}"
+                    t.last_status = "error"
                     await db.commit()
         except Exception as db_exc:
             logger.warning("Failed to persist error status for task %s: %s", task_id, db_exc)

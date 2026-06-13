@@ -48,6 +48,14 @@ export default function ScheduledTasksPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Polling : rafraîchit toutes les 5 s tant qu'au moins une tâche est « en
+  // cours », pour que l'utilisateur voie running → réussi/échec en direct.
+  useEffect(() => {
+    const anyRunning = tasks.some((t) => t.last_status === "running");
+    const id = setInterval(fetchAll, anyRunning ? 4000 : 15000);
+    return () => clearInterval(id);
+  }, [tasks, fetchAll]);
+
   const onToggle = async (task: ScheduledTask) => {
     setBusyId(task.id);
     try {
@@ -141,6 +149,21 @@ export default function ScheduledTasksPage() {
                           }`}>
                             {task.enabled ? t("badgeActive") : t("badgeDisabled")}
                           </span>
+                          {/* Indicateur d'état d'exécution */}
+                          {(() => {
+                            const s = task.last_status;
+                            const map = {
+                              running: { cls: "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan animate-pulse", label: t("statusRunning"), dot: "●" },
+                              success: { cls: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400", label: t("statusSuccess"), dot: "✓" },
+                              error:   { cls: "bg-red-500/10 border-red-500/30 text-red-400", label: t("statusError"), dot: "✕" },
+                            } as const;
+                            const m = s ? map[s] : { cls: "bg-bg-primary border-border-dim text-text-muted", label: t("statusNever"), dot: "○" };
+                            return (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 inline-flex items-center gap-1 ${m.cls}`}>
+                                <span>{m.dot}</span>{m.label}
+                              </span>
+                            );
+                          })()}
                           <span className="text-[10px] text-cyber-cyan font-mono">{describeCron(task.cron_expression)}</span>
                           <span className="text-[10px] text-text-muted">· {task.channel}</span>
                         </div>
@@ -148,6 +171,14 @@ export default function ScheduledTasksPage() {
                         {task.last_run_at && (
                           <p className="text-[10px] text-text-muted mt-1">
                             {t("lastRun")} : {new Date(task.last_run_at).toLocaleString("fr-FR")}
+                          </p>
+                        )}
+                        {/* Résultat / message d'erreur de la dernière exécution */}
+                        {task.last_result && task.last_status !== "running" && (
+                          <p className={`text-[10px] mt-1 line-clamp-2 ${
+                            task.last_status === "error" ? "text-red-400" : "text-text-muted italic"
+                          }`}>
+                            {task.last_status === "error" ? "⚠ " : ""}{task.last_result}
                           </p>
                         )}
                       </div>
