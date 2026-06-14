@@ -202,8 +202,12 @@ async def _seed_mission(uid: str, status: str = "running") -> str:
     from app.models.mission import Mission
     mid = str(uuid.uuid4())
     async with async_session() as db:
-        db.add(Mission(id=mid, user_id=uid, title="M", goal="alimente le CSV",
-                       status=status))
+        # Goal en LECTURE SEULE volontairement : ce test J1 vérifie « complété
+        # → succeeded ». Un goal d'écriture déclencherait le signal J2
+        # « no_write_effect » (0 outil d'écriture) et basculerait en dubious —
+        # comportement testé séparément dans test_facade_detection.py.
+        db.add(Mission(id=mid, user_id=uid, title="M",
+                       goal="résume l'actualité du jour", status=status))
         await db.commit()
     return mid
 

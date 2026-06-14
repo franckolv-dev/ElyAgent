@@ -26,6 +26,16 @@ from app.services.learning.prompt_version import (
     current_system_prompt_version,
     prompt_hash,
 )
+from app.services.learning.facade_detection import (
+    compute_facade_signals,
+    detect_claimed_no_tool,
+    detect_write_intent,
+    is_write_tool,
+)
+from app.services.learning.outcome_recording import (
+    record_mission_outcome,
+    record_scheduled_outcome,
+)
 from app.services.learning.signals import (
     classify_outcome,
     record_execution_outcome,
@@ -51,6 +61,12 @@ __all__ = [
     "record_provider_switch",
     "record_execution_outcome",
     "classify_outcome",
+    "compute_facade_signals",
+    "detect_write_intent",
+    "detect_claimed_no_tool",
+    "is_write_tool",
+    "record_scheduled_outcome",
+    "record_mission_outcome",
     "should_critique",
     "critique_mission",
     "run_pending_critiques",
