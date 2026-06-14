@@ -164,6 +164,24 @@ async def _execute_task(task_id: str) -> None:
                 t.last_status = "success"
                 await db.commit()
 
+        # Boucle d'auto-diagnostic J1 — verdict d'aboutissement réel, à côté
+        # du statut déclaré. J1 = depuis le statut (signals vides) ; J2 ajoute
+        # les heuristiques (réussi sans effet, fallback…) qui font basculer en
+        # « dubious ». Best-effort, fire-and-forget : ne bloque jamais la tâche.
+        from app.services.background_tasks import spawn
+        from app.services.learning.signals import record_execution_outcome
+        spawn(
+            record_execution_outcome(
+                user_id=task.user_id,
+                source="scheduled",
+                source_id=task_id,
+                conversation_id=conv_id,
+                channel=task.channel,
+                declared_status="success",
+            ),
+            label=f"exec-outcome-{task_id}",
+        )
+
         # Deliver result to all configured channels (email, telegram,
         # whatsapp, discord, slack, ntfy + always-on web fallback).
         await _deliver_result(task, ai_content)
@@ -184,6 +202,24 @@ async def _execute_task(task_id: str) -> None:
                     t.last_result = f"Erreur: {exc}"
                     t.last_status = "error"
                     await db.commit()
+                    # Boucle d'auto-diagnostic J1 — verdict « failed » (échec
+                    # franc déclaré). Best-effort, ne masque pas l'erreur d'origine.
+                    try:
+                        from app.services.background_tasks import spawn
+                        from app.services.learning.signals import record_execution_outcome
+                        spawn(
+                            record_execution_outcome(
+                                user_id=t.user_id,
+                                source="scheduled",
+                                source_id=task_id,
+                                channel=t.channel,
+                                declared_status="error",
+                                reason=str(exc),
+                            ),
+                            label=f"exec-outcome-{task_id}",
+                        )
+                    except Exception:
+                        pass
         except Exception as db_exc:
             logger.warning("Failed to persist error status for task %s: %s", task_id, db_exc)
 

@@ -147,6 +147,51 @@ async def pause_mission(mission_id: str) -> Mission:
     return await _transition(mission_id, from_={"running", "planning"}, to="paused")
 
 
+async def _record_mission_outcome(mission_id: str, user_id: str, declared_status: str) -> None:
+    """Boucle d'auto-diagnostic J1 — verdict d'aboutissement réel d'une mission.
+
+    Best-effort : récupère le modèle de la dernière étape (proxy du tier
+    effectif), puis persiste le verdict via le signal execution_outcome.
+    Jamais bloquant, jamais levé.
+    """
+    model_used: str | None = None
+    try:
+        async with async_session() as db:
+            row = (await db.execute(
+                select(MissionStep.model_used)
+                .where(
+                    MissionStep.mission_id == mission_id,
+                    MissionStep.model_used.isnot(None),
+                )
+                .order_by(MissionStep.created_at.desc())
+                .limit(1)
+            )).first()
+            if row:
+                model_used = row[0]
+    except Exception:
+        pass
+    try:
+        from app.services.learning.signals import record_execution_outcome
+        await record_execution_outcome(
+            user_id=user_id,
+            source="mission",
+            source_id=mission_id,
+            mission_id=mission_id,
+            declared_status=declared_status,
+            model_used=model_used,
+        )
+    except Exception as exc:
+        logger.debug("record_mission_outcome failed (swallowed): %s", exc)
+
+
+def _spawn_mission_outcome(m: Mission, declared_status: str) -> None:
+    from app.services.background_tasks import spawn
+    spawn(
+        _record_mission_outcome(m.id, m.user_id, declared_status),
+        label=f"exec-outcome-mission-{m.id}",
+    )
+
+
 async def complete_mission(mission_id: str, summary: str) -> Mission:
     """planning|running → completed.
 
@@ -155,18 +200,22 @@ async def complete_mission(mission_id: str, summary: str) -> Mission:
     iteration). Without this, the mission would be stuck reporting
     done=True forever in the heartbeat loop.
     """
-    return await _transition(
+    m = await _transition(
         mission_id, from_={"planning", "running"}, to="completed",
         completed_at=_utcnow(), final_summary=summary,
     )
+    _spawn_mission_outcome(m, "completed")
+    return m
 
 
 async def fail_mission(mission_id: str, reason: str) -> Mission:
     """any-non-terminal → failed."""
-    return await _transition(
+    m = await _transition(
         mission_id, from_={"draft", "planning", "running", "paused"}, to="failed",
         completed_at=_utcnow(), failure_reason=reason,
     )
+    _spawn_mission_outcome(m, "failed")
+    return m
 
 
 async def abort_mission(mission_id: str, reason: str = "User-requested abort") -> Mission:
