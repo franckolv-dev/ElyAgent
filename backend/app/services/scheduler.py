@@ -164,20 +164,25 @@ async def _execute_task(task_id: str) -> None:
                 t.last_status = "success"
                 await db.commit()
 
-        # Boucle d'auto-diagnostic J1 — verdict d'aboutissement réel, à côté
-        # du statut déclaré. J1 = depuis le statut (signals vides) ; J2 ajoute
-        # les heuristiques (réussi sans effet, fallback…) qui font basculer en
-        # « dubious ». Best-effort, fire-and-forget : ne bloque jamais la tâche.
+        # Boucle d'auto-diagnostic — verdict d'aboutissement réel, à côté du
+        # statut déclaré. J2 : on calcule les signaux faibles (réussi sans
+        # effet observable, fallback, faux « pas d'outil »…) qui font basculer
+        # « success » → « dubious ». Best-effort, fire-and-forget : ne bloque
+        # jamais la tâche.
         from app.services.background_tasks import spawn
-        from app.services.learning.signals import record_execution_outcome
+        from app.services.learning.facade_detection import tools_called_from_messages
+        from app.services.learning.outcome_recording import record_scheduled_outcome
+        _msgs = invoke_result.get("messages") if isinstance(invoke_result, dict) else None
         spawn(
-            record_execution_outcome(
+            record_scheduled_outcome(
                 user_id=task.user_id,
-                source="scheduled",
-                source_id=task_id,
+                task_id=task_id,
                 conversation_id=conv_id,
                 channel=task.channel,
                 declared_status="success",
+                goal=task.prompt,
+                final_text=ai_content,
+                tools_called=tools_called_from_messages(_msgs),
             ),
             label=f"exec-outcome-{task_id}",
         )
