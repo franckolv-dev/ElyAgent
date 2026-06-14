@@ -795,3 +795,148 @@ async def learning_regression(
         min_samples=min_samples,
         drop_threshold=drop_threshold,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Boucle d'auto-diagnostic J4 — « Incidents & propositions » (remontée)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class IncidentOut(BaseModel):
+    """Un incident = une diagnose (cause + catégorie) jointe au verdict de
+    l'exécution qui l'a déclenchée. Alimente la page admin de remontée."""
+
+    id: int
+    execution_outcome_id: int
+    user_id: str
+    source: str
+    source_id: Optional[str]
+    category: str
+    hypothesis: str
+    confidence: str
+    status: str
+    resolution: Optional[str]
+    critic_model: Optional[str]
+    created_at: str
+    processed_at: Optional[str]
+    # Contexte de l'exécution (joint depuis execution_outcomes)
+    outcome: str
+    declared_status: Optional[str]
+    channel: Optional[str]
+    tier_llm: Optional[str]
+    model_used: Optional[str]
+    signals: list[str]
+
+
+def _incident_to_out(diag: Any, outcome: Any) -> IncidentOut:
+    try:
+        signals = json.loads(outcome.signals) if outcome.signals else []
+        if not isinstance(signals, list):
+            signals = []
+    except Exception:
+        signals = []
+    return IncidentOut(
+        id=diag.id,
+        execution_outcome_id=diag.execution_outcome_id,
+        user_id=diag.user_id,
+        source=diag.source,
+        source_id=diag.source_id,
+        category=diag.category,
+        hypothesis=diag.hypothesis,
+        confidence=diag.confidence or "medium",
+        status=diag.status or "open",
+        resolution=diag.resolution,
+        critic_model=diag.critic_model,
+        created_at=diag.created_at.isoformat() if diag.created_at else "",
+        processed_at=diag.processed_at.isoformat() if diag.processed_at else None,
+        outcome=outcome.outcome,
+        declared_status=outcome.declared_status,
+        channel=outcome.channel,
+        tier_llm=outcome.tier_llm,
+        model_used=outcome.model_used,
+        signals=signals,
+    )
+
+
+@router.get("/incidents")
+async def list_incidents(
+    status: str = Query("open", description="'open' (non tranchés) ou 'all'."),
+    user_id: Optional[str] = Query(None, description="Filtre un user."),
+    limit: int = Query(100, ge=1, le=500),
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[IncidentOut]:
+    """Liste les incidents diagnostiqués (maillon 3). Un incident = une
+    diagnose (cause + catégorie) + le contexte de l'exécution douteuse/échouée
+    qui l'a déclenchée. L'admin valide / rejette (arbitrage humain)."""
+    if status not in {"open", "all"}:
+        raise HTTPException(400, f"Unknown status {status!r}. Valid: open, all")
+
+    from app.models.execution_diagnosis import ExecutionDiagnosis
+    from app.models.execution_outcome import ExecutionOutcome
+
+    query = (
+        select(ExecutionDiagnosis, ExecutionOutcome)
+        .join(
+            ExecutionOutcome,
+            ExecutionOutcome.id == ExecutionDiagnosis.execution_outcome_id,
+        )
+    )
+    if status == "open":
+        query = query.where(ExecutionDiagnosis.status == "open")
+    if user_id:
+        query = query.where(ExecutionDiagnosis.user_id == user_id)
+    query = query.order_by(ExecutionDiagnosis.created_at.desc()).limit(limit)
+
+    rows = (await db.execute(query)).all()
+    return [_incident_to_out(diag, outcome) for diag, outcome in rows]
+
+
+class IncidentResolveRequest(BaseModel):
+    """Arbitrage humain d'un incident (J4)."""
+
+    status: str = Field(description="validated | rejected | actioned")
+    resolution: Optional[str] = Field(default=None, description="Note libre.")
+
+
+@router.post("/incidents/{incident_id}/resolve", response_model=IncidentOut)
+async def resolve_incident(
+    incident_id: int,
+    body: IncidentResolveRequest,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> IncidentOut:
+    """Tranche un incident : validated / rejected / actioned. L'humain dans la
+    boucle (le diagnostiqueur ne valide jamais ses propres hypothèses)."""
+    from app.models.execution_diagnosis import (
+        DIAGNOSIS_STATUSES,
+        ExecutionDiagnosis,
+    )
+    from app.models.execution_outcome import ExecutionOutcome
+
+    new_status = (body.status or "").strip().lower()
+    if new_status not in DIAGNOSIS_STATUSES or new_status == "open":
+        raise HTTPException(
+            400,
+            f"Unknown status {body.status!r}. Valid: validated, rejected, actioned",
+        )
+
+    diag = (await db.execute(
+        select(ExecutionDiagnosis).where(ExecutionDiagnosis.id == incident_id)
+    )).scalar_one_or_none()
+    if diag is None:
+        raise HTTPException(404, f"incident {incident_id} not found")
+
+    diag.status = new_status
+    if body.resolution:
+        diag.resolution = body.resolution[:2000]
+    diag.processed_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(diag)
+    logger.info("incident_resolved: id=%s status=%s by_admin=%s",
+                diag.id, new_status, _admin.id[:8] if _admin.id else "?")
+
+    outcome = (await db.execute(
+        select(ExecutionOutcome).where(ExecutionOutcome.id == diag.execution_outcome_id)
+    )).scalar_one_or_none()
+    return _incident_to_out(diag, outcome)

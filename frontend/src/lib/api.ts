@@ -545,6 +545,24 @@ export const api = {
       body: JSON.stringify(params),
       headers: { "Content-Type": "application/json" },
     }) as Promise<{ status: string; tool_name?: string; learned_skill_id?: string; python_tools_enabled: boolean }>,
+
+  // ── Admin: self-diagnostic loop J4 — incidents & propositions ───────────
+  /** List diagnosed incidents (dubious/failed executions with a cause).
+   *  `open` = not yet arbitrated; `all` = include validated/rejected/actioned. */
+  adminLearningIncidents: (status: "open" | "all" = "open") =>
+    fetchAPI(`/admin/learning/incidents?status=${status}`) as Promise<Incident[]>,
+
+  /** Arbitrate an incident: validated | rejected | actioned (+ optional note). */
+  adminLearningIncidentResolve: (
+    id: number,
+    status: "validated" | "rejected" | "actioned",
+    resolution?: string,
+  ) =>
+    fetchAPI(`/admin/learning/incidents/${id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify(resolution ? { status, resolution } : { status }),
+      headers: { "Content-Type": "application/json" },
+    }) as Promise<Incident>,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -779,4 +797,34 @@ export interface ToolGap {
   processed_at: string | null;
   /** If resolved by generating a candidate, the candidate's id. */
   learned_skill_id: string | null;
+}
+
+/** Self-diagnostic loop J4 — a diagnosed incident: the cause hypothesis +
+ *  category for a dubious/failed execution, joined to its outcome context. */
+export interface Incident {
+  id: number;
+  execution_outcome_id: number;
+  user_id: string;
+  source: string;
+  source_id: string | null;
+  /** gap_tool | binding | config_tier | prompt | code_core | user_interaction | unknown */
+  category: string;
+  hypothesis: string;
+  /** low | medium | high */
+  confidence: string;
+  /** open | validated | rejected | actioned */
+  status: string;
+  resolution: string | null;
+  /** Model that produced the diagnosis, or "rule-based" fallback. */
+  critic_model: string | null;
+  created_at: string;
+  processed_at: string | null;
+  // Execution context (joined from execution_outcomes)
+  /** dubious | failed */
+  outcome: string;
+  declared_status: string | null;
+  channel: string | null;
+  tier_llm: string | null;
+  model_used: string | null;
+  signals: string[];
 }

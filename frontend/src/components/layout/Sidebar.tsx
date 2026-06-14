@@ -16,7 +16,7 @@ import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
   Download, X, ChevronDown, BookOpen, Target, Brain, Compass,
-  Sparkles, ClipboardCheck, type LucideIcon,
+  Sparkles, ClipboardCheck, Stethoscope, type LucideIcon,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -52,6 +52,7 @@ const NAV: NavEntry[] = [
       { href: "/me/learning/skills",     labelKey: "navLearningSkills",     icon: Sparkles },
       { href: "/me/learning/candidates", labelKey: "navLearningCandidates", icon: ClipboardCheck, admin: true },
       { href: "/me/learning/tool-gaps",  labelKey: "navLearningToolGaps",   icon: Search, admin: true },
+      { href: "/me/learning/incidents",  labelKey: "navLearningIncidents",  icon: Stethoscope, admin: true },
     ],
   },
   {
