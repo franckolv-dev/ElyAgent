@@ -27,6 +27,8 @@ from app.services.learning.prompt_version import (
     prompt_hash,
 )
 from app.services.learning.signals import (
+    classify_outcome,
+    record_execution_outcome,
     record_hallucination_block,
     record_hitl_refusal,
     record_provider_switch,
@@ -47,6 +49,8 @@ __all__ = [
     "record_hallucination_block",
     "record_tool_error",
     "record_provider_switch",
+    "record_execution_outcome",
+    "classify_outcome",
     "should_critique",
     "critique_mission",
     "run_pending_critiques",

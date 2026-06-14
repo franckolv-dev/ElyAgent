@@ -761,3 +761,37 @@ async def mark_tool_gap_processed(
                     row.id, _admin.id[:8] if _admin.id else "?",
                     row.learned_skill_id or "—")
     return _tool_gap_to_out(row)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Boucle d'auto-diagnostic J1 — « régression visible » (lecture seule)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/regression")
+async def learning_regression(
+    window: str = Query("30d", description="Fenêtre d'affichage : 7d, 30d, 90d, 24h."),
+    recent: str = Query("3d", description="Fenêtre récente comparée à la référence."),
+    baseline: str = Query("14d", description="Fenêtre de référence (précède la récente)."),
+    min_samples: int = Query(5, ge=1, le=1000, description="Échantillon mini par côté pour alerter."),
+    drop_threshold: float = Query(0.30, ge=0.0, le=1.0, description="Chute mini du taux réel pour alerter."),
+    user_id: Optional[str] = Query(None, description="Filtre un user. None = vue globale (infra)."),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Taux de succès RÉEL par groupe (source × tier × modèle × canal) + série
+    journalière + alertes de chute — design note §6.
+
+    Lecture seule : agrège la table ``execution_outcomes``. Le verdict
+    « dubious » (succès de façade) reste à 0 tant que J2 n'a pas branché les
+    heuristiques ; en J1 ``real_success_rate`` == ``declared_success_rate``.
+    """
+    from app.services.learning.regression import regression_report
+
+    return await regression_report(
+        user_id=user_id,
+        window=window,
+        recent=recent,
+        baseline=baseline,
+        min_samples=min_samples,
+        drop_threshold=drop_threshold,
+    )

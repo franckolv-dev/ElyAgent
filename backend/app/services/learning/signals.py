@@ -316,3 +316,95 @@ async def record_provider_switch(
     except Exception as exc:
         logger.debug("record_provider_switch failed (swallowed): %s", exc)
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 5. Execution outcomes (boucle d'auto-diagnostic — chaînon manquant)
+# ─────────────────────────────────────────────────────────────────────────
+
+OUTCOME_SUCCEEDED = "succeeded"
+OUTCOME_DUBIOUS = "dubious"
+OUTCOME_FAILED = "failed"
+EXECUTION_OUTCOMES = {OUTCOME_SUCCEEDED, OUTCOME_DUBIOUS, OUTCOME_FAILED}
+
+# Statuts déclarés qui valent un échec franc, quels que soient les signaux.
+_FAILED_DECLARED = {"error", "failed", "aborted"}
+
+
+def classify_outcome(declared_status: str | None, signals: list[str] | None) -> str:
+    """Verdict d'aboutissement à partir du statut déclaré + signaux faibles.
+
+    Charge de la preuve (design note §4, maillon 1) :
+      - statut déclaré en erreur/failed/aborted → ``failed`` (sans appel) ;
+      - sinon, AU MOINS un signal faible levé → ``dubious`` (succès de façade
+        probable — alimenté à J2) ;
+      - sinon → ``succeeded``.
+
+    J1 appelle ce helper avec ``signals=[]`` (verdict = statut déclaré) ;
+    J2 fournira les signaux des heuristiques.
+    """
+    d = (declared_status or "").strip().lower()
+    if d in _FAILED_DECLARED:
+        return OUTCOME_FAILED
+    if signals:
+        return OUTCOME_DUBIOUS
+    return OUTCOME_SUCCEEDED
+
+
+async def record_execution_outcome(
+    *,
+    user_id: str,
+    source: str,
+    source_id: str | None = None,
+    declared_status: str | None = None,
+    outcome: str | None = None,
+    signals: list[str] | None = None,
+    channel: str | None = None,
+    tier_llm: str | None = None,
+    model_used: str | None = None,
+    reason: str | None = None,
+    conversation_id: str | None = None,
+    mission_id: str | None = None,
+    prompt_version: str | None = None,
+) -> int | None:
+    """Persiste un verdict d'aboutissement réel — boucle d'auto-diagnostic J1.
+
+    Le « chaînon manquant » : un verdict par exécution AUTOMATIQUE terminée
+    (``source`` ∈ {"scheduled", "mission", "chat"}), à côté du statut
+    *déclaré*. Si ``outcome`` n'est pas fourni, il est calculé par
+    :func:`classify_outcome` (statut déclaré + signaux). Best-effort : ne
+    lève jamais (même contrat que les 4 autres signaux).
+    """
+    if not user_id or not source:
+        return None
+    signals = list(signals or [])
+    if outcome is None:
+        outcome = classify_outcome(declared_status, signals)
+    if outcome not in EXECUTION_OUTCOMES:
+        outcome = OUTCOME_DUBIOUS  # défensif : jamais de verdict inconnu
+    if prompt_version is None:
+        prompt_version = _safe_prompt_version()
+    try:
+        from app.models.execution_outcome import ExecutionOutcome
+        row = ExecutionOutcome(
+            user_id=user_id,
+            source=str(source)[:16],
+            source_id=(str(source_id)[:64] if source_id else None),
+            conversation_id=(str(conversation_id)[:100] if conversation_id else None),
+            mission_id=mission_id,
+            channel=(str(channel)[:50] if channel else None),
+            tier_llm=(str(tier_llm)[:8] if tier_llm else None),
+            model_used=(str(model_used)[:120] if model_used else None),
+            declared_status=(str(declared_status)[:20] if declared_status else None),
+            outcome=outcome,
+            signals=(json.dumps(signals, ensure_ascii=False) if signals else None),
+            reason=(str(reason)[:255] if reason else None),
+            prompt_version=prompt_version,
+        )
+        async with async_session() as db:
+            db.add(row)
+            await db.commit()
+        return row.id
+    except Exception as exc:
+        logger.debug("record_execution_outcome failed (swallowed): %s", exc)
+        return None
