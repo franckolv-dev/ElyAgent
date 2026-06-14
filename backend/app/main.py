@@ -405,6 +405,18 @@ async def lifespan(app: FastAPI):
         minutes=5,
         id="mission_critic_loop",
     )
+    # Boucle d'auto-diagnostic J3 — diagnostiqueur (maillon 2). Scanne les
+    # execution_outcomes « dubious / failed » sans diagnose et formule une
+    # cause + catégorie (LLM-juge, repli à règles). Décalé de 2 min du critic
+    # pour ne pas empiler deux passes LLM cloud sur le même tick. Désactivable
+    # via DIAGNOSTICIAN_DISABLED=true.
+    from app.services.learning import run_pending_diagnoses as _diag_run
+    _memory_scheduler.add_job(
+        _diag_run,
+        trigger="interval",
+        minutes=5,
+        id="execution_diagnostician_loop",
+    )
     # Purge expired revoked tokens nightly at 4:00 AM (ARCH-3)
     async def _purge_revoked_tokens():
         from datetime import datetime
