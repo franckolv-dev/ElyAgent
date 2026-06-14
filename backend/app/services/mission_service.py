@@ -147,47 +147,17 @@ async def pause_mission(mission_id: str) -> Mission:
     return await _transition(mission_id, from_={"running", "planning"}, to="paused")
 
 
-async def _record_mission_outcome(mission_id: str, user_id: str, declared_status: str) -> None:
-    """Boucle d'auto-diagnostic J1 — verdict d'aboutissement réel d'une mission.
-
-    Best-effort : récupère le modèle de la dernière étape (proxy du tier
-    effectif), puis persiste le verdict via le signal execution_outcome.
-    Jamais bloquant, jamais levé.
-    """
-    model_used: str | None = None
-    try:
-        async with async_session() as db:
-            row = (await db.execute(
-                select(MissionStep.model_used)
-                .where(
-                    MissionStep.mission_id == mission_id,
-                    MissionStep.model_used.isnot(None),
-                )
-                .order_by(MissionStep.created_at.desc())
-                .limit(1)
-            )).first()
-            if row:
-                model_used = row[0]
-    except Exception:
-        pass
-    try:
-        from app.services.learning.signals import record_execution_outcome
-        await record_execution_outcome(
-            user_id=user_id,
-            source="mission",
-            source_id=mission_id,
-            mission_id=mission_id,
-            declared_status=declared_status,
-            model_used=model_used,
-        )
-    except Exception as exc:
-        logger.debug("record_mission_outcome failed (swallowed): %s", exc)
-
-
 def _spawn_mission_outcome(m: Mission, declared_status: str) -> None:
+    """Boucle d'auto-diagnostic — verdict d'aboutissement réel d'une mission,
+    signaux faibles inclus (réussi sans effet observable, fallback…). L'analyse
+    + la persistance sont déléguées à ``outcome_recording`` (best-effort,
+    fire-and-forget : ne bloque ni ne casse la transition de statut)."""
     from app.services.background_tasks import spawn
+    from app.services.learning.outcome_recording import record_mission_outcome
     spawn(
-        _record_mission_outcome(m.id, m.user_id, declared_status),
+        record_mission_outcome(
+            mission_id=m.id, user_id=m.user_id, declared_status=declared_status,
+        ),
         label=f"exec-outcome-mission-{m.id}",
     )
 
