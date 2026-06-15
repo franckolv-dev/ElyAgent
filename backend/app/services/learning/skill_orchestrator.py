@@ -38,6 +38,7 @@ from app.services.learning.skill_iteration import (
     mark_rejected,
     patch_skill,
 )
+from app.services.learning.skill_promotion import promote_candidate_to_active
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +135,15 @@ async def run_full_loop(
     user_id: str,
     batch_size: int = 3,
     max_iterations: int = MAX_ITERATIONS,
+    auto_promote: bool = False,
 ) -> dict[str, Any]:
     """Run one full batch of create → eval → iterate for a user.
+
+    When ``auto_promote`` is True (the autonomous path — see
+    ``skill_autocreate``), a playbook that passes eval is promoted to
+    ``active`` immediately, the way Hermes ships a reviewed skill with no
+    human gate. The admin endpoint keeps the default (``False``) so its
+    drafts land as ``candidate`` for review.
 
     Returns ::
 
@@ -190,6 +198,12 @@ async def run_full_loop(
 
         if loop_result["final_status"] == "pass":
             passed += 1
+            if auto_promote and skill_id:
+                # Hermes-faithful : a passing playbook goes live now, no
+                # human click. The admin UI remains a rejection filter.
+                loop_result["auto_promoted"] = await promote_candidate_to_active(
+                    skill_id, reason="autonomous_eval_pass",
+                )
         elif loop_result["final_status"] == "rejected":
             rejected += 1
         else:

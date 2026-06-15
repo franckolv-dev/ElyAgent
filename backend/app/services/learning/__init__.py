@@ -56,8 +56,12 @@ from app.services.learning.user_state import (
     get_user_state,
     set_user_state,
 )
+from app.services.learning.skill_autocreate import run_pending_skill_creation
+from app.services.learning.skill_promotion import promote_candidate_to_active
 
 __all__ = [
+    "run_pending_skill_creation",
+    "promote_candidate_to_active",
     "prompt_hash",
     "current_system_prompt_version",
     "record_hitl_refusal",

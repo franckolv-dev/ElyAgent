@@ -103,8 +103,12 @@ class SkillSource:
     AUTO_GENERATED = "auto_generated"
     USER_ADDED = "user_added"
     IMPORTED_MARKETPLACE = "imported_marketplace"
+    # Jalon 1 (portage Hermes) — playbooks bundled with the app, seeded at
+    # boot so the library is never cold (Hermes ships 89 SKILL.md). Like
+    # ``user_added``, they are immune to the auto-curator.
+    BUNDLED = "bundled"
 
-    ALL = {AUTO_GENERATED, USER_ADDED, IMPORTED_MARKETPLACE}
+    ALL = {AUTO_GENERATED, USER_ADDED, IMPORTED_MARKETPLACE, BUNDLED}
     # Subset the auto-curator is allowed to mutate.
     CURATOR_MUTABLE = {AUTO_GENERATED}
 
