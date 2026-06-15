@@ -339,8 +339,10 @@ async def websocket_chat(websocket: WebSocket):
                 }))
                 continue
 
+            _is_new_conv = False
             async with async_session() as db:
                 if not conversation_id:
+                    _is_new_conv = True
                     conv = Conversation(user_id=user_id, title=user_content[:50])
                     db.add(conv)
                     await db.flush()
@@ -782,6 +784,13 @@ async def websocket_chat(websocket: WebSocket):
                     conv_row.updated_at = datetime.now(timezone.utc)
                 await db.commit()
 
+            # J4 — replace the naive ``user_content[:50]`` title with a concise
+            # LLM-generated one after the first exchange (best-effort, once).
+            if _is_new_conv:
+                spawn(_maybe_generate_title(
+                    conversation_id, user_id, user_content, ai_content,
+                ))
+
             memory = get_memory_manager()
             await memory.store_interaction(
                 user_msg=user_content,
@@ -910,6 +919,66 @@ async def websocket_chat(websocket: WebSocket):
                 _fm_discard(conversation_id)
             except Exception:
                 pass
+
+
+def _clean_title(raw: str) -> str:
+    """Strip quotes / markdown / a leading 'Titre :' / trailing punctuation
+    from an LLM-generated title, keep a single line, cap to ~10 words."""
+    import re as _re
+    t = (raw or "").strip().strip('"\'`*').strip()
+    t = _re.sub(r"^(titre|title)\s*[:\-]\s*", "", t, flags=_re.IGNORECASE).strip()
+    t = t.splitlines()[0].strip() if t else ""
+    t = t.strip('"\'`*').rstrip(".").strip()
+    words = t.split()
+    if len(words) > 10:
+        t = " ".join(words[:10])
+    return t
+
+
+async def _maybe_generate_title(
+    conversation_id: str,
+    user_id: str,
+    user_text: str,
+    assistant_text: str,
+) -> None:
+    """Replace the naive ``user_content[:50]`` title with a concise LLM title
+    after the first exchange. Best-effort, runs once per conversation (only
+    when exactly one assistant reply exists), uses the MAINTENANCE tier (local)
+    so it never disturbs the user's active model."""
+    try:
+        async with async_session() as db:
+            msgs = (await db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.asc())
+            )).scalars().all()
+        # Title once, on the first completed exchange — never overwrite a
+        # later, richer title.
+        if sum(1 for m in msgs if m.role == "assistant") != 1:
+            return
+
+        from app.services.llm_provider import get_llm_for_tier, ComplexityTier
+        llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
+        prompt = (
+            "Génère un titre TRÈS court (3 à 7 mots, sans guillemets, sans "
+            "point final) qui résume le sujet de cet échange. Réponds "
+            "UNIQUEMENT par le titre, rien d'autre.\n\n"
+            f"Utilisateur : {user_text[:500]}\n"
+            f"Ely : {assistant_text[:500]}"
+        )
+        resp = await llm.ainvoke([HumanMessage(content=prompt)])
+        raw = resp.content if isinstance(resp.content, str) else str(resp.content)
+        title = _clean_title(raw)
+        if not title:
+            return
+        async with async_session() as db:
+            conv = await db.get(Conversation, conversation_id)
+            if conv is not None:
+                conv.title = title[:255]
+                await db.commit()
+        logger.debug("conversation %s auto-titled: %s", conversation_id, title)
+    except Exception as exc:
+        logger.debug("title generation failed (swallowed): %s", exc)
 
 
 async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
