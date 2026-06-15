@@ -28,9 +28,11 @@ import logging
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import select
 
 from app.database import async_session
@@ -55,6 +57,7 @@ async def _execute_task(task_id: str) -> None:
     from app.agent.graph import build_simple_agent_graph
     from langchain_core.messages import HumanMessage
 
+    _is_once = False  # one-shot (@once) → auto-deleted in `finally`
     try:
         async with async_session() as db:
             result = await db.execute(
@@ -63,6 +66,7 @@ async def _execute_task(task_id: str) -> None:
             task = result.scalar_one_or_none()
             if not task or not task.enabled:
                 return
+            _is_once = _is_oneshot(task.cron_expression)
 
             # Get user's google credentials
             u_result = await db.execute(select(User).where(User.id == task.user_id))
@@ -146,6 +150,34 @@ async def _execute_task(task_id: str) -> None:
         else:
             ai_content = str(ai_content_raw or "")
 
+        # ── [SILENT] (J2) ──────────────────────────────────────────────────
+        # A monitor task that has nothing new to report replies exactly
+        # "[SILENT]". We then suppress BOTH the channel delivery AND the
+        # throwaway conversation, so a frequent watch (e.g. every 30 min)
+        # doesn't spam the channel or the conversation list. By convention,
+        # a real failure still delivers (it lands in the except branch, which
+        # never sees this path).
+        if ai_content.strip().upper().startswith("[SILENT]"):
+            async with async_session() as db:
+                _conv = (await db.execute(
+                    select(Conversation).where(Conversation.id == conv_id)
+                )).scalar_one_or_none()
+                if _conv is not None:
+                    await db.delete(_conv)  # cascade removes the user message
+                _t = (await db.execute(
+                    select(ScheduledTask).where(ScheduledTask.id == task_id)
+                )).scalar_one_or_none()
+                if _t is not None:
+                    _t.last_run_at = datetime.now(timezone.utc)
+                    _t.last_status = "silent"
+                    _t.last_result = "[SILENT] — rien de nouveau à signaler"
+                await db.commit()
+            logger.info(
+                "Scheduled task '%s' silent — delivery + conversation skipped",
+                task.name,
+            )
+            return
+
         # Save result. Split into two sessions to avoid autoflush
         # interference between the new Message insert and the subsequent
         # ScheduledTask UPDATE (they touch unrelated tables but share the
@@ -227,6 +259,11 @@ async def _execute_task(task_id: str) -> None:
                         pass
         except Exception as db_exc:
             logger.warning("Failed to persist error status for task %s: %s", task_id, db_exc)
+    finally:
+        # One-shot (@once) runs exactly once, then disappears — drop the row
+        # so it can't linger or re-fire on reboot (its DateTrigger is past).
+        if _is_once:
+            await _delete_oneshot(task_id)
 
 
 async def _deliver_result(task: ScheduledTask, content: str) -> None:
@@ -439,14 +476,42 @@ async def _deliver_result(task: ScheduledTask, content: str) -> None:
         logger.info("Task '%s' result stored (channel=%s did not deliver — see warnings above)", task.name, chan)
 
 
-def _parse_cron(expression: str) -> CronTrigger | None:
-    """Parse a cron expression into an APScheduler CronTrigger.
+_ONCE_PREFIX = "@once"
 
-    Supports standard 5-field cron: minute hour day month day_of_week
-    Examples: '0 8 * * 1-5' (weekdays at 8am), '30 9 * * *' (daily at 9:30)
+
+def _is_oneshot(expression: str | None) -> bool:
+    """True iff the expression is a one-shot (``@once <ISO8601>``)."""
+    return bool(expression) and expression.strip().lower().startswith(_ONCE_PREFIX)
+
+
+def _parse_cron(expression: str) -> CronTrigger | DateTrigger | None:
+    """Parse a schedule expression into an APScheduler trigger.
+
+    Two forms:
+      - **5-field cron** (recurring) : ``minute hour day month day_of_week``
+        e.g. '0 8 * * 1-5' (weekdays 8am), '30 9 * * *' (daily 9:30).
+      - **One-shot** (J2) : ``@once <ISO8601>``
+        e.g. '@once 2026-05-14T08:00'. Fires exactly once on that date
+        (DateTrigger), then the task is auto-deleted by ``_execute_task``.
+        A naïve datetime is interpreted as Europe/Paris.
+
+    Before J2, a "one-shot" was expressed as a day+month cron
+    (e.g. '0 8 14 5 *') which silently **re-fired every year** — the bug
+    this form fixes.
     """
+    expr = (expression or "").strip()
+    if _is_oneshot(expr):
+        iso = expr[len(_ONCE_PREFIX):].strip()
+        try:
+            run_date = datetime.fromisoformat(iso)
+            if run_date.tzinfo is None:
+                run_date = run_date.replace(tzinfo=ZoneInfo("Europe/Paris"))
+            return DateTrigger(run_date=run_date, timezone="Europe/Paris")
+        except Exception as exc:
+            logger.warning("Failed to parse one-shot '%s': %s", expression, exc)
+            return None
     try:
-        parts = expression.strip().split()
+        parts = expr.split()
         if len(parts) == 5:
             return CronTrigger(
                 minute=parts[0],
@@ -462,6 +527,24 @@ def _parse_cron(expression: str) -> CronTrigger | None:
     except Exception as exc:
         logger.warning("Failed to parse cron '%s': %s", expression, exc)
         return None
+
+
+async def _delete_oneshot(task_id: str) -> None:
+    """Remove a one-shot task after it has run (DateTrigger fires once;
+    we also drop the DB row so it can't linger or re-fire on reboot).
+    Best-effort."""
+    try:
+        unschedule_task(task_id)
+        async with async_session() as db:
+            t = (await db.execute(
+                select(ScheduledTask).where(ScheduledTask.id == task_id)
+            )).scalar_one_or_none()
+            if t is not None:
+                await db.delete(t)
+                await db.commit()
+                logger.info("One-shot task %s auto-deleted after run", task_id)
+    except Exception as exc:
+        logger.warning("One-shot cleanup failed for %s: %s", task_id, exc)
 
 
 async def load_and_schedule_tasks() -> None:

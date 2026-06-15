@@ -467,7 +467,9 @@ _SPECIALIST_PROMPTS: dict[Domain, str] = {
         "avoir appelé l'outil.\n\n"
         "Outils disponibles : ssh_execute (HITL obligatoire), system_info, "
         "scheduler_create_task, scheduler_list_tasks, scheduler_delete_task, "
-        "briefing_generate, watchdog_add, watchdog_list, watchdog_remove." + _COMMON_FORMAT
+        "scheduler_update_task (modifier sans recréer), scheduler_run_task "
+        "(lancer maintenant), briefing_generate, watchdog_add, watchdog_list, "
+        "watchdog_remove." + _COMMON_FORMAT
     ),
     "general": (
         _IDENTITY +

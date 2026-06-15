@@ -86,6 +86,8 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "scheduler_list_tasks",
     "scheduler_create_task",
     "scheduler_delete_task",
+    "scheduler_update_task",
+    "scheduler_run_task",
     # Browser tools — each user has an isolated browser context
     "browser_navigate",
     "browser_search_web",
