@@ -26,6 +26,11 @@ from app.services.learning.prompt_version import (
     current_system_prompt_version,
     prompt_hash,
 )
+from app.services.learning.diagnostician import (
+    diagnose_execution,
+    rule_based_diagnosis,
+    run_pending_diagnoses,
+)
 from app.services.learning.facade_detection import (
     compute_facade_signals,
     detect_claimed_no_tool,
@@ -67,6 +72,9 @@ __all__ = [
     "is_write_tool",
     "record_scheduled_outcome",
     "record_mission_outcome",
+    "diagnose_execution",
+    "run_pending_diagnoses",
+    "rule_based_diagnosis",
     "should_critique",
     "critique_mission",
     "run_pending_critiques",
