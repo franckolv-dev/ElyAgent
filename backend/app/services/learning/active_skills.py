@@ -108,7 +108,9 @@ def format_active_skills_block(skills: list[LearnedSkill]) -> str:
         "<learned_skills>",
         (
             f"Tu as {n} playbook{'s' if n > 1 else ''} appris{'es' if n > 1 else 'e'} "
-            "(voir le contenu complet via le tool `skill_view`) :"
+            "(procédures éprouvées). AVANT d'exécuter une tâche qui correspond "
+            "à l'un d'eux, lis-le EN ENTIER via le tool `skill_view` et suis sa "
+            "procédure — ne l'improvise pas. Liste :"
         ),
     ]
     for s in skills:

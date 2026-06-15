@@ -454,6 +454,37 @@ async def lifespan(app: FastAPI):
         id="learned_skills_curator",
     )
 
+    # Jalon 1 (portage Hermes) — autonomous skill CREATION. Ely's skill
+    # funnel had every part except the trigger : run_full_loop was admin-only
+    # (skill_orchestrator : « what a future cron job will call »). This is
+    # that cron. Scans users with ≥3 unprocessed failure_cases, drafts +
+    # evaluates playbooks, and auto-promotes passes to active — no human
+    # click, the way Hermes ships a reviewed skill. Off the request
+    # hot-path. Disable via SKILL_AUTOCREATE_DISABLED=true.
+    from app.services.learning import (
+        run_pending_skill_creation as _skill_autocreate,
+    )
+    _memory_scheduler.add_job(
+        _skill_autocreate,
+        trigger="interval",
+        minutes=30,
+        id="learned_skills_autocreate",
+    )
+
+    # Jalon 1 (portage Hermes) — seed the playbook library so it's never
+    # cold (Hermes ships 89 SKILL.md ; Ely shipped zero). Idempotent +
+    # best-effort : a passing playbook is reusable from day one.
+    try:
+        from app.services.learning.seed_playbooks import load_seed_playbooks
+        _seed_summary = await load_seed_playbooks()
+        if _seed_summary.get("inserted"):
+            _startup_logger.info(
+                "[skills] seeded %d bundled playbook(s)",
+                _seed_summary["inserted"],
+            )
+    except Exception as _seed_exc:  # never block boot on seeding
+        _startup_logger.warning("[skills] seed playbooks load failed: %s", _seed_exc)
+
     # Mission heartbeat — ticks active missions periodically.
     # See app/services/mission_heartbeat.py for the loop logic.
     from app.services.mission_heartbeat import (
