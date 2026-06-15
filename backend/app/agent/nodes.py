@@ -376,6 +376,13 @@ def create_agent_node():
                 "- NE crée PAS et NE reprogramme PAS de tâche planifiée "
                 "(outils scheduler_*) : elle existe déjà, la recréer ferait "
                 "une boucle.\n"
+                "- SURVEILLANCE/veille uniquement : si — et SEULEMENT si — ta "
+                "tâche consiste à surveiller quelque chose et qu'il n'y a RIEN "
+                "de nouveau ni de notable à signaler depuis la dernière fois, "
+                "réponds EXACTEMENT « [SILENT] » (ce seul mot, rien d'autre) : "
+                "la notification sera supprimée pour ne pas te spammer. Pour "
+                "une tâche qui produit toujours un livrable (briefing, résumé, "
+                "rapport quotidien), NE l'utilise JAMAIS — livre le résultat.\n"
                 "- Termine en produisant directement le livrable final demandé."
             )
 

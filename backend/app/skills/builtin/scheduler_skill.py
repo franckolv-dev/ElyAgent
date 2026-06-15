@@ -18,7 +18,13 @@
 # =============================================================================
 from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
-from app.agent.tools.scheduler_tool import scheduler_list_tasks, scheduler_create_task, scheduler_delete_task
+from app.agent.tools.scheduler_tool import (
+    scheduler_list_tasks,
+    scheduler_create_task,
+    scheduler_delete_task,
+    scheduler_update_task,
+    scheduler_run_task,
+)
 
 get_skill_registry().register(Skill(
     name="scheduler",
@@ -27,5 +33,11 @@ get_skill_registry().register(Skill(
     icon="⏰",
     scopes=[],
     domains=[Domain.INFRA],
-    tools=[scheduler_list_tasks, scheduler_create_task, scheduler_delete_task],
+    tools=[
+        scheduler_list_tasks,
+        scheduler_create_task,
+        scheduler_delete_task,
+        scheduler_update_task,
+        scheduler_run_task,
+    ],
 ))

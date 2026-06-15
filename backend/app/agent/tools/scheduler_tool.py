@@ -100,26 +100,44 @@ async def scheduler_create_task(
               '0 20 * * 0'     Sunday 8pm
               '0 */2 * * *'    every 2 hours
 
-            ── ONE-SHOT tasks (specific date + time) ──
-            Set the day and month explicitly; leave the others as «*».
-              '0 8 14 5 *'     8 am on May 14th
-              '30 9 27 12 *'   9:30 am on December 27th
+            ── ONE-SHOT tasks (runs ONCE then auto-deletes) ──
+            Use « @once <ISO8601> » — NOT a day+month cron (a day+month cron
+            would silently RE-FIRE every year).
+              '@once 2026-05-14T08:00'   once, 8 am on May 14th 2026
+              '@once 2026-12-27T09:30'   once, 9:30 am on December 27th 2026
 
             ⚠️ « Dans X jours ouvrés », « la semaine prochaine », « demain
-            matin » must be converted to an ABSOLUTE date BEFORE building
-            the cron. Use the current date (provided at the top of your
-            prompt) and SKIP Saturdays / Sundays when counting « jours
-            ouvrés ». Example reasoning for « dans 3 jours ouvrés à 8h »
-            starting from a Monday: Tue=1, Wed=2, Thu=3 → cron `0 8 <Thu> <month> *`.
-            Starting from a Saturday: Mon=1, Tue=2, Wed=3 → cron uses Wednesday.
+            matin » must be converted to an ABSOLUTE date BEFORE building the
+            « @once » expression. Use the current date (provided at the top of
+            your prompt) and SKIP Saturdays / Sundays when counting « jours
+            ouvrés ». Example for « dans 3 jours ouvrés à 8h » starting from a
+            Monday: Tue=1, Wed=2, Thu=3 → '@once <Thu-date>T08:00'.
 
         channel: 'web' (default — browser notification + accumulated in the
             « Missions » tab) or 'telegram' (Telegram message via the
             linked bot).
     """
-    from croniter import croniter
-    if not croniter.is_valid(cron_expression):
-        return f"Expression cron invalide : '{cron_expression}'. Format : minute heure jour mois jour_semaine"
+    _expr = cron_expression.strip()
+    if _expr.lower().startswith("@once"):
+        # One-shot (J2) : « @once 2026-05-14T08:00 » → DateTrigger, runs once
+        # then auto-deletes. Validate the ISO date here (croniter rejects it).
+        _iso = _expr[len("@once"):].strip()
+        try:
+            from datetime import datetime as _dt
+            _dt.fromisoformat(_iso)
+        except Exception:
+            return (
+                f"Date one-shot invalide : '{cron_expression}'. "
+                "Format attendu : @once 2026-05-14T08:00 (ISO 8601)."
+            )
+    else:
+        from croniter import croniter
+        if not croniter.is_valid(cron_expression):
+            return (
+                f"Expression invalide : '{cron_expression}'. Cron récurrent "
+                "(minute heure jour mois jour_semaine) ou one-shot "
+                "« @once 2026-05-14T08:00 »."
+            )
 
     task = ScheduledTask(
         user_id=user_id,
@@ -173,3 +191,123 @@ async def scheduler_delete_task(
         await db.commit()
 
     return f"Tâche '{name}' supprimée."
+
+
+def _validate_schedule_expr(expr: str) -> str | None:
+    """Return an error message if ``expr`` is neither a valid 5-field cron
+    nor a valid « @once <ISO8601> » one-shot; None if valid."""
+    e = expr.strip()
+    if e.lower().startswith("@once"):
+        iso = e[len("@once"):].strip()
+        try:
+            from datetime import datetime as _dt
+            _dt.fromisoformat(iso)
+            return None
+        except Exception:
+            return (
+                f"Date one-shot invalide : '{expr}'. "
+                "Format attendu : @once 2026-05-14T08:00 (ISO 8601)."
+            )
+    from croniter import croniter
+    if not croniter.is_valid(e):
+        return (
+            f"Expression invalide : '{expr}'. Cron récurrent "
+            "(minute heure jour mois jour_semaine) ou one-shot "
+            "« @once 2026-05-14T08:00 »."
+        )
+    return None
+
+
+@tool
+async def scheduler_update_task(
+    task_id: str,
+    name: str | None = None,
+    prompt: str | None = None,
+    cron_expression: str | None = None,
+    channel: str | None = None,
+    enabled: bool | None = None,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Modify an existing scheduled task without deleting + recreating it.
+
+    Only the fields you pass are changed (the rest keep their current value).
+    Use this to fix a wrong time, reword the prompt, pause/resume a task, or
+    switch its delivery channel.
+
+    Args:
+        task_id: The task ID to update (from scheduler_list_tasks).
+        name: New name (optional).
+        prompt: New natural-language instruction (optional).
+        cron_expression: New schedule — 5-field cron OR « @once <ISO8601> »
+            (optional).
+        channel: New delivery channel, 'web' or 'telegram' (optional).
+        enabled: Set False to pause the task, True to resume it (optional).
+    """
+    if cron_expression is not None:
+        err = _validate_schedule_expr(cron_expression)
+        if err:
+            return err
+
+    async with async_session() as db:
+        task = (await db.execute(
+            select(ScheduledTask).where(
+                ScheduledTask.id == task_id,
+                ScheduledTask.user_id == user_id,
+            )
+        )).scalar_one_or_none()
+        if not task:
+            return "Tâche non trouvée."
+
+        if name is not None:
+            task.name = name
+        if prompt is not None:
+            task.prompt = prompt
+        if cron_expression is not None:
+            task.cron_expression = cron_expression
+        if channel is not None:
+            task.channel = channel
+        if enabled is not None:
+            task.enabled = enabled
+        await db.commit()
+        await db.refresh(task)
+        is_enabled = task.enabled
+        cron = task.cron_expression
+        nm = task.name
+
+    # Re-register with the running scheduler to reflect the change.
+    if is_enabled:
+        if not schedule_task(task):
+            return f"Tâche mise à jour mais planification invalide : '{cron}'."
+    else:
+        unschedule_task(task_id)
+
+    state = "actif" if is_enabled else "en pause"
+    return f"Tâche '{nm}' mise à jour ({state}) — planification : {cron}."
+
+
+@tool
+async def scheduler_run_task(
+    task_id: str,
+    user_id: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Run a scheduled task NOW, once, in the background (without waiting for
+    its next scheduled time). The task's normal schedule is unchanged.
+
+    Args:
+        task_id: The task ID to run now (from scheduler_list_tasks).
+    """
+    async with async_session() as db:
+        task = (await db.execute(
+            select(ScheduledTask).where(
+                ScheduledTask.id == task_id,
+                ScheduledTask.user_id == user_id,
+            )
+        )).scalar_one_or_none()
+        if not task:
+            return "Tâche non trouvée."
+        nm = task.name
+
+    from app.services.background_tasks import spawn
+    from app.services.scheduler import _execute_task
+    spawn(_execute_task(task_id), label=f"run-now-{task_id}")
+    return f"Tâche '{nm}' lancée maintenant (en arrière-plan)."
