@@ -539,6 +539,7 @@ export const api = {
     user_id: string;
     smoke_kwargs?: Record<string, unknown>;
     max_iterations?: number;
+    profile?: "pure" | "io";
   }) =>
     fetchAPI(`/admin/learning/tool-creator/run`, {
       method: "POST",

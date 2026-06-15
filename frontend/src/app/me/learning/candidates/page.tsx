@@ -31,7 +31,7 @@ import remarkGfm from "remark-gfm";
 import {
   Sparkles, Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   CheckCircle2, XCircle, Archive, RotateCcw, ShieldCheck, CheckCircle,
-  Code2, FileText, Globe, GraduationCap, ExternalLink,
+  Code2, FileText, Globe, GraduationCap, ExternalLink, Plus, X,
 } from "lucide-react";
 
 import { AdminGuard } from "@/components/layout/AuthGuard";
@@ -410,6 +410,13 @@ export default function AdminLearningCandidatesPage() {
   const [busyId, setBusyId]         = useState<string | null>(null);
   const [flash, setFlash]           = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
+  // Amorçage funnel — création d'un outil à la demande (admin).
+  const [showCreate, setShowCreate]   = useState(false);
+  const [createBusy, setCreateBusy]   = useState(false);
+  const [taskDesc, setTaskDesc]       = useState("");
+  const [smokeJson, setSmokeJson]     = useState("");
+  const [toolProfile, setToolProfile] = useState<"pure" | "io">("pure");
+
   const showFlash = (kind: "ok" | "err", text: string) => {
     setFlash({ kind, text });
     setTimeout(() => setFlash(null), 4000);
@@ -450,6 +457,44 @@ export default function AdminLearningCandidatesPage() {
     }
   };
 
+  // Amorçage funnel — déclenche une génération tool-creator (le candidat
+  // atterrit dans la file "candidate"). Un-clic, plus de docker exec / curl.
+  const createTool = async () => {
+    if (createBusy) return;
+    const desc = taskDesc.trim();
+    if (desc.length < 8) { showFlash("err", t("createErrShort")); return; }
+    let smoke: Record<string, unknown> | undefined;
+    if (smokeJson.trim()) {
+      try {
+        const parsed = JSON.parse(smokeJson);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          showFlash("err", t("createErrSmoke")); return;
+        }
+        smoke = parsed as Record<string, unknown>;
+      } catch { showFlash("err", t("createErrSmoke")); return; }
+    }
+    setCreateBusy(true);
+    try {
+      const me = (await api.getMe()) as { id: string };
+      const res = await api.adminLearningToolCreatorRun({
+        task_description: desc, user_id: me.id,
+        smoke_kwargs: smoke, profile: toolProfile,
+      });
+      if (res.status === "created") {
+        showFlash("ok", t("createOk", { name: res.tool_name ?? "tool" }));
+        setShowCreate(false); setTaskDesc(""); setSmokeJson("");
+        if (filter === "candidate") await fetchRows();
+        else setFilter("candidate");  // useEffect re-fetch → le candidat apparaît
+      } else {
+        showFlash("err", t("createFailed", { status: res.status }));
+      }
+    } catch (e) {
+      showFlash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
   return (
     <AdminGuard>
       <div className="flex flex-col h-screen overflow-hidden">
@@ -472,18 +517,28 @@ export default function AdminLearningCandidatesPage() {
                 </span>
               </div>
 
-              <button
-                onClick={fetchRows}
-                disabled={loading}
-                className="p-1.5 text-text-muted hover:text-cyber-cyan hover:bg-cyber-cyan/10 rounded transition-colors disabled:opacity-50"
-                title={t("refreshTooltip")}
-              >
-                {loading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-3.5 h-3.5" />
-                )}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setShowCreate(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors"
+                  title={t("createHint")}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {t("createButton")}
+                </button>
+                <button
+                  onClick={fetchRows}
+                  disabled={loading}
+                  className="p-1.5 text-text-muted hover:text-cyber-cyan hover:bg-cyber-cyan/10 rounded transition-colors disabled:opacity-50"
+                  title={t("refreshTooltip")}
+                >
+                  {loading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* ── Admin gate note ────────────────────────────────────── */}
@@ -574,6 +629,77 @@ export default function AdminLearningCandidatesPage() {
           </main>
         </div>
       </div>
+
+      {/* ── Modale « Créer un outil » (amorçage funnel) ──────────────── */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-bg-secondary border border-border-dim rounded-lg max-w-2xl w-full p-5 space-y-3 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-cyber-cyan" />
+              <h2 className="text-sm font-medium text-text-primary">{t("createTitle")}</h2>
+              <button
+                onClick={() => setShowCreate(false)}
+                className="ml-auto p-1 text-text-muted hover:text-text-secondary"
+                aria-label={t("cancel")}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[11px] text-text-muted">{t("createBody")}</p>
+
+            <label className="block text-[11px] text-text-secondary">
+              {t("createDescLabel")}
+              <textarea
+                value={taskDesc}
+                onChange={(e) => setTaskDesc(e.target.value)}
+                rows={6}
+                placeholder={t("createDescPlaceholder")}
+                className="mt-1 w-full text-xs font-mono rounded bg-bg-primary border border-border-dim text-text-primary p-2 focus:border-cyber-cyan/40 outline-none"
+              />
+            </label>
+
+            <label className="block text-[11px] text-text-secondary">
+              {t("createSmokeLabel")}
+              <textarea
+                value={smokeJson}
+                onChange={(e) => setSmokeJson(e.target.value)}
+                rows={4}
+                placeholder='{"n": 10}'
+                className="mt-1 w-full text-xs font-mono rounded bg-bg-primary border border-border-dim text-text-primary p-2 focus:border-cyber-cyan/40 outline-none"
+              />
+            </label>
+
+            <label className="block text-[11px] text-text-secondary">
+              {t("createProfileLabel")}
+              <select
+                value={toolProfile}
+                onChange={(e) => setToolProfile(e.target.value as "pure" | "io")}
+                className="mt-1 w-full text-xs rounded bg-bg-primary border border-border-dim text-text-primary p-2 outline-none"
+              >
+                <option value="pure">{t("createProfilePure")}</option>
+                <option value="io">{t("createProfileIo")}</option>
+              </select>
+            </label>
+
+            <div className="flex items-center gap-2 justify-end pt-1">
+              <button
+                onClick={() => setShowCreate(false)}
+                className="px-3 py-1.5 text-[11px] rounded border border-border-dim text-text-muted hover:text-text-secondary"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                onClick={createTool}
+                disabled={createBusy || taskDesc.trim().length < 8}
+                className="px-3 py-1.5 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 flex items-center gap-1 disabled:opacity-50"
+              >
+                {createBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                {t("createSubmit")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminGuard>
   );
 }
