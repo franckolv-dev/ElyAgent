@@ -563,6 +563,26 @@ export const api = {
       body: JSON.stringify(resolution ? { status, resolution } : { status }),
       headers: { "Content-Type": "application/json" },
     }) as Promise<Incident>,
+
+  // ── Admin: self-diagnostic loop J5 — validable patches (voie C) ─────────
+  /** Generate (LLM) a prompt-rewrite patch for a scheduled-task incident.
+   *  Does NOT apply it — returns the proposed patch (diff) for review. */
+  adminLearningProposePatch: (incidentId: number) =>
+    fetchAPI(`/admin/learning/incidents/${incidentId}/propose-patch`, {
+      method: "POST",
+    }) as Promise<Patch>,
+
+  /** Apply a proposed patch (reversible — old value is kept). */
+  adminLearningApplyPatch: (patchId: number) =>
+    fetchAPI(`/admin/learning/patches/${patchId}/apply`, { method: "POST" }) as Promise<Patch>,
+
+  /** Revert an applied patch (restore the pre-apply value). */
+  adminLearningRevertPatch: (patchId: number) =>
+    fetchAPI(`/admin/learning/patches/${patchId}/revert`, { method: "POST" }) as Promise<Patch>,
+
+  /** Reject a proposed patch (without applying). */
+  adminLearningRejectPatch: (patchId: number) =>
+    fetchAPI(`/admin/learning/patches/${patchId}/reject`, { method: "POST" }) as Promise<Patch>,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -827,4 +847,26 @@ export interface Incident {
   tier_llm: string | null;
   model_used: string | null;
   signals: string[];
+  /** J5 — most recent proposed patch (voie C), if any. */
+  patch?: Patch | null;
+}
+
+/** Self-diagnostic loop J5 — a validable config/prompt patch proposed by Ely. */
+export interface Patch {
+  id: number;
+  execution_diagnosis_id: number;
+  /** "prompt" (v1) */
+  kind: string;
+  /** "scheduled_task" (v1) */
+  target_type: string;
+  target_id: string;
+  field: string;
+  old_value: string | null;
+  new_value: string;
+  rationale: string | null;
+  /** proposed | applied | rejected | reverted */
+  status: string;
+  critic_model: string | null;
+  applied_at: string | null;
+  created_at: string;
 }

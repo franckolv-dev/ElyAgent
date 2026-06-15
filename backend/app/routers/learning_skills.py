@@ -802,6 +802,42 @@ async def learning_regression(
 # ─────────────────────────────────────────────────────────────────────────
 
 
+class PatchOut(BaseModel):
+    """Correctif proposé par Ely pour un incident (voie C, J5)."""
+
+    id: int
+    execution_diagnosis_id: int
+    kind: str
+    target_type: str
+    target_id: str
+    field: str
+    old_value: Optional[str]
+    new_value: str
+    rationale: Optional[str]
+    status: str  # proposed | applied | rejected | reverted
+    critic_model: Optional[str]
+    applied_at: Optional[str]
+    created_at: str
+
+
+def _patch_to_out(p: Any) -> PatchOut:
+    return PatchOut(
+        id=p.id,
+        execution_diagnosis_id=p.execution_diagnosis_id,
+        kind=p.kind,
+        target_type=p.target_type,
+        target_id=p.target_id,
+        field=p.field,
+        old_value=p.old_value,
+        new_value=p.new_value,
+        rationale=p.rationale,
+        status=p.status or "proposed",
+        critic_model=p.critic_model,
+        applied_at=p.applied_at.isoformat() if p.applied_at else None,
+        created_at=p.created_at.isoformat() if p.created_at else "",
+    )
+
+
 class IncidentOut(BaseModel):
     """Un incident = une diagnose (cause + catégorie) jointe au verdict de
     l'exécution qui l'a déclenchée. Alimente la page admin de remontée."""
@@ -826,9 +862,11 @@ class IncidentOut(BaseModel):
     tier_llm: Optional[str]
     model_used: Optional[str]
     signals: list[str]
+    # J5 — correctif proposé le plus récent (voie C), s'il existe.
+    patch: Optional[PatchOut] = None
 
 
-def _incident_to_out(diag: Any, outcome: Any) -> IncidentOut:
+def _incident_to_out(diag: Any, outcome: Any, patch: Any = None) -> IncidentOut:
     try:
         signals = json.loads(outcome.signals) if outcome.signals else []
         if not isinstance(signals, list):
@@ -855,6 +893,7 @@ def _incident_to_out(diag: Any, outcome: Any) -> IncidentOut:
         tier_llm=outcome.tier_llm,
         model_used=outcome.model_used,
         signals=signals,
+        patch=_patch_to_out(patch) if patch is not None else None,
     )
 
 
@@ -889,7 +928,24 @@ async def list_incidents(
     query = query.order_by(ExecutionDiagnosis.created_at.desc()).limit(limit)
 
     rows = (await db.execute(query)).all()
-    return [_incident_to_out(diag, outcome) for diag, outcome in rows]
+
+    # J5 — attache le correctif le plus récent par incident (voie C).
+    from app.models.proposed_patch import ProposedPatch
+    diag_ids = [diag.id for diag, _ in rows]
+    latest_patch: dict[int, Any] = {}
+    if diag_ids:
+        patch_rows = (await db.execute(
+            select(ProposedPatch)
+            .where(ProposedPatch.execution_diagnosis_id.in_(diag_ids))
+            .order_by(ProposedPatch.created_at.desc())
+        )).scalars().all()
+        for p in patch_rows:  # premier vu = le plus récent (tri desc)
+            latest_patch.setdefault(p.execution_diagnosis_id, p)
+
+    return [
+        _incident_to_out(diag, outcome, latest_patch.get(diag.id))
+        for diag, outcome in rows
+    ]
 
 
 class IncidentResolveRequest(BaseModel):
@@ -940,3 +996,77 @@ async def resolve_incident(
         select(ExecutionOutcome).where(ExecutionOutcome.id == diag.execution_outcome_id)
     )).scalar_one_or_none()
     return _incident_to_out(diag, outcome)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Boucle d'auto-diagnostic J5 — correctifs validables (voie C : prompt patch)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/incidents/{incident_id}/propose-patch", response_model=PatchOut)
+async def propose_incident_patch(
+    incident_id: int,
+    _admin: User = Depends(require_admin),
+) -> PatchOut:
+    """Génère un correctif de prompt (réécriture) pour un incident de tâche
+    planifiée. NE l'applique PAS — l'admin verra le diff puis Appliquera."""
+    from app.services.learning.patch_service import PatchError, propose_patch
+
+    try:
+        patch = await propose_patch(incident_id)
+    except PatchError as exc:
+        raise HTTPException(422, str(exc))
+    if patch is None:
+        raise HTTPException(422, "aucun correctif généré")
+    logger.info("patch_proposed: incident=%s patch=%s by_admin=%s",
+                incident_id, patch.id, _admin.id[:8] if _admin.id else "?")
+    return _patch_to_out(patch)
+
+
+@router.post("/patches/{patch_id}/apply", response_model=PatchOut)
+async def apply_incident_patch(
+    patch_id: int,
+    _admin: User = Depends(require_admin),
+) -> PatchOut:
+    """Applique un correctif proposé (réversible — l'ancienne valeur est gardée)."""
+    from app.services.learning.patch_service import PatchError, apply_patch
+
+    try:
+        patch = await apply_patch(patch_id)
+    except PatchError as exc:
+        raise HTTPException(409, str(exc))
+    logger.info("patch_applied: patch=%s by_admin=%s",
+                patch_id, _admin.id[:8] if _admin.id else "?")
+    return _patch_to_out(patch)
+
+
+@router.post("/patches/{patch_id}/revert", response_model=PatchOut)
+async def revert_incident_patch(
+    patch_id: int,
+    _admin: User = Depends(require_admin),
+) -> PatchOut:
+    """Annule un correctif appliqué : restaure la valeur d'avant application."""
+    from app.services.learning.patch_service import PatchError, revert_patch
+
+    try:
+        patch = await revert_patch(patch_id)
+    except PatchError as exc:
+        raise HTTPException(409, str(exc))
+    logger.info("patch_reverted: patch=%s by_admin=%s",
+                patch_id, _admin.id[:8] if _admin.id else "?")
+    return _patch_to_out(patch)
+
+
+@router.post("/patches/{patch_id}/reject", response_model=PatchOut)
+async def reject_incident_patch(
+    patch_id: int,
+    _admin: User = Depends(require_admin),
+) -> PatchOut:
+    """Rejette un correctif proposé (sans l'appliquer)."""
+    from app.services.learning.patch_service import PatchError, reject_patch
+
+    try:
+        patch = await reject_patch(patch_id)
+    except PatchError as exc:
+        raise HTTPException(409, str(exc))
+    return _patch_to_out(patch)

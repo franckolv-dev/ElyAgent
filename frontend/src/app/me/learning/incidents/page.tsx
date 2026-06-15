@@ -23,8 +23,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
-  AlertCircle, AlertTriangle, CheckCircle, CheckCircle2, Loader2,
-  RefreshCw, Sparkles, Stethoscope, ThumbsDown, Wrench,
+  AlertCircle, AlertTriangle, CheckCircle, CheckCircle2, FilePen, Loader2,
+  RefreshCw, Sparkles, Stethoscope, ThumbsDown, Undo2, Wrench,
 } from "lucide-react";
 
 import { AdminGuard } from "@/components/layout/AuthGuard";
@@ -122,6 +122,63 @@ export default function IncidentsPage() {
       } else {
         showFlash("err", t("flash_generation_failed", { status: result.status }));
       }
+    } catch (e) {
+      showFlash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // ── J5 — correctifs validables (voie C) ──
+  const proposePatch = async (inc: Incident) => {
+    if (busyId) return;
+    setBusyId(inc.id);
+    try {
+      await api.adminLearningProposePatch(inc.id);
+      await fetchRows();              // recharge → le diff s'affiche
+      showFlash("ok", t("flash_patch_proposed"));
+    } catch (e) {
+      showFlash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const applyPatch = async (inc: Incident, patchId: number) => {
+    if (busyId) return;
+    setBusyId(inc.id);
+    try {
+      await api.adminLearningApplyPatch(patchId);
+      await dropOrRefetch(inc.id);    // l'incident passe « actioned »
+      showFlash("ok", t("flash_patch_applied"));
+    } catch (e) {
+      showFlash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const revertPatch = async (inc: Incident, patchId: number) => {
+    if (busyId) return;
+    setBusyId(inc.id);
+    try {
+      await api.adminLearningRevertPatch(patchId);
+      await fetchRows();
+      showFlash("ok", t("flash_patch_reverted"));
+    } catch (e) {
+      showFlash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const rejectPatch = async (inc: Incident, patchId: number) => {
+    if (busyId) return;
+    setBusyId(inc.id);
+    try {
+      await api.adminLearningRejectPatch(patchId);
+      await fetchRows();
+      showFlash("ok", t("flash_patch_rejected"));
     } catch (e) {
       showFlash("err", e instanceof Error ? e.message : t("actionError"));
     } finally {
@@ -279,6 +336,73 @@ export default function IncidentsPage() {
                               {inc.channel && <span className="font-mono">{inc.channel}</span>}
                               <span className="font-mono opacity-60">{inc.critic_model ?? "—"}</span>
                             </div>
+                            {/* J5 — correctif proposé (diff + actions) */}
+                            {inc.patch && (
+                              <div className="mt-2 rounded border border-cyber-cyan/20 bg-cyber-cyan/5 p-2 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <FilePen className="w-3 h-3 text-cyber-cyan" />
+                                  <span className="text-[11px] text-text-secondary">{t("patchTitle")}</span>
+                                  <span className={`px-1.5 py-0.5 text-[10px] font-mono rounded border ${
+                                    inc.patch.status === "applied"
+                                      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                                      : inc.patch.status === "proposed"
+                                      ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                                      : "bg-bg-primary text-text-muted border-border-dim"
+                                  }`}>
+                                    {t(`patch_status_${inc.patch.status}`)}
+                                  </span>
+                                </div>
+                                {inc.patch.rationale && (
+                                  <p className="text-[11px] text-text-secondary">{inc.patch.rationale}</p>
+                                )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <div>
+                                    <div className="text-[10px] text-text-muted mb-0.5">{t("patchBefore")}</div>
+                                    <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto rounded bg-red-500/5 border border-red-500/20 text-text-secondary p-1.5">{inc.patch.old_value ?? "—"}</pre>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] text-text-muted mb-0.5">{t("patchAfter")}</div>
+                                    <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto rounded bg-emerald-500/5 border border-emerald-500/20 text-text-secondary p-1.5">{inc.patch.new_value}</pre>
+                                  </div>
+                                </div>
+                                {/* Patch actions */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {inc.patch.status === "proposed" && (
+                                    <>
+                                      <button
+                                        onClick={() => applyPatch(inc, inc.patch!.id)}
+                                        disabled={busyId === inc.id}
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                                        title={t("applyHint")}
+                                      >
+                                        {busyId === inc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                                        {t("apply")}
+                                      </button>
+                                      <button
+                                        onClick={() => rejectPatch(inc, inc.patch!.id)}
+                                        disabled={busyId === inc.id}
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border-dim text-text-muted hover:text-red-300 hover:border-red-500/30 transition-colors disabled:opacity-50"
+                                        title={t("rejectPatchHint")}
+                                      >
+                                        {busyId === inc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ThumbsDown className="w-3 h-3" />}
+                                        {t("rejectPatch")}
+                                      </button>
+                                    </>
+                                  )}
+                                  {inc.patch.status === "applied" && (
+                                    <button
+                                      onClick={() => revertPatch(inc, inc.patch!.id)}
+                                      disabled={busyId === inc.id}
+                                      className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
+                                      title={t("revertHint")}
+                                    >
+                                      {busyId === inc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
+                                      {t("revert")}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
                           {/* Actions — only while open */}
                           {isOpen && (
@@ -292,6 +416,18 @@ export default function IncidentsPage() {
                                 >
                                   {busyId === inc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
                                   {t("generate")}
+                                </button>
+                              )}
+                              {voie === "C" && inc.source === "scheduled" &&
+                                (!inc.patch || ["rejected", "reverted"].includes(inc.patch.status)) && (
+                                <button
+                                  onClick={() => proposePatch(inc)}
+                                  disabled={busyId === inc.id}
+                                  className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors disabled:opacity-50"
+                                  title={t("proposePatchHint")}
+                                >
+                                  {busyId === inc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FilePen className="w-3 h-3" />}
+                                  {t("proposePatch")}
                                 </button>
                               )}
                               <button
