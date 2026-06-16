@@ -394,6 +394,19 @@ export const api = {
   extensionTokenRevoke: (id: string) =>
     fetchAPI(`/api/extension/tokens/${id}`, { method: "DELETE" }),
 
+  // ── Personal API keys (MCP server + API auth) ────────────────────────────
+  apiKeysList: () => fetchAPI("/api/api-keys"),
+
+  /** Returns the plaintext key ONCE — caller must show + let the user copy it. */
+  apiKeyCreate: (name: string) =>
+    fetchAPI("/api/api-keys", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+
+  apiKeyRevoke: (id: string) =>
+    fetchAPI(`/api/api-keys/${id}`, { method: "DELETE" }),
+
   // ── Learning report (Sprint 3.7 V1.5 §7) ────────────────────────────────
   /** Fetch the structured learning report — what ELY has learned about the
    *  current user + how it has performed over `window` (7d, 30d, 90d, 24h). */

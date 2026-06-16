@@ -28,6 +28,7 @@ from app.models.user_vocabulary import UserVocabulary
 from app.models.learned_routing_keyword import LearnedRoutingKeyword
 from app.models.licence import Licence
 from app.models.extension_token import ExtensionToken
+from app.models.api_key import ApiKey
 from app.models.procedure import Procedure
 from app.models.error_log import ErrorLog
 from app.models.hitl_refusal import HitlRefusal
@@ -69,7 +70,7 @@ __all__ = [
     "User", "Conversation", "Message", "AuditLog", "RevokedToken",
     "Mission", "MissionPlan", "MissionStep", "GoogleAccount", "WatchedFolder",
     "HitlPreference", "UserVocabulary", "LearnedRoutingKeyword",
-    "Licence", "ExtensionToken",
+    "Licence", "ExtensionToken", "ApiKey",
     "Procedure", "ErrorLog",
     "HitlRefusal", "HallucinationBlock", "ProviderSwitch", "MissionCritique",
     "ExecutionOutcome", "ExecutionDiagnosis", "ProposedPatch",
