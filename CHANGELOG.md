@@ -21,6 +21,34 @@ _(empty — next batch starts here)_
 
 ---
 
+## [2.2.0] — 2026-06-16 — L'apprentissage qui démarre vraiment, le planifié plus malin, le chat plus souple
+
+> Quatre jours d'usage réel. La **boucle de skills** passe enfin d'« architecture prête » à « vivante » : Ely crée et active ses playbooks toute seule, et on peut en importer. Le **planificateur** (déjà une force) gagne le `[SILENT]` anti-spam et un vrai one-shot. Le **chat** gagne les gestes qui manquaient (régénérer, éditer, titre LLM). Et la **boucle d'auto-diagnostic** mesure le succès réel, pas déclaré.
+
+### Added
+- **Réveil autonome du funnel skills** (`1198eb0`, PR #132) : un job de fond crée + active automatiquement des playbooks à partir des `failure_cases` réels (le déclencheur manquant — `run_full_loop` n'était appelé que par un bouton admin), auto-promotion sur eval-pass, 5 playbooks seed FR, gel acté de la génération de code (markdown-only).
+- **Import de playbooks `SKILL.md` depuis une URL** (`e589a8b`, PR #137) : format standard frontmatter + Markdown, fetché → file de revue admin (`candidate`, jamais auto-activé), réutilise la machinerie skills. Endpoint `POST /admin/learning/skills/import` + bouton sur `/me/learning/candidates`.
+- **Boucle d'auto-diagnostic** (`6d91622`→`1da1338`, PR #125→#130) : signal `execution_outcome`, heuristiques « succès de façade », diagnostiqueur de cause (LLM-juge + repli règles), page admin « Incidents & propositions », correctifs validables/réversibles.
+- **Scheduler `[SILENT]` + vrai one-shot + lifecycle** (`ff09bca`, PR #133) : une veille sans rien de nouveau ne notifie plus ; `@once <ISO8601>` exécuté une fois puis auto-supprimé (fini le cron jour+mois qui re-déclenchait chaque année) ; outils agent `scheduler_update_task` / `scheduler_run_task`.
+- **Chat : titre généré par LLM** (`7ef72c1`, PR #134) — remplace le `user_content[:50]` ; **régénérer une réponse + éditer/renvoyer le dernier message** (`c2e71e0`, PR #135).
+- **Indicateur d'état d'exécution des tâches planifiées** (en cours / réussi / échec) (`ad5fb12`, PR #124).
+- **Bouton admin « Créer un outil »** (amorçage du funnel) (`474e654`, PR #131).
+
+### Changed
+- **README (EN + FR) recentré** : positionnement perso non-commercial assumé (retrait du pitch de vente PME) ; partie « auto-développement » recadrée honnêtement autour de la boucle de playbooks vivante (la génération de code Python est marquée expérimentale/désactivée) ; roadmap remise à jour ; compteur d'outils 181 → 190+.
+- **Missions : le planificateur exécute le travail** au lieu de le déléguer (`fe80d49`, PR #123) ; `recursion_limit` configurable 25→60 (`8128760`, PR #122).
+
+### Fixed
+- **openai-codex (forfait ChatGPT)** : paramètres backend, entrée legacy de routage, rejeu du reasoning chiffré en multi-tours (`25c1c5a`/`8769cf6`/`5e3fe31`/`4a4f201`/`4f85178`, PR #112→#116).
+- **Tâches planifiées** : outils nommés perdus au tour 2, filtre d'outils reparti du prompt initial, binding `desktop_*` quand le prompt référence un fichier local (`8f77747`/`6e445fb`/`4a2e8a5`, PR #117/#119/#121) ; page de gestion avec suppression réelle (`90b1a4e`, PR #118).
+- **Desktop** : binaires servis en octet-stream + attachment, fini le suffixe `.txt` (`5e3fe31`, PR #113).
+- **Makefile** : `create-admin` et reload nginx via les services compose (noms de conteneurs périmés) (`5d437e4`/`bf65a7e`).
+
+### Security
+- **Audit sécurité 13/06 — pile A** (`9a32fa7`, PR #120) : IDOR sur `ban_action`, vault vide vérifiable, chunking PII sans perte, bump dépendances (pypdf/multipart), doc README/security honnête.
+
+---
+
 ## [2.1.0] — 2026-06-12 — Cycle PII des missions, mémoire qui dit vrai, choix de modèles sur mesures
 
 > Trois chantiers nés de l'usage réel. Le **cycle PII des missions** ferme le dernier trou documenté de la frontière souveraineté. Le **routage d'écriture mémoire** répare le cas le plus naturel (« retiens mes URLs ») qui produisait des confirmations hallucinées. Et deux **outils de mesure** font que plus aucun changement de modèle ne se décide au ressenti.
