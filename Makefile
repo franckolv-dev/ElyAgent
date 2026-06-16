@@ -66,5 +66,5 @@ create-admin:
 	@if [ -z "$(USER)" ] || [ -z "$(PASS)" ]; then \
 		echo "Usage: make create-admin USER=<name> PASS=<pwd> [EMAIL=<email>]"; exit 1; \
 	fi
-	@docker exec cyberentity-backend bash -c "cd /app && PYTHONPATH=/app uv run --no-sync python /app/scripts/create_admin.py \
+	@docker compose exec -T backend bash -c "cd /app && PYTHONPATH=/app uv run --no-sync python /app/scripts/create_admin.py \
 		--username '$(USER)' --password '$(PASS)' --email '${EMAIL:-$(USER)@local}'"
