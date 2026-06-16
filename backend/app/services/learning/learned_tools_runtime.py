@@ -138,6 +138,9 @@ async def _compile_active(user_id: str) -> list[Any]:
     return out
 
 
+_BUMP_TIMEOUT_S = 5.0  # borne dure : un DB qui hoquette ne gèle jamais l'appel
+
+
 def _wrap_with_usage_bump(tool: Any, skill_id: str) -> Any:
     """Sprint 4d (gap J1 découvert en réel) — compte CHAQUE invocation d'un
     python_tool pur dans ``use_count``/``last_used_at``.
@@ -149,7 +152,21 @@ def _wrap_with_usage_bump(tool: Any, skill_id: str) -> Any:
     qu'en plus le LLM répondait de tête, mais c'est une autre histoire).
     Les tools io ont déjà leur trace (io_tool_dispatches).
 
-    Fire-and-forget strict : le bump ne retarde ni ne casse JAMAIS l'appel.
+    Le bump est **attendu** (chemin async) / **bloqué jusqu'à commit**
+    (chemin sync), pas fire-and-forget. L'ancienne version programmait le
+    bump via ``create_task``/``run_coroutine_threadsafe`` SANS en garder la
+    référence ni l'attendre : asyncio ne tient qu'une référence faible sur
+    une task non stockée → elle pouvait être collectée AVANT de committer
+    (d'où « ~6/8 bumps » en prod sur fibonacci), et deux invocations
+    successives empilaient deux écritures concurrentes qui se marchaient
+    dessus (flakiness CI : ``use_count=1`` au lieu de 2). En attendant le
+    bump dans chaque invocation, les écritures se sérialisent et chaque
+    incrément est garanti committé avant le retour de l'outil.
+
+    ``bump_skill_usage`` fait déjà un ``UPDATE ... use_count = use_count + 1``
+    atomique (cf. ``active_skills.py``) ; ici on garantit juste qu'il aboutit.
+    Le compteur reste du confort : toute erreur (et le timeout) est avalée,
+    l'appel de l'outil n'est jamais cassé — seul un délai borné est ajouté.
     La boucle asyncio est capturée au moment du compile (contexte async) ;
     un tool sync invoqué depuis l'executor LangChain re-schedule dessus.
     """
@@ -158,7 +175,19 @@ def _wrap_with_usage_bump(tool: Any, skill_id: str) -> Any:
     except RuntimeError:
         loop = None
 
-    def _bump() -> None:
+    async def _bump_awaited() -> None:
+        """Chemin async : on est sur la loop, on attend l'UPDATE atomique."""
+        try:
+            from app.services.learning.active_skills import bump_skill_usage
+            await bump_skill_usage(skill_id)
+        except Exception as exc:  # noqa: BLE001 — jamais au prix de l'appel
+            logger.debug("usage bump failed for %s (swallowed): %s", skill_id, exc)
+
+    def _bump_blocking() -> None:
+        """Chemin sync (executor LangChain) : on programme le bump sur la loop
+        qui porte le moteur DB et on BLOQUE le thread worker jusqu'au commit,
+        borné par ``_BUMP_TIMEOUT_S``. Ça sérialise les invocations sync au
+        lieu d'empiler des écritures concurrentes non attendues."""
         try:
             from app.services.learning.active_skills import bump_skill_usage
             try:
@@ -166,9 +195,13 @@ def _wrap_with_usage_bump(tool: Any, skill_id: str) -> Any:
             except RuntimeError:
                 running = None
             if running is not None:
-                running.create_task(bump_skill_usage(skill_id))
+                # Déjà sur un thread de loop (rare pour un tool sync) : bloquer
+                # y gèlerait la loop — on programme et on garde la référence.
+                task = running.create_task(bump_skill_usage(skill_id))
+                task.add_done_callback(lambda t: t.exception())
             elif loop is not None and loop.is_running():
-                asyncio.run_coroutine_threadsafe(bump_skill_usage(skill_id), loop)
+                fut = asyncio.run_coroutine_threadsafe(bump_skill_usage(skill_id), loop)
+                fut.result(timeout=_BUMP_TIMEOUT_S)
             else:
                 asyncio.run(bump_skill_usage(skill_id))
         except Exception as exc:  # noqa: BLE001 — jamais au prix de l'appel
@@ -179,7 +212,7 @@ def _wrap_with_usage_bump(tool: Any, skill_id: str) -> Any:
             original_coro = tool.coroutine
 
             async def _traced_coro(*args: Any, **kwargs: Any) -> Any:
-                _bump()
+                await _bump_awaited()
                 return await original_coro(*args, **kwargs)
 
             tool.coroutine = _traced_coro
@@ -187,7 +220,7 @@ def _wrap_with_usage_bump(tool: Any, skill_id: str) -> Any:
             original_func = tool.func
 
             def _traced_func(*args: Any, **kwargs: Any) -> Any:
-                _bump()
+                _bump_blocking()
                 return original_func(*args, **kwargs)
 
             tool.func = _traced_func

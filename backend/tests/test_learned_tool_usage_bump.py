@@ -16,7 +16,6 @@ Run with:  cd backend && python -m pytest tests/test_learned_tool_usage_bump.py 
 """
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -99,17 +98,19 @@ async def test_each_invocation_bumps_use_count(seeded_skill):
     assert res.ok
     tool = _wrap_with_usage_bump(res.tool, seeded_skill.id)
 
+    # Le bump est attendu/bloqué jusqu'au commit AVANT le retour de l'outil :
+    # chaque invocation est comptée de façon déterministe, sans empiler des
+    # écritures concurrentes non attendues (ancienne flakiness CI : 1 au lieu
+    # de 2 — task fire-and-forget collectée avant commit / race read-write).
     out = await tool.ainvoke({"text": "salut"})
     assert out == "echo: salut"          # le wrap ne change pas le résultat
+    count, last_used = await _use_count(seeded_skill.id)
+    assert count == 1                    # committé dès le retour, pas « plus tard »
+    assert last_used is not None
+
     out2 = await tool.ainvoke({"text": "re"})
     assert out2 == "echo: re"
-
-    # bump = fire-and-forget : laisser les tasks programmées s'exécuter
-    for _ in range(50):
-        await asyncio.sleep(0.02)
-        count, last_used = await _use_count(seeded_skill.id)
-        if count >= 2:
-            break
+    count, last_used = await _use_count(seeded_skill.id)
     assert count == 2
     assert last_used is not None
 
