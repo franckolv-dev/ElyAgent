@@ -175,6 +175,43 @@ async def get_conversation_messages(
     }
 
 
+@router.delete("/{conversation_id}/messages/from-last-user")
+async def delete_from_last_user(
+    conversation_id: str,
+    current_user=Depends(get_current_user),
+):
+    """Delete the last user message and everything after it (its assistant reply).
+
+    Powers retry/regenerate and edit-and-resend (J4): the client deletes the
+    last turn here, then re-sends the original (retry) or edited (edit) user
+    text through the chat WebSocket, which produces a fresh assistant reply.
+    Returns the number of messages deleted (0 if there is no user message).
+    """
+    async with async_session() as db:
+        await _get_owned_conversation(db, conversation_id, current_user.id)
+        result = await db.execute(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.asc(), Message.id.asc())
+        )
+        messages = list(result.scalars().all())
+
+        last_user_idx = next(
+            (i for i in range(len(messages) - 1, -1, -1)
+             if messages[i].role == "user"),
+            None,
+        )
+        if last_user_idx is None:
+            return {"deleted": 0}
+
+        to_delete = messages[last_user_idx:]
+        for m in to_delete:
+            await db.delete(m)
+        await db.commit()
+
+    return {"deleted": len(to_delete)}
+
+
 @router.post("/{conversation_id}/export")
 async def export_conversation(
     conversation_id: str,

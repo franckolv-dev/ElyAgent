@@ -69,11 +69,24 @@ interface ChatWindowProps {
   streamingContent?: string;
   conversationId?: string;
   activeTool?: string | null;
+  /** J4 — regenerate the last assistant reply. */
+  onRegenerate?: () => void;
+  /** J4 — edit the last user message then resend. */
+  onEditMessage?: (newContent: string) => void;
 }
 
-export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent, conversationId, activeTool }: ChatWindowProps) {
+export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent, conversationId, activeTool, onRegenerate, onEditMessage }: ChatWindowProps) {
   const t = useTranslations("chat");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // J4 — only the last assistant gets a "regenerate" affordance, and only the
+  // last user message gets an "edit" affordance.
+  let lastAssistantIdx = -1;
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (lastAssistantIdx === -1 && messages[i].role === "assistant") lastAssistantIdx = i;
+    if (lastUserIdx === -1 && messages[i].role === "user") lastUserIdx = i;
+  }
 
   const SUGGESTIONS = [
     t("suggestions.hosts"),
@@ -163,6 +176,8 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
               isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
               lastUserMessage={lastUserMsg}
               conversationId={conversationId}
+              onRegenerate={i === lastAssistantIdx && !isLoading ? onRegenerate : undefined}
+              onEdit={i === lastUserIdx ? onEditMessage : undefined}
             />
           </div>
         );

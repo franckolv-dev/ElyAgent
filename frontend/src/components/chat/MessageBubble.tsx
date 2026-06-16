@@ -20,7 +20,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Bot, User, FileText, Image, FileCode, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Bot, User, FileText, Image, FileCode, ThumbsUp, ThumbsDown, RefreshCw, Pencil } from "lucide-react";
 import { useState, useCallback } from "react";
 import type { Attachment, ChatMessage, ToolImage } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -34,6 +34,10 @@ interface MessageBubbleProps {
   /** The last user message text — sent with feedback for Phase 2 embedding */
   lastUserMessage?: string;
   conversationId?: string;
+  /** J4 — provided only on the last assistant message: regenerate the reply. */
+  onRegenerate?: () => void;
+  /** J4 — provided only on the last user message: edit then resend. */
+  onEdit?: (newContent: string) => void;
 }
 
 type ImageBlock = { type: "image"; data: string; mime: string; prompt: string };
@@ -121,13 +125,16 @@ function formatTimestamp(iso: string | undefined): string | null {
   }
 }
 
-export const MessageBubble = React.memo(function MessageBubble({ message, isStreaming, lastUserMessage, conversationId }: MessageBubbleProps) {
+export const MessageBubble = React.memo(function MessageBubble({ message, isStreaming, lastUserMessage, conversationId, onRegenerate, onEdit }: MessageBubbleProps) {
   const t = useTranslations("messageBubble");
   const isUser = message.role === "user";
   const { text: parsedText, imageBlock } = !isUser
     ? parseContent(message.content)
     : { text: message.content, imageBlock: null };
   const [feedbackSent, setFeedbackSent] = useState<1 | -1 | null>(null);
+  const _contentStr = typeof message.content === "string" ? message.content : "";
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(_contentStr);
 
   function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} ${t("bytes")}`;
@@ -208,7 +215,34 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
           </div>
         )}
 
-        {(
+        {isUser && onEdit && isEditing ? (
+          <div className="flex flex-col gap-2 w-full min-w-[220px]">
+            <textarea
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              rows={Math.min(8, Math.max(2, editValue.split("\n").length))}
+              autoFocus
+              className="w-full bg-bg-primary/60 border border-cyber-blue/30 rounded p-2 text-sm text-text-primary resize-none focus:outline-none focus:border-cyber-blue"
+            />
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => { setIsEditing(false); setEditValue(_contentStr); }}
+                className="px-2 py-1 rounded text-xs text-text-muted hover:text-text-primary transition-colors"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                onClick={() => {
+                  const v = editValue.trim();
+                  if (v) { setIsEditing(false); onEdit?.(v); }
+                }}
+                className="px-2 py-1 rounded text-xs bg-cyber-blue/20 text-cyber-blue border border-cyber-blue/30 hover:bg-cyber-blue/30 transition-colors"
+              >
+                {t("sendEdit")}
+              </button>
+            </div>
+          </div>
+        ) : (
           <div className="text-sm break-words prose-cyber">
             {parsedText && (
               <ReactMarkdown
@@ -360,6 +394,15 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
               </span>
             )}
             <div className="flex items-center gap-1 ml-auto">
+              {onRegenerate && (
+                <button
+                  onClick={onRegenerate}
+                  title={t("regenerate")}
+                  className="p-1 rounded text-text-muted hover:text-cyber-cyan transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </button>
+              )}
               <button
                 onClick={() => sendFeedback(1)}
                 disabled={feedbackSent !== null}
@@ -389,6 +432,19 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
                 <ThumbsDown className="w-3 h-3" />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Edit affordance — last user message only (J4) */}
+        {isUser && onEdit && !isEditing && (
+          <div className="flex items-center justify-end mt-1.5">
+            <button
+              onClick={() => { setIsEditing(true); setEditValue(_contentStr); }}
+              title={t("edit")}
+              className="p-1 rounded text-text-muted hover:text-cyber-blue transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
           </div>
         )}
       </div>

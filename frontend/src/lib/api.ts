@@ -294,6 +294,10 @@ export const api = {
   deleteConversation: (id: string) =>
     fetchAPI(`/api/conversations/${id}`, { method: "DELETE" }),
 
+  /** Delete the last user message + its reply (J4 retry / edit-and-resend). */
+  truncateFromLastUser: (id: string) =>
+    fetchAPI(`/api/conversations/${id}/messages/from-last-user`, { method: "DELETE" }),
+
   exportConversation: (id: string) =>
     fetchAPI(`/api/conversations/${id}/export`, { method: "POST" }),
 

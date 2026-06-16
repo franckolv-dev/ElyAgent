@@ -142,6 +142,10 @@
   "messageBubble": {
     "goodResponse": "Bonne réponse",
     "badResponse": "Mauvaise réponse",
+    "regenerate": "Régénérer la réponse",
+    "edit": "Éditer le message",
+    "cancel": "Annuler",
+    "sendEdit": "Envoyer",
     "imagesFor": "Images pour « {query} »",
     "bytes": "o",
     "kilobytes": "Ko",
