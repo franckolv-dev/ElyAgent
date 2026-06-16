@@ -92,6 +92,7 @@ from app.routers import arena as arena_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
 from app.routers.browser_extension import ws_router as bext_ws_router, api_router as bext_api_router
 from app.routers import extension_tokens as extension_tokens_router
+from app.routers import api_keys as api_keys_router
 from app.routers import learning_report as learning_report_router
 from app.routers import user_state as user_state_router
 # Sprint 4b Phase 3 — autonomous skill_creator admin endpoints
@@ -638,6 +639,7 @@ app.include_router(bext_api_router, prefix="/api", tags=["browser-extension"])
 # Long-lived extension tokens (Sprint 0.5) — router self-prefixes with
 # /api/extension/tokens, no extra prefix here.
 app.include_router(extension_tokens_router.router)
+app.include_router(api_keys_router.router)
 from app.routers import hitl_prefs as _hitl_prefs_router
 app.include_router(_hitl_prefs_router.router, prefix="/api")
 from app.routers import onboarding as _onboarding_router

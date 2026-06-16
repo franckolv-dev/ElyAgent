@@ -2442,6 +2442,31 @@ export default function SettingsPage() {
                     </a>
                   </div>
                 </div>
+
+                <div className="section-block" style={{ marginTop: 16 }}>
+                  <div className="section-block-head">
+                    <h3>
+                      <KeyRound size={16} /> Clés API / serveur MCP
+                    </h3>
+                  </div>
+                  <div className="vstack" style={{ gap: 12 }}>
+                    <p className="text-xs text-text-muted">
+                      Exposez Ely comme serveur MCP : connectez Claude Desktop ou
+                      tout autre client MCP à votre instance pour discuter avec
+                      Ely, piloter ses tâches planifiées et fouiller sa mémoire.
+                      L’authentification se fait via une clé API personnelle
+                      longue durée.
+                    </p>
+                    <a
+                      href="/settings/api-keys"
+                      className="btn primary"
+                      style={{ minWidth: 280, justifyContent: "center", alignSelf: "flex-start" }}
+                    >
+                      <KeyRound size={14} />
+                      Gérer les clés API
+                    </a>
+                  </div>
+                </div>
               </section>
             )}
 
