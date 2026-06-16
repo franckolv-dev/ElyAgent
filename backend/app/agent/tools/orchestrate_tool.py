@@ -149,6 +149,12 @@ async def orchestrate(
     If you don't remember the exact name of a stub, use ``intent=`` and
     let a tier C model write the script for you.
 
+    Google accounts: the sandbox only reaches the user's DEFAULT Google
+    account. To search a specific or secondary linked account, do NOT use
+    orchestrate — call ``drive_list_files`` / ``gmail_list_emails`` /
+    ``calendar_list_events`` directly with ``account="<alias>"`` (those
+    direct tools support multi-account; the sandbox stubs don't).
+
     Plus three helpers (also in ``ely_tools``):
         - json_parse(text)       — tolerant JSON parser
         - shell_quote(s)         — shlex.quote alias
@@ -168,6 +174,10 @@ async def orchestrate(
 
     DO NOT USE THIS TOOL WHEN:
         - The task requires only 1-2 tool calls (overhead not worth it).
+        - The task targets a SPECIFIC or NON-DEFAULT Google account (e.g.
+          searching a second linked account, or "both drives"). The sandbox
+          only reaches the default account — call the Google tools directly
+          with ``account="<alias>"`` instead.
         - The task involves destructive actions (gmail_trash_*,
           drive_delete_*, gmail_send_*, notes_*). Those tools are NOT
           exposed in the sandbox — call them directly outside orchestrate
@@ -334,7 +344,7 @@ Règles strictes :
 6. Les stubs ne prennent JAMAIS `user_id` — il est injecté côté serveur.
 
 Conventions importantes (à respecter pour éviter des bugs runtime) :
-7. LES DEFAULTS SONT VALIDES. La plupart des stubs marchent SANS arguments — les valeurs par défaut sont configurées côté serveur (GITHUB_DEFAULT_REPO, compte Gmail principal, etc.). N'INVENTE PAS de valeurs (« Franck/main-project », « user@example.com »…). Si tu n'es pas sûr d'une valeur, appelle SANS arg.
+7. LES DEFAULTS SONT VALIDES. La plupart des stubs marchent SANS arguments — les valeurs par défaut sont configurées côté serveur (GITHUB_DEFAULT_REPO, compte Gmail principal, etc.). N'INVENTE PAS de valeurs (« Franck/main-project », « user@example.com »…). Si tu n'es pas sûr d'une valeur, appelle SANS arg. Les stubs Google (drive/gmail/calendar) interrogent UNIQUEMENT le compte par défaut — ils ne prennent pas d'argument `account`.
 8. LES STUBS RETOURNENT DES STRINGS DESCRIPTIVES. Tu peux les `print(...)` DIRECTEMENT. Ils ne retournent PAS de dict — n'utilise PAS `result.get('key')`, `result['key']`, ni de json.loads sur leur sortie. Si tu as besoin de structure, parse la string toi-même (les stubs documentent leur format).
 9. ENCAPSULE les appels dangereux dans try/except si tu fais une boucle, mais sinon laisse remonter l'erreur — c'est plus debuggable côté caller.
 

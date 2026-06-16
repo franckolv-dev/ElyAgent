@@ -308,7 +308,16 @@ class OrchestrateRunner:
         start_time = time.monotonic()
         tmpdir = Path(tempfile.mkdtemp(prefix="ely_orchestrate_"))
 
-        dispatcher = self._tool_dispatcher or _build_default_dispatcher(self.user_id)
+        if self._tool_dispatcher is not None:
+            dispatcher = self._tool_dispatcher
+        else:
+            # Resolve the user's default-account Google credentials HERE, in
+            # the caller's (main) event loop — not inside the dispatcher, which
+            # runs in the RPC server's dedicated thread loop where
+            # ``async_session`` would cross event loops. The resolved string is
+            # threaded into the dispatcher and injected for Google read-tools.
+            google_creds = await _resolve_default_google_credentials(self.user_id)
+            dispatcher = _build_default_dispatcher(self.user_id, google_creds)
 
         rpc_server = OrchestrateRPCServer(
             user_id=self.user_id,
@@ -647,23 +656,84 @@ def _kill_process_group(proc: subprocess.Popen, grace: float = 5.0) -> None:
 # ──────────────────────────────────────────────────────────────────────
 
 
-def _build_default_dispatcher(user_id: str) -> ToolDispatcher:
+async def _resolve_default_google_credentials(user_id: str) -> str:
+    """Resolve the user's default-account Google credentials JSON.
+
+    Mirrors the default-account branch of ``tool_node`` / sub-agent
+    ``factory`` so Google read-tools behave identically inside the
+    orchestrate sandbox and on the normal agent path: in-process
+    ``credential_store`` first, then a DB fallback (default
+    ``GoogleAccount`` row, legacy ``User.google_credentials`` mirror).
+
+    MUST be called from the caller's (main) event loop — the dispatcher
+    runs in the RPC server's dedicated thread loop where ``async_session``
+    would cross event loops.
+
+    Never raises — returns ``""`` on any failure (the Google tool then
+    reports « non connecté », same behaviour as before this fix).
+    """
+    if not user_id:
+        return ""
+    try:
+        from app.services.credential_store import get_credential_store
+
+        store = get_credential_store()
+        creds = store.get(user_id) or ""
+        if creds:
+            return creds
+        from sqlalchemy import select
+
+        from app.database import async_session
+        from app.models.google_account import GoogleAccount
+        from app.models.user import User
+
+        async with async_session() as db:
+            row = await db.execute(
+                select(GoogleAccount.credentials_json).where(
+                    GoogleAccount.user_id == user_id,
+                    GoogleAccount.is_default == True,  # noqa: E712
+                )
+            )
+            creds = row.scalar_one_or_none() or ""
+            if not creds:
+                u = await db.get(User, user_id)
+                if u and u.google_credentials:
+                    creds = u.google_credentials
+        if creds:
+            store.set(user_id, creds)
+        return creds
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "orchestrate: Google credential resolution failed for user=%s: %s",
+            user_id, exc,
+        )
+        return ""
+
+
+def _build_default_dispatcher(
+    user_id: str, google_credentials_json: str = ""
+) -> ToolDispatcher:
     """Build a dispatcher that routes RPC calls to the real registry tools.
 
     Each call:
         1. Looks up the @tool by name in the global skill registry.
-        2. Adds ``user_id`` to the args (the only injection we handle in
-           V1 — see roadmap §4.4 for the multi-injected case).
-        3. Calls ``tool.ainvoke({...})`` which returns a coroutine — the
+        2. Adds ``user_id`` to the args.
+        3. For Google read-tools (``GOOGLE_TOOLS``), injects the hidden
+           ``user_google_credentials_json`` InjectedToolArg — resolved once
+           by the caller (default account). Without this, Drive/Gmail/Calendar
+           tools return « Google non connecté » inside the sandbox even when
+           the user is connected (the bug GPT-5.5 surfaced by preferring
+           orchestrate for multi-query Drive searches).
+        4. Calls ``tool.ainvoke({...})`` which returns a coroutine — the
            RPC server's thread event loop awaits it via
            ``run_until_complete``.
 
-    Limit V1: tools that need other ``InjectedToolArg`` parameters (e.g.
-    Gmail's ``user_google_credentials_json`` / ``account``) will FAIL
-    when invoked through this dispatcher — those tools must be wired
-    through the agent's full injection chain or excluded from the V1
-    allow-list. Tracked for V2.
+    Note: only the **default** account's credentials are injected here.
+    Per-account selection (the ``account`` alias handled by the sub-agent
+    factory) is not exposed inside the sandbox — a script can only reach
+    the default Google account.
     """
+    from app.agent.tool_sets import GOOGLE_TOOLS
     from app.skills import get_skill_registry
     from app.skills.builtin import register_all
 
@@ -675,6 +745,8 @@ def _build_default_dispatcher(user_id: str) -> ToolDispatcher:
         if tool is None:
             raise LookupError(f"tool {tool_name!r} not found in skill registry")
         full_args = {**args, "user_id": user_id}
+        if tool_name in GOOGLE_TOOLS:
+            full_args["user_google_credentials_json"] = google_credentials_json
         return tool.ainvoke(full_args)
 
     return dispatch
