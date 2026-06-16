@@ -244,9 +244,27 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
     e.target.value = "";
 
     const token = getAccessToken();
+    // Aligné sur le backend (upload.py MAX_FILE_SIZE) et nginx
+    // (client_max_body_size). Au-delà, on refuse côté client avec un message
+    // clair plutôt que de laisser l'envoi se bloquer (413/reset en plein upload).
+    const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
     for (const file of files) {
       const localId = `${Date.now()}-${Math.random()}`;
+
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setPendingFiles((prev) => [
+          ...prev,
+          {
+            localId,
+            filename: file.name,
+            size: file.size,
+            uploading: false,
+            error: `Trop volumineux (${(file.size / (1024 * 1024)).toFixed(1)} Mo — max 50 Mo).`,
+          },
+        ]);
+        continue;
+      }
 
       // Add pending chip immediately
       setPendingFiles((prev) => [
