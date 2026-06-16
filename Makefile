@@ -16,13 +16,13 @@ restart:
 	docker compose up -d --build $(s)
 	@if [ "$(s)" = "backend" ] || [ "$(s)" = "frontend" ]; then \
 		echo "→ Reloading nginx to re-resolve upstream DNS..."; \
-		docker restart cyberentity-nginx; \
+		docker compose exec nginx nginx -s reload; \
 	fi
 
 # Rebuild et redémarre tout (nginx restart automatique à la fin)
 build:
 	docker compose up -d --build
-	@docker restart cyberentity-nginx
+	@docker compose exec nginx nginx -s reload
 
 # Supprime tous les services Ollama/SLM orphelins (container Ollama a été retiré)
 # Ne supprime pas l'Ollama natif du Mac (qui reste utilisé via host.docker.internal)
