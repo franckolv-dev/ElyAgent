@@ -374,6 +374,42 @@ function ChatPageInner() {
     wsRef.current.send(content, conversationId, attachments, screenCapture);
   }, [conversationId]);
 
+  // J4 — drop the last user message + everything after it from the UI.
+  const dropLastUserTurn = useCallback(() => {
+    setMessages((prev) => {
+      let idx = -1;
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].role === "user") { idx = i; break; }
+      }
+      return idx >= 0 ? prev.slice(0, idx) : prev;
+    });
+  }, []);
+
+  // J4 — regenerate the last assistant reply: drop the last turn (DB + UI),
+  // then resend the same user message → fresh answer.
+  const handleRegenerate = useCallback(async () => {
+    if (!conversationId || !wsRef.current) return;
+    let lastUser: string | undefined;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user" && typeof messages[i].content === "string") {
+        lastUser = messages[i].content as string;
+        break;
+      }
+    }
+    if (lastUser === undefined) return;
+    try { await api.truncateFromLastUser(conversationId); } catch { /* best-effort */ }
+    dropLastUserTurn();
+    handleSend(lastUser);
+  }, [conversationId, messages, handleSend, dropLastUserTurn]);
+
+  // J4 — edit the last user message then resend the edited text.
+  const handleEditLast = useCallback(async (newContent: string) => {
+    if (!conversationId || !wsRef.current) return;
+    try { await api.truncateFromLastUser(conversationId); } catch { /* best-effort */ }
+    dropLastUserTurn();
+    handleSend(newContent);
+  }, [conversationId, handleSend, dropLastUserTurn]);
+
   // ── Voice conversation hook ──────────────────────────────────────────────
   const voiceConv = useVoiceConversation({
     onSend: useCallback((message: string) => {
@@ -505,6 +541,8 @@ function ChatPageInner() {
                 streamingContent={streamingContent}
                 conversationId={conversationId}
                 activeTool={activeTool}
+                onRegenerate={handleRegenerate}
+                onEditMessage={handleEditLast}
               />
               {browserFrame && (
                 <div className="px-4 pb-1">
