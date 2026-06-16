@@ -509,6 +509,14 @@ export const api = {
       method: "POST",
     }) as Promise<LearnedSkillCandidate>,
 
+  /** J5-B — import a SKILL.md playbook from a URL. Lands as a `candidate`
+   *  for review (external content is untrusted until promoted). */
+  adminLearningImportSkill: (url: string) =>
+    fetchAPI(`/admin/learning/skills/import`, {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }) as Promise<{ status: string; name?: string; skill_id?: string }>,
+
   // ── Admin: graduation learned tool → core (Sprint 4d V4) ────────────────
   /** Stats + verdict gate par gate d'un python_tool actif (J1). */
   adminLearningGraduationReport: (id: string) =>

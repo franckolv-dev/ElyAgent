@@ -447,6 +447,28 @@ async def promote_skill(
     return _to_candidate_out(skill)
 
 
+class ImportSkillRequest(BaseModel):
+    url: str = Field(..., description="URL d'un fichier SKILL.md (playbook Markdown) à importer.")
+
+
+@router.post("/skills/import")
+async def import_skill_from_url_endpoint(
+    payload: ImportSkillRequest,
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """J5-B — importer un playbook SKILL.md depuis une URL.
+
+    Le playbook est créé en ``candidate`` (file de revue admin existante) :
+    contenu externe = non fiable → l'admin le valide avant qu'il ne soit
+    injecté dans le prompt. Réutilise toute la machinerie J1.
+    """
+    from app.services.learning.skill_import import import_skill_from_url
+    result = await import_skill_from_url(payload.url, admin.id)
+    if result.get("status") == "error":
+        raise HTTPException(400, result.get("error", "Import échoué."))
+    return result
+
+
 @router.get("/skills/{skill_id}/graduation")
 async def graduation_report(
     skill_id: str,
