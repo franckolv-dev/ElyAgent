@@ -232,8 +232,9 @@ async def browser_screenshot(
       local_path=<local_path>)``.
 
     • **Sauvegarder sur Google Drive** : appelle
-      ``drive_create_file(name=..., local_path=<local_path>)`` (ou la
-      version raw_api si non disponible).
+      ``drive_upload_local_file(local_path=<local_path>, name=...)``.
+      (⚠️ PAS ``drive_create_file`` — celui-ci n'écrit que du TEXTE, il ne
+      peut pas téléverser un PNG.)
 
     • **Sauvegarder sur le poste local** : si l'utilisateur fournit un
       chemin précis, appelle ``desktop_copy_file(src=<local_path>,
@@ -245,7 +246,7 @@ async def browser_screenshot(
     • Ne PROMETS jamais une livraison sans appeler l'outil correspondant.
     • Ne dis jamais « En cours : téléchargement… » sans tool call actif.
     • Ne hallucine pas un chemin Drive — si tu n'appelles pas
-      ``drive_create_file``, le fichier n'est PAS sur le Drive.
+      ``drive_upload_local_file``, le fichier n'est PAS sur le Drive.
 
     Returns
     -------
@@ -296,7 +297,7 @@ async def browser_screenshot(
             f"à ta prochaine réponse texte.\n"
             f"  • Envoyer par mail → appelle gmail_send_with_local_attachment("
             f"local_path='{local_path}', to=..., subject=..., body=...).\n"
-            f"  • Uploader sur Drive → appelle drive_create_file("
+            f"  • Uploader sur Drive → appelle drive_upload_local_file("
             f"local_path='{local_path}', name=...).\n"
             f"  • Copier sur le poste user → desktop_copy_file("
             f"src='{local_path}', dst=<chemin demandé>).\n"
