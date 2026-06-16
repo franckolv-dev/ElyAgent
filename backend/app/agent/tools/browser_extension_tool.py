@@ -317,12 +317,16 @@ async def browser_tab_screenshot(
         return (
             f"Capture prête ({len(_raw)} bytes, tab_id={res.get('tab_id', 'n/a')}).\n"
             f"\n"
-            f"⚠️ ÉTAPE SUIVANTE OBLIGATOIRE — appelle DIRECTEMENT :\n"
-            f"    vision_analyze_image(image_path='{_path}', question='<question_utilisateur>')\n"
+            f"⚠️ ÉTAPE SUIVANTE OBLIGATOIRE — choisis selon l'intention de l'utilisateur :\n"
+            f"  • Analyser / décrire l'image → "
+            f"vision_analyze_image(image_path='{_path}', question='<question_utilisateur>')\n"
+            f"  • Enregistrer sur Google Drive → "
+            f"drive_upload_local_file(local_path='{_path}', name='capture.png')\n"
             f"\n"
-            f"NE PAS utiliser desktop_write_file, desktop_read_file, ou tout autre outil pour "
-            f"manipuler ce chemin. Il vit dans le backend Python, pas sur la machine de l'utilisateur. "
-            f"vision_analyze_image sait lire ce chemin sans intermédiaire."
+            f"Ces outils tournent dans le backend Python et lisent ce chemin directement. "
+            f"NE PAS utiliser desktop_write_file, desktop_read_file, ou un autre outil 'machine "
+            f"utilisateur' pour ce chemin : le fichier vit dans le backend, pas sur le poste de "
+            f"l'utilisateur."
         )
     except Exception as e:
         return f"Erreur lors de la sauvegarde du screenshot : {e}"

@@ -52,10 +52,13 @@ def test_default_profile_has_reasonable_size():
     tool). NB: find_tool is precisely what will let us LEAN the profile back
     down later — the model discovers + binds catalog tools on demand instead
     of needing them all pre-listed.
+    Bumped to 84 in 2026-06-16 for drive_upload_local_file (téléverser un
+    fichier LOCAL/binaire — ex. une capture PNG — vers Drive ; drive_create_file
+    est texte-seul, d'où le trou « impossible d'enregistrer le PNG »).
     DeepSeek / Mistral Small / Mistral Large handle 50-80 tools
     comfortably; xLAM-style fragile FC-tunes are no longer in the chain."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 82, f"default has {len(tools)} tools (target 25-82)"
+    assert 25 <= len(tools) <= 84, f"default has {len(tools)} tools (target 25-84)"
 
 
 def test_default_profile_no_duplicates():

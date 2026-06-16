@@ -20,6 +20,8 @@
 from __future__ import annotations
 
 import logging
+import tempfile
+from pathlib import Path
 from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
@@ -36,6 +38,48 @@ async def _get_drive_service(user_google_credentials_json: str | None):
     if not creds:
         return None
     return build("drive", "v3", credentials=creds)
+
+
+# ── Upload de fichiers LOCAUX vers Drive : liste blanche de répertoires ──────
+# `drive_upload_local_file` lit des octets bruts sur le disque du backend.
+# On restreint les sources aux répertoires sûrs, dont ceux où les outils de
+# capture déposent leurs PNG :
+#   /tmp/ely-attachments  (browser_screenshot)
+#   /tmp/ely-screenshots  (browser_tab_screenshot)
+# Path.resolve() + relative_to() = immunisé traversal (../) et liens symboliques
+# (cf. file_tool._assert_path_allowed, le validateur le plus sûr du projet).
+_UPLOAD_ALLOWED_DIRS: list[Path] = [
+    (Path(__file__).parents[3] / "uploads").resolve(),
+    Path("/tmp").resolve(),
+    Path(tempfile.gettempdir()).resolve(),
+    Path("/data/attachments").resolve(),
+    Path("/app/data/attachments").resolve(),
+]
+_UPLOAD_MAX_SIZE = 25 * 1024 * 1024  # 25 Mo
+
+
+def _assert_upload_path_allowed(file_path: str) -> Path:
+    """Résout le chemin canonique et vérifie l'appartenance à la liste blanche.
+
+    Lève ``PermissionError`` si le chemin est en dehors des répertoires
+    autorisés — empêche toute exfiltration (/etc/passwd, /app/.env…) ou
+    attaque par traversal / lien symbolique.
+    """
+    try:
+        resolved = Path(file_path).resolve(strict=False)
+    except Exception as exc:
+        raise PermissionError(f"Chemin invalide : {file_path}") from exc
+    for allowed in _UPLOAD_ALLOWED_DIRS:
+        try:
+            resolved.relative_to(allowed)
+            return resolved
+        except ValueError:
+            continue
+    allowed_display = ", ".join(str(d) for d in _UPLOAD_ALLOWED_DIRS)
+    raise PermissionError(
+        f"Accès refusé : '{file_path}' est en dehors des répertoires autorisés. "
+        f"Répertoires accessibles : {allowed_display}"
+    )
 
 
 @tool
@@ -213,6 +257,86 @@ async def drive_create_file(
         return f"Fichier créé : '{file['name']}'\nID : {file['id']}\nLien : {file.get('webViewLink', '—')}"
     except Exception as e:
         return f"Erreur création fichier: {e}"
+
+
+@tool
+async def drive_upload_local_file(
+    local_path: str,
+    name: str = "",
+    parent_id: str = "",
+    mime_type: str = "",
+    user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
+    account: Annotated[str, InjectedToolArg] = "",
+) -> str:
+    """Upload a LOCAL file (binary OR text) to Google Drive.
+
+    Use this to save a file that already lives on the server's disk — most
+    importantly a screenshot returned by ``browser_screenshot`` /
+    ``browser_tab_screenshot`` (whose ``local_path`` looks like
+    ``/tmp/ely-screenshots/...png``). Unlike ``drive_create_file`` — which only
+    writes TEXT content — this reads the file's raw bytes, so it works for PNG,
+    JPG, PDF and any binary.
+
+    Args:
+        local_path: Filesystem path of the file to upload, as returned by a
+            screenshot/capture tool. Must live inside an allowed directory
+            (/tmp, the uploads dir, /data/attachments…); other paths are
+            refused for security.
+        name: Drive file name (defaults to the local file's own name).
+        parent_id: Optional Drive folder ID to upload into.
+        mime_type: Optional MIME type override (auto-detected from the file
+            extension otherwise).
+    """
+    import asyncio
+    import mimetypes
+
+    if not local_path:
+        return (
+            "Erreur : local_path est vide. Indique le chemin retourné par le "
+            "tool précédent (ex. browser_screenshot / browser_tab_screenshot)."
+        )
+    try:
+        safe_path = _assert_upload_path_allowed(local_path)
+    except PermissionError as exc:
+        return str(exc)
+    if not safe_path.is_file():
+        return f"Erreur : fichier introuvable à '{local_path}'."
+    size = safe_path.stat().st_size
+    if size == 0:
+        return "Erreur : le fichier est vide (0 octet)."
+    if size > _UPLOAD_MAX_SIZE:
+        return (
+            f"Fichier trop volumineux ({size // (1024 * 1024)} Mo, "
+            f"max {_UPLOAD_MAX_SIZE // (1024 * 1024)} Mo)."
+        )
+
+    service = await _get_drive_service(user_google_credentials_json)
+    if not service:
+        return "Google non connecté. Connectez votre compte Google dans les paramètres."
+
+    from googleapiclient.http import MediaFileUpload
+
+    file_name = name or safe_path.name
+    mime = mime_type or mimetypes.guess_type(str(safe_path))[0] or "application/octet-stream"
+    metadata: dict = {"name": file_name}
+    if parent_id:
+        metadata["parents"] = [parent_id]
+    try:
+        # MediaFileUpload streame depuis le disque (pas de lecture intégrale en
+        # RAM) ; resumable=True pour les fichiers volumineux. L'appel .execute()
+        # est bloquant (réseau) → asyncio.to_thread pour ne pas geler la loop.
+        media = MediaFileUpload(str(safe_path), mimetype=mime, resumable=True)
+        file = await asyncio.to_thread(
+            lambda: service.files().create(
+                body=metadata, media_body=media, fields="id,name,webViewLink"
+            ).execute()
+        )
+        return (
+            f"Fichier téléversé sur Drive : '{file['name']}'\n"
+            f"ID : {file['id']}\nLien : {file.get('webViewLink', '—')}"
+        )
+    except Exception as e:
+        return f"Erreur upload Drive : {e}"
 
 
 @tool

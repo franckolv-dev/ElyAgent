@@ -135,6 +135,11 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "calendar_quick_add",
     # Drive — create text files + list + read + organise + find duplicates + trash
     "drive_create_file",
+    # Upload a LOCAL binary file (e.g. a screenshot PNG) to Drive (added
+    # 2026-06-16): drive_create_file is text-only, so without this there was
+    # no way to save a captured PNG to Drive — the agent would bail
+    # ("can't save the file") even though the screenshot existed on disk.
+    "drive_upload_local_file",
     "drive_list_files",
     "drive_read_file",
     # Organisation tools (added 2026-06-03 after a Drive-reorg session failed:

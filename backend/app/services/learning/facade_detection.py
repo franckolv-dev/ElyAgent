@@ -63,7 +63,7 @@ _WRITE_TOOLS_EXPLICIT: frozenset[str] = frozenset({
     "gmail_trash_by_category", "gmail_empty_trash", "gmail_batch_modify",
     "gmail_update_settings",
     # Drive
-    "drive_upload_file", "drive_create_file", "drive_create_folder",
+    "drive_upload_local_file", "drive_create_file", "drive_create_folder",
     "drive_delete_file", "drive_share_file", "drive_move_file",
     "drive_rename_file", "drive_copy_file",
     # Docs / Sheets
