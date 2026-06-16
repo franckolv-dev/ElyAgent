@@ -31,7 +31,7 @@ import remarkGfm from "remark-gfm";
 import {
   Sparkles, Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   CheckCircle2, XCircle, Archive, RotateCcw, ShieldCheck, CheckCircle,
-  Code2, FileText, Globe, GraduationCap, ExternalLink, Plus, X,
+  Code2, FileText, Globe, GraduationCap, ExternalLink, Plus, X, Download,
 } from "lucide-react";
 
 import { AdminGuard } from "@/components/layout/AuthGuard";
@@ -417,6 +417,10 @@ export default function AdminLearningCandidatesPage() {
   const [smokeJson, setSmokeJson]     = useState("");
   const [toolProfile, setToolProfile] = useState<"pure" | "io">("pure");
 
+  // J5-B — import a SKILL.md playbook from a URL (lands as a candidate).
+  const [importUrl, setImportUrl]   = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+
   const showFlash = (kind: "ok" | "err", text: string) => {
     setFlash({ kind, text });
     setTimeout(() => setFlash(null), 4000);
@@ -454,6 +458,32 @@ export default function AdminLearningCandidatesPage() {
       showFlash("err", e instanceof Error ? e.message : t("actionError"));
     } finally {
       setBusyId(null);
+    }
+  };
+
+  // J5-B — importer un playbook SKILL.md depuis une URL. Atterrit en
+  // "candidate" pour revue (contenu externe non fiable avant promotion).
+  const importSkill = async () => {
+    if (importBusy) return;
+    const url = importUrl.trim();
+    if (!url) return;
+    setImportBusy(true);
+    try {
+      const res = await api.adminLearningImportSkill(url);
+      if (res.status === "imported") {
+        showFlash("ok", t("importOk", { name: res.name ?? "skill" }));
+        setImportUrl("");
+        if (filter === "candidate") await fetchRows();
+        else setFilter("candidate");  // useEffect re-fetch → le candidat apparaît
+      } else if (res.status === "duplicate") {
+        showFlash("err", t("importDuplicate", { name: res.name ?? "skill" }));
+      } else {
+        showFlash("err", t("importError"));
+      }
+    } catch (e) {
+      showFlash("err", e instanceof Error ? e.message : t("importError"));
+    } finally {
+      setImportBusy(false);
     }
   };
 
@@ -539,6 +569,27 @@ export default function AdminLearningCandidatesPage() {
                   )}
                 </button>
               </div>
+            </div>
+
+            {/* ── Import a SKILL.md playbook from a URL (J5-B) ────────── */}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="url"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") importSkill(); }}
+                placeholder={t("importPlaceholder")}
+                className="flex-1 min-w-[240px] bg-bg-secondary border border-border-dim rounded px-3 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-cyber-cyan"
+              />
+              <button
+                onClick={importSkill}
+                disabled={importBusy || !importUrl.trim()}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors disabled:opacity-50"
+                title={t("importHint")}
+              >
+                {importBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {t("importButton")}
+              </button>
             </div>
 
             {/* ── Admin gate note ────────────────────────────────────── */}
