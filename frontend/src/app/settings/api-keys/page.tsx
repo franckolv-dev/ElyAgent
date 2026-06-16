@@ -64,6 +64,14 @@ export default function ApiKeysPage() {
 
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
+  // MCP endpoint = this instance's origin + /api/mcp (computed client-side).
+  const [mcpEndpoint, setMcpEndpoint] = useState("https://<votre-instance>/api/mcp");
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setMcpEndpoint(`${window.location.origin}/api/mcp`);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       setError("");
@@ -372,9 +380,14 @@ export default function ApiKeysPage() {
               <section className="mt-8 text-xs text-[var(--text-3)] space-y-1">
                 <p>
                   <strong>Comment l’utiliser :</strong> dans votre client MCP
-                  (Claude Desktop…), ajoutez le serveur MCP d’ELY et collez cette
+                  (Claude Desktop…), ajoutez le serveur MCP d’ELY à l’adresse{" "}
+                  <code className="font-mono">{mcpEndpoint}</code> et collez cette
                   clé comme jeton d’authentification (en-tête{" "}
                   <code className="font-mono">Authorization: Bearer ely_api_…</code>).
+                  Outils exposés : <code className="font-mono">ely_chat</code>,{" "}
+                  <code className="font-mono">ely_memory_search</code>,{" "}
+                  <code className="font-mono">ely_list_scheduled_tasks</code>,{" "}
+                  <code className="font-mono">ely_create_scheduled_task</code>.
                 </p>
                 <p>
                   <strong>Sécurité :</strong> seul le hash SHA-256 de la clé est

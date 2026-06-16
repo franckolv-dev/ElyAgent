@@ -533,7 +533,14 @@ async def lifespan(app: FastAPI):
 
     _memory_scheduler.start()
 
-    yield
+    # MCP server (J2): the Streamable-HTTP session manager must run while the
+    # mounted /api/mcp app serves. Created at import by build_mcp_app().
+    if _MCP_ENABLED:
+        from app.mcp_server import mcp as _ely_mcp
+        async with _ely_mcp.session_manager.run():
+            yield
+    else:
+        yield
 
     _memory_scheduler.shutdown(wait=False)
     _vault_scheduler.shutdown(wait=False)
@@ -640,6 +647,22 @@ app.include_router(bext_api_router, prefix="/api", tags=["browser-extension"])
 # /api/extension/tokens, no extra prefix here.
 app.include_router(extension_tokens_router.router)
 app.include_router(api_keys_router.router)
+
+# ── MCP server (J2) — expose ELY as an MCP server at /api/mcp ───────────────
+# Authenticated by personal API keys (J1). Mounted under /api so the existing
+# nginx `^/(api|…)/` proxy reaches it with no config change. Its Streamable-HTTP
+# session manager is started in the lifespan above. Defensive: a mount failure
+# disables only MCP, never the whole app.
+_MCP_ENABLED = False
+try:
+    from app.mcp_server import build_mcp_app
+    app.mount("/api/mcp", build_mcp_app())
+    _MCP_ENABLED = True
+    _logging.getLogger("app.main").info("MCP server mounted at /api/mcp")
+except Exception as _mcp_exc:  # noqa: BLE001
+    _logging.getLogger("app.main").warning(
+        "MCP server mount failed: %s — /api/mcp disabled", _mcp_exc
+    )
 from app.routers import hitl_prefs as _hitl_prefs_router
 app.include_router(_hitl_prefs_router.router, prefix="/api")
 from app.routers import onboarding as _onboarding_router
