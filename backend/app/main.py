@@ -454,6 +454,20 @@ async def lifespan(app: FastAPI):
         id="learned_skills_curator",
     )
 
+    # Métadonnées modèles — refresh hebdo best-effort depuis models.dev. Le
+    # snapshot bundlé fait foi (offline) ; ceci augmente l'overlay pour les
+    # modèles cloud inconnus. TTL-gated (1 semaine), non bloquant, no-op si
+    # offline ou si le cache est encore frais.
+    from app.services.model_metadata import refresh_from_models_dev as _mm_refresh
+    _memory_scheduler.add_job(
+        _mm_refresh,
+        trigger="cron",
+        day_of_week="mon",
+        hour=3,
+        minute=30,
+        id="model_metadata_refresh",
+    )
+
     # Jalon 1 (portage Hermes) — autonomous skill CREATION. Ely's skill
     # funnel had every part except the trigger : run_full_loop was admin-only
     # (skill_orchestrator : « what a future cron job will call »). This is

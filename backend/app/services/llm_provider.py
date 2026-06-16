@@ -1565,6 +1565,15 @@ def supports_vision(llm) -> bool:
         provider, model = describe_llm(llm)
     except Exception:
         return False
+    # Source of truth first (structured metadata: snapshot + models.dev).
+    try:
+        from app.services.model_metadata import vision_capability
+        known = vision_capability(provider, model)
+        if known is not None:
+            return known
+    except Exception:
+        pass  # fall through to the heuristic
+    # Heuristic fallback for models not covered by the metadata.
     if provider in _VISION_PROVIDER_ALLOWLIST:
         return True
     model_lc = (model or "").lower()
