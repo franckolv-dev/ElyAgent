@@ -25,9 +25,13 @@ from app.models.hitl_preference import HitlPreference
 logger = logging.getLogger(__name__)
 
 
-# Tools where HITL is FORCED on, even if the user toggles it off in Settings.
-# These are the most destructive / costly / irreversible operations. The UI
-# greys out the slider for these so the user understands they can't disable.
+# Outils DANGEREUX : confirmation HITL active PAR DÉFAUT (les plus destructeurs
+# / coûteux / irréversibles). Avant 2026-06-19, ils étaient verrouillés en dur
+# (impossible de désactiver). Depuis, l'utilisateur PEUT les désactiver à ses
+# risques : l'UI affiche un toggle rouge « DANGEREUX » (au lieu d'un badge
+# « VERROUILLÉ » non-cliquable) et demande une confirmation explicite. Le nom
+# LOCKED_HITL_TOOLS est conservé (importé en ~10 endroits) mais la sémantique
+# est désormais « dangereux, ON par défaut, désactivable », pas « verrouillé ».
 LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     # Mass / batch destructive Gmail operations
     "gmail_batch_modify",
@@ -112,11 +116,9 @@ async def set_user_preference(
     "always allow", we save ``requires_confirmation=False`` so the next
     invocation of the same tool by the same user skips the HITL prompt.
 
-    ``LOCKED_HITL_TOOLS`` cannot be overridden — for those we accept the
-    write (the row exists, useful for audit) but ``user_requires_hitl``
-    will keep returning True regardless. The frontend should grey out
-    the "always" buttons for locked tools, but we belt-and-suspender
-    server-side too.
+    Depuis 2026-06-19, les outils ``LOCKED_HITL_TOOLS`` (dangereux) PEUVENT
+    être désactivés ici : ``user_requires_hitl`` honore désormais la préférence
+    écrite, même pour eux (l'UI prévient avec un toggle « DANGEREUX »).
 
     Never raises — any DB error returns False, caller may log + skip.
     """
@@ -156,15 +158,21 @@ async def user_requires_hitl(user_id: str, tool_name: str) -> bool:
     """Return True if HITL approval is required for ``user_id`` on ``tool_name``.
 
     Resolution order :
-      1. If ``tool_name`` is in ``LOCKED_HITL_TOOLS`` → always True.
-      2. If a user-specific row exists in ``hitl_preferences`` → use it.
-      3. Otherwise fall back to True (= secure default, HITL on).
+      1. If a user-specific row exists in ``hitl_preferences`` → use it.
+      2. Otherwise fall back to True (= secure default, HITL on).
+
+    Depuis 2026-06-19 (demande Franck) la préférence est honorée **même pour
+    les outils dangereux** (``LOCKED_HITL_TOOLS``) : ils restent en
+    « confirmation ON » PAR DÉFAUT (aucune préférence → True), mais
+    l'utilisateur peut explicitement les désactiver à ses risques (« Autoriser
+    définitivement » et le toggle « DANGEREUX » des Réglages écrivent
+    ``requires_confirmation=False``). Avant, ces outils renvoyaient True en dur,
+    ce qui rendait « Autoriser définitivement » inopérant (ex. nettoyage de
+    mails planifié re-demandé chaque jour).
 
     Never raises — any DB error degrades to True.
     """
     if not user_id or not tool_name:
-        return True
-    if tool_name in LOCKED_HITL_TOOLS:
         return True
     try:
         async with async_session() as db:

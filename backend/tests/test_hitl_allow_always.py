@@ -134,20 +134,23 @@ async def test_user_requires_hitl_honours_skip_preference(_seeded_user_for_pref)
 
 
 @pytest.mark.asyncio
-async def test_locked_tools_ignore_skip_preference(_seeded_user_for_pref) -> None:
-    """Even if a preference says skip, locked tools (mass-destructive)
-    must still trigger HITL — server-side belt to the UI suspenders."""
+async def test_dangerous_tools_honor_skip_preference(_seeded_user_for_pref) -> None:
+    """Depuis 2026-06-19 (demande Franck) : les outils dangereux (ex-verrouillés)
+    sont ON par défaut MAIS désactivables — la préférence est honorée. Avant, un
+    outil verrouillé renvoyait True en dur (« Autoriser définitivement »
+    inopérant pour le nettoyage de mails planifié)."""
     from app.services.hitl_preferences import (
         LOCKED_HITL_TOOLS,
         set_user_preference,
         user_requires_hitl,
     )
 
-    locked = next(iter(LOCKED_HITL_TOOLS))
-    await set_user_preference(
-        "pref_test_u", locked, requires_confirmation=False,
-    )
-    assert await user_requires_hitl("pref_test_u", locked) is True
+    dangerous = next(iter(LOCKED_HITL_TOOLS))
+    # défaut sûr : aucune préférence → confirmation requise
+    assert await user_requires_hitl("pref_test_u", dangerous) is True
+    # l'utilisateur désactive explicitement → désormais honoré (= le fix)
+    await set_user_preference("pref_test_u", dangerous, requires_confirmation=False)
+    assert await user_requires_hitl("pref_test_u", dangerous) is False
 
 
 # ── nodes.py source-grep guards ──────────────────────────────────────

@@ -171,8 +171,9 @@ async def allow_always_action(
     The tool→user binding happens in ``nodes.py`` when it handles the
     ``allow_always`` decision : it upserts a HitlPreference row with
     ``requires_confirmation=False`` so subsequent invocations skip the
-    HITL prompt entirely. Locked tools (``LOCKED_HITL_TOOLS``) still
-    require HITL — the preference write is accepted but ignored at read.
+    HITL prompt entirely. Depuis 2026-06-19, cela vaut AUSSI pour les outils
+    dangereux (``LOCKED_HITL_TOOLS``) : la préférence est désormais honorée à
+    la lecture (avant, elle était écrite mais ignorée → re-demande chaque jour).
     """
     channel = "ntfy" if t else "web"
     return await _resolve_with_auth_or_token(

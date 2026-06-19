@@ -189,7 +189,7 @@ export const api = {
     fetchAPI("/api/hitl/preferences") as Promise<Array<{
       tool_name: string;
       requires_confirmation: boolean;
-      locked: boolean;
+      dangerous: boolean;
       description: string | null;
     }>>,
   updateHitlPreference: (tool_name: string, requires_confirmation: boolean) =>

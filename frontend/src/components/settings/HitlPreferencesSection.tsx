@@ -11,13 +11,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Lock, Loader2, ShieldCheck, Bell, ChevronDown } from "lucide-react";
+import { AlertTriangle, Loader2, ShieldCheck, Bell, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface HitlPref {
   tool_name: string;
   requires_confirmation: boolean;
-  locked: boolean;
+  dangerous: boolean;
   description: string | null;
 }
 
@@ -84,7 +84,14 @@ export function HitlPreferencesSection() {
   }, [refresh]);
 
   const handleToggle = async (pref: HitlPref) => {
-    if (pref.locked) return;
+    // Désactiver la confirmation d'un outil DANGEREUX = à tes risques : on
+    // demande une confirmation explicite avant (l'action s'exécutera ensuite
+    // sans validation humaine).
+    const disabling = pref.requires_confirmation; // true → on passe à OFF
+    if (pref.dangerous && disabling) {
+      const ok = window.confirm(t("dangerousConfirm", { tool: pref.tool_name }));
+      if (!ok) return;
+    }
     setSavingTool(pref.tool_name);
     setError("");
     // Optimistic UI
@@ -251,12 +258,12 @@ export function HitlPreferencesSection() {
                           <code className="text-xs font-mono text-text-primary truncate">
                             {p.tool_name}
                           </code>
-                          {p.locked && (
+                          {p.dangerous && (
                             <span
-                              title={t("lockedTooltip")}
-                              className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300"
+                              title={t("dangerousTooltip")}
+                              className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/40 text-red-400"
                             >
-                              <Lock className="w-2.5 h-2.5" /> {t("lockedBadge")}
+                              <AlertTriangle className="w-2.5 h-2.5" /> {t("dangerousBadge")}
                             </span>
                           )}
                         </div>
@@ -271,11 +278,9 @@ export function HitlPreferencesSection() {
                       <button
                         type="button"
                         onClick={() => handleToggle(p)}
-                        disabled={p.locked || savingTool === p.tool_name}
+                        disabled={savingTool === p.tool_name}
                         title={
-                          p.locked
-                            ? t("lockedTooltip")
-                            : p.requires_confirmation
+                          p.requires_confirmation
                             ? t("toggleOnTooltip")
                             : t("toggleOffTooltip")
                         }
@@ -283,7 +288,7 @@ export function HitlPreferencesSection() {
                           p.requires_confirmation
                             ? "bg-cyber-cyan/40"
                             : "bg-bg-tertiary border border-border-dim"
-                        } ${p.locked ? "opacity-60" : ""}`}
+                        }`}
                       >
                         <span
                           className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg-primary shadow transition-transform ${

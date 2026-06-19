@@ -231,8 +231,9 @@ async def tool_node(state: AgentState) -> dict:
                 logger.debug("task-approval lookup failed: %s", _ta_exc)
         # Per-user override (2026-05-23) — honour "Toujours autoriser"
         # preference set by the user via the HITL panel ; mirrors what
-        # sub_agents/factory.py:806 already does. LOCKED_HITL_TOOLS still
-        # always require HITL (handled inside user_requires_hitl).
+        # sub_agents/factory.py already does. Depuis 2026-06-19, la préférence
+        # vaut AUSSI pour les outils dangereux (LOCKED_HITL_TOOLS), désormais
+        # désactivables à ses risques (résolu dans user_requires_hitl).
         if needs_hitl and user_id:
             try:
                 from app.services.hitl_preferences import user_requires_hitl
@@ -306,7 +307,10 @@ async def tool_node(state: AgentState) -> dict:
                     logger.debug("Could not register task-scoped approval: %s", _ta_exc)
                 # Fall through to execute (same as plain "allow")
             elif decision != "allow":
-                # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal
+                # Sprint 3.7 Jalon 2 — persist HITL refusal as learning signal.
+                # Un timeout (ni validé ni refusé à temps) n'est PAS un refus
+                # délibéré : record_hitl_refusal l'ignore, et on le dit au LLM.
+                _is_timeout = reason == "timeout"
                 try:
                     from app.services.learning import record_hitl_refusal
                     spawn(record_hitl_refusal(
@@ -321,7 +325,11 @@ async def tool_node(state: AgentState) -> dict:
                 except Exception as _sig_exc:
                     logger.debug("HITL refusal signal skipped: %s", _sig_exc)
                 results.append(_tool_result(
-                    "Action refusée par l'utilisateur pour cette occurrence.", tc_id
+                    "Action non validée dans le délai imparti (ni autorisée, ni "
+                    "refusée). L'utilisateur n'a pas répondu à temps."
+                    if _is_timeout else
+                    "Action refusée par l'utilisateur pour cette occurrence.",
+                    tc_id,
                 ))
                 continue
 

@@ -45,14 +45,22 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_SECONDS = 300  # 5 minutes — laisse le temps à la notif FCM d'arriver
-#                       sur Android, que l'utilisateur la voie, déverrouille
-#                       son tél, et valide. Le runner de tests automatisé
-#                       utilise son propre HITL_TIMEOUT=180s pour ne pas
-#                       bloquer. En usage réel c'est la patience humaine qui
-#                       compte — 2 minutes était trop court (essais sur
-#                       2026-04-23 : 404 systématiques car auto-deny déclenché
-#                       avant que l'utilisateur ait cliqué).
+def _timeout_seconds() -> int:
+    """Délai d'attente d'une validation HITL, configurable (HITL_TIMEOUT_SECONDS).
+
+    30 min par défaut (était 5 min — trop court pour valider une notif ntfy
+    depuis le téléphone, demande Franck 2026-06-19). Lu à chaque requête pour
+    refléter un changement de config sans redémarrage. Un timeout n'est PAS un
+    refus délibéré (record_hitl_refusal ignore reason='timeout')."""
+    try:
+        return int(get_settings().hitl_timeout_seconds)
+    except Exception:
+        return 1800
+
+
+# Rétrocompat : encore importée par d'anciens tests/modules. Reflète le défaut ;
+# le délai EFFECTIF est résolu dynamiquement par _timeout_seconds().
+TIMEOUT_SECONDS = 1800
 
 _firebase_init_lock = asyncio.Lock()
 
@@ -68,7 +76,7 @@ class _PendingAction:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def expired(self) -> bool:
-        return datetime.now(timezone.utc) > self.created_at + timedelta(seconds=TIMEOUT_SECONDS)
+        return datetime.now(timezone.utc) > self.created_at + timedelta(seconds=_timeout_seconds())
 
 
 class HITLManager:
@@ -144,9 +152,9 @@ class HITLManager:
         )
 
         try:
-            await asyncio.wait_for(pending.event.wait(), timeout=TIMEOUT_SECONDS)
+            await asyncio.wait_for(pending.event.wait(), timeout=_timeout_seconds())
         except asyncio.TimeoutError:
-            logger.info("HITL action %s timed out — auto-denied", action_id)
+            logger.info("HITL action %s timed out — auto-denied (not a deliberate refusal)", action_id)
             pending.decision = "deny"
             pending.reason = "timeout"
         finally:
