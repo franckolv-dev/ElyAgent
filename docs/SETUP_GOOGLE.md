@@ -72,19 +72,19 @@ C'est l'écran que Google va afficher quand tu lieras ton compte à ELY pour la 
 
 5. Étape **Scopes** : clique **Add or Remove Scopes**. Dans la fenêtre qui s'ouvre, **filtre et coche** ces scopes (un par un — ils sont parfois cachés sous "Manually add scopes" tout en bas) :
    ```
+   openid
+   email
    https://www.googleapis.com/auth/gmail.modify
+   https://www.googleapis.com/auth/gmail.readonly
    https://www.googleapis.com/auth/gmail.send
-   https://www.googleapis.com/auth/gmail.settings.basic
    https://www.googleapis.com/auth/calendar
    https://www.googleapis.com/auth/drive
    https://www.googleapis.com/auth/documents
    https://www.googleapis.com/auth/spreadsheets
    https://www.googleapis.com/auth/tasks
    https://www.googleapis.com/auth/contacts
-   https://www.googleapis.com/auth/userinfo.email
-   https://www.googleapis.com/auth/userinfo.profile
    ```
-   *(Ne coche que ceux dont tu as activé l'API à l'étape 2.)*
+   *(Ce sont exactement les scopes qu'ELY demande. Ne coche que ceux dont tu as activé l'API à l'étape 2 ; Google peut en afficher de proches — c'est normal.)*
    → **Update** → **Save and Continue**.
 
 6. Étape **Test users** : clique **+ Add Users** → ajoute **ton email** (et ceux de quiconque va utiliser cette instance d'ELY). Sans cette étape, ces personnes recevront une erreur 403 « cette app n'est pas vérifiée » et ne pourront pas se connecter.
@@ -101,9 +101,9 @@ C'est l'écran que Google va afficher quand tu lieras ton compte à ELY pour la 
 3. **Application type** : choisis **Web application**.
 4. **Name** : `ELY Web Client` (ou ce que tu veux).
 5. **Authorized redirect URIs** : c'est CRUCIAL. Clique **+ ADD URI** et ajoute **toutes les URLs** que tu utilises pour ELY :
-   - Si tu testes en local : `http://localhost:8000/auth/google/callback`
-   - Si tu utilises Tailscale : `https://ton-mac.tail-xxx.ts.net/auth/google/callback`
-   - Si tu utilises Cloudflare Tunnel : `https://ely.tondomaine.fr/auth/google/callback`
+   - Si tu testes en local : `http://localhost:8000/api/google/callback`
+   - Si tu utilises Tailscale : `https://ton-mac.tail-xxx.ts.net/api/google/callback`
+   - Si tu utilises Cloudflare Tunnel : `https://ely.tondomaine.fr/api/google/callback`
    - Tu peux en mettre plusieurs si tu accèdes par différents chemins.
 
    ⚠️ **L'URL doit être EXACTE** (https vs http, slash final, port). Si tu te trompes, Google répondra `redirect_uri_mismatch`.
@@ -131,6 +131,8 @@ Puis redémarre le backend pour qu'il recharge le fichier :
 docker compose restart backend
 ```
 
+> 💡 **Alternative au fichier** : tu peux aussi renseigner `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` directement dans `.env` (la valeur par défaut de `GOOGLE_REDIRECT_URI` est `http://localhost:8000/api/google/callback`) au lieu de poser le fichier `credentials.json`.
+
 ---
 
 ## Étape 6 — Lier ton compte Google dans ELY (1 min)
@@ -154,13 +156,13 @@ Tu peux maintenant demander à ELY :
 - *« Crée un Google Doc intitulé Notes »*
 - *« Cherche mes contacts qui s'appellent Marie »*
 
-ELY ne demandera **jamais** Gmail/Calendar/etc. à un autre user que toi sans que tu valides explicitement.
+ELY couvre ~75 outils Google (Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts) et **te demande toujours confirmation (HITL)** avant toute action destructrice (envoi d'email, suppression, modification). Elle ne demandera **jamais** Gmail/Calendar/etc. à un autre user que toi sans que tu valides explicitement.
 
 ---
 
 ## 🔁 Lier un 2ᵉ ou 3ᵉ compte Google (perso + pro)
 
-ELY supporte **plusieurs comptes Google par utilisateur** depuis la version 1.1.
+ELY supporte **plusieurs comptes Google par utilisateur** : tu peux relier perso + pro et cibler l'un d'eux via son alias (« account »).
 
 1. Refais juste l'**Étape 6** (clique **+ Ajouter un compte** au lieu de **Connecter Google**).
 2. ELY te propose de leur donner des **noms** distincts : ex. `perso`, `pro`, `famille`.
@@ -207,7 +209,7 @@ ELY utilise Firebase Cloud Messaging (FCM) pour envoyer les push à l'app Androi
 Tu n'as pas ajouté ton email dans **Test users** à l'étape 3, ou tu te connectes avec un autre email que celui que tu as ajouté. Retourne sur [OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent) → Test users → + Add.
 
 ### `Error 400: redirect_uri_mismatch`
-L'URL où tu accèdes à ELY n'est pas exactement dans la liste des Authorized redirect URIs (étape 4). Re-vérifie : `http` vs `https`, port, slash final. Si tu accèdes via `https://ely.example.fr`, l'URI doit être **exactement** `https://ely.example.fr/auth/google/callback`.
+L'URL où tu accèdes à ELY n'est pas exactement dans la liste des Authorized redirect URIs (étape 4). Re-vérifie : `http` vs `https`, port, slash final. Si tu accèdes via `https://ely.example.fr`, l'URI doit être **exactement** `https://ely.example.fr/api/google/callback`.
 
 ### `Error 401` une fois connecté
 Le token a expiré et le refresh a échoué. Va dans *Paramètres → Intégrations* → **Déconnecter** → **Reconnecter**.
@@ -218,7 +220,7 @@ Le token a expiré et le refresh a échoué. Va dans *Paramètres → Intégrati
 - Reconnecte le compte (sans `gmail.modify`, ELY n'a pas accès à la liste).
 
 ### Apple Mail ou Outlook ?
-Pas supportés directement par ELY (qui se concentre sur Google Workspace). Tu peux contourner avec IMAP via un MCP server tiers une fois la fonctionnalité MCP livrée (Sprint 4 de la [ROADMAP](../ROADMAP.md)).
+Pas supportés directement par ELY (qui se concentre sur Google Workspace). Tu peux contourner avec IMAP via un serveur MCP tiers : la prise en charge MCP côté client est déjà disponible (voir *Paramètres → Intégrations/MCP*).
 
 ---
 

@@ -78,7 +78,7 @@ ELY est un agent IA **personnel** **qui tourne sur votre matériel, masque les d
 ### Intégration
 **Branché sur les outils que vous utilisez déjà.**
 
-- **Google Workspace complet** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (75 outils, lecture/écriture intégrale avec HITL sur chaque action destructive)
+- **Google Workspace complet** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (75 outils, lecture/écriture intégrale avec HITL sur chaque action destructive) · multi-comptes (liez plusieurs boîtes Google à un même utilisateur, sélection via un alias `account`) · `drive_upload_local_file` pour enregistrer un fichier local/binaire (PNG/JPG/PDF, ex. une capture) sur Drive
 - 10 canaux — Web · Voix (mot-clé « Éli ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy
 - Notifications push natives pour les validations HITL (FCM + APNs) — la plupart des concurrents ne proposent qu'un proxy via bot de messagerie
 - 190+ outils sur web automation, système, RAG, coffre, missions, auto-amélioration
@@ -240,6 +240,8 @@ steps:
 
 Le LLM reste dans la boucle (la spec *cadre* l'exécution, elle ne remplace pas le raisonnement) ; les cas d'edge déclarés sont **signalés, pas improvisés** ; `ask_user` met l'item en pause, vous ping sur tous vos canaux et reprend sur votre réponse pendant que les autres items continuent. Viewer liste vivant avec réponses inline. Terminaison déterministe — plus de « fini » jugé par le LLM. Les missions texte libre existantes sont inchangées.
 
+**Sous-tâches parallèles** — l'outil `delegate` lance 2 à 6 sous-tâches indépendantes en simultané via des sous-agents autonomes (enfants HITL-bloqués) puis renvoie une synthèse.
+
 </details>
 
 <details>
@@ -274,9 +276,20 @@ Même agent, même mémoire, même sécurité sur toutes les surfaces. Apps nati
 </details>
 
 <details>
+<summary><strong>Serveur MCP & clés API</strong> — pilotez ELY depuis vos clients MCP</summary>
+
+ELY est exposée **comme** un serveur MCP sur `/api/mcp` (FastMCP en Streamable-HTTP). Connectez Claude Desktop / Cursor et pilotez ELY avec quatre outils v1 : `ely_chat` (chat en un tour, mode autonome-sûr) · `ely_list_scheduled_tasks` · `ely_create_scheduled_task` · `ely_memory_search` (recherche mémoire).
+
+L'accès se fait par **clé API personnelle** créée dans **Réglages → Clés API** (`/settings/api-keys`) : préfixe `ely_api_` suivi de 64 caractères hex, **affichée en clair une seule fois** (stockée hachée en SHA-256), max 20 clés actives par utilisateur, révocable à tout moment. Passez-la en `Authorization: Bearer ely_api_…` sur l'endpoint MCP.
+
+</details>
+
+<details>
 <summary><strong>Mémoire & RAG</strong> — Qdrant local + SQLite FTS5</summary>
 
 PDF · TXT · Markdown · CSV · JSON · DOCX. fastembed + Qdrant pour la recherche sémantique, SQLite FTS5 pour le mot-clé. ELY décide elle-même si une recherche est utile avant de répondre, classe les résultats, cite les sources. Aucune donnée envoyée à des services d'embeddings distants — tout est local.
+
+Joignez aussi un fichier directement dans le chat (jusqu'à **50 Mo**) — l'upload renvoie un chemin serveur et ELY lit le fichier via ses outils PDF/vision. Note : un `.zip` s'envoie mais n'est **pas** déballé (aucun outil de décompression) — envoyez les fichiers non zippés.
 
 </details>
 
@@ -356,10 +369,10 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 - **Mémoire cognitive typée** — 5 types de mémoire, rappel transversal entre conversations
 - **Transparence radicale** — tableaux de bord `/me/learning` + `/me/state`
 - **Client MCP** — consommer n'importe quel serveur Model Context Protocol
+- **Serveur MCP** *(juin 2026)* — ELY est exposée **comme** un serveur MCP sur `/api/mcp` (FastMCP Streamable-HTTP), authentifié par clés API personnelles. Pilotez-la depuis Claude Desktop / Cursor : chat en un tour (mode autonome-sûr), lister/créer des tâches planifiées, recherche mémoire.
 - **Banc de régression 50 scénarios** + CI nocturne · 1 900+ tests automatisés
 
 **Peut-être ensuite** *(optionnel — projet perso, pas de pression de roadmap)*
-- **Serveur MCP** — exposer ELY elle-même pour la piloter depuis Claude Desktop / Cursor (skills, tâches planifiées, mémoire).
 - **Marqueurs de cache de prompt Anthropic** — réduire le coût d'entrée multi-tours sur le tier Anthropic.
 
 → [Roadmap publique complète avec efforts annoncés →](https://agent-ely.fr/roadmap.html)

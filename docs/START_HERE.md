@@ -81,9 +81,10 @@ C'est une limitation des navigateurs (pas d'ELY) : `getUserMedia()` (le micro) r
 | Exposer ELY à l'extérieur (Cloudflare Tunnel, Tailscale, VPS) | [DEPLOYMENT.md](./DEPLOYMENT.md) |
 | Configurer Telegram, Discord, Slack, WhatsApp | [user-guide.md § 7](./user-guide.md#7-channels) |
 | Build et installer l'app Android | [ANDROID_INSTALL.md](./ANDROID_INSTALL.md) |
+| Piloter ELY depuis Claude Desktop / Cursor (serveur MCP) + clés API perso (Réglages → Clés API) | [user-guide.md](./user-guide.md) |
 | Doc historique d'install (référence backend détaillée) | [installation.md](./installation.md) |
 | Architecture interne (LangGraph, supervisor, tier routing) | [architecture.md](./architecture.md) |
-| Liste exhaustive des features | [features.md](./features.md) |
+| Liste des fonctionnalités à jour | [../README.md](../README.md) |
 | Politique de sécurité, threat model, signaler une faille | [../SECURITY.md](../SECURITY.md) |
 | Roadmap publique (sprints, ETAs, ce qu'on construit) | [../ROADMAP.md](../ROADMAP.md) |
 | Comment contribuer | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
@@ -120,32 +121,20 @@ cd ElyAgent
 cp .env.example .env
 
 # 3. Génère un JWT secret et colle-le dans .env (ligne JWT_SECRET_KEY)
+# OBLIGATOIRE : sans un vrai JWT_SECRET_KEY (>=32 caractères, différent du défaut), le backend refuse de démarrer.
 openssl rand -hex 32   # Mac/Linux
 # Sur Windows : aléatoirement 64 caractères hex
 
 # 4. Lance
 make up   # ou: docker compose up -d
 
-# 5. Crée un admin
-docker exec cyberentity-backend uv run python -c "
-import asyncio
-from app.database import async_session
-from app.models.user import User
-from app.auth.passwords import hash_password
-async def go():
-    async with async_session() as db:
-        u = User(email='admin', username='admin',
-                 hashed_password=await hash_password('changeme'),
-                 role='admin', is_active=True)
-        db.add(u); await db.commit()
-asyncio.run(go())
-"
-
-# 6. Ouvre http://localhost:3000 → admin / changeme
+# 5. Ouvre http://localhost:3000 — le PREMIER compte créé devient automatiquement admin
+#    (mot de passe : min 12 caractères, 1 majuscule + 1 caractère spécial).
+#    (sans navigateur : make create-admin USER=admin PASS='MonMotDePasse!2026' EMAIL=admin@exemple.fr)
 ```
 
 **Mais à ce stade, ELY n'a pas de cerveau.** Pour qu'elle réponde, il faut au minimum suivre [SETUP_AI_PROVIDERS.md](./SETUP_AI_PROVIDERS.md) (5-10 min de plus).
 
 ---
 
-*Last updated: May 2, 2026 — pour la version 1.1.x.*
+*Last updated: June 2026.*

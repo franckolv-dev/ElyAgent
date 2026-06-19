@@ -22,11 +22,14 @@ Pour l'accès depuis l'extérieur (téléphone en 4G, webhooks…), consultez [D
 
 | Dépendance | Version minimum | Usage |
 |-----------|----------------|-------|
-| Docker | 24+ | Fait tourner tous les services |
+| Docker + Docker Compose v2 | 24+ | Fait tourner tous les services (syntaxe `docker compose`, pas `docker-compose`) |
 | Git | any | Cloner le dépôt |
+| RAM | 16 Go (32 Go recommandés pour les LLM locaux) | Faire tourner les services + l'inférence locale |
 | Ollama *(optionnel)* | latest | Modèles IA locaux (gratuit) |
 
 > **Docker suffit.** L'architecture est entièrement conteneurisée — Python, Node.js, nginx sont gérés dans les containers. Pas besoin de les installer sur la machine hôte.
+
+> **Au moins un fournisseur LLM est requis** (une clé cloud OU un Ollama natif sur l'hôte). Sans aucun fournisseur configuré, ELY démarre mais chaque chat échoue.
 
 ---
 
@@ -143,10 +146,16 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 # ── URLs (accès local uniquement) ────────────────────────────────────
 FRONTEND_URL=http://localhost:3000
 BACKEND_URL=http://localhost:8000
-NEXT_PUBLIC_API_URL=http://localhost:3000
-NEXT_PUBLIC_WS_URL=ws://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WS_URL=ws://localhost:8000
 COOKIE_SECURE=false
 ```
+
+> **Ollama tourne en natif sur l'hôte** (pas dans un conteneur), pour exploiter le GPU Metal sur Mac. Le service `ollama` en conteneur a été retiré — utilisez `make ollama-cleanup` pour purger d'anciens conteneurs s'il en reste. Sous Docker, ELY le joint via `host.docker.internal:11434`.
+
+> **`NEXT_PUBLIC_*` sont figées au build du frontend** (`next build`). Un changement de ces variables nécessite un rebuild du frontend (`make restart s=frontend`), pas un simple redémarrage.
+
+> Sous Docker Compose, `DATABASE_URL` et `QDRANT_URL` sont **forcées** par compose (`sqlite+aiosqlite:////app/data/cyberentity.db` et `http://qdrant:6333`) — les valeurs de `.env` pour ces deux variables ne s'appliquent qu'en bare-metal.
 
 > Pour un accès depuis l'extérieur (autre appareil, 4G…), consultez [DEPLOYMENT.md](./DEPLOYMENT.md).
 
@@ -169,33 +178,15 @@ http://localhost:8000/docs → API Swagger (debug)
 
 ### Créer le compte administrateur
 
-La base de données est vide au premier démarrage. Créez votre compte :
+Aucun script à lancer : ouvrez [http://localhost:3000](http://localhost:3000) et **inscrivez-vous**. Le **premier utilisateur qui s'inscrit est automatiquement promu administrateur**.
+
+> **Politique de mot de passe** : minimum 12 caractères, au moins 1 majuscule, au moins 1 caractère spécial.
+
+Pour une installation sans navigateur (headless), créez l'admin en ligne de commande :
 
 ```bash
-docker exec cyberentity-backend uv run python -c "
-import asyncio
-from app.database import async_session
-from app.models.user import User
-from app.auth.passwords import hash_password
-
-async def create():
-    async with async_session() as db:
-        user = User(
-            email='admin',
-            username='admin',
-            hashed_password=await hash_password('votre-mot-de-passe'),
-            role='admin',
-            is_active=True
-        )
-        db.add(user)
-        await db.commit()
-        print('Compte admin créé !')
-
-asyncio.run(create())
-"
+make create-admin USER=<nom> PASS=<motdepasse> EMAIL=<email>
 ```
-
-> Remplacez `admin` et `votre-mot-de-passe` par vos valeurs.
 
 ### Configurer les modèles IA dans l'interface
 
@@ -213,7 +204,7 @@ make logs s=backend       # Logs en temps réel
 make build                # Rebuild complet (après modification du code)
 
 # Modèles Ollama
-make slm-pull m=llama3:8b  # Télécharger un modèle
+ollama pull qwen2.5:7b     # Télécharger un modèle (sur l'hôte, PAS dans Docker)
 make slm-enable            # Activer le SLM (modèle léger pour tâches simples)
 ```
 
@@ -235,9 +226,9 @@ Permet à ELY d'accéder à Gmail, Calendar, Drive, Docs, Sheets et Tasks.
 2. Type : **Web application**
 3. URI de redirection autorisée :
    ```
-   http://localhost:8000/auth/google/callback
+   http://localhost:8000/api/google/callback
    ```
-   (ou `https://votre-domaine.fr/auth/google/callback` en production)
+   (ou `https://votre-domaine.fr/api/google/callback` en production)
 4. Téléchargez le fichier JSON
 
 ### Étape 3 — Placer le fichier credentials
@@ -264,17 +255,21 @@ cp ~/Téléchargements/client_secret_*.json backend/credentials.json
 | `GEMINI_API_KEY` | Clé API Google Gemini | `AIzaSy...` |
 | `MISTRAL_API_KEY` | Clé API Mistral | — |
 | `DEEPSEEK_API_KEY` | Clé API DeepSeek | — |
+| `OPENAI_API_KEY` | Clé API OpenAI | `sk-...` |
 | `OPENROUTER_API_KEY` | Clé API OpenRouter | — |
 | `ZHIPU_API_KEY` | Clé API Zhipu (GLM) | — |
+| `QWEN_API_KEY` | Clé API Qwen (+ `QWEN_API_BASE_URL`) | — |
+| `MOONSHOT_API_KEY` | Clé API Moonshot (+ `MOONSHOT_BASE_URL`) | — |
+| `LM_STUDIO_BASE_URL` | URL LM Studio (MLX local) | `http://host.docker.internal:1234` |
 | `OLLAMA_BASE_URL` | URL Ollama | `http://host.docker.internal:11434` |
 
 ### Sécurité
 
 | Variable | Description |
 |----------|-------------|
-| `JWT_SECRET_KEY` | Clé secrète JWT (obligatoire) — générez avec `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `JWT_SECRET_KEY` | Clé secrète JWT (**obligatoire**) — générez avec `openssl rand -hex 32` (ou `python -c "import secrets; print(secrets.token_hex(32))"`). Le backend **refuse de démarrer** (ValueError au boot) si la valeur est restée au défaut du code ou fait moins de 32 caractères. |
 | `JWT_ALGORITHM` | Algorithme JWT (défaut: `HS256`) |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Durée du token d'accès (défaut: `60`) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Durée du token d'accès (défaut: `15` ; refresh : 7 jours) |
 | `COOKIE_SECURE` | `true` en HTTPS, `false` en local |
 
 ### URLs
@@ -283,8 +278,8 @@ cp ~/Téléchargements/client_secret_*.json backend/credentials.json
 |----------|-------------|-------|------------|
 | `FRONTEND_URL` | Origine autorisée CORS | `http://localhost:3000` | `https://votre-domaine.fr` |
 | `BACKEND_URL` | URL publique du backend | `http://localhost:8000` | `https://votre-domaine.fr` |
-| `NEXT_PUBLIC_API_URL` | URL API (baked dans le frontend) | `http://localhost:3000` | `https://votre-domaine.fr` |
-| `NEXT_PUBLIC_WS_URL` | URL WebSocket | `ws://localhost:3000` | `wss://votre-domaine.fr` |
+| `NEXT_PUBLIC_API_URL` | URL API (figée au build du frontend) | `http://localhost:8000` | `https://votre-domaine.fr` |
+| `NEXT_PUBLIC_WS_URL` | URL WebSocket | `ws://localhost:8000` | `wss://votre-domaine.fr` |
 
 ### Notifications push
 
@@ -299,7 +294,9 @@ Aucun serveur de notification self-hosted n'est requis.
 
 | Variable | Description | Défaut |
 |----------|-------------|--------|
-| `TTS_VOICE` | Voix edge-tts | `fr-FR-DeniseNeural` |
+| `TTS_VOICE` | Voix edge-tts | `fr-FR-VivienneMultilingualNeural` |
+
+> Ne pas figer `TTS_VOICE` dans `.env` sauf pour la changer — une valeur figée masque les futurs défauts du code.
 
 Autres voix françaises : `fr-FR-HenriNeural` (H), `fr-BE-CharlineNeural` (F)
 
@@ -308,6 +305,18 @@ Autres voix françaises : `fr-FR-HenriNeural` (H), `fr-BE-CharlineNeural` (F)
 | Variable | Description |
 |----------|-------------|
 | `SSH_KEYS_PATH` | Chemin vers les clés SSH (défaut: `~/.ssh`) |
+
+### Upload de fichiers
+
+Taille maximale d'un upload : **50 Mo** (`MAX_FILE_SIZE` côté backend + `client_max_body_size 50M` côté nginx).
+
+> ⚠️ Les `.zip` s'uploadent mais **ne sont pas lisibles** par l'agent (aucun outil d'extraction n'existe) — envoyez les fichiers **non zippés**.
+
+### Clés API personnelles & serveur MCP
+
+Les utilisateurs créent des clés API personnelles dans **Settings → Clés API** (`/settings/api-keys`). Une clé a le préfixe `ely_api_` suivi de 64 caractères hexadécimaux, n'est affichée **en clair qu'une seule fois**, et est limitée à 20 clés actives par utilisateur (révocable à tout moment).
+
+Ces clés authentifient le **serveur MCP d'ELY**, exposé sur `/api/mcp` (FastMCP Streamable-HTTP), via l'en-tête `Authorization: Bearer ely_api_…`. Il est consommable depuis **Claude Desktop, Cursor** ou tout autre client MCP. Outils v1 : `ely_chat`, `ely_list_scheduled_tasks`, `ely_create_scheduled_task`, `ely_memory_search`.
 
 ---
 

@@ -117,6 +117,7 @@ Most agents are static. **ELY watches its own failures and gets better — trans
 - **Radical transparency.** Two dashboards — `/me/learning` and `/me/state` — show you exactly what ELY learned from you and the model it holds of you (mood, focus, open loops). Editable, killable, never hidden.
 - **Cognitive typed memory.** Five memory types (episodic · semantic · procedural · error · constraint) instead of one opaque blob — recalled per-type, across conversations, all local.
 - **MCP client.** Consume any Model Context Protocol server — ELY's toolset extends without a code change.
+- **MCP server.** ELY is also exposed *as* an MCP server — connect Claude Desktop, Cursor or any MCP client (authenticated by a personal API key) to chat, schedule tasks and search memory.
 - **50-scenario regression bench + nightly CI.** Self-improvement ships safely because every subsystem is pinned by a deterministic harness, on top of 1,900+ automated tests.
 
 > *Experimental:* ELY can also generate executable Python **tools** from a description (AST-guarded, admin-reviewed, sandboxed) and a network "io" variant behind a filtering egress proxy. These are kept **behind a flag and off by default** — for a single-user assistant the playbook approach above carries the day, so that's where the loop now focuses.
@@ -312,9 +313,16 @@ Web UI · Voice (wake-word "Éli") · PWA · iOS native · Android native · Tel
 </details>
 
 <details>
+<summary><strong>API access & MCP server</strong> — drive ELY from external clients</summary>
+
+Mint personal API keys in **Settings → Clés API** (`ely_api_…`, shown once, max 20 active, revocable). Use one as a bearer token against ELY's own **MCP server** at `/api/mcp` (FastMCP Streamable-HTTP) — v1 tools: chat one autonomous-safe turn, list/create scheduled tasks, semantic memory search. Intended clients: Claude Desktop, Cursor.
+
+</details>
+
+<details>
 <summary><strong>Memory & RAG</strong> — local Qdrant + SQLite FTS5</summary>
 
-PDF · TXT · Markdown · CSV · JSON · DOCX. Everything local — no remote embedding services. ELY decides when to search, reranks results, cites sources.
+PDF · TXT · Markdown · CSV · JSON · DOCX. Everything local — no remote embedding services. ELY decides when to search, reranks results, cites sources. Uploads up to **50 MB** per file (per-user storage quota applies). Note: `.zip` files upload but ELY has no unzip tool — send archives unzipped.
 
 </details>
 
@@ -378,10 +386,10 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 - **Cognitive typed memory** — 5 memory types, cross-conversation recall
 - **Radical transparency** — `/me/learning` + `/me/state` dashboards
 - **MCP client** — consume any Model Context Protocol server
+- **MCP server** *(v2.2)* — ELY exposed AS a Model Context Protocol server (authenticated `/api/mcp` endpoint, personal API keys) so you can drive it from Claude Desktop / Cursor (ely_chat, scheduled tasks, typed-memory search)
 - **50-scenario regression bench** + nightly CI · 1,900+ automated tests
 
 **Maybe next** *(optional — this is a personal project, no roadmap pressure)*
-- **MCP server** — expose ELY itself so you could drive it from Claude Desktop / Cursor (skills, scheduled tasks, memory).
 - **Anthropic prompt-cache markers** — shave multi-turn input cost on the Anthropic tier.
 
 → [Full public roadmap →](https://agent-ely.fr/roadmap.html)

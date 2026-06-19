@@ -2,7 +2,7 @@
 
 Ce guide explique comment **construire l'APK** depuis ton Mac Studio, le **déposer sur Google Drive**, puis l'**installer** sur un Android personnel (ou de test) — sans passer par le Play Store.
 
-> **Rappel** — ELY est encore en pré-release publique. L'APK n'est pas signé via un certificat Play Store, il faudra donc autoriser une source inconnue. C'est la méthode standard pour diffuser une build privée à un cercle de beta-testeurs.
+> **Rappel** — l'APK n'est pas signé via un certificat Play Store, il faudra donc autoriser une source inconnue. C'est la méthode standard pour diffuser une build privée à un cercle de beta-testeurs.
 
 ---
 
@@ -108,7 +108,7 @@ Renomme-le pour identifier la version :
 
 ```bash
 cp app/build/outputs/apk/release/app-release.apk \
-   ~/Desktop/ely-v1.1-release.apk
+   ~/Desktop/ely-<version>-release.apk
 ```
 
 ### Alternative : build debug (plus rapide, pas de keystore requis)
@@ -128,7 +128,7 @@ Un APK debug est **auto-signé** avec une clé de développement — il s'instal
 
 1. Ouvre [drive.google.com](https://drive.google.com) sur le Mac.
 2. Crée un dossier `ELY — Builds` (par exemple).
-3. Glisse `ely-v1.1-release.apk` dans ce dossier.
+3. Glisse `ely-<version>-release.apk` dans ce dossier.
 4. Clic droit sur le fichier → **Partager** → **Obtenir le lien** → **Tous les utilisateurs avec le lien** (rôle : *Lecteur*).
 5. Copie le lien.
 
@@ -149,12 +149,12 @@ Paramètres → Apps → *Menu ⋮* → Accès spécial → Installer des apps i
 ### 4.2 Télécharger
 
 1. Ouvre **l'app Google Drive** sur le téléphone (ou colle le lien dans Chrome).
-2. Navigue dans `ELY — Builds`, appuie sur `ely-v1.1-release.apk`.
+2. Navigue dans `ELY — Builds`, appuie sur `ely-<version>-release.apk`.
 3. Menu ⋮ → **Télécharger**. Le fichier arrive dans `Downloads/`.
 
 ### 4.3 Installer
 
-1. Ouvre l'app **Fichiers** (ou **Mes Fichiers** sur Samsung) → `Downloads` → tape sur `ely-v1.1-release.apk`.
+1. Ouvre l'app **Fichiers** (ou **Mes Fichiers** sur Samsung) → `Downloads` → tape sur `ely-<version>-release.apk`.
 2. Android affiche un avertissement *"Ce type de fichier peut endommager votre appareil"* → **Installer quand même**.
 3. Google Play Protect peut demander *"Envoyer l'app pour analyse"* → **Installer sans analyser** (c'est ta propre app).
 4. L'installation dure ~10 s. Appuie sur **Ouvrir**.
@@ -168,7 +168,7 @@ Paramètres → Apps → *Menu ⋮* → Accès spécial → Installer des apps i
 
 ### 4.5 Tester rapidement
 
-- Envoyer un message "Bonjour Éli" → réponse visible dans le chat
+- Envoyer un message "Bonjour Ely" → réponse visible dans le chat
 - Envoyer "Crée un événement demain à 14h" → notification HITL → approuver depuis le téléphone
 - Appuyer sur l'icône micro → dire "Quelle est la météo à Lyon ?"
 
@@ -181,8 +181,8 @@ Chaque nouvelle version, bump le `versionCode` et `versionName` dans `android/ap
 ```kotlin
 defaultConfig {
     applicationId = "com.ely.agent"
-    versionCode = 2       // +1 à chaque release
-    versionName = "1.1.0" // version lisible
+    versionCode = <valeur actuelle + 1>  // +1 à chaque release
+    versionName = "<version lisible>"     // ex. 1.0.1
     // ...
 }
 ```
@@ -221,8 +221,8 @@ Si tu changes le keystore, l'app s'installe comme une nouvelle app (perte des pr
 Quand tu voudras sortir du cercle privé :
 
 1. **Firebase App Distribution** — gratuit, gestion des beta-testeurs par email, distribue l'APK via un lien court + QR code
-2. **GitHub Releases** — attacher l'APK à un tag `v1.1.0`, lien direct depuis le README
+2. **GitHub Releases** — attacher l'APK au tag de la version, lien direct depuis le README
 3. **Play Store** — nécessite un compte dev Google (25 $ one-shot), révision, et remplir la politique de confidentialité. Le plus visible mais aussi le plus contraignant
 4. **F-Droid** — si tu acceptes la publication 100 % open-source, l'app apparaît dans le store alternatif préféré des Linuxiens
 
-Pour le **lancement officiel v1.1**, le duo **GitHub Releases + lien Drive** suffit largement — c'est ce que font la plupart des projets OSS indépendants à ce stade.
+Pour le **lancement officiel**, le duo **GitHub Releases + lien Drive** suffit largement — c'est ce que font la plupart des projets OSS indépendants à ce stade.
