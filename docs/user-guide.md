@@ -17,6 +17,7 @@
 9. [HITL Validation](#9-hitl-validation)
 10. [Memory — What ELY Remembers](#10-memory--what-ely-remembers)
 11. [Security Overview](#11-security-overview)
+12. [MCP Server & Personal API Keys](#12-mcp-server--personal-api-keys)
 
 ---
 
@@ -31,7 +32,7 @@ When you open ELY for the first time at `http://localhost:3000`, you will see th
 On the login page, click the **"Créer un compte"** (Register) tab and fill in:
 - A username
 - An email address
-- A password (minimum 8 characters)
+- A password (minimum 12 characters, including at least one uppercase letter and one special character)
 
 The **first account created is automatically assigned the Admin role**. Subsequent accounts are regular users.
 
@@ -39,7 +40,7 @@ The **first account created is automatically assigned the Admin role**. Subseque
 
 Enter your credentials and click **"Se connecter"**. You will be redirected to the main chat interface.
 
-> **Session duration**: access tokens expire after 1 hour. ELY silently refreshes them in the background — you will not be logged out mid-conversation.
+> **Session duration**: access tokens expire after 15 minutes. ELY silently refreshes them in the background — you will not be logged out mid-conversation.
 
 ---
 
@@ -70,7 +71,7 @@ This is where your conversation with ELY takes place. Messages appear in a chron
 At the bottom of the chat area sits the **message input bar** with:
 - A text field for typing your message
 - A send button (or press Enter)
-- A microphone button for future voice input
+- A microphone button for voice input (wake-word « Éli », transcription via Whisper)
 - A TTS toggle to enable/disable voice playback of ELY's responses
 
 ### Right panel — 3D Avatar
@@ -98,6 +99,12 @@ Below the avatar you will find:
 ## 3. How to Chat with ELY
 
 ELY understands natural language in French and English. You do not need to learn any commands — just write as you would to a person.
+
+### Attachments / file upload
+
+You can attach a file directly in the chat (up to **50 MB** per file; a per-user storage quota applies and uploads are purged after 90 days). ELY reads the file via its PDF/vision tools — the upload returns a server path, the file content itself is never pasted into the prompt.
+
+> **`.zip` gotcha**: a `.zip` will upload, but ELY has **no unzip tool**, so it cannot read the archive's contents. Send files **unzipped**.
 
 ### Email (Gmail)
 
@@ -137,6 +144,11 @@ Crée un nouveau document Word avec le titre "Budget 2026" et ajoute un tableau 
 ```
 Crée une feuille de calcul pour suivre mes dépenses mensuelles
 ```
+```
+Prends une capture du site exemple.com et enregistre-la sur mon Drive
+```
+
+> ELY can also save a local file/binary (a screenshot, a PNG, a PDF) to Drive via `drive_upload_local_file` — handy because `drive_create_file` only handles text.
 
 ### Tasks (Google Tasks)
 
@@ -210,7 +222,7 @@ docker ps sur my-server
 systemctl status nginx sur prod
 ```
 
-> SSH commands always require your explicit approval before execution. See [HITL Validation](#8-hitl-validation).
+> SSH commands always require your explicit approval before execution. See [HITL Validation](#9-hitl-validation).
 
 ### Scheduled tasks
 
@@ -248,6 +260,8 @@ Scroll to the **"Intégrations Google"** section. You will see buttons for each 
 
 Click **"Connecter Google"**. A Google OAuth consent screen will open in a new tab. Sign in with the Google account you want to use and grant the requested permissions.
 
+> **Multiple Google accounts**: you can link several Google accounts/mailboxes to a single ELY user and target one per request via an `account` alias (e.g. *"envoie ça depuis mon compte perso"*).
+
 > **Privacy note**: ELY stores your OAuth tokens locally in the database. Tokens are never sent to the LLM. When ELY calls a Google API on your behalf, the token is injected at execution time — the AI model only sees the result (e.g., a list of email subjects), never your credentials.
 
 ### Step 3 — Verify connection
@@ -277,6 +291,8 @@ Each skill card shows:
 - The list of tools it provides
 
 ### Available skills
+
+> This is a curated overview, not the full catalog. ELY ships with ~190+ built-in tools (75 of them Google); the bound profile stays lean and the agent pulls any other catalog tool on demand via `find_tool`. Not shown below: image generation, MCP-client consumption of external MCP servers, the `delegate` parallel sub-task tool, and more.
 
 | Skill | Tools provided |
 |---|---|
@@ -334,6 +350,8 @@ When a scheduled task fires, ELY executes the prompt autonomously and delivers t
 ## 7. Conversational Channels (WhatsApp / Telegram / Discord / Slack)
 
 ELY can be reached from multiple chat apps so you keep talking to Éli even when you're away from the web UI. All channel setup happens from **Settings → Channels** — no terminal, no `.env` edits.
+
+Beyond the four messaging apps detailed below, ELY is also reachable through **voice** (wake-word « Éli », WebSocket `/ws/voice`, Whisper transcription + TTS), **ntfy push notifications**, the installable **PWA**, and the native **Android** (FCM) and **iOS** apps.
 
 > **Memory is shared across channels.** Whatever you tell Éli on WhatsApp, she'll remember on the web UI and vice-versa.
 
@@ -396,6 +414,8 @@ Socket Mode avoids the need for a public HTTPS endpoint — Slack opens a WebSoc
 ## 8. Missions — Goal-Driven Persistence Loop
 
 Beyond the request/response chat, ELY can be given a **Mission** : a long-running goal that she breaks down into steps, executes one at a time, evaluates after each step, and replans if she gets stuck. The mission survives backend restarts and runs autonomously in the background.
+
+> **Parallel sub-tasks (`delegate`).** For work that splits into independent pieces, ELY can fan out 2–6 sub-tasks to autonomous sub-agents that run concurrently and then returns a single synthesis. The sub-agents run HITL-blocked, so any irreversible action (sending mail, deleting, SSH) is refused inside them — only the top-level agent can ask you for approval.
 
 ### When to use a mission vs a chat
 
@@ -481,13 +501,13 @@ Each channel is independent — failure of one doesn't block the others.
 
 ### 8.7. Routing & cost
 
-By default, missions use **xLAM-2 8B** (a Salesforce model fine-tuned for function calling) running locally via LM Studio. This means **zero API cost** for the typical mission.
+By default, missions route the local tier through **Gemma 4 E4B-it** (host-native Ollama). This means **zero API cost** for the typical mission.
 
-If the local model fails (rare — it falls back gracefully), the mission tries Gemini-2.5-flash and Claude Haiku in order. These cost a few cents per mission max.
+If the local model isn't enough, the mission falls back to the configured cloud LLM tiers (e.g. DeepSeek on tier C), with per-conversation auto-fallback. These cost a few cents per mission max.
 
-The tool inventory (151 ELY tools) is automatically pre-filtered down to ~15 most relevant tools per step (based on the tool hint from the plan + keywords in the goal), so smaller local models can handle the bind without choking.
+The tool inventory (~196 ELY tools) is automatically pre-filtered down to ~15 most relevant tools per step (based on the tool hint from the plan + keywords in the goal), so smaller local models can handle the bind without choking.
 
-### 8.6. Structured missions (YAML) — Sprint 4c, v1.17.0
+### 8.8. Structured missions (YAML)
 
 For repeatable multi-step workflows, the free-text goal can be replaced by a
 **structured spec**. Why : with a monolithic prompt, forgetting one edge case
@@ -680,7 +700,7 @@ The real values are stored in a local session map and restored in the final resp
 
 ### HITL (Human-in-the-Loop)
 
-Every irreversible action is paused and requires your explicit approval. See [Section 8](#8-hitl-validation) for full details.
+Every irreversible action is paused and requires your explicit approval. See [Section 9](#9-hitl-validation) for full details.
 
 ### No credential exposure
 
@@ -688,7 +708,7 @@ Your OAuth tokens and API keys are stored in the local database and injected at 
 
 ### JWT authentication
 
-All API requests require a valid JWT token. Tokens expire after 1 hour. Rate limiting is enforced at 60 requests per minute per IP address.
+All API requests require a valid JWT token. Access tokens expire after 15 minutes (refresh tokens after 7 days). Rate limiting is enforced at 60 requests per minute per IP address.
 
 ### Isolated browser contexts
 
@@ -701,3 +721,34 @@ If you do not want your data processed outside Europe, switch to:
 - **Ollama**: runs entirely on your own machine — no data ever leaves your infrastructure
 
 Change the provider in **Settings** > **Fournisseur LLM**.
+
+---
+
+## 12. MCP Server & Personal API Keys
+
+ELY is exposed **as a Model Context Protocol (MCP) server**, so you can drive it from MCP-aware clients such as **Claude Desktop** or **Cursor**.
+
+### Personal API keys
+
+The MCP endpoint is authenticated with a **personal API key** (not your password). To create one:
+
+1. Go to **Settings → Clés API** (`/settings/api-keys`).
+2. Click to mint a new key. It is shown **in clear text only once** (prefix `ely_api_` followed by 64 hex characters) — copy it now, because only a SHA-256 hash is stored afterwards.
+3. You can hold up to **20 active keys**; revoke any of them at any time.
+
+### Connecting an MCP client
+
+Point your MCP client at the `/api/mcp` endpoint (FastMCP Streamable-HTTP) and send your key as a Bearer token:
+
+```
+Authorization: Bearer ely_api_<your-key>
+```
+
+The v1 server exposes four tools:
+
+| Tool | What it does |
+|---|---|
+| `ely_chat` | Run one agent turn in autonomous-safe mode (irreversible actions like sending mail, deleting, or SSH are blocked, since no human can validate from an MCP client). Returns the answer plus a conversation id so you can continue the thread. |
+| `ely_list_scheduled_tasks` | List your scheduled tasks (read-only). |
+| `ely_create_scheduled_task` | Create a scheduled task (cron expression or `@once <ISO date>`). |
+| `ely_memory_search` | Semantic search over your typed memory. |

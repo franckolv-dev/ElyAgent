@@ -3,6 +3,8 @@
 Guide complet pour faire tourner ELY avec des modèles **100 % locaux** (Mac Studio, PC avec GPU, NAS puissant). Pas de clé API externe, vos données ne quittent jamais votre matériel.
 
 > **À lire avant** : ce guide suppose que vous avez déjà installé ELY (`make up`) et que vous avez accès à l'interface admin → Settings → AI Models.
+>
+> **Note** : le service `ollama` en conteneur a été **retiré** du Docker Compose. Ollama tourne désormais **en natif sur l'hôte** (Metal sur Mac) et ELY l'atteint via `host.docker.internal` — il n'y a aucun service Compose `ollama` à démarrer.
 
 ---
 
@@ -175,6 +177,8 @@ ollama pull mistral-small:24b          # ~14 GB
 ollama pull llava:13b                  # vision, ~8 GB
 ```
 
+> `qwen2.5:7b-instruct` est le modèle Ollama **par défaut** d'ELY (`ACTIVE_LLM_MODEL`) ; le `mistral-small:24b` utilisé en exemple plus bas est un cran au-dessus si tu as la RAM.
+
 ### 3. ⚙️ Définir le context length via Modelfile
 
 **Ollama défaut = 2048 tokens**. C'est CATASTROPHIQUEMENT trop petit pour ELY. Tu dois créer un Modelfile custom :
@@ -205,6 +209,8 @@ Settings → AI Models → Add :
 - **Provider** : Ollama
 - **Base URL** : `http://host.docker.internal:11434/v1` (Docker) ou `http://localhost:11434/v1`
 - **Model name** : `mistral-small-ely`
+
+> **Raccourci Tier SYS** : pour le petit modèle d'arrière-plan (fast-path SLM sur Ollama natif), ELY fournit `make slm-enable` / `make slm-disable` ; le modèle est piloté par `SLM_MODEL` (défaut `qwen2.5:3b-instruct`).
 
 ---
 
@@ -377,7 +383,7 @@ extra_hosts:
 
 ### Les missions hallucinent des outils inexistants
 
-**Cause** : c'était un vrai bug ELY, **fixé en Sprint 2**. Si ça arrive encore, c'est que ton container backend n'a pas été rebuild après la mise à jour. Lance :
+**Cause** : trou de *binding* d'outil — l'agent croit ne pas disposer d'un outil qui existe pourtant. ELY corrige ça à l'exécution via `find_tool` (découverte d'outil à la volée, sticky par conversation), donc ce n'est pas un défaut éliminé une fois pour toutes. Si l'agent reste bloqué après une mise à jour, c'est souvent que ton container backend n'a pas été rebuild. Lance :
 ```bash
 make restart s=backend
 ```
@@ -387,9 +393,10 @@ make restart s=backend
 ## Configuration de référence (à mettre dans `.env`)
 
 ```bash
-# Local LLM endpoints
-LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
-OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+# Local LLM endpoints (PAS de suffixe /v1 dans .env — le client l'ajoute lui-même ;
+# c'est le champ "Base URL" de l'UI Settings → AI Models qui, lui, attend le /v1)
+LM_STUDIO_BASE_URL=http://host.docker.internal:1234
+OLLAMA_BASE_URL=http://host.docker.internal:11434
 
 # Garder les modèles chargés (économise les chargements répétés)
 OLLAMA_KEEP_ALIVE=24h

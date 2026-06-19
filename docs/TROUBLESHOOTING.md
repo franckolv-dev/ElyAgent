@@ -101,7 +101,7 @@ make logs s=backend
 curl -s http://localhost:8000/health   # should return 200
 
 # What providers does the backend see?
-curl -s http://localhost:8000/api/settings/llm | python3 -m json.tool
+curl -s http://localhost:8000/api/settings/llm | python3 -m json.tool || cat
 ```
 
 ---
@@ -118,11 +118,33 @@ docker compose logs --no-color | grep -E "pull|download|fetch" | tail -20
 
 ---
 
+## 📎 Un upload reste bloqué (spinner) au-delà de ~1 Mo
+
+**Cause** : nginx limite la taille du corps de requête. Vérifiez que
+`config/nginx.conf` contient bien `client_max_body_size 50M;` (corrigé par
+défaut depuis #147), puis rechargez nginx :
+```bash
+docker compose exec nginx nginx -s reload
+```
+La limite serveur est de **50 Mo** (`MAX_FILE_SIZE` côté backend +
+`client_max_body_size` côté nginx).
+
+> ⚠️ Un `.zip` s'uploade (limite 50 Mo) mais l'agent **ne peut pas lire son
+> contenu** : il n'existe aucun outil de décompression. Envoyez les fichiers
+> **non zippés** pour qu'Ely puisse les ouvrir.
+
+---
+
 ## 🕶️ Ely répond avec des `[PERSON_0]` / `[ORG_0]`, ou « ne comprend plus » des demandes simples
 
-Vous avez activé la **couche 2 d'anonymisation PII** (`PII_NER_ENABLED=true`)
-et elle masque quelque chose dont l'agent a besoin (un nom de service, un
-lieu…). Deux options :
+Ce cas ne survient que si vous avez **délibérément installé ET activé** la
+couche 2 NER (rebuild avec `PII_NER_INSTALL=1` PUIS `PII_NER_ENABLED=true`).
+Sur une installation par défaut la couche 2 est **absente du conteneur**
+(`PII_NER_INSTALL=0`) et `PII_NER_ENABLED=true` reste un **no-op** — vous ne
+verrez donc jamais de `[PERSON_0]` / `[ORG_0]` sans ce rebuild explicite.
+
+Si vous l'avez activée et qu'elle masque quelque chose dont l'agent a besoin
+(un nom de service, un lieu…), deux options :
 
 1. **Affiner** : ajoutez les termes à ne jamais masquer dans le `.env` —
    `PII_NER_ALLOWLIST="MonEntreprise,MonOutil"` — puis
@@ -184,6 +206,19 @@ curl -s -X POST "$TOKEN_API" \
 The plaintext `token` is returned **once**; store it in your password
 manager before closing the terminal. The server only keeps the SHA-256
 hash.
+
+---
+
+## 🔑 Le serveur MCP / une clé API renvoie `401`
+
+Ely est exposée **comme serveur MCP** sur `/api/mcp` (pour connecter Claude
+Desktop, Cursor…). L'authentification se fait par **clé API personnelle** :
+
+- Vérifiez l'en-tête `Authorization: Bearer ely_api_…` (préfixe `ely_api_`).
+- La clé se crée dans **Réglages → Clés API** (`/settings/api-keys`). Son
+  secret en clair n'est affiché **qu'une seule fois** à la création.
+- Une clé **révoquée ou inexistante** → `401`.
+- Maximum **20 clés actives** par utilisateur.
 
 ---
 

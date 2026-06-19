@@ -10,7 +10,7 @@
 
 Docker, c'est comme une « boîte » qui contient une application **complète** avec tout ce dont elle a besoin pour fonctionner. Tu télécharges la boîte, tu la lances, ça marche. Pas besoin de bricoler des dépendances.
 
-ELY est livrée comme **4 boîtes Docker** : `frontend` (l'interface web), `backend` (le cerveau), `qdrant` (la mémoire) et optionnellement `ollama` (un LLM local). Tu n'as rien à comprendre de leur intérieur — Docker s'en occupe.
+ELY est livrée comme **plusieurs boîtes Docker** : `frontend` (l'interface web), `backend` (le cerveau), `nginx` (le portier qui réunit tout sur un seul port), `qdrant` (la mémoire), plus un bac à sable Python isolé (`sandbox` + `egress-proxy`). Le LLM local (Ollama) tourne désormais directement sur ton Mac (pas dans Docker), pour profiter du GPU. Tu n'as rien à comprendre de leur intérieur — Docker s'en occupe.
 
 ---
 
@@ -32,7 +32,7 @@ docker compose version
 ```
 Tu dois voir des numéros de version (ex. `Docker version 27.x.x`). Si oui, c'est gagné.
 
-> 💡 **Conseil RAM** : *Docker Desktop → ⚙️ Settings → Resources → Memory* — mets au moins **8 GB**, idéalement **16 GB** si tu utilises Ollama/LM Studio en local.
+> 💡 **Conseil RAM** : *Docker Desktop → ⚙️ Settings → Resources → Memory* — mets au moins **16 GB**, idéalement **32 GB** si tu utilises Ollama/LM Studio en local. (Le conteneur `backend` est plafonné à 5 GB.)
 
 ---
 
@@ -112,7 +112,15 @@ openssl rand -hex 32
 
 Copie le résultat et colle-le après le `=` dans `.env`. Sauvegarde.
 
-> ⚠️ **Sans cette étape, ELY refuse de démarrer.** C'est une protection de sécurité (sinon n'importe qui pourrait forger des sessions admin).
+> ⚠️ **Sans cette étape, ELY refuse de démarrer.** C'est une protection de sécurité (sinon n'importe qui pourrait forger des sessions admin). La clé doit faire **au moins 32 caractères** (un `openssl rand -hex 32` en produit 64).
+
+---
+
+## 🧠 Donne un cerveau à ELY
+
+ELY a besoin d'**au moins un fournisseur LLM**, sinon elle démarre mais chaque message échoue. Le plus simple et gratuit : crée une clé Gemini sur [aistudio.google.com/apikey](https://aistudio.google.com/apikey), colle-la dans `GEMINI_API_KEY=` et mets `ACTIVE_LLM_PROVIDER=gemini` dans `.env`.
+
+> 💡 Par défaut `ACTIVE_LLM_PROVIDER=ollama`, ce qui suppose un **Ollama installé sur ton Mac** (en natif, sur le port `11434` — il n'est plus fourni en conteneur Docker). Détails et autres fournisseurs : [SETUP_AI_PROVIDERS.md](./SETUP_AI_PROVIDERS.md).
 
 ---
 
@@ -123,7 +131,7 @@ Copie le résultat et colle-le après le `=` dans `.env`. Sauvegarde.
 make up
 ```
 
-Ça va télécharger les images Docker (~2 Go la 1ère fois — patience) puis lancer tous les services. Quand tu vois `Started`, c'est prêt.
+Ça va télécharger les images Docker (~2 Go la 1ère fois — patience) puis lancer tous les services. Suis les logs avec `make logs s=backend` et attends la ligne `Application startup complete`, puis Ctrl+C pour quitter les logs.
 
 **Si tu n'as pas `make`** (Windows sans WSL) :
 ```bash
@@ -134,28 +142,15 @@ docker compose up -d
 
 ## 👤 Créer ton premier compte admin
 
-Dans le terminal (toujours dans le dossier `ElyAgent/`) :
+**Le plus simple** : ouvre [http://localhost:3000](http://localhost:3000) et **inscris-toi** — le tout premier compte créé devient automatiquement admin. Aucun script à lancer.
+
+> 🔑 **Mot de passe** : 12 caractères minimum, avec au moins **1 majuscule** et **1 caractère spécial** (ex. `MonMotDeP@sse2026`).
+
+**En mode script / sans navigateur** (toujours dans le dossier `ElyAgent/`) :
 
 ```bash
-docker exec cyberentity-backend uv run python -c "
-import asyncio
-from app.database import async_session
-from app.models.user import User
-from app.auth.passwords import hash_password
-
-async def go():
-    async with async_session() as db:
-        u = User(email='admin', username='admin',
-                 hashed_password=await hash_password('changeme123'),
-                 role='admin', is_active=True)
-        db.add(u); await db.commit()
-        print('OK')
-
-asyncio.run(go())
-"
+make create-admin USER=<nom> PASS='<MonMotDeP@sse>' EMAIL=<email>
 ```
-
-Remplace `changeme123` par un vrai mot de passe.
 
 ---
 
@@ -165,7 +160,7 @@ Remplace `changeme123` par un vrai mot de passe.
 http://localhost:3000
 ```
 
-Connecte-toi avec `admin` / `<ton-mot-de-passe>`. Bienvenue dans ELY.
+Ouvre cette adresse et **crée ton compte** (le premier inscrit est admin). Bienvenue dans ELY.
 
 ---
 
@@ -205,7 +200,9 @@ Tes données (conversations, configs, comptes Google liés) sont préservées ca
 Docker n'est pas installé ou pas dans ton PATH. Vérifie que Docker Desktop est bien lancé (icône baleine dans la barre des tâches/menu).
 
 ### « port is already allocated »
-Quelque chose tourne déjà sur le port 3000 ou 8000. Soit tu arrêtes ce truc, soit tu changes les ports dans `docker-compose.yml`.
+Quelque chose tourne déjà sur le port 3000, 8000 ou 80. Soit tu arrêtes ce truc, soit tu changes les ports via `.env` (`ELY_FRONTEND_PORT`, `ELY_BACKEND_PORT`, `ELY_QDRANT_PORT`, `ELY_HTTP_PORT`) plutôt que d'éditer `docker-compose.yml`.
+
+> 💡 Point d'entrée recommandé : `nginx` expose ELY sur le **port 80** (`http://localhost`), qui réunit frontend et backend sur une seule adresse.
 
 ### « ELY refuse de démarrer — JWT_SECRET_KEY error »
 Tu n'as pas modifié `JWT_SECRET_KEY` dans `.env`. Génère une vraie clé aléatoire (voir plus haut).
@@ -214,7 +211,7 @@ Tu n'as pas modifié `JWT_SECRET_KEY` dans `.env`. Génère une vraie clé aléa
 Tu as téléchargé Docker Intel au lieu d'Apple Silicon. Désinstalle et reprends la bonne version.
 
 ### « Out of memory » / Docker très lent
-Augmente la RAM dans Docker Desktop : ⚙️ Settings → Resources → Memory → 8 GB minimum, 16 GB recommandé.
+Augmente la RAM dans Docker Desktop : ⚙️ Settings → Resources → Memory → 16 GB minimum, 32 GB recommandé si tu utilises un LLM local.
 
 ### « ELY se ferme tout seul après quelques minutes »
 Vérifie que ton ordi ne se met pas en veille. Sur Mac : Préférences Système → Économie d'énergie → décoche « Mettre en veille » quand l'écran est éteint (au moins pendant que tu utilises ELY).

@@ -312,6 +312,15 @@ ely.mondomaine.fr {
     handle /skills/* {
         reverse_proxy localhost:8000
     }
+    handle /scheduler/* {
+        reverse_proxy localhost:8000
+    }
+    handle /webhook/* {
+        reverse_proxy localhost:8000
+    }
+    handle /static/* {
+        reverse_proxy localhost:8000
+    }
 
     # Frontend
     handle {
@@ -356,33 +365,17 @@ make restart s=frontend
 
 ### Créer le compte administrateur
 
-La base de données est vide au premier démarrage. Créez votre compte admin :
+La base de données est vide au premier démarrage. Deux méthodes :
+
+**Méthode recommandée (navigateur)** : ouvrez le frontend (`http://localhost:3000`) et **inscrivez-vous**. Le **premier compte créé via l'inscription web est automatiquement promu admin**.
+
+**Méthode headless (sans navigateur)** :
 
 ```bash
-docker exec cyberentity-backend uv run python -c "
-import asyncio
-from app.database import async_session
-from app.models.user import User
-from app.auth.passwords import hash_password
-
-async def create_user():
-    async with async_session() as db:
-        user = User(
-            email='admin@example.com',
-            username='admin',
-            hashed_password=await hash_password('votre-mot-de-passe'),
-            role='admin',
-            is_active=True
-        )
-        db.add(user)
-        await db.commit()
-        print('Compte créé !')
-
-asyncio.run(create_user())
-"
+make create-admin USER=admin PASS='<mot-de-passe-12-car-min>' EMAIL=admin@example.com
 ```
 
-> Remplacez `admin@example.com`, `admin` et `votre-mot-de-passe` par vos valeurs.
+> Remplacez les valeurs par les vôtres. Politique de mot de passe : **min 12 caractères, ≥ 1 majuscule, ≥ 1 caractère spécial**.
 
 ### Configurer les modèles IA
 
@@ -402,14 +395,14 @@ Fichier `.env` à la racine du projet :
 ```env
 # ── LLM (au moins un requis) ──────────────────────────────────────────
 ACTIVE_LLM_PROVIDER=ollama           # ou: anthropic, gemini, mistral, deepseek
-ACTIVE_LLM_MODEL=gemma4:26b          # modèle par défaut
+ACTIVE_LLM_MODEL=qwen2.5:7b-instruct # modèle Ollama par défaut
 ANTHROPIC_API_KEY=sk-ant-...         # si provider anthropic
 GEMINI_API_KEY=AIza...               # si provider gemini
 OLLAMA_BASE_URL=http://host.docker.internal:11434  # Ollama local (Mac/Linux)
 
 # ── Sécurité ──────────────────────────────────────────────────────────
-# Génération : python -c "import secrets; print(secrets.token_hex(32))"
-JWT_SECRET_KEY=votre-clé-secrète-ici
+# Génération (REQUIS, sinon le backend refuse de démarrer) : openssl rand -hex 32
+JWT_SECRET_KEY=votre-clé-secrète-ici  # DOIT différer du défaut et faire >= 32 caractères
 
 # ── URLs (remplacez par votre domaine ou IP Tailscale) ────────────────
 FRONTEND_URL=https://ely.mondomaine.fr
@@ -417,10 +410,21 @@ BACKEND_URL=https://ely.mondomaine.fr
 NEXT_PUBLIC_API_URL=https://ely.mondomaine.fr
 NEXT_PUBLIC_WS_URL=wss://ely.mondomaine.fr
 COOKIE_SECURE=true                   # true en production HTTPS
+CORS_ORIGINS=https://ely.mondomaine.fr  # origines autorisées en prod, jamais '*'
 
 # Les notifications push mobile passent par FCM (Android) / APNs (iOS)
 # et sont configurées directement dans les projets android/ et ios/.
 ```
+
+### Accès distant via MCP / clés API
+
+Une fois ELY accessible en HTTPS, il est aussi exposé **comme serveur MCP** à l'adresse `https://<votre-domaine>/api/mcp` (FastMCP, Streamable-HTTP). Des clients MCP externes (Claude Desktop, Cursor) peuvent s'y connecter.
+
+L'authentification se fait par **clé API personnelle** (et non par cookie). Générez-en une dans **Réglages → Clés API** (`/settings/api-keys`), puis utilisez-la dans l'en-tête `Authorization: Bearer ely_api_…`. La clé n'est affichée **en clair qu'une seule fois** à sa création.
+
+### Limite d'upload de fichiers
+
+Les fichiers envoyés dans le chat sont limités à **50 Mo** (nginx interne `client_max_body_size 50M`). Si vous passez par un proxy externe (Caddy en Option C, ou Cloudflare en Option A dont le plan gratuit plafonne autour de 100 Mo), assurez-vous qu'il ne réduit pas cette limite en dessous de 50 Mo.
 
 ---
 

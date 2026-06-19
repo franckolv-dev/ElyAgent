@@ -3,12 +3,14 @@
 > Extension navigateur qui permet à ELY d'agir dans ton vrai Chrome,
 > avec tes sessions, sous ton contrôle (HITL avant chaque action irréversible).
 >
-> **Statut au 14 mai 2026 — Sprints 0, 0.5 et 2 livrés en production.**
+> **Statut au juin 2026 — Sprints 0, 0.5, 1, 2 et Sprint 0.7 Jalon 1 livrés en production (extension v1.8.0).**
 > Connexion WebSocket stable, tokens longue durée (plus de coupure toutes
-> les 60 minutes), 9 outils d'autonomie agent (ouverture d'onglets, attente
-> de chargement, screenshots avec fallback vision pour Amazon / LinkedIn).
-> Sprint 1 (overlay HITL dans la page) en cours ; Sprint 3 (Chrome Web Store)
-> à venir. Voir la [roadmap complète](#roadmap) en bas du fichier.
+> les 60 minutes), 15 outils d'autonomie agent (lecture de tabs/DOM/screenshots
+> avec fallback vision pour Amazon / LinkedIn + clic/fill/navigate pour les
+> workflows SPA + recherche historique/favoris/téléchargements).
+> Sprint 1 livré (clic/fill/navigate) ; il ne reste que l'overlay HITL in-page
+> à câbler. Sprint 3 (Chrome Web Store) à venir. Voir la
+> [roadmap complète](#roadmap) en bas du fichier.
 
 ## Architecture
 
@@ -34,8 +36,10 @@
   Owner du WebSocket. Se reconnecte avec backoff exponentiel. Forwarde
   les commandes du backend vers le content script de l'onglet actif.
 - **Content script** (`src/content/content-script.js`)
-  Injecté sur toutes les pages. Lit le DOM, exécute (Sprint 1+) les
-  clics / fills sous validation HITL via overlay.
+  Injecté sur toutes les pages. Lit le DOM, exécute les clics / fills /
+  navigations ; le gating HITL est aujourd'hui assuré côté backend
+  (`LOCKED_HITL_TOOLS` / canaux de validation), l'overlay in-page restant
+  à câbler.
 - **Popup** (`src/popup/*`)
   Status connexion + bouton reconnect + lien réglages.
 - **Options** (`src/options/*`)
@@ -119,9 +123,10 @@ Tu devrais voir le `textContent` du `<h1>` de la page active.
   ton utilisateur ELY, et révocable côté backend.
 - ❌ **L'extension n'envoie rien à un tiers.** Le WebSocket pointe
   exclusivement vers ton instance ELY que tu as configurée toi-même.
-- ✅ **Toute action destructive** (Sprint 1+) **passe par un overlay HITL**
-  rendu dans la page courante, attendant un clic Autoriser / Refuser /
-  Bannir.
+- ✅ **Toute action destructive** (clic / fill / navigate) **passe par un
+  verrou HITL côté backend** (`LOCKED_HITL_TOOLS` / canaux de validation),
+  attendant un Autoriser / Refuser / Bannir. L'overlay HITL rendu dans la
+  page courante reste le dernier livrable de Sprint 1 à câbler.
 - ✅ **URLs protégées** (chrome://, file://, extensions) sont automatiquement
   refusées avec `protected_url`.
 
@@ -145,11 +150,19 @@ Tu devrais voir le `textContent` du `<h1>` de la page active.
   fallback vision pour les sites anti-bot (Amazon, LinkedIn…).
   Intégration complète dans `tool_sets.py` + `toolset_profiles.py` +
   registration de skill `browser_extension_skill`.
-- 🟨 **Sprint 1** *(en cours)* — Actions destructives `click` / `fill` /
-  `navigate` avec overlay de validation HITL **dans la page elle-même**.
-  Le gating HITL existe déjà côté backend (validation/HITL channels) ;
-  reste à câbler l'overlay côté content-script pour que la confirmation
-  soit visible là où l'action se produit, pas dans Telegram/web.
+- ✅ **Sprint 0.7 Jalon 1** *(juin 2026)* — Outils de recherche locale :
+  `browser_history_search`, `browser_bookmarks_search`,
+  `browser_downloads_search` (lecture de l'historique, des favoris et des
+  téléchargements du navigateur).
+- ✅ **Sprint 1** *(juin 2026)* — Actions destructives `click` / `fill` /
+  `navigate` pour les workflows SPA. Outils backend `browser_tab_click`,
+  `browser_tab_fill`, `browser_tab_navigate` livrés et enregistrés
+  (`browser_extension_tool.py` + `tool_sets.py` + `toolset_profiles.py` +
+  `browser_extension_skill`). Le gating HITL est assuré côté backend
+  (validation/HITL channels).
+- 🟨 **Sprint 1 (reste)** *(en cours)* — Overlay de validation HITL **dans la
+  page elle-même**, pour que la confirmation soit visible là où l'action se
+  produit, pas dans Telegram/web.
 - ⏭ **Sprint 3** — Publication Chrome Web Store + adaptation Firefox/Edge
   (signature MV3, screenshots store, asset pack, build CI automatisé).
 

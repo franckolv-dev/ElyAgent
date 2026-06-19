@@ -64,10 +64,11 @@ NTFY_URL=https://ntfy.sh
 NTFY_TOPIC=ely-franck-x7k2m9p4   # remplace par TON topic
 ```
 
-Redémarre le backend :
+Recrée le backend pour qu'il relise le `.env` :
 ```bash
-docker compose restart backend
+docker compose up -d backend
 ```
+> ⚠️ Un simple `restart` ne relit PAS le `.env` (les variables sont lues à la création du conteneur). Il faut recréer le conteneur (`up -d`, ou `make restart s=backend`) pour qu'il prenne en compte `NTFY_URL`/`NTFY_TOPIC`.
 
 #### 5. Vérifie
 
@@ -115,13 +116,13 @@ L'app Android d'ELY existe et fonctionne, mais elle nécessite **Firebase Cloud 
 - Firebase setup : voir [SETUP_GOOGLE.md § Firebase](./SETUP_GOOGLE.md#-firebase-pour-les-push-android-optionnel)
 - Build de l'APK : [ANDROID_INSTALL.md](./ANDROID_INSTALL.md)
 
-> ⚠️ **À ce stade (mai 2026), tu dois builder l'APK toi-même.** Pas encore de Play Store. Si tu n'es pas développeur Android, **utilise ntfy à la place** — c'est largement suffisant pour 95% des usages.
+> ⚠️ **À ce stade, tu dois builder l'APK toi-même.** Pas encore de Play Store. Si tu n'es pas développeur Android, **utilise ntfy à la place** — c'est largement suffisant pour 95% des usages.
 
 ---
 
 ## Option 4 — App iOS native (APNs)
 
-Même histoire que pour Android : l'app SwiftUI existe (22 fichiers, iOS 17+) mais demande un compte **Apple Developer** (99 $/an) pour build et signer l'IPA. Pas de TestFlight publié encore.
+Même histoire que pour Android : l'app SwiftUI existe mais demande un compte **Apple Developer** (99 $/an) pour build et signer l'IPA. Pas de TestFlight publié encore.
 
 > Pour iPhone, **on recommande ntfy** (parfait sur iOS) en attendant que la roadmap fasse passer l'app iOS sur TestFlight publique.
 
