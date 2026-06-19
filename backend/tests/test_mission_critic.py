@@ -192,6 +192,48 @@ async def test_run_pending_critiques_skips_when_disabled(monkeypatch) -> None:
     assert await mc.run_pending_critiques() == 0
 
 
+# ── list-content coercion (cron crash regression) ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_call_critic_llm_flattens_list_content(monkeypatch) -> None:
+    """Regression — providers like openai-codex (Responses API v0) and
+    Gemini multimodal return ``content`` as a LIST of typed blocks
+    ``[{"type": "text", "text": "..."}]`` rather than a string.
+
+    Left raw, that list flows into ``parse_verdict`` → ``_strip_json_fences``
+    → ``raw.strip()`` and the cron dies every 5 min with
+    ``'list' object has no attribute 'strip'`` — silently killing the whole
+    mission-critique / self-improvement signal. ``_call_critic_llm`` must
+    flatten the content to a plain string at the boundary.
+    """
+    import app.services.llm_provider as llm_provider
+
+    verdict_json = '{"quality_score": 70, "honest_completion": false}'
+
+    class _FakeLLM:
+        model = "fake-codex-model"
+
+        async def ainvoke(self, messages, config=None):
+            return SimpleNamespace(
+                content=[{"type": "text", "text": verdict_json, "index": 0}],
+                response_metadata={},
+            )
+
+    monkeypatch.setattr(llm_provider, "get_llm_for_tier", lambda tier: _FakeLLM())
+
+    raw, _tokens, model_name = await mc._call_critic_llm("some prompt")
+
+    assert isinstance(raw, str), f"content must be flattened to str, got {type(raw)}"
+    assert raw == verdict_json
+    assert model_name == "fake-codex-model"
+    # The exact thing that crashed must now succeed end-to-end.
+    verdict = parse_verdict(raw)
+    assert verdict is not None
+    assert verdict["quality_score"] == 70
+    assert verdict["honest_completion"] is False
+
+
 # ── main.py wiring guard ─────────────────────────────────────────────
 
 

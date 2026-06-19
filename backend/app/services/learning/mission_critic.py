@@ -51,6 +51,7 @@ from typing import Optional
 
 from sqlalchemy import select
 
+from app.agent.helpers.message_content import content_to_text
 from app.database import async_session
 from app.models.mission import (
     MISSION_TERMINAL_STATUSES,
@@ -251,7 +252,13 @@ async def _call_critic_llm(prompt: str, user_id: str | None = None) -> tuple[str
         [{"role": "user", "content": prompt}],
         config={"callbacks": []},
     )
-    raw = getattr(response, "content", "") or ""
+    # Certains providers (openai-codex / Responses API, Gemini multimodal,
+    # LM Studio) renvoient ``content`` comme une LISTE de blocs typés plutôt
+    # qu'une string. Laissé tel quel, ça plante en aval sur ``.strip()``
+    # (parse_verdict → _strip_json_fences) : 'list' object has no attribute
+    # 'strip' → le cron critique meurt en silence toutes les 5 min. On
+    # aplatit via le helper partagé AVANT toute opération de string.
+    raw = content_to_text(getattr(response, "content", "") or "")
 
     # A-6b — le critic tourne toutes les 5 min sur un tier cloud : compté
     # dans UsageLog (best-effort), sinon la facture par user est aveugle
