@@ -226,6 +226,11 @@ function ChatPageInner() {
         pendingToolImages.current = [];
       } else if (msg.type === "tool_start") {
         setActiveTool(msg.tool ?? null);
+        // Le texte streamé avant un appel d'outil est un préambule (raisonnement
+        // / script orchestrate de GPT-5.5), redondant avec l'indicateur d'outil.
+        // On le purge pour n'afficher que la réponse finale (après le dernier
+        // outil). Le backend fait de même côté message persisté.
+        setStreamingContent("");
       } else if (msg.type === "tool_end") {
         setActiveTool(null);
         if (msg.image) pendingToolImages.current.push(msg.image);

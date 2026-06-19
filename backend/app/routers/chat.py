@@ -428,6 +428,13 @@ async def websocket_chat(websocket: WebSocket):
             }))
 
             ai_content = ""
+            # Contenu du tour COURANT du modèle. Réinitialisé à chaque
+            # ``on_tool_start`` : ce qui précède un appel d'outil est un
+            # "préambule" (raisonnement, et avec GPT-5.5 le script orchestrate
+            # complet) redondant avec l'indicateur d'outil affiché à part. À la
+            # fin, si des outils ont tourné, on ne garde que ce dernier tour =
+            # la vraie réponse (cf. réassignation après la boucle de streaming).
+            _answer_content = ""
             model_used_out: str = ""
             routing_score_out: int | None = None
             input_tokens_total: int = 0
@@ -507,6 +514,7 @@ async def websocket_chat(websocket: WebSocket):
                             token = str(raw)
                         if token:
                             ai_content += token
+                            _answer_content += token
                             # B-14 (revue 2026-06-10) — un client lent ou
                             # zombie ne doit pas bloquer la consommation du
                             # stream LLM (connexion provider maintenue
@@ -534,6 +542,11 @@ async def websocket_chat(websocket: WebSocket):
                     tool_name = event.get("name", "")
                     if tool_name:
                         tools_called.append(tool_name)
+                        # Le contenu déjà streamé sur ce tour était un préambule
+                        # menant à cet appel d'outil — on le retire de la réponse
+                        # finale (il restera affiché en live jusqu'au tool_start
+                        # côté frontend, qui le purge aussi).
+                        _answer_content = ""
                         await websocket.send_text(_dumps({
                             "type": "tool_start",
                             "tool": tool_name,
@@ -647,6 +660,16 @@ async def websocket_chat(websocket: WebSocket):
                 # (paired with "stopped" so the UI handles either reliably).
                 await websocket.send_text(_dumps({"type": "done"}))
                 continue
+
+            # Si des outils ont tourné, ne garder que le contenu du DERNIER tour
+            # (la réponse de synthèse), pas les préambules des tours qui
+            # appelaient un outil — c'est là que GPT-5.5 recopiait son script
+            # orchestrate dans la réponse visible. Filet de sécurité : si le
+            # dernier tour n'a produit aucun texte (rare — le modèle finit sur un
+            # appel d'outil sans synthèse), on retombe sur le contenu complet
+            # plutôt que d'afficher un message vide.
+            if tools_called and _answer_content.strip():
+                ai_content = _answer_content
 
             # Restore real values in the response
             ai_content = sf.deanonymize(ai_content)
