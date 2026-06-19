@@ -23,6 +23,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getLocale } from "next-intl/server";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
+import { ChunkReloadGuard } from "@/components/pwa/ChunkReloadGuard";
 
 export const metadata: Metadata = {
   title: "ELY Agent",
@@ -61,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <NextIntlClientProvider messages={messages}>
           <div className="relative z-10">{children}</div>
           <ServiceWorkerRegister />
+          <ChunkReloadGuard />
           <InstallPrompt />
         </NextIntlClientProvider>
       </body>
