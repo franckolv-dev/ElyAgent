@@ -556,8 +556,9 @@
       "loadFailed": "Impossible de charger les préférences",
       "toggleFailed": "Impossible de modifier ce réglage",
       "loading": "Chargement…",
-      "lockedBadge": "Verrouillé",
-      "lockedTooltip": "Cet outil exécute une action critique ou irréversible — la confirmation est obligatoire et ne peut pas être désactivée.",
+      "dangerousBadge": "Dangereux",
+      "dangerousTooltip": "Action critique ou irréversible — confirmation activée par défaut. Vous pouvez la désactiver, à vos risques.",
+      "dangerousConfirm": "⚠️ Désactiver la confirmation pour « {tool} » ?\n\nCette action destructive/irréversible s'exécutera ensuite SANS votre validation (y compris pendant les tâches planifiées). À vos risques.",
       "toggleOnTooltip": "Désactiver la confirmation pour cet outil",
       "toggleOffTooltip": "Réactiver la confirmation pour cet outil",
       "hint": "Note : peu importe ce que tu désactives ici, Éli auto-approuve toujours l'envoi d'un email à ta propre adresse (utile pour les briefings programmés). Les outils marqués Verrouillé ne peuvent pas être désactivés."

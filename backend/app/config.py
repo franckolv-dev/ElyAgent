@@ -99,6 +99,13 @@ class Settings(BaseSettings):
     # Rate Limiting
     rate_limit: str = "60/minute"
 
+    # HITL — délai d'attente d'une validation humaine avant auto-refus.
+    # 1800 s = 30 min (était 5 min, trop court pour valider une notif ntfy
+    # depuis le téléphone — demande Franck 2026-06-19). Surcharge :
+    # HITL_TIMEOUT_SECONDS. Un timeout n'est PAS compté comme un refus
+    # délibéré (cf. record_hitl_refusal).
+    hitl_timeout_seconds: int = 1800
+
     # Qdrant vector memory
     qdrant_url: str = "http://localhost:6333"
 

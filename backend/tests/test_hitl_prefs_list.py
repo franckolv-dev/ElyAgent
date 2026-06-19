@@ -30,11 +30,12 @@ async def test_list_includes_locked_only_tools():
     # The whole union must be present — every HITL-gated tool is manageable.
     assert names == (ALWAYS_CRITICAL_TOOLS | LOCKED_HITL_TOOLS)
 
-    # gmail_move_emails is LOCKED but NOT always-critical → it was the missing
-    # one Franck reported. It must now appear, and be locked.
+    # gmail_move_emails is dangerous but NOT always-critical → it was the missing
+    # one Franck reported. It must appear, be flagged dangerous, and (no user
+    # override) default to confirmation ON.
     assert "gmail_move_emails" in names
     by_name = {r.tool_name: r for r in rows}
-    assert by_name["gmail_move_emails"].locked is True
+    assert by_name["gmail_move_emails"].dangerous is True
     assert by_name["gmail_move_emails"].requires_confirmation is True
     # gmail_batch_modify (also LOCKED-only) likewise present.
     assert "gmail_batch_modify" in names
@@ -45,8 +46,8 @@ async def test_non_locked_critical_tool_is_toggleable():
     await init_db()
     rows = await list_preferences(current_user=_FakeUser(), accept_language="fr")
     by_name = {r.tool_name: r for r in rows}
-    # gmail_send_email is ALWAYS_CRITICAL but NOT locked → user can disable HITL.
-    assert by_name["gmail_send_email"].locked is False
+    # gmail_send_email is ALWAYS_CRITICAL but NOT dangerous → no red warning.
+    assert by_name["gmail_send_email"].dangerous is False
 
 
 @pytest.mark.asyncio

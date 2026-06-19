@@ -56,8 +56,13 @@ async def list_pending(
 class HitlPrefOut(BaseModel):
     tool_name: str
     requires_confirmation: bool
-    locked: bool = Field(
-        ..., description="If true, the user CANNOT disable HITL for this tool (forced by system)."
+    dangerous: bool = Field(
+        ...,
+        description=(
+            "If true, this is a destructive/irreversible tool: HITL is ON by "
+            "default and the UI shows a red 'DANGEREUX' warning, but the user "
+            "MAY disable it at their own risk."
+        ),
     )
     description: str | None = Field(
         default=None, description="Short human-readable description of what the tool does."
@@ -203,16 +208,15 @@ async def list_preferences(
 
     out: list[HitlPrefOut] = []
     for tool_name in sorted(ALWAYS_CRITICAL_TOOLS | LOCKED_HITL_TOOLS):
-        is_locked = tool_name in LOCKED_HITL_TOOLS
-        # Locked tools ignore overrides
-        if is_locked:
-            requires = True
-        else:
-            requires = bool(overrides.get(tool_name, True))
+        is_dangerous = tool_name in LOCKED_HITL_TOOLS
+        # Tous les outils — dangereux compris — honorent la préférence de
+        # l'utilisateur (défaut True). Avant 2026-06-19 les dangereux étaient
+        # forcés à True ; ils sont désormais désactivables (avertis « DANGEREUX »).
+        requires = bool(overrides.get(tool_name, True))
         out.append(HitlPrefOut(
             tool_name=tool_name,
             requires_confirmation=requires,
-            locked=is_locked,
+            dangerous=is_dangerous,
             description=descriptions.get(tool_name),
         ))
     return out
@@ -228,16 +232,15 @@ async def update_preference(
     body: HitlPrefUpdate,
     current_user: User = Depends(get_current_user),
 ):
-    """Toggle HITL for one tool. Locked tools are rejected with 400."""
-    if body.tool_name in LOCKED_HITL_TOOLS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Tool '{body.tool_name}' is locked — HITL cannot be disabled. "
-                "This protects against destructive / irreversible actions."
-            ),
-        )
-    if body.tool_name not in ALWAYS_CRITICAL_TOOLS:
+    """Toggle HITL for one tool.
+
+    Depuis 2026-06-19, les outils dangereux (``LOCKED_HITL_TOOLS``) sont aussi
+    désactivables (demande Franck) — l'avertissement « DANGEREUX » + la
+    confirmation sont gérés côté UI. On accepte donc l'union des outils
+    critiques et dangereux ; tout autre outil (non concerné par le HITL) est
+    rejeté.
+    """
+    if body.tool_name not in (ALWAYS_CRITICAL_TOOLS | LOCKED_HITL_TOOLS):
         raise HTTPException(
             status_code=400,
             detail=f"Tool '{body.tool_name}' is not a critical tool (HITL doesn't apply to it).",

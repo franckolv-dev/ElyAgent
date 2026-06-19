@@ -556,8 +556,9 @@
       "loadFailed": "Could not load preferences",
       "toggleFailed": "Could not toggle this setting",
       "loading": "Loading…",
-      "lockedBadge": "Locked",
-      "lockedTooltip": "This tool runs a critical or irreversible action — confirmation is mandatory and cannot be disabled.",
+      "dangerousBadge": "Dangerous",
+      "dangerousTooltip": "Critical or irreversible action — confirmation is on by default. You may disable it, at your own risk.",
+      "dangerousConfirm": "⚠️ Disable confirmation for \"{tool}\"?\n\nThis destructive/irreversible action will then run WITHOUT your approval (including during scheduled tasks). At your own risk.",
       "toggleOnTooltip": "Disable confirmation for this tool",
       "toggleOffTooltip": "Re-enable confirmation for this tool",
       "hint": "Note: regardless of what you disable here, Éli always auto-approves sending an email to your own address (useful for scheduled briefings). Tools marked Locked cannot be disabled."

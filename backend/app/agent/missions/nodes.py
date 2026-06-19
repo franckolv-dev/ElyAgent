@@ -330,7 +330,9 @@ async def dispatch_tool(
     # CRUCIAL for unattended missions: clicking it once (e.g. on a manual
     # tick while you're awake) lets ALL future scheduled runs of this tool
     # skip HITL — so a 3 a.m. run doesn't stall on a prompt nobody answers.
-    # LOCKED_HITL_TOOLS still always require HITL (enforced inside the call).
+    # Depuis 2026-06-19, les outils dangereux (LOCKED_HITL_TOOLS) sont aussi
+    # désactivables si l'utilisateur l'a explicitement choisi (résolu dans
+    # user_requires_hitl) — défaut inchangé : confirmation ON.
     # Until now this check was MISSING from the mission path (it existed in
     # chat's tool_node) — so missions ignored the preference entirely.
     if needs_hitl and user_id:

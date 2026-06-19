@@ -98,8 +98,15 @@ async def record_hitl_refusal(
     """Persist a HITL refusal — design note §2.1.
 
     `decision` ∈ {"deny", "ban"} ; `reason` ∈ {"user-provided", "timeout", ...}.
+
+    Un **timeout** (l'utilisateur n'a ni validé ni refusé à temps) n'est PAS un
+    refus délibéré : on ne l'enregistre pas, sinon il polluerait le signal
+    d'apprentissage et serait compté à tort comme un « non » de l'utilisateur
+    (demande Franck 2026-06-19).
     """
     if not user_id or not conversation_id:
+        return None
+    if reason == "timeout":
         return None
     if prompt_version is None:
         prompt_version = _safe_prompt_version()
