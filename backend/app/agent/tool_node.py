@@ -204,7 +204,16 @@ async def tool_node(state: AgentState) -> dict:
         # call. action_desc stays full for the HITL prompt + logs.
         _crit_args = {k: v for k, v in display_args.items() if k not in INSTRUCTION_ARG_KEYS}
         _crit_desc = f"Outil: {tool_name} | Arguments: {json.dumps(_crit_args, ensure_ascii=False)}"
-        needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
+        # Substrat de confiance (P1/J1) — derrière le flag, la décision HITL de
+        # base est pilotée par le CapabilityManifest (approval: always|risk_based|
+        # never), qui REPRODUIT à l'identique la règle actuelle pour tout outil
+        # connu. Flag OFF → comportement historique strictement préservé.
+        from app.config import get_settings as _get_settings
+        if _get_settings().trust_substrate_enabled:
+            from app.services.capability_manifest import manifest_requires_hitl
+            needs_hitl = manifest_requires_hitl(tool_name, _crit_desc, sf.is_critical)
+        else:
+            needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
         # Sprint 4b V3 — période canary des outils io (design §5.6, v1.15.0) :
         # les N premières invocations d'un outil io auto-généré (egress réel,
         # nouveau chemin de code) passent par HITL avant que l'outil ne soit
