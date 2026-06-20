@@ -176,6 +176,19 @@ async def tool_node(state: AgentState) -> dict:
         action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
         tc_id = tool_call["id"]
 
+        # Substrat de confiance (P1/J2) — empreinte du plan d'action canonique.
+        # Calculée sur display_args (AVANT résolution vault:// → pas de secret),
+        # liée à l'approbation, et re-vérifiée juste avant l'exécution
+        # (fail-closed). Devient pleinement protectrice quand approbation et
+        # exécution sont séparées dans le temps (file durable / Intent Escrow).
+        _action_fp = None
+        from app.config import get_settings as _get_settings
+        if _get_settings().trust_substrate_enabled:
+            from app.services.action_plan import build_action_plan, fingerprint as _action_fingerprint
+            _action_fp = _action_fingerprint(
+                build_action_plan(tool_name, display_args, user_id, _conv_id)
+            )
+
         # ── Vault: resolve vault://label references in args ───────────────
         vault_refs_found = any(
             isinstance(v, str) and v.startswith("vault://")
@@ -371,6 +384,24 @@ async def tool_node(state: AgentState) -> dict:
         if _acl_refusal:
             results.append(_tool_result(_acl_refusal, tc_id))
             continue
+
+        # P1/J2 — re-vérification de l'empreinte juste avant exécution :
+        # l'action exécutée doit être EXACTEMENT celle approuvée (fail-closed).
+        if _action_fp is not None:
+            from app.services.action_plan import build_action_plan, fingerprint as _action_fingerprint
+            _now_fp = _action_fingerprint(
+                build_action_plan(tool_name, display_args, user_id, _conv_id)
+            )
+            if _now_fp != _action_fp:
+                logger.warning(
+                    "[trust] empreinte d'action divergente — exécution annulée (tool=%s)",
+                    tool_name,
+                )
+                results.append(_tool_result(
+                    "⛔ L'action a changé depuis ton approbation — exécution annulée. "
+                    "Re-demande une validation.", tc_id,
+                ))
+                continue
 
         tool = tool_map.get(tool_name)
         if tool:
