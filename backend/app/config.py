@@ -204,6 +204,9 @@ class Settings(BaseSettings):
     # Fenêtre d'idempotence (J3) : une action « supported » identique re-jouée
     # dans ce délai renvoie le résultat mémorisé au lieu de ré-exécuter.
     idempotency_ttl_seconds: int = 600
+    # Export OpenTelemetry des événements typés (J4). Le bus fonctionne sans —
+    # l'exporter ne s'active que si ce flag est ON ET le SDK opentelemetry présent.
+    otel_enabled: bool = False
 
     model_config = {
         "env_file": ".env",

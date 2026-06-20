@@ -131,6 +131,15 @@ async def tool_node(state: AgentState) -> dict:
     except Exception as _lt_ctx_exc:  # noqa: BLE001
         logger.debug("learned-tool ContextVar set skipped: %s", _lt_ctx_exc)
 
+    # Substrat de confiance (P1/J4) — corrélation des événements typés du tour.
+    try:
+        from app.config import get_settings as _get_settings
+        if _get_settings().trust_substrate_enabled:
+            from app.services.event_envelope import CORRELATION_ID
+            CORRELATION_ID.set(_conv_id or f"turn:{id(last_message)}")
+    except Exception as _corr_exc:  # noqa: BLE001
+        logger.debug("correlation id set skipped: %s", _corr_exc)
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
         # Deanonymize tool args BEFORE any other processing so HITL preview,
@@ -294,6 +303,11 @@ async def tool_node(state: AgentState) -> dict:
                 description=action_desc,
                 user_id=user_id,
             )
+            # P1/J4 — événement d'approbation (décision seule, aucun contenu).
+            if _action_fp is not None:
+                from app.services.event_envelope import EventKind, emit
+                emit(EventKind.APPROVAL, user_id=user_id, capability_id=tool_name,
+                     fingerprint=_action_fp, outcome=str(decision))
             if decision == "ban":
                 rule = f"INTERDICTION PERMANENTE: {action_desc}"
                 if reason:
@@ -412,6 +426,9 @@ async def tool_node(state: AgentState) -> dict:
             _cached = await check_idempotent(tool_name, _action_fp)
             if _cached is not None:
                 logger.info("[trust] idempotence — résultat mémorisé renvoyé (tool=%s)", tool_name)
+                from app.services.event_envelope import EventKind, emit
+                emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
+                     fingerprint=_action_fp, outcome="idempotent_cache")
                 results.append(_tool_result(_cached, tc_id))
                 continue
 
@@ -457,8 +474,19 @@ async def tool_node(state: AgentState) -> dict:
                 if _action_fp is not None:
                     from app.services.idempotency_store import remember
                     await remember(tool_name, _action_fp, user_id, _safe_result)
+                    # P1/J4 — événement outil (succès, latence — aucun contenu).
+                    from app.services.event_envelope import EventKind, emit
+                    emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
+                         fingerprint=_action_fp, outcome="success",
+                         latency_ms=round((_tt.monotonic() - _ts) * 1000, 1))
             except Exception as exc:
                 logger.warning("Tool %s failed: %s", tool_name, exc)
+                # P1/J4 — événement outil (erreur, type seulement — pas de message).
+                if _action_fp is not None:
+                    from app.services.event_envelope import EventKind, emit
+                    emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
+                         fingerprint=_action_fp, outcome="error",
+                         attributes={"error_type": type(exc).__name__})
                 # Sprint 3.7 Jalon 2 — persist tool exception as learning signal
                 try:
                     import traceback as _tb
