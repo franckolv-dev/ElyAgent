@@ -99,6 +99,16 @@ class MCPServer(Base):
     # vers le Vault / secret d'instance = Lot 3 (J4).
     env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ── Authentification distante (J4) ─────────────────────────────────
+    # "none" | "bearer" | "api_key". Le secret n'est JAMAIS stocké ici :
+    # `credential_ref` est une référence opaque (label Vault du propriétaire).
+    auth_type:         Mapped[str]        = mapped_column(String, default="none")
+    credential_ref:    Mapped[str | None] = mapped_column(String, nullable=True)
+    # Nom de header pour auth_type=api_key (ex. "X-API-Key").
+    auth_header_name:  Mapped[str | None] = mapped_column(String, nullable=True)
+    # Exception LAN explicite (admin, hors V1) : autorise une cible réseau privée.
+    allow_private_network: Mapped[bool]   = mapped_column(Boolean, default=False)
+
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Portée & propriété ─────────────────────────────────────────────

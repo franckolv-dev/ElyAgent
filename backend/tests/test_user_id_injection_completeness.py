@@ -99,9 +99,16 @@ def test_USER_ID_TOOLS_has_no_phantom_entries():
     typos and renames that weren't propagated."""
     from app.agent.tool_sets import USER_ID_TOOLS
     from app.skills import get_skill_registry
+    from app.skills.builtin.mcp_model_skill import MCP_MODEL_TOOL_NAMES
 
     registered = {t.name for t in get_skill_registry().all_tools}
-    phantoms = sorted(name for name in USER_ID_TOOLS if name not in registered)
+    # Les outils model-facing du client MCP ne sont enregistrés que si le flag
+    # mcp_client_v2_enabled est ON (zéro coût de contexte quand OFF). Ils sont
+    # bien réels — on les exclut du contrôle anti-typo conditionnel.
+    phantoms = sorted(
+        name for name in USER_ID_TOOLS
+        if name not in registered and name not in MCP_MODEL_TOOL_NAMES
+    )
 
     # We allow a small number of intentional aliases (legacy tool names
     # that may not be registered today but are kept for backward compat).

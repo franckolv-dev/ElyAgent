@@ -90,6 +90,13 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "scheduler_update_task",
     "scheduler_run_task",
     "delegate",
+    # Client MCP universel (J4) — chaque outil agit avec l'identité de
+    # l'utilisateur (isolation des serveurs personnels, credentials Vault).
+    "mcp_list_servers",
+    "mcp_discover_tools",
+    "mcp_call_tool",
+    "mcp_connect",
+    "mcp_propose_server",
     # Browser tools — each user has an isolated browser context
     "browser_navigate",
     "browser_search_web",
