@@ -49,7 +49,7 @@ from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS
 # de données sortantes + HITL ciblé → on n'ajoute pas un HITL générique ici.
 _MCP_SELF_GATING_TOOLS: frozenset[str] = frozenset({
     "mcp_list_servers", "mcp_discover_tools", "mcp_call_tool",
-    "mcp_connect", "mcp_propose_server",
+    "mcp_connect", "mcp_propose_server", "mcp_search_registry",
 })
 from app.services.background_tasks import spawn
 from app.services.hitl_manager import get_hitl_manager

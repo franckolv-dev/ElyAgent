@@ -190,6 +190,9 @@ class Settings(BaseSettings):
     # c'est la surface model-facing (J4+) qui le vérifie. Le `kill_switch`
     # par serveur est TOUJOURS honoré, flag ON ou OFF.
     mcp_client_v2_enabled: bool = False
+    # Registre MCP officiel pour la recherche/autofill (J6). La recherche ne
+    # fait QUE de la découverte — aucune connexion, zéro confiance implicite.
+    mcp_registry_url: str = "https://registry.modelcontextprotocol.io"
 
     model_config = {
         "env_file": ".env",
