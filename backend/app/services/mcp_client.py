@@ -349,6 +349,7 @@ class MCPClientManager:
             tools = await self._build_tools(srv)
             if not tools:
                 logger.warning("MCP server %s exposed 0 tools — skipping", srv.slug)
+                await _record_health(srv.slug, "degraded", "MCP_PROTOCOL_ERROR")
                 return
 
             from app.skills.base import Skill
@@ -367,9 +368,11 @@ class MCPClientManager:
             # B-12 — les outils MCP tournent avec les secrets env_json de
             # l'admin : tool_acl les réserve au rôle admin via ce registre.
             _MCP_TOOL_NAMES[srv.slug] = {t.name for t in tools}
+            await _record_health(srv.slug, "healthy", None, connected=True)
             logger.info("MCP skill loaded: %s (%d tools)", srv.slug, len(tools))
         except Exception as exc:
             logger.error("Failed to load MCP server %s: %s", srv.slug, exc)
+            await _record_health(srv.slug, "offline", "MCP_CONNECT_FAILED")
             raise
 
     async def unload_server(self, slug: str) -> None:
@@ -401,6 +404,11 @@ class MCPClientManager:
                 mcp_tools: list[MCPTool] = result.tools
                 wrapped = [self._wrap_tool(t, conn, srv.slug) for t in mcp_tools]
                 return self._guard_collisions(srv.slug, wrapped)
+
+            elif srv.transport == "streamable_http":
+                return self._guard_collisions(
+                    srv.slug, await self._build_streamable_http_tools(srv)
+                )
 
             elif srv.transport in ("sse", "legacy_sse"):
                 return self._guard_collisions(
@@ -455,17 +463,120 @@ class MCPClientManager:
             args_schema=args_schema,
         )
 
+    async def _build_streamable_http_tools(self, srv) -> list:
+        """Charge les outils d'un serveur MCP distant en Streamable HTTP.
+
+        Transport MCP moderne. La connexion (initiale + chaque redirection)
+        passe par la garde SSRF/rebinding ``mcp_egress`` : HTTPS imposé, IP
+        validée et épinglée, cibles internes refusées."""
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamablehttp_client
+        from langchain_core.tools import StructuredTool
+
+        from app.services.mcp_egress import (
+            MCPEgressBlocked,
+            build_guarded_http_factory,
+            validate_egress_url,
+        )
+
+        url = srv.url
+        if not url:
+            logger.warning("MCP streamable_http %s has no url", srv.slug)
+            return []
+        # LAN autorisé seulement via exception explicite (admin, hors V1).
+        allow_private = bool(getattr(srv, "allow_private_network", False))
+
+        # Validation AVANT toute connexion (clean early error). Le transport
+        # re-valide et épingle de toute façon à chaque hop.
+        try:
+            validate_egress_url(url, allow_private=allow_private)
+        except MCPEgressBlocked as exc:
+            logger.warning("MCP streamable_http %s refusé (egress): %s", srv.slug, exc)
+            return []
+
+        factory = build_guarded_http_factory(allow_private=allow_private)
+        headers = _remote_auth_headers(srv)   # J4 : credentials depuis le Vault
+        tools = []
+
+        try:
+            async with streamablehttp_client(
+                url, headers=headers, httpx_client_factory=factory,
+            ) as (read, write, _get_sid):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.list_tools()
+                    mcp_tools = result.tools
+
+            for mcp_tool in mcp_tools:
+                remote_name = mcp_tool.name
+                local_name = namespaced_tool_name(srv.slug, remote_name)
+                tool_desc = mcp_tool.description or remote_name
+                raw_schema = mcp_tool.inputSchema or {}
+                args_schema = _json_schema_to_pydantic(local_name, raw_schema)
+
+                async def _call(_url=url, _name=remote_name, _local=local_name,
+                                _factory=factory, _headers=headers, _ap=allow_private,
+                                **kwargs) -> str:
+                    try:
+                        # Re-valider à chaque appel (la résolution DNS a pu
+                        # changer) — le transport épingle ensuite.
+                        validate_egress_url(_url, allow_private=_ap)
+                        async with streamablehttp_client(
+                            _url, headers=_headers, httpx_client_factory=_factory,
+                        ) as (r, w, _s):
+                            async with ClientSession(r, w) as sess:
+                                await sess.initialize()
+                                result = await sess.call_tool(_name, kwargs)
+                                if hasattr(result, "content") and result.content:
+                                    return "\n".join(
+                                        b.text for b in result.content if hasattr(b, "text")
+                                    )
+                        return str(result)
+                    except Exception as exc:
+                        return f"Erreur MCP HTTP ({_local}): {exc}"
+
+                tools.append(StructuredTool(
+                    name=local_name,
+                    description=tool_desc,
+                    coroutine=_call,
+                    args_schema=args_schema,
+                ))
+        except Exception as exc:
+            logger.error("Streamable HTTP MCP connect failed (%s): %s", url, exc)
+
+        return tools
+
     async def _build_sse_tools(self, srv) -> list:
-        """Charge les outils depuis un serveur MCP SSE (HTTP)."""
+        """Charge les outils depuis un serveur MCP SSE historique (legacy).
+
+        Même garde egress que Streamable HTTP — un serveur SSE est distant."""
         from mcp import ClientSession
         from mcp.client.sse import sse_client
         from langchain_core.tools import StructuredTool
 
+        from app.services.mcp_egress import (
+            MCPEgressBlocked,
+            build_guarded_http_factory,
+            validate_egress_url,
+        )
+
         url = srv.url
         tools = []
+        if not url:
+            logger.warning("MCP sse %s has no url", srv.slug)
+            return []
+        allow_private = bool(getattr(srv, "allow_private_network", False))
+        try:
+            validate_egress_url(url, allow_private=allow_private)
+        except MCPEgressBlocked as exc:
+            logger.warning("MCP sse %s refusé (egress): %s", srv.slug, exc)
+            return []
+
+        factory = build_guarded_http_factory(allow_private=allow_private)
+        headers = _remote_auth_headers(srv)
 
         try:
-            async with sse_client(url) as (read, write):
+            async with sse_client(url, headers=headers, httpx_client_factory=factory) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     result = await session.list_tools()
@@ -479,9 +590,12 @@ class MCPClientManager:
                 raw_schema = mcp_tool.inputSchema or {}
                 args_schema = _json_schema_to_pydantic(local_name, raw_schema)
 
-                async def _call(_url=url, _name=remote_name, _local=local_name, **kwargs) -> str:
+                async def _call(_url=url, _name=remote_name, _local=local_name,
+                                _factory=factory, _headers=headers, _ap=allow_private,
+                                **kwargs) -> str:
                     try:
-                        async with sse_client(_url) as (r, w):
+                        validate_egress_url(_url, allow_private=_ap)
+                        async with sse_client(_url, headers=_headers, httpx_client_factory=_factory) as (r, w):
                             async with ClientSession(r, w) as sess:
                                 await sess.initialize()
                                 result = await sess.call_tool(_name, kwargs)
@@ -537,6 +651,40 @@ class MCPClientManager:
 # ------------------------------------------------------------------ #
 # JSON Schema → Pydantic helper                                        #
 # ------------------------------------------------------------------ #
+
+def _remote_auth_headers(srv) -> dict[str, str] | None:
+    """En-têtes d'authentification d'un serveur distant.
+
+    J2 : serveurs publics (``auth_type=none``) → aucun en-tête. La récupération
+    des credentials depuis le Vault (bearer / API key) est câblée en J4 — ce
+    point d'entrée existe pour que le transport n'ait pas à changer ensuite."""
+    return None
+
+
+async def _record_health(slug: str, state: str, error_code: str | None,
+                         *, connected: bool = False) -> None:
+    """Best-effort : met à jour health_state / last_error_code / last_connected_at.
+
+    N'échoue jamais la charge si l'écriture DB plante (chemin chaud du boot)."""
+    try:
+        from datetime import datetime, timezone
+
+        from sqlalchemy import update
+
+        from app.database import async_session
+        from app.models.mcp_server import MCPServer
+
+        values: dict = {"health_state": state, "last_error_code": error_code}
+        if connected:
+            values["last_connected_at"] = datetime.now(timezone.utc)
+        async with async_session() as db:
+            await db.execute(
+                update(MCPServer).where(MCPServer.slug == slug).values(**values)
+            )
+            await db.commit()
+    except Exception as exc:  # pragma: no cover — observabilité, pas critique
+        logger.debug("MCP health update failed for %s: %s", slug, exc)
+
 
 def _parse_args_json(args_json: str | None) -> list[str] | None:
     """Liste d'arguments structurée → ``list[str]`` (ou None = legacy).
