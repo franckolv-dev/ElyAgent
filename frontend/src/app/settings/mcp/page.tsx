@@ -20,6 +20,7 @@ import Link from "next/link";
 import {
   Plug, Plus, RefreshCw, Trash2, Pencil, Save, X, ArrowLeft,
   CheckCircle2, AlertCircle, Loader2, Terminal, Wifi,
+  Upload, ShieldCheck, ShieldAlert, Lock,
 } from "lucide-react";
 import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -92,6 +93,10 @@ export default function MCPSettingsPage() {
 
   const [reloadingId, setReloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -197,6 +202,66 @@ export default function MCPSettingsPage() {
     [refresh, showToast],
   );
 
+  const handleApprove = useCallback(
+    async (srv: MCPServerOut) => {
+      if (!confirm(
+        `Approuver « ${srv.name} » ?\n\n` +
+        (srv.transport === "stdio"
+          ? "C'est un serveur LOCAL : l'approuver LANCE du code tiers sur la machine d'Ely."
+          : "Le serveur sera activé et ses outils rendus disponibles."),
+      )) return;
+      setActioningId(srv.id);
+      try {
+        await api.mcpServerApprove(srv.id);
+        showToast("ok", `« ${srv.name} » approuvé et activé.`);
+        await refresh();
+      } catch (e) {
+        showToast("err", e instanceof Error ? e.message : String(e));
+      } finally {
+        setActioningId(null);
+      }
+    },
+    [refresh, showToast],
+  );
+
+  const handleQuarantine = useCallback(
+    async (srv: MCPServerOut) => {
+      setActioningId(srv.id);
+      try {
+        await api.mcpServerQuarantine(srv.id);
+        showToast("ok", `« ${srv.name} » remis en quarantaine.`);
+        await refresh();
+      } catch (e) {
+        showToast("err", e instanceof Error ? e.message : String(e));
+      } finally {
+        setActioningId(null);
+      }
+    },
+    [refresh, showToast],
+  );
+
+  const handleImport = useCallback(async () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(importText);
+    } catch {
+      showToast("err", "JSON invalide.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await api.mcpImport(parsed);
+      showToast("ok", `${res.count} serveur(s) importé(s) en quarantaine — à approuver.`);
+      setImportText("");
+      setShowImport(false);
+      await refresh();
+    } catch (e) {
+      showToast("err", e instanceof Error ? e.message : String(e));
+    } finally {
+      setImporting(false);
+    }
+  }, [importText, refresh, showToast]);
+
   return (
     <AdminGuard>
       <div className="flex h-screen bg-bg-primary text-text-primary">
@@ -253,16 +318,25 @@ export default function MCPSettingsPage() {
                   : `${servers.length} serveur${servers.length > 1 ? "s" : ""} configuré${servers.length > 1 ? "s" : ""}.`}
               </div>
               {!showForm && (
-                <button
-                  onClick={() => {
-                    setForm(EMPTY_FORM);
-                    setShowForm(true);
-                  }}
-                  className="px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all flex items-center gap-1.5 text-xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Ajouter un serveur
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowImport((v) => !v)}
+                    className="px-3 py-1.5 rounded border border-border-dim text-text-muted hover:text-text-secondary transition-all flex items-center gap-1.5 text-xs"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Importer (mcpServers)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setForm(EMPTY_FORM);
+                      setShowForm(true);
+                    }}
+                    className="px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all flex items-center gap-1.5 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Ajouter un serveur
+                  </button>
+                </div>
               )}
             </div>
 
@@ -270,6 +344,42 @@ export default function MCPSettingsPage() {
               <div className="rounded-md border border-cyber-red/30 bg-cyber-red/5 px-3 py-2 text-xs text-cyber-red flex items-center gap-2">
                 <AlertCircle className="w-3.5 h-3.5" />
                 {error}
+              </div>
+            )}
+
+            {/* Import mcpServers JSON */}
+            {showImport && (
+              <div className="bg-bg-secondary border border-cyber-cyan/30 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-cyber-cyan" />
+                    Importer une configuration <code>mcpServers</code>
+                  </h2>
+                  <button onClick={() => setShowImport(false)} className="text-text-muted hover:text-text-secondary" aria-label="Fermer">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-[11px] text-text-muted">
+                  Chaque serveur est créé <strong>en quarantaine</strong> — jamais lancé ni activé
+                  automatiquement. Tu l'approuves ensuite serveur par serveur.
+                </p>
+                <textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  placeholder={'{\n  "mcpServers": {\n    "filesystem": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/data"]\n    }\n  }\n}'}
+                  rows={8}
+                  className="ely-input font-mono text-[11px]"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleImport}
+                    disabled={importing || !importText.trim()}
+                    className="px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all flex items-center gap-1.5 text-xs disabled:opacity-40"
+                  >
+                    {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    Importer en quarantaine
+                  </button>
+                </div>
               </div>
             )}
 
@@ -428,6 +538,7 @@ export default function MCPSettingsPage() {
                     <tr>
                       <th className="text-left px-3 py-2">Nom / Slug</th>
                       <th className="text-left px-3 py-2">Transport</th>
+                      <th className="text-left px-3 py-2">État</th>
                       <th className="text-left px-3 py-2">Cible</th>
                       <th className="text-left px-3 py-2">Outils</th>
                       <th className="text-right px-3 py-2">Actions</th>
@@ -453,6 +564,9 @@ export default function MCPSettingsPage() {
                             {srv.transport}
                           </span>
                         </td>
+                        <td className="px-3 py-2 align-top">
+                          <TrustBadge srv={srv} />
+                        </td>
                         <td className="px-3 py-2 align-top font-mono text-[10px] text-text-muted break-all max-w-xs">
                           {srv.transport === "stdio" ? srv.command : srv.url}
                         </td>
@@ -474,6 +588,25 @@ export default function MCPSettingsPage() {
                         </td>
                         <td className="px-3 py-2 align-top">
                           <div className="flex items-center justify-end gap-1">
+                            {srv.trust_state === "quarantined" ? (
+                              <button
+                                onClick={() => handleApprove(srv)}
+                                disabled={actioningId === srv.id}
+                                title="Approuver et activer ce serveur"
+                                className="p-1.5 rounded border border-cyber-green/30 text-cyber-green hover:bg-cyber-green/5 transition-all disabled:opacity-30"
+                              >
+                                {actioningId === srv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                              </button>
+                            ) : srv.trust_state === "active" ? (
+                              <button
+                                onClick={() => handleQuarantine(srv)}
+                                disabled={actioningId === srv.id}
+                                title="Remettre en quarantaine (désactive le serveur)"
+                                className="p-1.5 rounded border border-border-dim text-text-muted hover:text-amber-400 hover:border-amber-400/30 transition-all disabled:opacity-30"
+                              >
+                                {actioningId === srv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+                              </button>
+                            ) : null}
                             <button
                               onClick={() => handleReload(srv)}
                               disabled={reloadingId === srv.id || !srv.enabled}
@@ -534,6 +667,31 @@ export default function MCPSettingsPage() {
         }
       `}</style>
     </AdminGuard>
+  );
+}
+
+function TrustBadge({ srv }: { srv: MCPServerOut }) {
+  const trust = srv.trust_state ?? "active";
+  const health = srv.health_state ?? "unknown";
+  const trustStyle =
+    trust === "active"
+      ? "border-cyber-green/30 text-cyber-green bg-cyber-green/5"
+      : trust === "quarantined" || trust === "pending_approval"
+      ? "border-amber-400/30 text-amber-400 bg-amber-400/5"
+      : "border-cyber-red/30 text-cyber-red bg-cyber-red/5";
+  const TrustIcon = trust === "active" ? ShieldCheck : ShieldAlert;
+  return (
+    <div className="space-y-1">
+      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${trustStyle}`}>
+        <TrustIcon className="w-3 h-3" />
+        {trust}
+      </span>
+      <div className="flex items-center gap-1.5 text-[10px] text-text-muted">
+        <span>{health}</span>
+        {srv.scope === "user" && <span className="inline-flex items-center gap-0.5"><Lock className="w-2.5 h-2.5" />perso</span>}
+        {srv.kill_switch && <span className="text-cyber-red">⛔ kill</span>}
+      </div>
+    </div>
   );
 }
 

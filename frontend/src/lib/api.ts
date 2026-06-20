@@ -469,6 +469,28 @@ export const api = {
       tools: string[];
     }>,
 
+  // ── J5 — quarantaine / approbation / catalogue / import ─────────────────
+  mcpServerApprove: (id: string) =>
+    fetchAPI(`/admin/mcp/servers/${id}/approve`, { method: "POST" }) as Promise<MCPServerOut>,
+
+  mcpServerQuarantine: (id: string) =>
+    fetchAPI(`/admin/mcp/servers/${id}/quarantine`, { method: "POST" }) as Promise<MCPServerOut>,
+
+  mcpServerTools: (id: string) =>
+    fetchAPI(`/admin/mcp/servers/${id}/tools`) as Promise<MCPToolOut[]>,
+
+  mcpToolUpdate: (serverId: string, toolId: string, enabled: boolean) =>
+    fetchAPI(`/admin/mcp/servers/${serverId}/tools/${toolId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }) as Promise<MCPToolOut>,
+
+  mcpImport: (config: unknown) =>
+    fetchAPI(`/admin/mcp/import`, {
+      method: "POST",
+      body: JSON.stringify({ config }),
+    }) as Promise<{ status: string; count: number; ids: string[] }>,
+
   // ── My learned skills (Sprint 4b Phase 5.b) ─────────────────────────────
   /** List every LearnedSkill the caller owns, across all statuses. The
    *  backend orders by status then use_count so the UI can render the
@@ -635,6 +657,15 @@ export interface MCPServerOut {
    *  server is disabled or has failed to load. */
   tool_count: number | null;
   tool_names: string[] | null;
+}
+
+export interface MCPToolOut {
+  id: string;
+  remote_name: string;
+  local_name: string;
+  description: string | null;
+  risk_level: string;
+  enabled: boolean;
 }
 
 export interface MCPServerCreateBody {
