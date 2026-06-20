@@ -26,6 +26,7 @@ POST   /mcp/servers/{id}/reload — reload tools from a running server
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Optional
 
@@ -50,20 +51,26 @@ class MCPServerCreate(BaseModel):
     slug: str
     transport: str = "stdio"
     command: Optional[str] = None
+    args_json: Optional[str] = None
     url: Optional[str] = None
+    # env_json est ACCEPTÉ en entrée (nécessaire pour lancer un stdio) mais
+    # JAMAIS renvoyé en sortie — cf. MCPServerOut (redaction).
     env_json: Optional[str] = None
     description: Optional[str] = None
     enabled: bool = True
+    kill_switch: bool = False
 
 
 class MCPServerUpdate(BaseModel):
     name: Optional[str] = None
     transport: Optional[str] = None
     command: Optional[str] = None
+    args_json: Optional[str] = None
     url: Optional[str] = None
     env_json: Optional[str] = None
     description: Optional[str] = None
     enabled: Optional[bool] = None
+    kill_switch: Optional[bool] = None
 
 
 class MCPServerOut(BaseModel):
@@ -73,9 +80,18 @@ class MCPServerOut(BaseModel):
     transport: str
     command: Optional[str]
     url: Optional[str]
-    env_json: Optional[str]
     description: Optional[str]
     enabled: bool
+    # ── Redaction des secrets ──────────────────────────────────────────
+    # `env_json` porte des secrets → JAMAIS renvoyé. On expose uniquement
+    # les NOMS de clés pour que l'UI montre « quelles » variables sont
+    # définies, sans jamais divulguer leurs valeurs.
+    env_keys: Optional[list[str]] = None
+    # ── État de confiance / santé (Lot 0) ──────────────────────────────
+    scope: Optional[str] = None
+    trust_state: Optional[str] = None
+    health_state: Optional[str] = None
+    kill_switch: Optional[bool] = None
     # Live-state fields filled by the list endpoint (not stored in DB).
     # None = unknown (skill not in registry, e.g. enabled=False).
     tool_count: Optional[int] = None
@@ -84,12 +100,29 @@ class MCPServerOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _env_key_names(env_json: Optional[str]) -> Optional[list[str]]:
+    """Noms de clés d'``env_json`` — JAMAIS les valeurs. None si vide/illisible."""
+    if not env_json:
+        return None
+    try:
+        parsed = json.loads(env_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(parsed, dict):
+        return sorted(str(k) for k in parsed.keys())
+    return None
+
+
 def _decorate_with_runtime(srv: MCPServer) -> MCPServerOut:
-    """Build the response model by merging DB row + live skill registry."""
+    """Build the response model by merging DB row + live skill registry.
+
+    Secret-safe : ``env_json`` n'est jamais sérialisé ; seul ``env_keys``
+    (les noms) traverse l'API."""
     from app.skills.registry import get_skill_registry
 
-    skill = get_skill_registry().get_skill(f"mcp_{srv.slug}")
     out = MCPServerOut.model_validate(srv)
+    out.env_keys = _env_key_names(getattr(srv, "env_json", None))
+    skill = get_skill_registry().get_skill(f"mcp_{srv.slug}")
     if skill is not None:
         out.tool_count = len(skill.tools)
         out.tool_names = [t.name for t in skill.tools]

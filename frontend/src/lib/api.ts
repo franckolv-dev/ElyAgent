@@ -619,10 +619,16 @@ export interface MCPServerOut {
   id: string;
   name: string;
   slug: string;
-  transport: "stdio" | "sse";
+  transport: "stdio" | "streamable_http" | "legacy_sse" | "sse";
   command: string | null;
   url: string | null;
-  env_json: string | null;
+  /** Secret-safe: the backend never returns env_json values, only the key
+   *  names so the UI can show *which* variables are set. */
+  env_keys: string[] | null;
+  scope: string | null;
+  trust_state: string | null;
+  health_state: string | null;
+  kill_switch: boolean | null;
   description: string | null;
   enabled: boolean;
   /** Filled by the backend from the live skill registry — null when the
@@ -634,12 +640,15 @@ export interface MCPServerOut {
 export interface MCPServerCreateBody {
   name: string;
   slug: string;
-  transport: "stdio" | "sse";
+  transport: "stdio" | "streamable_http" | "legacy_sse" | "sse";
   command?: string | null;
+  args_json?: string | null;
   url?: string | null;
+  /** Write-only: accepted on create/update, never echoed back. */
   env_json?: string | null;
   description?: string | null;
   enabled?: boolean;
+  kill_switch?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
