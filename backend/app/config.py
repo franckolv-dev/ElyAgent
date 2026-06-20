@@ -201,6 +201,9 @@ class Settings(BaseSettings):
     # gate HITL ne lit le manifeste que lorsqu'il est ON, en reproduisant à
     # l'identique la décision actuelle pour tout outil connu.
     trust_substrate_enabled: bool = False
+    # Fenêtre d'idempotence (J3) : une action « supported » identique re-jouée
+    # dans ce délai renvoie le résultat mémorisé au lieu de ré-exécuter.
+    idempotency_ttl_seconds: int = 600
 
     model_config = {
         "env_file": ".env",

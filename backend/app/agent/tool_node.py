@@ -403,6 +403,18 @@ async def tool_node(state: AgentState) -> dict:
                 ))
                 continue
 
+        # P1/J3 — idempotence : une action « supported » identique déjà réussie
+        # dans la fenêtre TTL renvoie son résultat mémorisé, sans ré-exécuter
+        # (« jamais deux fois par accident »). No-op pour les outils non
+        # idempotents (le manifeste décide). Gates HITL/ACL déjà passées.
+        if _action_fp is not None:
+            from app.services.idempotency_store import check_idempotent
+            _cached = await check_idempotent(tool_name, _action_fp)
+            if _cached is not None:
+                logger.info("[trust] idempotence — résultat mémorisé renvoyé (tool=%s)", tool_name)
+                results.append(_tool_result(_cached, tc_id))
+                continue
+
         tool = tool_map.get(tool_name)
         if tool:
             try:
@@ -440,6 +452,11 @@ async def tool_node(state: AgentState) -> dict:
                     # l'agent — retour terrain 2026-06-11).
                     _safe_result = _vault_sf.anonymize(_safe_result, ner_detection=False)
                 results.append(_tool_result(_safe_result, tc_id))
+                # P1/J3 — mémorise le résultat d'une action « supported » réussie
+                # (no-op si le manifeste ne déclare pas l'idempotence).
+                if _action_fp is not None:
+                    from app.services.idempotency_store import remember
+                    await remember(tool_name, _action_fp, user_id, _safe_result)
             except Exception as exc:
                 logger.warning("Tool %s failed: %s", tool_name, exc)
                 # Sprint 3.7 Jalon 2 — persist tool exception as learning signal
