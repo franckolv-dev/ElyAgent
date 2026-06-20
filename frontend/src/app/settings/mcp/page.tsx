@@ -122,7 +122,9 @@ export default function MCPSettingsPage() {
       transport: srv.transport,
       command: srv.command ?? "",
       url: srv.url ?? "",
-      env_json: srv.env_json ?? "",
+      // Secret-safe: env values are never returned by the API. Editing
+      // leaves this blank — re-enter the secret if you need to change it.
+      env_json: "",
       description: srv.description ?? "",
       enabled: srv.enabled,
     });

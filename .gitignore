@@ -157,3 +157,7 @@ desktop/ely-desktop
 
 # Canonical bench artefacts — produced at run-time, not source-of-truth
 bench/results/
+
+# Documentation interne / confidentielle — cadrages, audits, notes privées.
+# JAMAIS publié sur GitHub (repo public). Voir docs/ pour la doc publique.
+docs_internes/

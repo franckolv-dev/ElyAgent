@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shlex
 from functools import lru_cache
 
@@ -49,11 +50,53 @@ _MCP_TOOL_NAMES: dict[str, set[str]] = {}
 
 
 def mcp_tool_names() -> set[str]:
-    """Noms de TOUS les outils MCP actuellement chargés."""
+    """Noms (namespacés) de TOUS les outils MCP actuellement chargés."""
     names: set[str] = set()
     for tool_set in _MCP_TOOL_NAMES.values():
         names |= tool_set
     return names
+
+
+# ── Namespace mcp__<slug>__<tool> ───────────────────────────────────────────
+#
+# Le nom local envoyé au modèle est INDÉPENDANT du nom distant. Garanties :
+#   - aucun outil MCP ne peut masquer un outil natif d'ELY (préfixe réservé) ;
+#   - deux serveurs exposant un homonyme (`search`) coexistent sans collision ;
+#   - le routeur conserve la correspondance local → distant pour l'appel réel.
+_NS_SEP = "__"
+_NS_PREFIX = "mcp"
+_NS_MAX_LEN = 128
+_NS_VALID_RE = re.compile(r"[^a-zA-Z0-9_-]")
+
+
+def namespaced_tool_name(slug: str, remote_name: str) -> str:
+    """``mcp__<slug>__<remote>`` — normalisé, borné, sans caractère hostile.
+
+    Les noms d'outils exposés au modèle doivent matcher ``[a-zA-Z0-9_-]+``.
+    On normalise le nom distant (entrée NON fiable du serveur) sans toucher
+    le slug (déjà validé kebab-case côté création)."""
+    safe_remote = _NS_VALID_RE.sub("_", remote_name or "")
+    local = f"{_NS_PREFIX}{_NS_SEP}{slug}{_NS_SEP}{safe_remote}"
+    return local[:_NS_MAX_LEN]
+
+
+def _native_tool_names() -> set[str]:
+    """Noms des outils NON-MCP actuellement enregistrés (garde anti-collision).
+
+    Défensif : un nom local commençant par ``mcp__`` ne devrait jamais
+    heurter un outil natif, mais on vérifie quand même — la sécurité ne
+    repose pas sur une convention de nommage seule."""
+    try:
+        from app.skills.registry import get_skill_registry
+
+        names: set[str] = set()
+        for skill in get_skill_registry().list_skills():
+            if "mcp" in (skill.scopes or ()):
+                continue
+            names.update(t.name for t in skill.tools)
+        return names
+    except Exception:  # pragma: no cover — defensive
+        return set()
 
 
 # ── Env scrubbing constants for the spawned MCP process ─────────────────────
@@ -143,9 +186,14 @@ class _StdioConnection:
     and no cancel scope ever crosses a task boundary.
     """
 
-    def __init__(self, command: str, env: dict | None = None):
+    def __init__(self, command: str, env: dict | None = None,
+                 args: list[str] | None = None):
+        # ``command`` est soit l'exécutable seul (quand ``args`` est fourni),
+        # soit la ligne complète legacy (shlex.split dans _lifecycle). Aucun
+        # passage par un shell dans les deux cas.
         self.command = command
         self.env = env
+        self.args = args
         self._lock = asyncio.Lock()
         self._session = None
         self._task: asyncio.Task | None = None
@@ -159,13 +207,19 @@ class _StdioConnection:
             from mcp import ClientSession, StdioServerParameters
             from mcp.client.stdio import stdio_client
 
-            parts = shlex.split(self.command)
+            # Args explicites (V2) si fournis, sinon shlex.split de la ligne
+            # legacy. Jamais de shell : StdioServerParameters exec direct.
+            if self.args is not None:
+                executable, args = self.command, list(self.args)
+            else:
+                parts = shlex.split(self.command)
+                executable, args = parts[0], parts[1:]
             # `self.env` was already scrubbed by `_build_mcp_env` in the
             # caller (`_build_tools`). Falls back to None for backward-
             # compat callsites that pass a pre-scrubbed dict directly.
             params = StdioServerParameters(
-                command=parts[0],
-                args=parts[1:],
+                command=executable,
+                args=args,
                 env=self.env,
             )
             async with stdio_client(params) as (read, write):
@@ -268,7 +322,10 @@ class MCPClientManager:
 
             async with async_session() as db:
                 result = await db.execute(
-                    select(MCPServer).where(MCPServer.enabled == True)
+                    select(MCPServer).where(
+                        MCPServer.enabled == True,            # noqa: E712
+                        MCPServer.kill_switch == False,       # noqa: E712
+                    )
                 )
                 servers = result.scalars().all()
 
@@ -282,6 +339,12 @@ class MCPClientManager:
 
     async def load_server(self, srv) -> None:
         """Charge les outils d'un MCPServer et les enregistre dans le SkillRegistry."""
+        # Coupe-circuit par serveur : toujours honoré, indépendamment du
+        # flag global. Un serveur kill-switché est déchargé, pas chargé.
+        if getattr(srv, "kill_switch", False):
+            logger.info("MCP server %s kill-switched — skipping load", srv.slug)
+            await self.unload_server(srv.slug)
+            return
         try:
             tools = await self._build_tools(srv)
             if not tools:
@@ -331,14 +394,18 @@ class MCPClientManager:
 
             if srv.transport == "stdio":
                 env = _build_mcp_env(srv.env_json)
-                conn = _StdioConnection(srv.command, env)
+                args = _parse_args_json(getattr(srv, "args_json", None))
+                conn = _StdioConnection(srv.command, env, args=args)
                 self._connections[srv.slug] = conn
                 result = await conn.list_tools()
                 mcp_tools: list[MCPTool] = result.tools
-                return [self._wrap_tool(t, conn) for t in mcp_tools]
+                wrapped = [self._wrap_tool(t, conn, srv.slug) for t in mcp_tools]
+                return self._guard_collisions(srv.slug, wrapped)
 
-            elif srv.transport == "sse":
-                return await self._build_sse_tools(srv)
+            elif srv.transport in ("sse", "legacy_sse"):
+                return self._guard_collisions(
+                    srv.slug, await self._build_sse_tools(srv)
+                )
             else:
                 logger.warning("Unknown MCP transport: %s", srv.transport)
                 return []
@@ -350,20 +417,24 @@ class MCPClientManager:
             )
             return []
 
-    def _wrap_tool(self, mcp_tool, conn: _StdioConnection):
-        """Enveloppe un MCPTool dans un LangChain StructuredTool (reconnexion auto)."""
+    def _wrap_tool(self, mcp_tool, conn: _StdioConnection, slug: str):
+        """Enveloppe un MCPTool dans un LangChain StructuredTool (reconnexion auto).
+
+        Le modèle voit le nom namespacé ``mcp__<slug>__<remote>`` ; l'appel
+        réel ré-utilise le nom distant brut (``remote_name``)."""
         from langchain_core.tools import StructuredTool
 
-        tool_name = mcp_tool.name
-        tool_desc = mcp_tool.description or tool_name
+        remote_name = mcp_tool.name
+        local_name = namespaced_tool_name(slug, remote_name)
+        tool_desc = mcp_tool.description or remote_name
         raw_schema = mcp_tool.inputSchema or {"type": "object", "properties": {}}
 
         # Build a Pydantic model from the JSON schema
-        args_schema = _json_schema_to_pydantic(tool_name, raw_schema)
+        args_schema = _json_schema_to_pydantic(local_name, raw_schema)
 
         async def _call(**kwargs) -> str:
             try:
-                result = await conn.call_tool(tool_name, kwargs)
+                result = await conn.call_tool(remote_name, kwargs)
                 # Extract text content from MCP result
                 if hasattr(result, "content") and result.content:
                     parts = []
@@ -375,10 +446,10 @@ class MCPClientManager:
                     return "\n".join(parts) if parts else str(result)
                 return str(result)
             except Exception as exc:
-                return f"Erreur MCP ({tool_name}): {exc}"
+                return f"Erreur MCP ({local_name}): {exc}"
 
         return StructuredTool(
-            name=tool_name,
+            name=local_name,
             description=tool_desc,
             coroutine=_call,
             args_schema=args_schema,
@@ -402,12 +473,13 @@ class MCPClientManager:
 
             # Build per-call reconnecting tools for SSE
             for mcp_tool in mcp_tools:
-                tool_name = mcp_tool.name
-                tool_desc = mcp_tool.description or tool_name
+                remote_name = mcp_tool.name
+                local_name = namespaced_tool_name(srv.slug, remote_name)
+                tool_desc = mcp_tool.description or remote_name
                 raw_schema = mcp_tool.inputSchema or {}
-                args_schema = _json_schema_to_pydantic(tool_name, raw_schema)
+                args_schema = _json_schema_to_pydantic(local_name, raw_schema)
 
-                async def _call(_url=url, _name=tool_name, **kwargs) -> str:
+                async def _call(_url=url, _name=remote_name, _local=local_name, **kwargs) -> str:
                     try:
                         async with sse_client(_url) as (r, w):
                             async with ClientSession(r, w) as sess:
@@ -419,10 +491,10 @@ class MCPClientManager:
                                     )
                         return str(result)
                     except Exception as exc:
-                        return f"Erreur MCP SSE ({_name}): {exc}"
+                        return f"Erreur MCP SSE ({_local}): {exc}"
 
                 tools.append(StructuredTool(
-                    name=tool_name,
+                    name=local_name,
                     description=tool_desc,
                     coroutine=_call,
                     args_schema=args_schema,
@@ -432,10 +504,56 @@ class MCPClientManager:
 
         return tools
 
+    def _guard_collisions(self, slug: str, tools: list) -> list:
+        """Écarte tout outil dont le nom local heurte un outil natif ou un
+        autre serveur MCP déjà chargé. Fail-closed : en cas de doute, on
+        n'expose PAS l'outil (mieux vaut un outil manquant qu'un natif
+        masqué)."""
+        if not tools:
+            return tools
+        native = _native_tool_names()
+        other_mcp: set[str] = set()
+        for other_slug, names in _MCP_TOOL_NAMES.items():
+            if other_slug != slug:
+                other_mcp |= names
+        kept = []
+        for t in tools:
+            if t.name in native:
+                logger.warning(
+                    "MCP %s: outil '%s' écarté — collision avec un outil natif",
+                    slug, t.name,
+                )
+                continue
+            if t.name in other_mcp:
+                logger.warning(
+                    "MCP %s: outil '%s' écarté — collision avec un autre serveur MCP",
+                    slug, t.name,
+                )
+                continue
+            kept.append(t)
+        return kept
+
 
 # ------------------------------------------------------------------ #
 # JSON Schema → Pydantic helper                                        #
 # ------------------------------------------------------------------ #
+
+def _parse_args_json(args_json: str | None) -> list[str] | None:
+    """Liste d'arguments structurée → ``list[str]`` (ou None = legacy).
+
+    Tout ce qui n'est pas une liste de chaînes est ignoré (retour None ⇒
+    le connecteur retombe sur shlex.split de la ligne de commande)."""
+    if not args_json:
+        return None
+    try:
+        parsed = json.loads(args_json)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("MCP args_json parse failed — falling back to command split")
+        return None
+    if isinstance(parsed, list) and all(isinstance(a, str) for a in parsed):
+        return parsed
+    logger.warning("MCP args_json is not a list[str] — ignoring")
+    return None
 
 def _json_schema_to_pydantic(tool_name: str, schema: dict):
     """Convertit un JSON Schema (dict) en modèle Pydantic dynamique."""

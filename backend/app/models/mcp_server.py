@@ -1,7 +1,7 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/app/models/mcp_server.py
-# @brief      MCPServer — configuration d'un serveur MCP externe
+# @brief      MCPServer / MCPTool / MCPToolPermission — config d'un serveur MCP
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
@@ -16,41 +16,172 @@
 #   - INTERDIT : Revente comme SaaS / service managé à des tiers.
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
-"""MCPServer — configuration d'un serveur MCP externe.
+"""Modèle de données du client MCP universel.
 
-Un serveur MCP expose des outils que l'agent peut utiliser.
-Deux transports sont supportés :
-  - stdio : un processus local lancé par ELY (ex: uvx mcp-server-filesystem /tmp)
-  - sse   : un serveur HTTP SSE distant (ex: http://localhost:3000/sse)
+Un serveur MCP expose des outils que l'agent peut utiliser. Transports :
+  - ``stdio``           : un processus local lancé par ELY
+  - ``streamable_http`` : un serveur HTTP distant (transport MCP moderne)
+  - ``legacy_sse``      : ancien transport HTTP+SSE, conservé en compatibilité
+                          (``sse`` reste accepté comme alias historique)
+
+Lot 0 (chantier client MCP, 2026-06) — ce module porte trois tables :
+
+* ``mcp_servers``           : la configuration + l'état de confiance/santé ;
+* ``mcp_tools``             : le catalogue des outils découverts (substrat du
+                              bridge, peuplé au Lot 2 / J3) ;
+* ``mcp_tool_permissions``  : l'ACL par utilisateur / serveur / outil
+                              (substrat de la policy, peuplé au Lot 3 / J4).
+
+Invariants Lot 0 :
+
+* les secrets (``env_json``) ne sont JAMAIS renvoyés en clair par l'API ;
+* le nom local d'un outil est namespacé ``mcp__<slug>__<tool>`` — aucun
+  outil MCP ne peut masquer un outil natif d'ELY ;
+* ``kill_switch`` coupe immédiatement un serveur, indépendamment du flag
+  global ``mcp_client_v2_enabled``.
 """
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
 
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# ── États de confiance ───────────────────────────────────────────────────
+# draft → quarantined → pending_approval → active   (↘ blocked)
+# Un serveur créé par un admin via l'UI existante démarre `active`
+# (l'admin EST l'approbateur). Le parcours quarantaine sert la voie
+# model-facing (J4) où le modèle PROPOSE et l'humain approuve.
+TRUST_STATES = ("draft", "quarantined", "pending_approval", "active", "blocked")
+
+# ── États de santé runtime ───────────────────────────────────────────────
+HEALTH_STATES = (
+    "unknown", "connecting", "healthy", "degraded",
+    "unauthorized", "offline", "blocked",
+)
+
+
 class MCPServer(Base):
     __tablename__ = "mcp_servers"
 
-    id:          Mapped[str]  = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name:        Mapped[str]  = mapped_column(String, nullable=False)         # display name
-    slug:        Mapped[str]  = mapped_column(String, unique=True, nullable=False)  # skill name in registry
-    transport:   Mapped[str]  = mapped_column(String, default="stdio")        # "stdio" | "sse"
-    # stdio: full shell command to launch the server, e.g. "uvx mcp-server-filesystem /tmp"
-    # sse:   leave blank
-    command:     Mapped[str | None] = mapped_column(Text, nullable=True)
-    # sse: base URL, e.g. "http://localhost:3000/sse"
-    url:         Mapped[str | None] = mapped_column(String, nullable=True)
-    # JSON dict of extra environment variables injected into the stdio process
-    env_json:    Mapped[str | None] = mapped_column(Text, nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)      # shown in admin UI
-    enabled:     Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at:  Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+    id:   Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False)              # display name
+    slug: Mapped[str] = mapped_column(String, unique=True, nullable=False)  # skill name in registry
+
+    # "stdio" | "streamable_http" | "legacy_sse" (alias historique : "sse")
+    transport: Mapped[str] = mapped_column(String, default="stdio")
+
+    # ── Cible ──────────────────────────────────────────────────────────
+    # stdio : `command` = exécutable (legacy : ligne complète) ; `args_json`
+    #         = liste d'arguments structurée. Si `args_json` est nul on
+    #         retombe sur shlex.split(command) (rétro-compat). Aucun shell.
+    command:   Mapped[str | None] = mapped_column(Text, nullable=True)
+    args_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cwd:       Mapped[str | None] = mapped_column(Text, nullable=True)
+    # remote : endpoint MCP (streamable_http / legacy_sse)
+    url:       Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Variables d'environnement du sous-processus stdio (objet JSON).
+    # NOTE : porte des secrets — JAMAIS renvoyé en clair par l'API (cf.
+    # router : on n'expose que les *noms* de clés). Migration du stockage
+    # vers le Vault / secret d'instance = Lot 3 (J4).
+    env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Portée & propriété ─────────────────────────────────────────────
+    # "instance" (admin, partagé) | "user" (perso, isolé à son propriétaire)
+    scope:         Mapped[str]        = mapped_column(String, default="instance")
+    owner_user_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True,
     )
+
+    # ── Activation & confiance ─────────────────────────────────────────
+    enabled:     Mapped[bool] = mapped_column(Boolean, default=True)
+    # Coupe-circuit par serveur : True ⇒ jamais chargé, déchargé au plus tôt.
+    # Toujours honoré, indépendamment du flag global.
+    kill_switch: Mapped[bool] = mapped_column(Boolean, default=False)
+    trust_state: Mapped[str]  = mapped_column(String, default="active")
+
+    # ── Handshake & santé (peuplés au Lot 1 / J2) ──────────────────────
+    protocol_version:  Mapped[str | None]      = mapped_column(String, nullable=True)
+    server_info_json:  Mapped[str | None]      = mapped_column(Text, nullable=True)
+    capabilities_json: Mapped[str | None]      = mapped_column(Text, nullable=True)
+    health_state:      Mapped[str]             = mapped_column(String, default="unknown")
+    last_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Code d'erreur stable, sans secret (cf. taxonomie MCP_*).
+    last_error_code:   Mapped[str | None]      = mapped_column(String, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class MCPTool(Base):
+    """Catalogue local d'un outil découvert sur un serveur MCP.
+
+    Substrat du bridge (Lot 2 / J3). Conserve le JSON Schema *complet* :
+    aucune simplification silencieuse. `local_name` est le nom namespacé
+    envoyé au modèle ; `remote_name` celui annoncé par le serveur.
+    """
+    __tablename__ = "mcp_tools"
+
+    id:        Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    server_id: Mapped[str] = mapped_column(
+        String, ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False,
+    )
+    remote_name: Mapped[str]        = mapped_column(String, nullable=False)
+    local_name:  Mapped[str]        = mapped_column(String, nullable=False, unique=True)
+    title:       Mapped[str | None] = mapped_column(String, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    input_schema_json:  Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_schema_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Annotations MCP = indications NON FIABLES du serveur (affichage only).
+    annotations_json:   Mapped[str | None] = mapped_column(Text, nullable=True)
+    definition_hash:    Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Découvert ≠ activé : un outil reste inerte tant qu'il n'est pas
+    # explicitement autorisé (config ≠ exécution).
+    enabled:    Mapped[bool] = mapped_column(Boolean, default=False)
+    # "low" | "medium" | "high" | "critical"
+    risk_level: Mapped[str]  = mapped_column(String, default="medium")
+
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class MCPToolPermission(Base):
+    """Règle d'autorisation par (utilisateur, serveur, outil).
+
+    Substrat de la policy (Lot 3 / J4). `tool_id` nul ⇒ règle au niveau du
+    serveur. `decision` ∈ {deny, ask, allow_task, allow} ; défaut `ask`
+    (fail-closed : rien n'est `allow` sans décision explicite).
+    """
+    __tablename__ = "mcp_tool_permissions"
+
+    id:      Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+    )
+    server_id: Mapped[str] = mapped_column(
+        String, ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False,
+    )
+    tool_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("mcp_tools.id", ondelete="CASCADE"), nullable=True,
+    )
+    decision:    Mapped[str]        = mapped_column(String, default="ask")
+    data_policy: Mapped[str | None] = mapped_column(String, nullable=True)
+    granted_by:  Mapped[str | None] = mapped_column(String, nullable=True)
+    granted_at:  Mapped[datetime]   = mapped_column(DateTime(timezone=True), default=_now)
+    expires_at:  Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

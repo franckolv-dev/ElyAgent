@@ -174,6 +174,16 @@ class Settings(BaseSettings):
     # Discord bot (optional — configurer via Admin ou .env)
     discord_bot_token: str = ""    # Bot Token from Discord Developer Portal
 
+    # ── Client MCP universel (chantier 2026-06) ───────────────────────────
+    # Interrupteur maître du sous-système « client MCP v2 » : outils
+    # model-facing (mcp_connect/discover/call), connexion autonome remote
+    # HTTPS, transport streamable_http, ACL/HITL par outil. OFF par défaut.
+    # Le Lot 0 (modèle de données, namespace mcp__slug__tool, redaction des
+    # secrets) est rétro-compatible et s'applique indépendamment du flag ;
+    # c'est la surface model-facing (J4+) qui le vérifie. Le `kill_switch`
+    # par serveur est TOUJOURS honoré, flag ON ou OFF.
+    mcp_client_v2_enabled: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
