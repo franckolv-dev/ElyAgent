@@ -44,6 +44,13 @@ from app.agent.helpers.message_sanitizer import _tool_result
 from app.agent.helpers.tool_history import _sanitize_tool_result_for_history
 from app.agent.state import AgentState
 from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS
+
+# Outils model-facing du client MCP : ils appliquent eux-mêmes ACL + politique
+# de données sortantes + HITL ciblé → on n'ajoute pas un HITL générique ici.
+_MCP_SELF_GATING_TOOLS: frozenset[str] = frozenset({
+    "mcp_list_servers", "mcp_discover_tools", "mcp_call_tool",
+    "mcp_connect", "mcp_propose_server", "mcp_search_registry",
+})
 from app.services.background_tasks import spawn
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
@@ -212,6 +219,20 @@ async def tool_node(state: AgentState) -> dict:
                 needs_hitl = await io_canary_requires_hitl(user_id, tool_name)
             except Exception as _canary_exc:
                 logger.debug("io canary check skipped: %s", _canary_exc)
+        # Client MCP universel (J4) — gating spécifique :
+        #  - un outil MCP d'instance (mcp__slug__tool, dans le registre) confirme
+        #    selon son risque/permission (ACL fine) ;
+        #  - les outils model-facing (mcp_connect/call/…) s'auto-gèrent en
+        #    interne (ACL + données sortantes + HITL ciblé) → pas de double prompt.
+        if tool_name.startswith("mcp__"):
+            try:
+                from app.services.mcp_acl import needs_hitl as _mcp_needs_hitl
+                if await _mcp_needs_hitl(user_id, tool_name):
+                    needs_hitl = True
+            except Exception as _mcp_exc:
+                logger.debug("MCP HITL check skipped: %s", _mcp_exc)
+        elif tool_name in _MCP_SELF_GATING_TOOLS:
+            needs_hitl = False
         # Task-scoped approval (2026-06-03) — checked FIRST so it bypasses
         # even LOCKED_HITL_TOOLS: it's the user's explicit, ephemeral,
         # per-conversation "allow for this task" consent. Keyed by tool_name

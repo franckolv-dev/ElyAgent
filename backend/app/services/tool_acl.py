@@ -38,13 +38,11 @@ _ROLE_TTL_S = 60.0
 
 
 def requires_admin(tool_name: str) -> bool:
-    if tool_name.startswith(_ADMIN_ONLY_PREFIXES):
-        return True
-    try:
-        from app.services.mcp_client import mcp_tool_names
-        return tool_name in mcp_tool_names()
-    except Exception:
-        return False
+    # Les outils MCP ne sont plus admin-only en bloc : ils passent par l'ACL
+    # fine ``mcp_acl`` (propriété + permission par outil), gérée séparément
+    # dans ``check_tool_access``. Ici on ne garde que les ressources
+    # d'instance non-MCP (hôtes SSH de l'admin).
+    return tool_name.startswith(_ADMIN_ONLY_PREFIXES)
 
 
 async def _is_admin(user_id: str) -> bool:
@@ -75,6 +73,13 @@ async def _is_admin(user_id: str) -> bool:
 async def check_tool_access(user_id: str, tool_name: str) -> str | None:
     """None si autorisé, sinon le message d'erreur à renvoyer comme
     résultat d'outil (l'agent le restitue à l'utilisateur)."""
+    # Outils MCP namespacés → ACL fine (propriété, permission, kill switch).
+    if tool_name.startswith("mcp__"):
+        from app.services.mcp_acl import check_mcp_tool_access
+        is_admin = await _is_admin(user_id)
+        decision = await check_mcp_tool_access(user_id, tool_name, is_admin=is_admin)
+        return None if decision.allowed else decision.reason
+
     if not requires_admin(tool_name):
         return None
     if await _is_admin(user_id):

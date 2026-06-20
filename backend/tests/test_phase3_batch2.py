@@ -201,15 +201,17 @@ async def admin_and_user():
         await db.commit()
 
 
-def test_requires_admin_covers_ssh_and_mcp(monkeypatch) -> None:
-    from app.services import mcp_client
+def test_requires_admin_covers_ssh_not_mcp(monkeypatch) -> None:
+    """J4 — les outils MCP ne sont plus admin-only EN BLOC : ils passent par
+    l'ACL fine ``mcp_acl`` (propriété + permission par outil), via
+    ``check_tool_access``, pas par ``requires_admin``. Ce dernier ne couvre
+    plus que les ressources d'instance non-MCP (hôtes SSH)."""
     from app.services.tool_acl import requires_admin
 
     assert requires_admin("ssh_execute") is True
     assert requires_admin("gmail_send_email") is False
-
-    monkeypatch.setitem(mcp_client._MCP_TOOL_NAMES, "test-srv", {"fetch_url"})
-    assert requires_admin("fetch_url") is True
+    # Un outil MCP namespacé n'est plus géré par requires_admin.
+    assert requires_admin("mcp__some_srv__fetch_url") is False
 
 
 @pytest.mark.asyncio

@@ -234,3 +234,168 @@ async def reload_mcp_server(server_id: str, _=Depends(require_admin)):
         return {"status": "reloaded", "tools": tool_names}
     except Exception as exc:
         raise HTTPException(500, f"Rechargement échoué : {exc}")
+
+
+# ------------------------------------------------------------------ #
+# Quarantaine / approbation (J5) — boucle du parcours de consentement #
+# ------------------------------------------------------------------ #
+
+
+@router.post("/mcp/servers/{server_id}/approve", response_model=MCPServerOut)
+async def approve_mcp_server(server_id: str, _=Depends(require_admin)):
+    """Approuve un serveur en quarantaine (ex. proposé par Ely) : confiance
+    active + activation + chargement réel. C'est ICI — et nulle part dans le
+    modèle — que s'autorise l'exécution d'un serveur local."""
+    async with async_session() as db:
+        srv = (await db.execute(select(MCPServer).where(MCPServer.id == server_id))).scalar_one_or_none()
+        if not srv:
+            raise HTTPException(404, "Serveur MCP introuvable.")
+        srv.trust_state = "active"
+        srv.enabled = True
+        srv.kill_switch = False
+        await db.commit()
+        await db.refresh(srv)
+
+    from app.services.mcp_client import get_mcp_client_manager
+    try:
+        await get_mcp_client_manager().load_server(srv)
+    except Exception as exc:
+        logger.warning("MCP server approved but failed to load: %s", exc)
+    return _decorate_with_runtime(srv)
+
+
+@router.post("/mcp/servers/{server_id}/quarantine", response_model=MCPServerOut)
+async def quarantine_mcp_server(server_id: str, _=Depends(require_admin)):
+    """Remet un serveur en quarantaine : déchargé, désactivé, non approuvé."""
+    async with async_session() as db:
+        srv = (await db.execute(select(MCPServer).where(MCPServer.id == server_id))).scalar_one_or_none()
+        if not srv:
+            raise HTTPException(404, "Serveur MCP introuvable.")
+        srv.trust_state = "quarantined"
+        srv.enabled = False
+        await db.commit()
+        await db.refresh(srv)
+
+    from app.services.mcp_client import get_mcp_client_manager
+    await get_mcp_client_manager().unload_server(srv.slug)
+    return _decorate_with_runtime(srv)
+
+
+class MCPToolOut(BaseModel):
+    id: str
+    remote_name: str
+    local_name: str
+    description: Optional[str]
+    risk_level: str
+    enabled: bool
+    model_config = {"from_attributes": True}
+
+
+@router.get("/mcp/servers/{server_id}/tools", response_model=list[MCPToolOut])
+async def list_mcp_server_tools(server_id: str, _=Depends(require_admin)):
+    """Catalogue des outils découverts d'un serveur (nom, risque, activation)."""
+    from app.models.mcp_server import MCPTool
+
+    async with async_session() as db:
+        rows = (await db.execute(
+            select(MCPTool).where(MCPTool.server_id == server_id).order_by(MCPTool.remote_name)
+        )).scalars().all()
+    return [MCPToolOut.model_validate(r) for r in rows]
+
+
+class MCPToolUpdate(BaseModel):
+    enabled: bool
+
+
+@router.patch("/mcp/servers/{server_id}/tools/{tool_id}", response_model=MCPToolOut)
+async def update_mcp_tool(server_id: str, tool_id: str, body: MCPToolUpdate, _=Depends(require_admin)):
+    """Active/désactive un outil du catalogue (découvert ≠ activé)."""
+    from app.models.mcp_server import MCPTool
+
+    async with async_session() as db:
+        row = (await db.execute(
+            select(MCPTool).where(MCPTool.id == tool_id, MCPTool.server_id == server_id)
+        )).scalar_one_or_none()
+        if not row:
+            raise HTTPException(404, "Outil MCP introuvable.")
+        row.enabled = body.enabled
+        await db.commit()
+        await db.refresh(row)
+    return MCPToolOut.model_validate(row)
+
+
+class MCPImportBody(BaseModel):
+    # Format `mcpServers` (fichier de config standard MCP).
+    config: dict
+
+
+@router.post("/mcp/import")
+async def import_mcp_servers(body: MCPImportBody, _=Depends(require_admin)):
+    """Importe un fichier ``mcpServers`` : chaque entrée est créée EN QUARANTAINE
+    (jamais lancée/activée automatiquement) — l'admin approuve ensuite."""
+    import json as _json
+
+    servers = body.config.get("mcpServers")
+    if not isinstance(servers, dict) or not servers:
+        raise HTTPException(400, "Config invalide : clé « mcpServers » (objet) attendue.")
+
+    created: list[str] = []
+    async with async_session() as db:
+        for name, spec in servers.items():
+            if not isinstance(spec, dict):
+                continue
+            slug = _slugify_unique_sync(name, db)
+            transport = "streamable_http" if spec.get("url") else "stdio"
+            env = spec.get("env")
+            srv = MCPServer(
+                name=name, slug=slug, transport=transport,
+                command=spec.get("command"),
+                args_json=_json.dumps(spec["args"]) if isinstance(spec.get("args"), list) else None,
+                url=spec.get("url"),
+                env_json=_json.dumps(env) if isinstance(env, dict) else None,
+                enabled=False, trust_state="quarantined", health_state="unknown",
+                scope="instance",
+            )
+            db.add(srv)
+            await db.flush()
+            created.append(srv.id)
+        await db.commit()
+    return {"status": "imported", "count": len(created), "ids": created}
+
+
+def _slugify_unique_sync(name: str, db) -> str:
+    """Slug kebab unique (suffixe court aléatoire pour éviter une 2e requête)."""
+    import re
+    import uuid as _uuid
+    root = re.sub(r"[^a-z0-9]+", "-", (name or "mcp").lower()).strip("-")[:48] or "mcp"
+    return f"{root}-{_uuid.uuid4().hex[:6]}"
+
+
+# ------------------------------------------------------------------ #
+# Registre MCP (J6) — découverte uniquement, zéro confiance implicite #
+# ------------------------------------------------------------------ #
+
+
+class RegistryEntryOut(BaseModel):
+    name: str
+    description: str
+    kind: str
+    url: Optional[str]
+    command: Optional[str]
+    args: list[str]
+
+
+@router.get("/mcp/registry/search", response_model=list[RegistryEntryOut])
+async def search_mcp_registry(q: str, _=Depends(require_admin)):
+    """Cherche des serveurs dans le registre MCP officiel. Renvoie des
+    SUGGESTIONS — la connexion reste soumise au parcours de consentement."""
+    from app.services.mcp_registry import search_registry
+
+    entries = await search_registry(q, limit=10)
+    return [
+        RegistryEntryOut(
+            name=e.name, description=e.description, kind=e.kind,
+            url=e.url, command=e.command, args=list(e.args),
+        )
+        for e in entries
+    ]
