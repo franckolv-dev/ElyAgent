@@ -131,6 +131,15 @@ async def tool_node(state: AgentState) -> dict:
     except Exception as _lt_ctx_exc:  # noqa: BLE001
         logger.debug("learned-tool ContextVar set skipped: %s", _lt_ctx_exc)
 
+    # Substrat de confiance (P1/J4) — corrélation des événements typés du tour.
+    try:
+        from app.config import get_settings as _get_settings
+        if _get_settings().trust_substrate_enabled:
+            from app.services.event_envelope import CORRELATION_ID
+            CORRELATION_ID.set(_conv_id or f"turn:{id(last_message)}")
+    except Exception as _corr_exc:  # noqa: BLE001
+        logger.debug("correlation id set skipped: %s", _corr_exc)
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
         # Deanonymize tool args BEFORE any other processing so HITL preview,
@@ -176,6 +185,19 @@ async def tool_node(state: AgentState) -> dict:
         action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
         tc_id = tool_call["id"]
 
+        # Substrat de confiance (P1/J2) — empreinte du plan d'action canonique.
+        # Calculée sur display_args (AVANT résolution vault:// → pas de secret),
+        # liée à l'approbation, et re-vérifiée juste avant l'exécution
+        # (fail-closed). Devient pleinement protectrice quand approbation et
+        # exécution sont séparées dans le temps (file durable / Intent Escrow).
+        _action_fp = None
+        from app.config import get_settings as _get_settings
+        if _get_settings().trust_substrate_enabled:
+            from app.services.action_plan import build_action_plan, fingerprint as _action_fingerprint
+            _action_fp = _action_fingerprint(
+                build_action_plan(tool_name, display_args, user_id, _conv_id)
+            )
+
         # ── Vault: resolve vault://label references in args ───────────────
         vault_refs_found = any(
             isinstance(v, str) and v.startswith("vault://")
@@ -204,7 +226,16 @@ async def tool_node(state: AgentState) -> dict:
         # call. action_desc stays full for the HITL prompt + logs.
         _crit_args = {k: v for k, v in display_args.items() if k not in INSTRUCTION_ARG_KEYS}
         _crit_desc = f"Outil: {tool_name} | Arguments: {json.dumps(_crit_args, ensure_ascii=False)}"
-        needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
+        # Substrat de confiance (P1/J1) — derrière le flag, la décision HITL de
+        # base est pilotée par le CapabilityManifest (approval: always|risk_based|
+        # never), qui REPRODUIT à l'identique la règle actuelle pour tout outil
+        # connu. Flag OFF → comportement historique strictement préservé.
+        from app.config import get_settings as _get_settings
+        if _get_settings().trust_substrate_enabled:
+            from app.services.capability_manifest import manifest_requires_hitl
+            needs_hitl = manifest_requires_hitl(tool_name, _crit_desc, sf.is_critical)
+        else:
+            needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
         # Sprint 4b V3 — période canary des outils io (design §5.6, v1.15.0) :
         # les N premières invocations d'un outil io auto-généré (egress réel,
         # nouveau chemin de code) passent par HITL avant que l'outil ne soit
@@ -272,6 +303,11 @@ async def tool_node(state: AgentState) -> dict:
                 description=action_desc,
                 user_id=user_id,
             )
+            # P1/J4 — événement d'approbation (décision seule, aucun contenu).
+            if _action_fp is not None:
+                from app.services.event_envelope import EventKind, emit
+                emit(EventKind.APPROVAL, user_id=user_id, capability_id=tool_name,
+                     fingerprint=_action_fp, outcome=str(decision))
             if decision == "ban":
                 rule = f"INTERDICTION PERMANENTE: {action_desc}"
                 if reason:
@@ -363,6 +399,39 @@ async def tool_node(state: AgentState) -> dict:
             results.append(_tool_result(_acl_refusal, tc_id))
             continue
 
+        # P1/J2 — re-vérification de l'empreinte juste avant exécution :
+        # l'action exécutée doit être EXACTEMENT celle approuvée (fail-closed).
+        if _action_fp is not None:
+            from app.services.action_plan import build_action_plan, fingerprint as _action_fingerprint
+            _now_fp = _action_fingerprint(
+                build_action_plan(tool_name, display_args, user_id, _conv_id)
+            )
+            if _now_fp != _action_fp:
+                logger.warning(
+                    "[trust] empreinte d'action divergente — exécution annulée (tool=%s)",
+                    tool_name,
+                )
+                results.append(_tool_result(
+                    "⛔ L'action a changé depuis ton approbation — exécution annulée. "
+                    "Re-demande une validation.", tc_id,
+                ))
+                continue
+
+        # P1/J3 — idempotence : une action « supported » identique déjà réussie
+        # dans la fenêtre TTL renvoie son résultat mémorisé, sans ré-exécuter
+        # (« jamais deux fois par accident »). No-op pour les outils non
+        # idempotents (le manifeste décide). Gates HITL/ACL déjà passées.
+        if _action_fp is not None:
+            from app.services.idempotency_store import check_idempotent
+            _cached = await check_idempotent(tool_name, _action_fp)
+            if _cached is not None:
+                logger.info("[trust] idempotence — résultat mémorisé renvoyé (tool=%s)", tool_name)
+                from app.services.event_envelope import EventKind, emit
+                emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
+                     fingerprint=_action_fp, outcome="idempotent_cache")
+                results.append(_tool_result(_cached, tc_id))
+                continue
+
         tool = tool_map.get(tool_name)
         if tool:
             try:
@@ -400,8 +469,24 @@ async def tool_node(state: AgentState) -> dict:
                     # l'agent — retour terrain 2026-06-11).
                     _safe_result = _vault_sf.anonymize(_safe_result, ner_detection=False)
                 results.append(_tool_result(_safe_result, tc_id))
+                # P1/J3 — mémorise le résultat d'une action « supported » réussie
+                # (no-op si le manifeste ne déclare pas l'idempotence).
+                if _action_fp is not None:
+                    from app.services.idempotency_store import remember
+                    await remember(tool_name, _action_fp, user_id, _safe_result)
+                    # P1/J4 — événement outil (succès, latence — aucun contenu).
+                    from app.services.event_envelope import EventKind, emit
+                    emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
+                         fingerprint=_action_fp, outcome="success",
+                         latency_ms=round((_tt.monotonic() - _ts) * 1000, 1))
             except Exception as exc:
                 logger.warning("Tool %s failed: %s", tool_name, exc)
+                # P1/J4 — événement outil (erreur, type seulement — pas de message).
+                if _action_fp is not None:
+                    from app.services.event_envelope import EventKind, emit
+                    emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
+                         fingerprint=_action_fp, outcome="error",
+                         attributes={"error_type": type(exc).__name__})
                 # Sprint 3.7 Jalon 2 — persist tool exception as learning signal
                 try:
                     import traceback as _tb

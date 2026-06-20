@@ -194,6 +194,20 @@ class Settings(BaseSettings):
     # fait QUE de la découverte — aucune connexion, zéro confiance implicite.
     mcp_registry_url: str = "https://registry.modelcontextprotocol.io"
 
+    # ── Substrat de confiance (chantier P1, 2026-06) ──────────────────────
+    # Interrupteur maître du substrat : CapabilityManifest, ActionPlan +
+    # empreinte, idempotence, EventEnvelope. OFF par défaut. Tant qu'il est
+    # OFF, le comportement actuel (HITL/ACL) est strictement préservé ; le
+    # gate HITL ne lit le manifeste que lorsqu'il est ON, en reproduisant à
+    # l'identique la décision actuelle pour tout outil connu.
+    trust_substrate_enabled: bool = False
+    # Fenêtre d'idempotence (J3) : une action « supported » identique re-jouée
+    # dans ce délai renvoie le résultat mémorisé au lieu de ré-exécuter.
+    idempotency_ttl_seconds: int = 600
+    # Export OpenTelemetry des événements typés (J4). Le bus fonctionne sans —
+    # l'exporter ne s'active que si ce flag est ON ET le SDK opentelemetry présent.
+    otel_enabled: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

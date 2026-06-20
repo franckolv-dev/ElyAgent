@@ -57,6 +57,7 @@ from app.models.community_skill import CommunitySkill
 from app.models.feedback import Feedback
 from app.models.llm_instance import LLMInstance
 from app.models.mcp_server import MCPServer, MCPTool, MCPToolPermission
+from app.models.idempotency import IdempotencyRecord
 from app.models.note import Note
 from app.models.scheduled_task import ScheduledTask
 from app.models.skill_preference import SkillPreference
@@ -79,7 +80,7 @@ __all__ = [
     "IoToolDispatch",
     # Newly explicit (side-effect imports promoted to first-class)
     "ArenaMatch", "ArenaElo", "CommunitySkill", "Feedback", "LLMInstance",
-    "MCPServer", "MCPTool", "MCPToolPermission",
+    "MCPServer", "MCPTool", "MCPToolPermission", "IdempotencyRecord",
     "Note", "ScheduledTask", "SkillPreference", "SystemConfig",
     "UsageLog", "UserMemoryLog", "UserProfile", "VaultConfig", "VaultEntry",
     "WatchTask",
