@@ -338,10 +338,18 @@ async def tool_node(state: AgentState) -> dict:
                 # button "Toujours autoriser" sends this decision ; the
                 # backward-compatible "Toujours interdire" sends "ban".
                 try:
-                    from app.services.hitl_preferences import set_user_preference
-                    await set_user_preference(
-                        user_id, tool_name, requires_confirmation=False,
-                    )
+                    if tool_name.startswith("mcp__"):
+                        # Outil MCP : le gate lit mcp_tool_permissions, PAS
+                        # hitl_preferences → on persiste là (sinon « Toujours
+                        # autoriser » ne tenait jamais, ré-demande à chaque appel,
+                        # même d'un run à l'autre — bug terrain Franck 2026-06-20).
+                        from app.services.mcp_acl import set_permission
+                        await set_permission(user_id, tool_name, "allow")
+                    else:
+                        from app.services.hitl_preferences import set_user_preference
+                        await set_user_preference(
+                            user_id, tool_name, requires_confirmation=False,
+                        )
                     logger.info(
                         "HITL: tool %s now always-allowed for user %s",
                         tool_name, user_id[:8],

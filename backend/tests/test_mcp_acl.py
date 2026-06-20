@@ -38,7 +38,7 @@ async def make_server():
     created: list[str] = []
 
     async def _make(*, scope, owner=None, trust="active", kill=False,
-                    risk="medium", remote="do_thing"):
+                    risk="medium", remote="do_thing", annotations=None):
         if owner:
             await _ensure_user(owner)
         slug = f"acl_{uuid.uuid4().hex[:8]}"
@@ -50,8 +50,12 @@ async def make_server():
             await db.commit()
             await db.refresh(srv)
             local = f"mcp__{slug}__{remote}"
-            tool = MCPTool(server_id=srv.id, remote_name=remote, local_name=local,
-                           risk_level=risk, enabled=False)
+            import json as _json
+            tool = MCPTool(
+                server_id=srv.id, remote_name=remote, local_name=local,
+                risk_level=risk, enabled=False,
+                annotations_json=_json.dumps(annotations) if annotations else None,
+            )
             db.add(tool)
             await db.commit()
             created.append(srv.id)
@@ -137,3 +141,65 @@ async def test_explicit_allow_skips_hitl(make_server):
 async def test_unknown_tool_denied():
     d = await check_mcp_tool_access("u", "mcp__nope__ghost")
     assert d.allowed is False
+
+
+# ── Consultation (lecture seule) → pas de HITL (demande Franck 2026-06-20) ────
+@pytest.mark.asyncio
+async def test_readonly_tool_skips_hitl_even_if_medium(make_server):
+    """readOnlyHint=true + risque 'medium' (ex. param 'query' d'une recherche)
+    → consultation, aucune friction HITL."""
+    owner = f"u_{uuid.uuid4().hex[:6]}"
+    _srv, local = await make_server(
+        scope="user", owner=owner, risk="medium",
+        remote="search_datasets", annotations={"readOnlyHint": True},
+    )
+    d = await check_mcp_tool_access(owner, local)
+    assert d.allowed is True
+    assert d.needs_hitl is False
+
+
+@pytest.mark.asyncio
+async def test_low_risk_skips_hitl(make_server):
+    owner = f"u_{uuid.uuid4().hex[:6]}"
+    _srv, local = await make_server(scope="user", owner=owner, risk="low", remote="get_info")
+    d = await check_mcp_tool_access(owner, local)
+    assert d.needs_hitl is False
+
+
+@pytest.mark.asyncio
+async def test_high_risk_always_hitl_even_if_readonly(make_server):
+    """Anti tool-poisoning : un nom dangereux (high/critical) NE peut PAS être
+    rétrogradé par un readOnlyHint mensonger du serveur."""
+    owner = f"u_{uuid.uuid4().hex[:6]}"
+    _srv, local = await make_server(
+        scope="user", owner=owner, risk="critical",
+        remote="delete_everything", annotations={"readOnlyHint": True},
+    )
+    d = await check_mcp_tool_access(owner, local)
+    assert d.allowed is True
+    assert d.needs_hitl is True
+
+
+@pytest.mark.asyncio
+async def test_medium_write_still_hitl(make_server):
+    """Outil 'medium' sans readOnlyHint (écriture/sensible) → confirmation."""
+    owner = f"u_{uuid.uuid4().hex[:6]}"
+    _srv, local = await make_server(scope="user", owner=owner, risk="medium", remote="do_thing")
+    d = await check_mcp_tool_access(owner, local)
+    assert d.needs_hitl is True
+
+
+@pytest.mark.asyncio
+async def test_set_permission_persists_allow(make_server):
+    """« Toujours autoriser » écrit dans mcp_tool_permissions → ne re-demande plus
+    (le bug : ça allait dans hitl_preferences, ignoré par le gate MCP)."""
+    from app.services.mcp_acl import set_permission
+
+    owner = f"u_{uuid.uuid4().hex[:6]}"
+    _srv, local = await make_server(scope="user", owner=owner, risk="medium", remote="do_thing")
+    # avant : medium write → HITL
+    assert (await check_mcp_tool_access(owner, local)).needs_hitl is True
+    # l'utilisateur clique « Toujours autoriser »
+    assert await set_permission(owner, local, "allow") is True
+    # après : plus de confirmation, et ça persiste (nouvelle session DB)
+    assert (await check_mcp_tool_access(owner, local)).needs_hitl is False
