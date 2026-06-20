@@ -134,23 +134,39 @@ async def test_user_requires_hitl_honours_skip_preference(_seeded_user_for_pref)
 
 
 @pytest.mark.asyncio
-async def test_dangerous_tools_honor_skip_preference(_seeded_user_for_pref) -> None:
+async def test_dangerous_tools_honor_skip_preference() -> None:
     """Depuis 2026-06-19 (demande Franck) : les outils dangereux (ex-verrouillés)
     sont ON par défaut MAIS désactivables — la préférence est honorée. Avant, un
     outil verrouillé renvoyait True en dur (« Autoriser définitivement »
-    inopérant pour le nettoyage de mails planifié)."""
+    inopérant pour le nettoyage de mails planifié).
+
+    Note : user UNIQUE par run. Avant, ce test partageait ``pref_test_u`` et
+    posait une préférence persistante en base ; comme ``next(iter(frozenset))``
+    dépend du hash seed du process, un run suivant pouvait re-piocher le même
+    outil et casser l'assertion « défaut = True » (test flaky ~1/3). Un user
+    vierge garantit la précondition « aucune préférence »."""
+    import uuid
+
+    from app.database import async_session, init_db
+    from app.models.user import User
     from app.services.hitl_preferences import (
         LOCKED_HITL_TOOLS,
         set_user_preference,
         user_requires_hitl,
     )
 
+    await init_db()
+    uid = f"pref_dang_{uuid.uuid4().hex}"
+    async with async_session() as db:
+        db.add(User(id=uid, username=uid, email=f"{uid}@test.local", hashed_password="x"))
+        await db.commit()
+
     dangerous = next(iter(LOCKED_HITL_TOOLS))
     # défaut sûr : aucune préférence → confirmation requise
-    assert await user_requires_hitl("pref_test_u", dangerous) is True
+    assert await user_requires_hitl(uid, dangerous) is True
     # l'utilisateur désactive explicitement → désormais honoré (= le fix)
-    await set_user_preference("pref_test_u", dangerous, requires_confirmation=False)
-    assert await user_requires_hitl("pref_test_u", dangerous) is False
+    await set_user_preference(uid, dangerous, requires_confirmation=False)
+    assert await user_requires_hitl(uid, dangerous) is False
 
 
 # ── nodes.py source-grep guards ──────────────────────────────────────
