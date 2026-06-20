@@ -114,13 +114,91 @@ async def check_mcp_tool_access(
         if not is_admin and (perm is None or perm.decision == "deny"):
             return _deny("serveur MCP d'instance réservé à l'administrateur")
 
-    decision = perm.decision if perm is not None else "ask"
-    if decision == "deny":
+    explicit = perm.decision if perm is not None else None
+    if explicit == "deny":
         return _deny("accès refusé par une règle d'autorisation")
 
     risk = getattr(tool, "risk_level", "medium") or "medium"
-    needs_hitl = (decision == "ask") or (risk in ("high", "critical") and decision != "allow")
+    # « Consultation » = lecture seule (annotation readOnlyHint) OU risque local
+    # « low », et JAMAIS un outil dont le nom évoque une action dangereuse
+    # (high/critical). Une consultation ne modifie rien chez Ely → pas de HITL
+    # par défaut (demande Franck 2026-06-20 : valider 10× pour lire des données
+    # publiques n'avait aucun intérêt). Le garde des données SORTANTES
+    # (secrets/PII) reste appliqué à l'exécution, indépendamment du HITL.
+    consultation = (risk not in ("high", "critical")) and (
+        _read_only_hint(tool) or risk == "low"
+    )
+    if explicit in ("allow", "allow_task"):
+        needs_hitl = False
+    elif risk in ("high", "critical"):
+        needs_hitl = True                 # action sensible → toujours confirmer
+    elif consultation:
+        needs_hitl = False                # lecture → aucune friction
+    else:
+        needs_hitl = True                 # medium « écriture » sans règle → confirmer
     return AclDecision(True, needs_hitl, None, risk)
+
+
+def _read_only_hint(tool) -> bool:
+    """True si l'outil déclare ``annotations.readOnlyHint == true``.
+
+    Indice fourni par le SERVEUR — non fiable seul (un serveur peut mentir).
+    N'est consulté qu'APRÈS avoir écarté les outils localement classés
+    high/critical : il ne peut donc JAMAIS rétrograder un outil dangereux,
+    seulement éviter le HITL sur une vraie lecture (cf. tool poisoning).
+    """
+    raw = getattr(tool, "annotations_json", None)
+    if not raw:
+        return False
+    try:
+        import json
+        ann = json.loads(raw) if isinstance(raw, str) else raw
+        return bool(isinstance(ann, dict) and ann.get("readOnlyHint") is True)
+    except Exception:
+        return False
+
+
+async def set_permission(user_id: str, local_name: str, decision: str = "allow") -> bool:
+    """Persiste une règle d'autorisation MCP par (user, serveur, outil).
+
+    Backe « Toujours autoriser » côté HITL pour les outils MCP : écrit dans
+    ``mcp_tool_permissions`` — et NON dans ``hitl_preferences``, que le gate MCP
+    ne lit pas (c'était le bug : « Toujours autoriser » ne persistait jamais).
+    Never raises — renvoie False en cas d'échec.
+    """
+    if not user_id or not local_name:
+        return False
+    tool, server = await _resolve(local_name)
+    if tool is None or server is None:
+        return False
+    try:
+        from sqlalchemy import select
+
+        from app.database import async_session
+        from app.models.mcp_server import MCPToolPermission
+
+        async with async_session() as db:
+            existing = (await db.execute(
+                select(MCPToolPermission).where(
+                    MCPToolPermission.user_id == user_id,
+                    MCPToolPermission.server_id == server.id,
+                    MCPToolPermission.tool_id == tool.id,
+                )
+            )).scalar_one_or_none()
+            if existing is not None:
+                existing.decision = decision
+            else:
+                db.add(MCPToolPermission(
+                    user_id=user_id, server_id=server.id, tool_id=tool.id,
+                    decision=decision, granted_by=user_id,
+                ))
+            await db.commit()
+        return True
+    except Exception as exc:
+        logger.warning(
+            "set_permission MCP a échoué pour %s/%s: %s", user_id[:8], local_name, exc,
+        )
+        return False
 
 
 async def _resolve_admin(user_id: str, is_admin: bool | None) -> bool:
