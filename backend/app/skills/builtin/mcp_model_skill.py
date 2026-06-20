@@ -318,6 +318,36 @@ async def mcp_connect(
 
 
 @tool
+async def mcp_search_registry(query: str) -> str:
+    """Cherche des serveurs dans le registre MCP officiel (découverte). Renvoie
+    des SUGGESTIONS — ça ne connecte rien et n'accorde aucune confiance. Pour
+    utiliser une suggestion : mcp_connect(url) pour un serveur distant, ou
+    mcp_propose_server(name, command, args) pour un serveur local (le second
+    passe par une approbation humaine)."""
+    if not _flag_on():
+        return _OFF_MSG
+    from app.services.mcp_registry import search_registry
+
+    entries = await search_registry(query, limit=8)
+    if not entries:
+        return f"Aucun serveur trouvé dans le registre pour « {query} »."
+    lines = [f"Suggestions du registre MCP pour « {query} » (non vérifiées) :"]
+    for e in entries:
+        if e.kind == "remote":
+            how = f"mcp_connect(\"{e.url}\")"
+        elif e.kind == "local":
+            how = f"mcp_propose_server(\"{e.name}\", \"{e.command}\", {e.args})"
+        else:
+            how = "(config indisponible)"
+        lines.append(f"  • {e.name} — {e.description}\n    → {how}")
+    lines.append(
+        "\nRappel : une suggestion du registre n'est pas un gage de confiance. "
+        "La connexion reste soumise à la garde réseau et à ton approbation."
+    )
+    return "\n".join(lines)
+
+
+@tool
 async def mcp_propose_server(
     name: str,
     command: str,
@@ -364,7 +394,7 @@ async def mcp_propose_server(
 # bypass du HITL générique, car ces outils s'auto-gèrent en interne).
 MCP_MODEL_TOOL_NAMES = frozenset({
     "mcp_list_servers", "mcp_discover_tools", "mcp_call_tool",
-    "mcp_connect", "mcp_propose_server",
+    "mcp_connect", "mcp_propose_server", "mcp_search_registry",
 })
 
 
@@ -383,7 +413,7 @@ def _register() -> None:
         domains=[Domain.UNIVERSAL],
         tools=[
             mcp_list_servers, mcp_discover_tools, mcp_call_tool,
-            mcp_connect, mcp_propose_server,
+            mcp_connect, mcp_propose_server, mcp_search_registry,
         ],
     ))
 

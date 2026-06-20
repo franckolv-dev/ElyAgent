@@ -369,3 +369,33 @@ def _slugify_unique_sync(name: str, db) -> str:
     import uuid as _uuid
     root = re.sub(r"[^a-z0-9]+", "-", (name or "mcp").lower()).strip("-")[:48] or "mcp"
     return f"{root}-{_uuid.uuid4().hex[:6]}"
+
+
+# ------------------------------------------------------------------ #
+# Registre MCP (J6) — découverte uniquement, zéro confiance implicite #
+# ------------------------------------------------------------------ #
+
+
+class RegistryEntryOut(BaseModel):
+    name: str
+    description: str
+    kind: str
+    url: Optional[str]
+    command: Optional[str]
+    args: list[str]
+
+
+@router.get("/mcp/registry/search", response_model=list[RegistryEntryOut])
+async def search_mcp_registry(q: str, _=Depends(require_admin)):
+    """Cherche des serveurs dans le registre MCP officiel. Renvoie des
+    SUGGESTIONS — la connexion reste soumise au parcours de consentement."""
+    from app.services.mcp_registry import search_registry
+
+    entries = await search_registry(q, limit=10)
+    return [
+        RegistryEntryOut(
+            name=e.name, description=e.description, kind=e.kind,
+            url=e.url, command=e.command, args=list(e.args),
+        )
+        for e in entries
+    ]
