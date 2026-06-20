@@ -69,6 +69,7 @@ class _FakeMCPTool:
 class _FakeListResult:
     def __init__(self, tools):
         self.tools = tools
+        self.nextCursor = None
 
 
 class _FakeSession:
@@ -84,7 +85,7 @@ class _FakeSession:
     async def initialize(self):
         pass
 
-    async def list_tools(self):
+    async def list_tools(self, cursor=None):
         return _FakeListResult([
             _FakeMCPTool("search", "Search docs",
                          {"type": "object", "properties": {"q": {"type": "string"}},
