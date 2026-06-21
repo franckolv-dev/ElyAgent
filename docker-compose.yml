@@ -132,7 +132,17 @@ services:
     ports:
       - "${ELY_HTTP_PORT:-80}:80"
     volumes:
-      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # On monte le DOSSIER config/nginx/ (pas le fichier seul). Un bind-mount
+      # de fichier unique épingle l'INODE du fichier au démarrage du conteneur :
+      # quand `git pull` (ou un éditeur) remplace le fichier par write-temp +
+      # rename atomique, le nouvel inode n'est PAS vu par le conteneur, qui
+      # continue à servir l'ANCIENNE config (502 / `nginx -s reload` lisait une
+      # version périmée, parfois tronquée : « unexpected end of file …:84 »).
+      # Monter le dossier fait résoudre le fichier par CHEMIN à chaque accès →
+      # un `nginx -s reload` (ou recreate) voit toujours la version courante.
+      # Le dossier ne contient QUE des *.conf (chargés par include conf.d/*.conf) ;
+      # hosts.yaml / providers.yaml restent dans config/ et ne sont pas exposés.
+      - ./config/nginx:/etc/nginx/conf.d:ro
     depends_on:
       - frontend
       - backend
@@ -169,14 +179,34 @@ services:
   # native route to the other services), with this proxy as its ONLY way
   # out. The proxy is dual-homed: on `sandbox-net` to receive sandbox
   # traffic, on `cyberentity-net` to forward to the upstream Internet.
-  # Allow-list is per-domain via `dstdomain` ACLs in sandbox/squid.conf.
+  # Allow-list is per-domain via `dstdomain` ACLs in sandbox/squid/squid.conf.
   # ─────────────────────────────────────────────────────────────────────────
   egress-proxy:
     image: ubuntu/squid:6.6-24.04_beta
     restart: unless-stopped
     container_name: ely-egress-proxy
+    # On monte le DOSSIER sandbox/squid/ (pas le fichier seul) et on pointe
+    # Squid dessus via `-f`. Un bind-mount de fichier unique épingle l'INODE
+    # du fichier au démarrage du conteneur : quand `git pull` (ou un éditeur)
+    # remplace squid.conf par write-temp + rename atomique, le nouvel inode
+    # n'est PAS vu par le conteneur, qui reste collé à l'ANCIENNE conf — un
+    # `squid -k reconfigure` relirait alors une version périmée (même piège
+    # que nginx, cf. le mount config/nginx/ plus haut). Monter le dossier fait
+    # résoudre le fichier par CHEMIN à chaque lecture → un recreate (ou un
+    # reconfigure) voit toujours la version courante.
+    #   • Sous-dossier DÉDIÉ : sandbox/ contient aussi Dockerfile, runner/,
+    #     tests… — on ne monte donc PAS tout sandbox/. Le dossier squid/ ne
+    #     contient QUE squid.conf, rien d'autre n'entre dans le conteneur.
+    #   • On NE monte PAS sur /etc/squid (qui garde conf.d/ + errorpage.css de
+    #     l'image) : on l'expose sous /etc/squid/ely/ et on dit à Squid de
+    #     lire là via `command` (l'image fait `squid "$@"`, cf. son
+    #     entrypoint.sh — fournir les args via command est l'usage prévu).
+    #     `-NYC` = le comportement par défaut de l'image (foreground), conservé.
+    # Pour APPLIQUER un changement de squid.conf : `make egress-reload`
+    # (= recreate). NE PAS compter sur un `squid -k reconfigure` seul.
+    command: ["-f", "/etc/squid/ely/squid.conf", "-NYC"]
     volumes:
-      - ./sandbox/squid.conf:/etc/squid/squid.conf:ro
+      - ./sandbox/squid:/etc/squid/ely:ro
     networks:
       # The sandbox lives here. `internal: true` (see below) means the
       # ONLY way out for anything on this network is through this proxy.

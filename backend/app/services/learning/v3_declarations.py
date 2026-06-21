@@ -56,14 +56,14 @@ BAKED_LIBS: Final[frozenset[str]] = frozenset({
 })
 
 _REQUIREMENTS_PATH = Path(__file__).resolve().parents[3].parent / "sandbox" / "requirements.txt"
-_SQUID_CONF_PATH = Path(__file__).resolve().parents[3].parent / "sandbox" / "squid.conf"
+_SQUID_CONF_PATH = Path(__file__).resolve().parents[3].parent / "sandbox" / "squid" / "squid.conf"
 
 
 def squid_allowed_domains() -> list[str]:
     """Domaines autorisés par l'ACL egress de la sandbox (J7, v1.16.0).
 
     Parse la ligne ``acl allowed_domains dstdomain .a.tld .b.tld`` de
-    ``sandbox/squid.conf`` — la même source de vérité que le proxy au
+    ``sandbox/squid/squid.conf`` — la même source de vérité que le proxy au
     runtime. Retourne ``[]`` si le fichier est illisible (le prompt du
     générateur dégrade en avertissement explicite plutôt qu'en liste
     inventée).
