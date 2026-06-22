@@ -30,7 +30,7 @@ Tourne sur votre matériel, masque les données sensibles avant tout appel modè
 
 </div>
 
-> **À propos de la licence.** ELY est sous **[Elastic License v2](LICENSE)** — gratuit pour tout usage personnel ET tout usage professionnel interne, quelle que soit la taille de l'organisation. Vous pouvez exécuter, modifier, redistribuer. La seule restriction : pas de revente comme service hébergé / managé à des tiers (pas de SaaS). Code source intégralement publié et auditable.
+> **À propos de la licence.** ELY est sous **[Elastic License v2](LICENSE)** — gratuit pour tout usage personnel ET tout usage professionnel interne, quelle que soit la taille de l'organisation. Code source intégralement publié et auditable.
 
 ---
 
