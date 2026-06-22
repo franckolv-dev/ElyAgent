@@ -29,7 +29,7 @@ Self-hosted · GDPR-native · multi-LLM · **self-improving** · 10 channels · 
 
 </div>
 
-> **Note on licensing.** ELY is licensed under the **[Elastic License v2](LICENSE)** — free for any personal use AND any internal business use, regardless of organisation size. You can run it, modify it, distribute it. The only restriction: you cannot offer ELY as a hosted or managed service to third parties (no SaaS resale). Full source published and auditable.
+> **Note on licensing.** ELY is licensed under the **[Elastic License v2](LICENSE)** — free for any personal use AND any internal business use, regardless of organisation size. Full source published and auditable.
 
 ---
 
