@@ -1,4 +1,4 @@
-.PHONY: up down restart build logs ps create-admin ollama-cleanup slm-enable slm-disable
+.PHONY: up down restart build logs ps create-admin ollama-cleanup slm-enable slm-disable egress-reload
 
 # Charge le .env et démarre tous les services
 up:
@@ -9,20 +9,39 @@ down:
 	docker compose down
 
 # Rebuild + redémarre un service (ex: make restart s=backend)
-# Restart nginx after backend/frontend restart to re-resolve upstream DNS
-# (Docker gives a new IP each time a container is recreated, nginx caches
-# the old one and returns 502 "Host is unreachable" until reloaded).
+# On RECRÉE nginx (au lieu de `nginx -s reload`) après backend/frontend :
+#  1) DNS — Docker donne une nouvelle IP à chaque recreate ; recréer nginx le
+#     force à re-résoudre l'upstream (sinon 502 "Host is unreachable").
+#  2) Robustesse inode — `nginx -s reload` lit la conf via l'inode épinglé au
+#     démarrage du conteneur ; après un `git pull` qui remplace
+#     config/nginx/default.conf, cet inode est périmé (cf. mount dossier dans
+#     docker-compose.yml). Un recreate repart sur le fichier courant à coup sûr.
+# `--no-deps` : recrée nginx SEUL (sans `--no-deps`, compose recrée aussi le
+# frontend dont nginx dépend → 502 transitoire le temps qu'il redémarre).
+# Coût : ~1 s d'indispo nginx par déploiement, acceptable pour une instance perso.
 restart:
 	docker compose up -d --build $(s)
 	@if [ "$(s)" = "backend" ] || [ "$(s)" = "frontend" ]; then \
-		echo "→ Reloading nginx to re-resolve upstream DNS..."; \
-		docker compose exec nginx nginx -s reload; \
+		echo "→ Recréation de nginx (re-résolution DNS + relecture conf)..."; \
+		docker compose up -d --no-deps --force-recreate nginx; \
 	fi
 
-# Rebuild et redémarre tout (nginx restart automatique à la fin)
+# Rebuild et redémarre tout (nginx recréé à la fin : DNS + conf à jour)
 build:
 	docker compose up -d --build
-	@docker compose exec nginx nginx -s reload
+	@docker compose up -d --no-deps --force-recreate nginx
+
+# Applique un changement de sandbox/squid/squid.conf (ex: ajout d'un domaine
+# egress). On RECRÉE le conteneur egress-proxy au lieu d'un `squid -k
+# reconfigure` :
+#  1) Le mount DOSSIER (cf. docker-compose.yml) supprime déjà l'inode périmé,
+#     mais un recreate garantit la relecture COMPLÈTE de la conf (un
+#     reconfigure peut relire une version partielle / dépendre du timing).
+#  2) `--no-deps` : recrée egress-proxy SEUL (le service `sandbox` qui en
+#     dépend n'est pas redémarré inutilement).
+# Coût : ~1 s d'indispo du proxy egress, négligeable (chaîne sandbox idle).
+egress-reload:
+	docker compose up -d --no-deps --force-recreate egress-proxy
 
 # Supprime tous les services Ollama/SLM orphelins (container Ollama a été retiré)
 # Ne supprime pas l'Ollama natif du Mac (qui reste utilisé via host.docker.internal)

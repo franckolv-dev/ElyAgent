@@ -121,11 +121,17 @@ docker compose logs --no-color | grep -E "pull|download|fetch" | tail -20
 ## 📎 Un upload reste bloqué (spinner) au-delà de ~1 Mo
 
 **Cause** : nginx limite la taille du corps de requête. Vérifiez que
-`config/nginx.conf` contient bien `client_max_body_size 50M;` (corrigé par
-défaut depuis #147), puis rechargez nginx :
+`config/nginx/default.conf` contient bien `client_max_body_size 50M;` (corrigé
+par défaut depuis #147), puis **recréez** le conteneur nginx :
 ```bash
-docker compose exec nginx nginx -s reload
+docker compose up -d --no-deps --force-recreate nginx
 ```
+> ⚠️ N'utilisez **pas** `docker compose exec nginx nginx -s reload` : après un
+> `git pull` qui renomme la conf, le reload relit l'inode épinglé (périmé) et
+> peut servir une conf tronquée → 502 (`unexpected end of file …:84`). Il faut
+> **recréer** le conteneur. `make restart` / `make build` recréent déjà nginx
+> ainsi ; pour un simple changement de conf, la commande ci-dessus suffit.
+
 La limite serveur est de **50 Mo** (`MAX_FILE_SIZE` côté backend +
 `client_max_body_size` côté nginx).
 

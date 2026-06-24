@@ -54,7 +54,9 @@ This image is designed to be run by the `sandbox` service in
   `cyberentity-net`. The future sandbox service (J2.c) will live HERE.
 - **`egress-proxy`** — Squid forward proxy (`ubuntu/squid:6.6-24.04_beta`),
   dual-homed on `sandbox-net` (accepts sandbox traffic) and `cyberentity-net`
-  (forwards allowed traffic upstream). Config in `sandbox/squid.conf`.
+  (forwards allowed traffic upstream). Config in `sandbox/squid/squid.conf`
+  (a dedicated folder, bind-mounted as a directory so the file is resolved by
+  path — no stale-inode trap after a `git pull`).
 
 Allow-list is per-domain (`dstdomain`), deny-by-default. V3.0 ships with
 **only `httpbin.org` and `example.com`** for smoke testing — every real
@@ -75,13 +77,14 @@ integration adds its domain via PR.
 
 ### Adding a domain to the allow-list
 
-1. Edit `acl allowed_domains` in `sandbox/squid.conf` (use the leading-dot
-   form `.example.com` to allow all subdomains).
+1. Edit `acl allowed_domains` in `sandbox/squid/squid.conf` (use the
+   leading-dot form `.example.com` to allow all subdomains).
 2. PR with a brief justification (which generated-tool integration needs it).
 3. CI runs `sandbox/test-egress.sh` to confirm the proxy still boots and
    the 8 security invariants still hold.
-4. After merge + `docker compose up -d --build egress-proxy`, the new
-   domain is reachable.
+4. After merge, apply it with `make egress-reload` (= `docker compose up -d
+   --no-deps --force-recreate egress-proxy`). A recreate — not a bare
+   `squid -k reconfigure` — guarantees the new config is read in full.
 
 ### Smoke-testing locally
 
