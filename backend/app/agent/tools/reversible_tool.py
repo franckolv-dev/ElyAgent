@@ -38,7 +38,11 @@ async def _resolve_id(user_id: str, partial: str) -> str | None:
 def _fmt_undo(res: dict) -> str:
     if res.get("ok"):
         cap = res.get("capability_id", "")
-        return f"Action annulée ✅{f' ({cap})' if cap else ''}."
+        suffix = f" ({cap})" if cap else ""
+        if res.get("verified") is False:
+            return (f"Action annulée{suffix}, mais je n'ai pas pu confirmer le "
+                    f"résultat côté service — vérifie manuellement par précaution.")
+        return f"Action annulée ✅{suffix}."
     reason = (res.get("reason") or "").split(":")[0]
     return {
         "not_found": "Action introuvable (déjà annulée, expirée, ou inconnue).",

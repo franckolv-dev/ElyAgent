@@ -51,12 +51,13 @@ def _enabled() -> bool:
     return bool(getattr(get_settings(), "reversible_journal_enabled", False))
 
 
-def _emit(user_id: str, capability_id: str, fingerprint: str | None, outcome: str) -> None:
+def _emit(user_id: str, capability_id: str, fingerprint: str | None, outcome: str,
+          attributes: dict | None = None) -> None:
     """Événement de compensation (corrélé, sans contenu). Ne lève jamais."""
     try:
         from app.services.event_envelope import EventKind, emit
         emit(EventKind.COMPENSATION, user_id=user_id, capability_id=capability_id,
-             fingerprint=fingerprint, outcome=outcome)
+             fingerprint=fingerprint, outcome=outcome, attributes=attributes)
     except Exception:  # pragma: no cover — l'observabilité ne casse jamais le flux
         pass
 
@@ -205,12 +206,81 @@ async def undo(record_id: str, user_id: str) -> dict:
         _emit(user_id, capability_id, fingerprint, "revert_failed")
         return {"ok": False, "reason": "revert_failed", "error": type(exc).__name__}
 
-    # 3. Marquer annulée.
+    # 3. (J4) Vérifier que l'annulation a réellement pris (best-effort).
+    #    verified = True/False si une vérification existe, None sinon.
+    verified: bool | None = None
+    if comp.verify is not None:
+        try:
+            verified = bool(await comp.verify(comp_args, user_id))
+        except Exception as exc:  # pragma: no cover — la vérif ne casse jamais l'undo
+            logger.debug("undo: verify a échoué (%s/%s): %s", capability_id, comp_name, exc)
+            verified = None
+
+    # 4. Marquer annulée.
     async with async_session() as db:
         rec = await db.get(ReversibleActionRecord, record_id)
         if rec is not None and rec.status == "recorded":
             rec.status = "reverted"
             rec.reverted_at = _now()
             await db.commit()
-    _emit(user_id, capability_id, fingerprint, "reverted")
-    return {"ok": True, "capability_id": capability_id}
+    _emit(user_id, capability_id, fingerprint, "reverted",
+          attributes=None if verified is None else {"verified": verified})
+    return {"ok": True, "capability_id": capability_id, "verified": verified}
+
+
+async def purge_expired() -> int:
+    """(J4) Supprime les entrées dont la fenêtre d'annulation est passée.
+
+    Borne la table : une entrée hors fenêtre n'est de toute façon plus annulable
+    (recorded expirée) ou n'est conservée que pour l'audit (reverted/échec). On
+    filtre en Python (comparaison aware) pour éviter tout piège de format de date
+    SQLite. Idempotent, jamais bloquant ; retourne le nombre supprimé."""
+    from sqlalchemy import delete, select
+
+    from app.database import async_session
+    from app.models.reversible_action import ReversibleActionRecord
+
+    now = _now()
+    try:
+        async with async_session() as db:
+            rows = (await db.execute(
+                select(ReversibleActionRecord.id, ReversibleActionRecord.expires_at)
+            )).all()
+            stale = [rid for rid, exp in rows if exp is not None and _aware(exp) <= now]
+            if stale:
+                await db.execute(
+                    delete(ReversibleActionRecord).where(ReversibleActionRecord.id.in_(stale))
+                )
+                await db.commit()
+            if stale:
+                logger.info("reversible journal: %d entrée(s) expirée(s) purgée(s)", len(stale))
+            return len(stale)
+    except Exception as exc:  # pragma: no cover — best-effort
+        logger.warning("purge_expired a échoué: %s", exc)
+        return 0
+
+
+async def stats() -> dict:
+    """(J4) Métriques du journal : compteurs par statut + taux de succès d'annulation."""
+    from sqlalchemy import func, select
+
+    from app.database import async_session
+    from app.models.reversible_action import ReversibleActionRecord
+
+    try:
+        async with async_session() as db:
+            rows = (await db.execute(
+                select(ReversibleActionRecord.status, func.count())
+                .group_by(ReversibleActionRecord.status)
+            )).all()
+    except Exception as exc:  # pragma: no cover — best-effort
+        logger.debug("stats a échoué: %s", exc)
+        rows = []
+    by_status = {s: n for s, n in rows}
+    reverted = by_status.get("reverted", 0)
+    attempted = reverted + by_status.get("revert_failed", 0)
+    return {
+        "total": sum(by_status.values()),
+        "by_status": by_status,
+        "revert_success_rate": round(reverted / attempted, 3) if attempted else None,
+    }
