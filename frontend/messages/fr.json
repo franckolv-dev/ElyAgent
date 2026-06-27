@@ -54,6 +54,7 @@
     "navLearningIncidents": "Incidents & propositions",
     "navGroupSkills": "Compétences",
     "navGroupAnalysis": "Analyse",
+    "navReversibleActions": "Annulations",
     "navGroupAdmin": "Admin"
   },
   "knowledge": {
@@ -407,6 +408,22 @@
     "flash_rejected": "Incident rejeté.",
     "flash_generated": "Outil « {name} » généré — à valider sur la page des candidates.",
     "flash_generation_failed": "Génération échouée (status: {status})."
+  },
+  "reversibleActions": {
+    "title": "Annulations",
+    "subtitle": "Actions récentes qu'Ely peut annuler",
+    "note": "Annuler rejoue la compensation enregistrée (ex. ressortir un fichier de la corbeille Drive, restaurer un nom). Possible tant que la fenêtre d'annulation n'est pas dépassée.",
+    "refreshTooltip": "Rafraîchir",
+    "loading": "Chargement…",
+    "empty": "Aucune action annulable pour le moment.",
+    "errorLoad": "Impossible de charger les actions annulables.",
+    "createdLabel": "Effectuée le {date}",
+    "expiresLabel": "Annulable jusqu'au {date}",
+    "undo": "Annuler",
+    "undoing": "Annulation…",
+    "flashUndone": "Action annulée ✓",
+    "flashUnverified": "Annulée, mais non confirmée côté service — vérifie par précaution.",
+    "actionError": "L'annulation a échoué."
   },
   "toolGaps": {
     "title": "Capacités manquantes",

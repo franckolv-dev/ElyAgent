@@ -631,6 +631,16 @@ export const api = {
   /** Reject a proposed patch (without applying). */
   adminLearningRejectPatch: (patchId: number) =>
     fetchAPI(`/admin/learning/patches/${patchId}/reject`, { method: "POST" }) as Promise<Patch>,
+
+  // ── Reversible Action Journal (J2b) — annuler ses actions ──────────────
+  /** List the current user's still-undoable actions (most recent first). */
+  reversibleActions: () =>
+    fetchAPI("/api/me/reversible-actions") as Promise<ReversibleAction[]>,
+  /** Undo one action by id. verified: null=non vérifiable, false=non confirmé. */
+  undoReversibleAction: (id: string) =>
+    fetchAPI(`/api/me/reversible-actions/${id}/undo`, { method: "POST" }) as Promise<{
+      ok: boolean; capability_id: string | null; verified: boolean | null;
+    }>,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -871,6 +881,14 @@ export interface GraduationDryRun {
 /** A capability ELY's `find_tool` searched for but couldn't surface — the
  *  `tool_absent_acknowledged` signal. Backed by a FailureCase row with
  *  signal_table='tool_absent'. */
+export interface ReversibleAction {
+  id: string;
+  capability_id: string;
+  compensation: string;
+  created_at: string | null;
+  expires_at: string;
+}
+
 export interface ToolGap {
   id: number;
   user_id: string;
