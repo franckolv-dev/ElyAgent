@@ -207,6 +207,15 @@ class Settings(BaseSettings):
     # Export OpenTelemetry des événements typés (J4). Le bus fonctionne sans —
     # l'exporter ne s'active que si ce flag est ON ET le SDK opentelemetry présent.
     otel_enabled: bool = False
+    # Reversible Action Journal (substrat, suite de P1). Rend exécutable le
+    # champ `CapabilityManifest.compensation` : une action mutante annulable est
+    # journalisée après succès, et peut être compensée (« annuler »). Flag dédié
+    # (≠ trust_substrate_enabled, déjà ON en prod) pour canaryer séparément.
+    # OFF par défaut ⇒ le hook d'enregistrement dans tool_node est un no-op.
+    reversible_journal_enabled: bool = False
+    # Fenêtre d'annulation : au-delà, l'entrée passe `expired` (annulation
+    # refusée). 7 j par défaut, < les ~30 j de la corbeille Drive réelle.
+    reversible_journal_ttl_seconds: int = 7 * 24 * 3600
 
     model_config = {
         "env_file": ".env",
