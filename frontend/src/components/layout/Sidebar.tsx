@@ -16,7 +16,7 @@ import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
   Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
   Download, X, ChevronDown, BookOpen, Target, Brain, Compass,
-  Sparkles, ClipboardCheck, Stethoscope, type LucideIcon,
+  Sparkles, ClipboardCheck, Stethoscope, Undo2, type LucideIcon,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -60,6 +60,7 @@ const NAV: NavEntry[] = [
     children: [
       { href: "/dashboard", labelKey: "navDashboard",  icon: LayoutDashboard },
       { href: "/me/state",  labelKey: "navUserState",  icon: Compass },
+      { href: "/me/reversible-actions", labelKey: "navReversibleActions", icon: Undo2 },
     ],
   },
   { href: "/settings", labelKey: "navSettings", icon: Settings },

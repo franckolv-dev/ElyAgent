@@ -54,6 +54,7 @@
     "navLearningIncidents": "Incidents & proposals",
     "navGroupSkills": "Skills",
     "navGroupAnalysis": "Analytics",
+    "navReversibleActions": "Undo history",
     "navGroupAdmin": "Admin"
   },
   "knowledge": {
@@ -407,6 +408,22 @@
     "flash_rejected": "Incident rejected.",
     "flash_generated": "Tool \"{name}\" generated — review it on the candidates page.",
     "flash_generation_failed": "Generation failed (status: {status})."
+  },
+  "reversibleActions": {
+    "title": "Undo history",
+    "subtitle": "Recent actions Ely can undo",
+    "note": "Undoing replays the recorded compensation (e.g. restore a file from Drive trash, restore a previous name). Available until the undo window expires.",
+    "refreshTooltip": "Refresh",
+    "loading": "Loading…",
+    "empty": "No undoable action right now.",
+    "errorLoad": "Could not load undoable actions.",
+    "createdLabel": "Done on {date}",
+    "expiresLabel": "Undoable until {date}",
+    "undo": "Undo",
+    "undoing": "Undoing…",
+    "flashUndone": "Action undone ✓",
+    "flashUnverified": "Undone, but not confirmed by the service — please double-check.",
+    "actionError": "Undo failed."
   },
   "toolGaps": {
     "title": "Missing capabilities",
