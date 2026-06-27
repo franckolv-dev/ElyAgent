@@ -54,6 +54,7 @@ class EventKind(str, Enum):
     MEMORY = "memory"
     COST = "cost"
     INCIDENT = "incident"
+    COMPENSATION = "compensation"   # annulation d'une action (Reversible Journal)
 
 
 class EventEnvelope(BaseModel):

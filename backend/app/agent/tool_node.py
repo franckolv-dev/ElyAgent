@@ -482,6 +482,18 @@ async def tool_node(state: AgentState) -> dict:
                 if _action_fp is not None:
                     from app.services.idempotency_store import remember
                     await remember(tool_name, _action_fp, user_id, _safe_result)
+                    # Reversible Action Journal — journalise l'action si elle est
+                    # annulable (manifeste avec `compensation`). No-op strict si
+                    # le flag est OFF. On passe display_args (sans secret) : la
+                    # capture n'en retient que l'identifiant utile (ex. file_id).
+                    if _get_settings().reversible_journal_enabled:
+                        try:
+                            from app.services.journal_service import record_reversible
+                            await record_reversible(
+                                tool_name, display_args, _safe_result, user_id, _action_fp,
+                            )
+                        except Exception as _rev_exc:  # pragma: no cover — best-effort
+                            logger.debug("record_reversible failed (%s): %s", tool_name, _rev_exc)
                     # P1/J4 — événement outil (succès, latence — aucun contenu).
                     from app.services.event_envelope import EventKind, emit
                     emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,

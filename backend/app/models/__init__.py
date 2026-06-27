@@ -58,6 +58,7 @@ from app.models.feedback import Feedback
 from app.models.llm_instance import LLMInstance
 from app.models.mcp_server import MCPServer, MCPTool, MCPToolPermission
 from app.models.idempotency import IdempotencyRecord
+from app.models.reversible_action import ReversibleActionRecord
 from app.models.note import Note
 from app.models.scheduled_task import ScheduledTask
 from app.models.skill_preference import SkillPreference
