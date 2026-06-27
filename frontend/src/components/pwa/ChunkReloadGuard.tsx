@@ -19,6 +19,8 @@
  */
 import { useEffect } from "react";
 
+import { hardRecoverAndReload } from "@/lib/recover";
+
 const RELOAD_FLAG = "ely-chunk-reloaded";
 
 function isChunkError(message: string): boolean {
@@ -47,7 +49,7 @@ export function ChunkReloadGuard() {
       } catch {
         /* pas de garde anti-boucle dispo → on recharge quand même une fois */
       }
-      window.location.reload();
+      void hardRecoverAndReload();
     };
 
     const onError = (e: ErrorEvent) =>
