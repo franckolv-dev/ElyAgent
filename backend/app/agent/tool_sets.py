@@ -135,6 +135,10 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "notes_update",
     "notes_delete",
     "notes_search",
+    # Annulation (Reversible Journal)
+    "list_revertible_actions",
+    "revert_action",
+    "undo_last_action",
     # Desktop tools — need user_id to look up the daemon connection
     "desktop_list_dir",
     "desktop_read_file",
