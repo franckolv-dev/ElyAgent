@@ -628,6 +628,10 @@ app.include_router(learning_skills_router.router, tags=["learning"])
 # Sprint 4b Phase 5.b — user-facing /api/me/learning-skills surface
 # (list, pin, forget). Carries its own /api/me/learning-skills prefix.
 app.include_router(me_learning_skills_router.router, tags=["learning"])
+# Substrat / J2 — Reversible Action Journal : lister + annuler ses actions.
+# Carries its own /api/me/reversible-actions prefix.
+from app.routers import reversible_actions as _reversible_actions_router
+app.include_router(_reversible_actions_router.router, tags=["trust"])
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)

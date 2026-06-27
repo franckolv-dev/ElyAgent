@@ -82,6 +82,10 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "notes_create",
     "notes_list",
     "notes_search",
+    # NB : les outils d'annulation (list_revertible_actions / revert_action /
+    # undo_last_action) ne sont PAS dans le profil statique : ils sont unis
+    # dynamiquement par resolve_profile_tools UNIQUEMENT quand le flag
+    # reversible_journal_enabled est ON (zéro coût de prompt quand OFF).
     # Gmail — read + send + reply (the 80% of email work)
     "gmail_list_emails",
     "gmail_read_email",
@@ -315,6 +319,22 @@ def _mcp_tool_names() -> set[str]:
         return set()
 
 
+# Outils d'annulation (Reversible Journal). Unis au bind UNIQUEMENT si le flag
+# reversible_journal_enabled est ON — même logique dynamique que les skills MCP.
+# Flag OFF (défaut prod) ⇒ ensemble vide ⇒ zéro coût de prompt.
+_REVERSIBLE_TOOL_NAMES = ("list_revertible_actions", "revert_action", "undo_last_action")
+
+
+def _reversible_tool_names() -> set[str]:
+    try:
+        from app.config import get_settings
+        if getattr(get_settings(), "reversible_journal_enabled", False):
+            return set(_REVERSIBLE_TOOL_NAMES)
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.debug("toolset_profiles: reversible flag check failed (%s)", exc)
+    return set()
+
+
 def resolve_profile_tools(name: str, all_tools: Sequence) -> list:
     """Return the subset of ``all_tools`` belonging to profile ``name``.
 
@@ -342,6 +362,7 @@ def resolve_profile_tools(name: str, all_tools: Sequence) -> list:
     """
     wanted = set(get_profile_tool_names(name))
     wanted |= _mcp_tool_names()
+    wanted |= _reversible_tool_names()
     have = {t.name for t in all_tools}
     missing = wanted - have
     if missing:
