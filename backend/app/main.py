@@ -380,6 +380,16 @@ async def lifespan(app: FastAPI):
         minute=30,
         id="signals_retention",
     )
+    # Purge quotidienne du Reversible Journal (J4) — 04:45 : supprime les entrées
+    # hors fenêtre d'annulation pour borner la table reversible_actions.
+    from app.services.journal_service import purge_expired as _purge_journal
+    _memory_scheduler.add_job(
+        _purge_journal,
+        trigger="cron",
+        hour=4,
+        minute=45,
+        id="reversible_journal_purge",
+    )
     # Éviction des sessions navigateur inactives (B-17) — toutes les 10 min,
     # contextes Chromium fermés après 15 min sans usage.
     from app.services.browser_manager import get_browser_manager as _get_bm
@@ -632,6 +642,8 @@ app.include_router(me_learning_skills_router.router, tags=["learning"])
 # Carries its own /api/me/reversible-actions prefix.
 from app.routers import reversible_actions as _reversible_actions_router
 app.include_router(_reversible_actions_router.router, tags=["trust"])
+# (J4) métriques du journal — /admin/reversible-actions/stats (admin only)
+app.include_router(_reversible_actions_router.admin_router, tags=["trust"])
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)

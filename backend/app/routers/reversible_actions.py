@@ -16,7 +16,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.services import journal_service
 
@@ -34,6 +34,8 @@ class ReversibleActionOut(BaseModel):
 class UndoResult(BaseModel):
     ok: bool
     capability_id: str | None = None
+    # (J4) None si pas de vérification possible ; True/False = annulation confirmée ou non.
+    verified: bool | None = None
 
 
 @router.get("", response_model=list[ReversibleActionOut])
@@ -53,10 +55,23 @@ async def undo_my_action(
     """Annule une action de l'utilisateur courant. Fail-closed côté service."""
     res = await journal_service.undo(record_id, str(user.id))
     if res.get("ok"):
-        return UndoResult(ok=True, capability_id=res.get("capability_id"))
+        return UndoResult(ok=True, capability_id=res.get("capability_id"),
+                          verified=res.get("verified"))
     base = (res.get("reason") or "").split(":")[0]
     # 404 (pas 403) pour ne pas révéler l'existence d'une action d'autrui.
     if base in ("not_found", "forbidden"):
         raise HTTPException(status_code=404, detail="Action introuvable.")
     # Non annulable : expirée, déjà annulée, compensation inconnue, échec.
     raise HTTPException(status_code=409, detail=res.get("reason") or "annulation impossible")
+
+
+# ── Métriques (admin) ────────────────────────────────────────────────────
+# (J4) Compteurs par statut + taux de succès d'annulation. Réservé admin :
+# c'est une vue d'instance, pas une donnée par-utilisateur.
+admin_router = APIRouter(prefix="/admin/reversible-actions", tags=["trust"])
+
+
+@admin_router.get("/stats")
+async def reversible_action_stats(_: User = Depends(require_admin)) -> dict:
+    """Métriques du Reversible Journal (vue instance)."""
+    return await journal_service.stats()

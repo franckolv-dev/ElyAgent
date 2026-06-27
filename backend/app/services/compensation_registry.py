@@ -35,6 +35,9 @@ class Compensation:
     name: str
     capture: Callable[[dict, str], dict]              # (args, result) -> comp_args (ids only)
     revert: Callable[[dict, str], Awaitable[None]]    # (comp_args, user_id) -> exécute l'inverse
+    # (J4) Confirme que l'annulation a RÉELLEMENT pris (ex. fichier hors corbeille).
+    # Optionnel, best-effort : (comp_args, user_id) -> True si vérifié.
+    verify: Optional[Callable[[dict, str], Awaitable[bool]]] = None
 
 
 async def _creds_for_user(user_id: str) -> str:
@@ -79,12 +82,31 @@ async def _drive_untrash(comp_args: dict, user_id: str) -> None:
     service.files().update(fileId=file_id, body={"trashed": False}).execute()
 
 
+async def _drive_is_untrashed(comp_args: dict, user_id: str) -> bool:
+    """(J4) Vérifie que le fichier est bien ressorti de la corbeille (trashed=False).
+
+    Best-effort : si on ne peut pas lire l'état, on renvoie False (= non confirmé,
+    pas une erreur) plutôt que de prétendre que tout va bien."""
+    file_id = (comp_args or {}).get("file_id")
+    if not file_id:
+        return False
+    creds = await _creds_for_user(user_id)
+    from app.agent.tools.drive_tool import _get_drive_service
+
+    service = await _get_drive_service(creds)
+    if not service:
+        return False
+    meta = service.files().get(fileId=file_id, fields="trashed").execute()
+    return meta.get("trashed") is False
+
+
 _REGISTRY: dict[str, Compensation] = {
     "restore_from_trash": Compensation(
         name="restore_from_trash",
         # On ne retient QUE l'id du fichier (minimisation — pas de PII/secret).
         capture=lambda args, result: {"file_id": (args or {}).get("file_id")},
         revert=_drive_untrash,
+        verify=_drive_is_untrashed,
     ),
 }
 
