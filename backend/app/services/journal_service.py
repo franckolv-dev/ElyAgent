@@ -62,18 +62,45 @@ def _emit(user_id: str, capability_id: str, fingerprint: str | None, outcome: st
         pass
 
 
+async def snapshot_before(tool_name: str, args: dict, user_id: str) -> dict | None:
+    """(J3) Capture l'état AVANT exécution pour une compensation par snapshot.
+
+    Appelé par tool_node juste avant ``tool.ainvoke``. Renvoie le snapshot (dict)
+    pour les capacités dont la compensation est de type snapshot (rename/move),
+    sinon None. Best-effort : jamais bloquant pour l'exécution de l'outil."""
+    if not _enabled() or not user_id:
+        return None
+    from app.services.capability_manifest import get_manifest
+    comp_name = get_manifest(tool_name).compensation
+    if not comp_name:
+        return None
+    from app.services.compensation_registry import get_compensation
+    comp = get_compensation(comp_name)
+    if comp is None or comp.snapshot is None:
+        return None
+    try:
+        return await comp.snapshot(dict(args or {}), user_id)
+    except Exception as exc:  # pragma: no cover — best-effort
+        logger.debug("snapshot_before a échoué (%s): %s", tool_name, exc)
+        return None
+
+
 async def record_reversible(
     tool_name: str,
     args: dict,
     result: str,
     user_id: str,
     fingerprint: str | None = None,
+    pre_snapshot: dict | None = None,
 ) -> str | None:
     """Journalise une action annulable après son succès. Retourne l'id, ou None.
 
     No-op (None) si le flag est OFF, si l'utilisateur est absent, si le
     manifeste ne déclare pas de compensation, si le handle est inconnu, ou si
-    la capture ne produit aucun identifiant exploitable."""
+    rien d'exploitable n'a pu être retenu pour annuler.
+
+    Deux modes : *snapshot* (l'état d'avant, capturé par ``snapshot_before`` et
+    passé via ``pre_snapshot``) ou *opération inverse* (``capture`` post-succès)."""
     if not _enabled() or not user_id:
         return None
 
@@ -89,7 +116,12 @@ async def record_reversible(
         return None
 
     try:
-        comp_args = comp.capture(dict(args or {}), result or "")
+        if comp.snapshot is not None:
+            comp_args = pre_snapshot or {}      # capturé AVANT l'exécution
+        elif comp.capture is not None:
+            comp_args = comp.capture(dict(args or {}), result or "")
+        else:
+            return None
     except Exception as exc:
         logger.debug("compensation capture a échoué (%s): %s", tool_name, exc)
         return None

@@ -440,6 +440,18 @@ async def tool_node(state: AgentState) -> dict:
                 results.append(_tool_result(_cached, tc_id))
                 continue
 
+        # Reversible Journal (J3) — capture l'état AVANT exécution pour les
+        # compensations par snapshot (rename/move : l'état d'avant est perdu
+        # après l'action). No-op (None) pour tout le reste. Best-effort, ne
+        # bloque jamais l'exécution de l'outil.
+        _pre_snapshot = None
+        if _action_fp is not None and _get_settings().reversible_journal_enabled:
+            try:
+                from app.services.journal_service import snapshot_before
+                _pre_snapshot = await snapshot_before(tool_name, display_args, user_id)
+            except Exception as _snap_exc:  # pragma: no cover — best-effort
+                logger.debug("snapshot_before failed (%s): %s", tool_name, _snap_exc)
+
         tool = tool_map.get(tool_name)
         if tool:
             try:
@@ -491,6 +503,7 @@ async def tool_node(state: AgentState) -> dict:
                             from app.services.journal_service import record_reversible
                             await record_reversible(
                                 tool_name, display_args, _safe_result, user_id, _action_fp,
+                                pre_snapshot=_pre_snapshot,
                             )
                         except Exception as _rev_exc:  # pragma: no cover — best-effort
                             logger.debug("record_reversible failed (%s): %s", tool_name, _rev_exc)
