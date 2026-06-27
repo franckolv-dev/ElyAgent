@@ -93,6 +93,26 @@ _OVERRIDES: dict[str, CapabilityManifest] = {
         compensation=None,              # un mail envoyé ne se « dé-supprime » pas
         derived=False,
     ),
+    # Réversibles par SNAPSHOT (J3) — non destructifs, approbation INCHANGÉE
+    # (risk_based, comme la dérivation) ; on ajoute juste la compensation.
+    "drive_rename_file": CapabilityManifest(
+        id="drive_rename_file", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        compensation="restore_name",       # restaure l'ancien nom (snapshot pré-exéc)
+        derived=False,
+    ),
+    "drive_move_file": CapabilityManifest(
+        id="drive_move_file", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        compensation="restore_parents",    # restaure les anciens parents (snapshot)
+        derived=False,
+    ),
     # Témoin de lecture sûre : aucun effet de bord, jamais de confirmation.
     "web_search": CapabilityManifest(
         id="web_search", origin="builtin",

@@ -33,11 +33,17 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class Compensation:
     name: str
-    capture: Callable[[dict, str], dict]              # (args, result) -> comp_args (ids only)
     revert: Callable[[dict, str], Awaitable[None]]    # (comp_args, user_id) -> exécute l'inverse
+    # Mode « opération inverse » (J1) : capture l'état utile APRÈS succès (ids only).
+    capture: Optional[Callable[[dict, str], dict]] = None        # (args, result) -> comp_args
     # (J4) Confirme que l'annulation a RÉELLEMENT pris (ex. fichier hors corbeille).
     # Optionnel, best-effort : (comp_args, user_id) -> True si vérifié.
     verify: Optional[Callable[[dict, str], Awaitable[bool]]] = None
+    # (J3) Mode « snapshot » : capture l'état AVANT exécution (rename/move…, où
+    # l'état d'avant est perdu après l'action). (args, user_id) -> snapshot dict.
+    # Exclusif de `capture` : si `snapshot` est présent, c'est lui qui alimente
+    # compensation_args (pré-exécution), via le hook de tool_node.
+    snapshot: Optional[Callable[[dict, str], Awaitable[dict]]] = None
 
 
 async def _creds_for_user(user_id: str) -> str:
@@ -100,6 +106,92 @@ async def _drive_is_untrashed(comp_args: dict, user_id: str) -> bool:
     return meta.get("trashed") is False
 
 
+# ── Compensations par SNAPSHOT (J3) : capturer l'état AVANT, restaurer après ──
+# Pour rename/move, l'état d'avant (nom / dossier parent) est PERDU après
+# l'action → on le lit juste avant l'exécution (hook tool_node) et on le rejoue.
+
+
+async def _drive_service(user_id: str):
+    """Service Drive de l'utilisateur (creds re-résolus par user_id), ou None."""
+    creds = await _creds_for_user(user_id)
+    from app.agent.tools.drive_tool import _get_drive_service
+    return await _get_drive_service(creds)
+
+
+# --- drive_rename_file : snapshot = ancien nom ---
+async def _drive_snapshot_name(args: dict, user_id: str) -> dict:
+    file_id = (args or {}).get("file_id")
+    if not file_id:
+        return {}
+    service = await _drive_service(user_id)
+    if not service:
+        return {}
+    meta = service.files().get(fileId=file_id, fields="name").execute()
+    return {"file_id": file_id, "name": meta.get("name")}
+
+
+async def _drive_restore_name(snap: dict, user_id: str) -> None:
+    file_id = (snap or {}).get("file_id")
+    name = (snap or {}).get("name")
+    if not file_id or name is None:
+        raise ValueError("snapshot incomplet (file_id/name)")
+    service = await _drive_service(user_id)
+    if not service:
+        raise RuntimeError("Google non connecté — restauration impossible")
+    service.files().update(fileId=file_id, body={"name": name}).execute()
+
+
+async def _drive_verify_name(snap: dict, user_id: str) -> bool:
+    file_id = (snap or {}).get("file_id")
+    if not file_id:
+        return False
+    service = await _drive_service(user_id)
+    if not service:
+        return False
+    meta = service.files().get(fileId=file_id, fields="name").execute()
+    return meta.get("name") == (snap or {}).get("name")
+
+
+# --- drive_move_file : snapshot = anciens parents ---
+async def _drive_snapshot_parents(args: dict, user_id: str) -> dict:
+    file_id = (args or {}).get("file_id")
+    if not file_id:
+        return {}
+    service = await _drive_service(user_id)
+    if not service:
+        return {}
+    meta = service.files().get(fileId=file_id, fields="parents").execute()
+    return {"file_id": file_id, "parents": meta.get("parents", [])}
+
+
+async def _drive_restore_parents(snap: dict, user_id: str) -> None:
+    file_id = (snap or {}).get("file_id")
+    old = (snap or {}).get("parents") or []
+    if not file_id or not old:
+        raise ValueError("snapshot incomplet (file_id/parents)")
+    service = await _drive_service(user_id)
+    if not service:
+        raise RuntimeError("Google non connecté — restauration impossible")
+    cur = service.files().get(fileId=file_id, fields="parents").execute().get("parents", [])
+    service.files().update(
+        fileId=file_id,
+        addParents=",".join(old),
+        removeParents=",".join(cur),
+        fields="id,parents",
+    ).execute()
+
+
+async def _drive_verify_parents(snap: dict, user_id: str) -> bool:
+    file_id = (snap or {}).get("file_id")
+    if not file_id:
+        return False
+    service = await _drive_service(user_id)
+    if not service:
+        return False
+    cur = set(service.files().get(fileId=file_id, fields="parents").execute().get("parents", []))
+    return cur == set((snap or {}).get("parents") or [])
+
+
 _REGISTRY: dict[str, Compensation] = {
     "restore_from_trash": Compensation(
         name="restore_from_trash",
@@ -107,6 +199,18 @@ _REGISTRY: dict[str, Compensation] = {
         capture=lambda args, result: {"file_id": (args or {}).get("file_id")},
         revert=_drive_untrash,
         verify=_drive_is_untrashed,
+    ),
+    "restore_name": Compensation(
+        name="restore_name",
+        snapshot=_drive_snapshot_name,     # capture l'ancien nom AVANT le rename
+        revert=_drive_restore_name,
+        verify=_drive_verify_name,
+    ),
+    "restore_parents": Compensation(
+        name="restore_parents",
+        snapshot=_drive_snapshot_parents,  # capture les anciens parents AVANT le move
+        revert=_drive_restore_parents,
+        verify=_drive_verify_parents,
     ),
 }
 
