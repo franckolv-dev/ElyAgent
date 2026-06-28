@@ -223,6 +223,16 @@ class Settings(BaseSettings):
     mcp_stdio_sandbox_nofile: int = 256                    # RLIMIT_NOFILE
     mcp_stdio_sandbox_fsize_bytes: int = 64 * 1024 * 1024  # 64 MiB (RLIMIT_FSIZE)
 
+    # ── Client MCP v2 — Resources & Prompts (chantier 2026-06, J6) ─────────
+    # Expose les primitives MCP au-delà des tools : resources/list+read (lecture
+    # seule, soumises egress/quota, contenu non fiable étiqueté) et prompts/
+    # list+get (découverte/visibilité ; le contenu d'un prompt n'est JAMAIS
+    # auto-injecté — rendu au modèle comme un tool-result marqué non fiable).
+    # OFF par défaut ; SUBORDONNÉ à mcp_client_v2_enabled (les deux doivent être
+    # ON). Flag dédié = rollback chirurgical sans toucher au reste du client v2.
+    # roots / sampling / elicitation restent hors périmètre.
+    mcp_resources_enabled: bool = False
+
     # ── Substrat de confiance (chantier P1, 2026-06) ──────────────────────
     # Interrupteur maître du substrat : CapabilityManifest, ActionPlan +
     # empreinte, idempotence, EventEnvelope. OFF par défaut. Tant qu'il est

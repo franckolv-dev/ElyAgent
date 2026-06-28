@@ -97,6 +97,11 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "mcp_call_tool",
     "mcp_connect",
     "mcp_propose_server",
+    # J6 — resources / prompts (isolation + credentials du propriétaire)
+    "mcp_list_resources",
+    "mcp_read_resource",
+    "mcp_list_prompts",
+    "mcp_get_prompt",
     # Browser tools — each user has an isolated browser context
     "browser_navigate",
     "browser_search_web",

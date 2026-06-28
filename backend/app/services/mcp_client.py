@@ -774,6 +774,32 @@ async def _collect_tools(list_fn) -> list:
     return tools
 
 
+async def _collect_page(list_fn, attr: str) -> list:
+    """Découverte paginée générique (``nextCursor``), bornée à 100 pages.
+
+    ``list_fn(cursor)`` renvoie un résultat avec la liste sous ``attr``
+    (``resources`` / ``prompts``) et ``nextCursor``. Sert resources/prompts (J6)."""
+    items: list = []
+    cursor: str | None = None
+    for _ in range(100):
+        result = await list_fn(cursor)
+        items.extend(getattr(result, attr, None) or [])
+        cursor = getattr(result, "nextCursor", None)
+        if not cursor:
+            break
+    else:
+        logger.warning("MCP %s/list a dépassé 100 pages — arrêt", attr)
+    return items
+
+
+async def _collect_resources(list_fn) -> list:
+    return await _collect_page(list_fn, "resources")
+
+
+async def _collect_prompts(list_fn) -> list:
+    return await _collect_page(list_fn, "prompts")
+
+
 async def _persist_catalogue(srv, mcp_tools: list) -> None:
     """Best-effort : consigne les outils découverts dans le catalogue DB."""
     server_id = getattr(srv, "id", None)

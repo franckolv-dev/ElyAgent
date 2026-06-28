@@ -50,6 +50,8 @@ from app.agent.tool_sets import GOOGLE_TOOLS, USER_ID_TOOLS
 _MCP_SELF_GATING_TOOLS: frozenset[str] = frozenset({
     "mcp_list_servers", "mcp_discover_tools", "mcp_call_tool",
     "mcp_connect", "mcp_propose_server", "mcp_search_registry",
+    # J6 — resources / prompts (lecture seule, auto-gérés en interne)
+    "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 })
 from app.services.background_tasks import spawn
 from app.services.hitl_manager import get_hitl_manager
