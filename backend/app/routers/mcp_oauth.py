@@ -204,3 +204,19 @@ async def oauth_callback(code: str, state: str):
         await db.commit()
 
     return _frontend_redirect("connected")
+
+
+@router.delete("/{server_id}")
+async def oauth_disconnect(server_id: str, current_user: User = Depends(get_current_user)):
+    """Déconnecte l'utilisateur courant d'un serveur OAuth2 : révoque ses tokens
+    côté AS (best-effort) puis purge son bundle du Vault. Par utilisateur — ne
+    touche ni les tokens des autres, ni la config du serveur."""
+    _require_flag()
+    async with async_session() as db:
+        srv = await db.get(MCPServer, server_id)
+        if not _visible(srv, current_user.id):
+            raise HTTPException(status_code=404, detail="Serveur introuvable")
+        if (srv.auth_type or "none") != "oauth2":
+            raise HTTPException(status_code=400, detail="Serveur non OAuth2")
+        await mcp_credentials.revoke_oauth(current_user.id, srv)
+    return {"status": "disconnected"}

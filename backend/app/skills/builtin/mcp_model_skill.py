@@ -228,6 +228,7 @@ async def mcp_call_tool(
             return "Action non autorisée (confirmation refusée ou expirée)."
 
     # 4. Appel distant durci + normalisation.
+    from app.services.mcp_credentials import MCPAuthRequired
     from app.services.mcp_remote import remote_call_tool
     input_schema = None
     if tool_row.input_schema_json:
@@ -245,6 +246,10 @@ async def mcp_call_tool(
     except PermissionError:
         return ("⛔ Ton coffre-fort Vault est verrouillé — déverrouille-le "
                 "(Réglages > Vault) pour utiliser les credentials de ce serveur.")
+    except MCPAuthRequired:
+        _audit(user_id, srv.slug, tool_name, "deny", "auth_required")
+        return (f"🔐 « {srv.name} » nécessite une (re)connexion OAuth. Va dans "
+                f"Réglages > MCP et clique « Se connecter » pour ce serveur.")
     except Exception as exc:
         _audit(user_id, srv.slug, tool_name, "allow", "error")
         return f"Erreur lors de l'appel MCP « {tool_name} » : {exc}"
