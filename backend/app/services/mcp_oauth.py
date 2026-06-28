@@ -132,6 +132,7 @@ async def discover_authorization_server(client, server_url: str) -> dict:
                     "authorization_endpoint": meta["authorization_endpoint"],
                     "token_endpoint": meta["token_endpoint"],
                     "registration_endpoint": meta.get("registration_endpoint"),
+                    "revocation_endpoint": meta.get("revocation_endpoint"),
                     "scopes_supported": meta.get("scopes_supported"),
                 }
     raise MCPOAuthError("Aucun serveur d'autorisation OAuth exploitable découvert")
@@ -226,16 +227,79 @@ async def exchange_code(client, token_endpoint: str, *, code: str, redirect_uri:
     return token
 
 
-def build_bundle(token_response: dict, *, now: float | None = None) -> dict:
+# ── Refresh (J3) ─────────────────────────────────────────────────────────────
+
+async def refresh_access_token(client, token_endpoint: str, *, refresh_token: str,
+                               client_id: str, resource: str,
+                               client_secret: str | None = None,
+                               scope: str | None = None) -> dict:
+    """Rafraîchit l'access token (grant_type=refresh_token, form-urlencoded).
+
+    Renvoie la réponse token brute. ``MCPOAuthError`` si l'AS refuse (refresh
+    expiré/révoqué → l'appelant déclenche une ré-autorisation)."""
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+        "resource": resource,
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
+    if scope:
+        data["scope"] = scope
+    try:
+        resp = await client.post(
+            token_endpoint, data=data, headers={"Accept": "application/json"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise MCPOAuthError(f"Token endpoint injoignable ({type(exc).__name__})") from exc
+    if resp.status_code != 200:
+        raise MCPOAuthError(f"Refresh refusé (HTTP {resp.status_code})")
+    try:
+        token = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        raise MCPOAuthError("Réponse refresh illisible") from exc
+    if not token.get("access_token"):
+        raise MCPOAuthError("Réponse refresh sans access_token")
+    return token
+
+
+# ── Révocation (RFC 7009, J3) ────────────────────────────────────────────────
+
+async def revoke_token(client, revocation_endpoint: str, token: str, *,
+                       token_type_hint: str = "refresh_token",
+                       client_id: str | None = None,
+                       client_secret: str | None = None) -> bool:
+    """Révoque un token auprès de l'AS (best-effort). Renvoie True si 200.
+
+    Ne lève pas : une révocation distante qui échoue ne doit pas bloquer la
+    purge locale du bundle (cf. mcp_credentials.revoke_oauth)."""
+    data = {"token": token, "token_type_hint": token_type_hint}
+    if client_id:
+        data["client_id"] = client_id
+    if client_secret:
+        data["client_secret"] = client_secret
+    try:
+        resp = await client.post(revocation_endpoint, data=data)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Révocation OAuth injoignable (%s)", type(exc).__name__)
+        return False
+    return resp.status_code == 200
+
+
+def build_bundle(token_response: dict, *, now: float | None = None,
+                 prev_refresh_token: str | None = None) -> dict:
     """Normalise une réponse token en bundle Vault (cf. mcp_credentials).
 
-    ``expires_at`` est calculé depuis ``expires_in`` (epoch). Le ``refresh_token``
-    est conservé tel quel (rotation gérée en J3)."""
+    ``expires_at`` est calculé depuis ``expires_in`` (epoch). Rotation des
+    refresh tokens : on garde celui de la réponse s'il est présent, sinon on
+    conserve ``prev_refresh_token`` (certains AS ne renvoient le refresh qu'une
+    fois)."""
     ts = time.time() if now is None else now
     expires_in = token_response.get("expires_in")
     bundle = {
         "access_token": token_response["access_token"],
-        "refresh_token": token_response.get("refresh_token"),
+        "refresh_token": token_response.get("refresh_token") or prev_refresh_token,
         "token_type": token_response.get("token_type", "Bearer"),
         "scope": token_response.get("scope"),
         "obtained_at": int(ts),

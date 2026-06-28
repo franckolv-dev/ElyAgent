@@ -201,6 +201,17 @@ async def delete_mcp_server(server_id: str, _=Depends(require_admin)):
         if not srv:
             raise HTTPException(404, "Serveur MCP introuvable.")
         slug = srv.slug
+        # Révocation OAuth (J3) : best-effort, uniquement pour un serveur perso
+        # (le Vault est par-utilisateur → on ne peut purger que le propriétaire ;
+        # sur un serveur d'instance, chaque utilisateur se déconnecte via
+        # DELETE /api/mcp/oauth/{id}). Avant le delete : srv encore lisible.
+        if (srv.auth_type or "none") == "oauth2" and (srv.scope or "") == "user" \
+                and srv.owner_user_id:
+            try:
+                from app.services.mcp_credentials import revoke_oauth
+                await revoke_oauth(srv.owner_user_id, srv)
+            except Exception:  # noqa: BLE001 — ne jamais bloquer la suppression
+                logger.warning("Révocation OAuth au delete échouée pour %s", slug)
         await db.delete(srv)
         await db.commit()
 

@@ -22,16 +22,31 @@ V2 — J1 (socle OAuth) : le **bundle OAuth** (access/refresh tokens, expiration
 scopes) est rangé comme un secret JSON dans le Vault du propriétaire, sous un
 label dédié ``mcp::<slug>::oauth``. Pas de table de tokens : le Vault est la
 source de vérité. Le flow (découverte AS, PKCE, échange code) arrive en J2 ; le
-refresh/rotation en J3. Ici, on ne pose que la plomberie de stockage/lecture +
-la branche ``oauth2`` de ``resolve_user_headers`` (Bearer depuis le bundle, sans
-refresh — l'expiration sera gérée en J3).
+refresh/rotation en J3.
+
+V2 — J3 (refresh/rotation/révocation) : ``resolve_user_headers`` devient
+refresh-aware — si l'access token est expiré (avec marge), on le rafraîchit une
+fois (grant_type=refresh_token), on persiste le nouveau bundle (rotation du
+refresh token) puis on renvoie le Bearer frais. Si aucun token utilisable
+(bundle absent/purgé, refresh expiré/révoqué) → ``MCPAuthRequired`` (l'appelant
+déclenche une ré-autorisation). ``revoke_oauth`` révoque côté AS (best-effort)
+puis purge le bundle.
 """
 from __future__ import annotations
 
 import json
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+# Marge avant expiration : on rafraîchit un peu en avance pour éviter qu'un token
+# expire pendant l'appel.
+_REFRESH_LEEWAY_SECONDS = 60
+
+
+class MCPAuthRequired(Exception):
+    """Le serveur OAuth2 n'a pas de token utilisable — (ré)autorisation requise."""
 
 
 def credential_label(slug: str) -> str:
@@ -117,14 +132,7 @@ async def resolve_user_headers(user_id: str, srv) -> dict[str, str] | None:
         return None
 
     if auth_type == "oauth2":
-        # J1 : Bearer depuis le bundle Vault, sans refresh (l'expiration et la
-        # rotation arrivent en J3). Bundle absent/illisible ⇒ pas d'en-tête →
-        # le serveur répondra 401, traité comme MCP_AUTH_REQUIRED en aval.
-        bundle = await load_oauth_bundle(user_id, srv)
-        token = (bundle or {}).get("access_token")
-        if not token:
-            return None
-        return {"Authorization": f"Bearer {token}"}
+        return await _oauth2_headers(user_id, srv)
 
     from app.services.vault_service import get_vault_service
 
@@ -136,3 +144,100 @@ async def resolve_user_headers(user_id: str, srv) -> dict[str, str] | None:
         return {header: secret}
     logger.warning("MCP auth_type inconnu : %s", auth_type)
     return None
+
+
+# ── OAuth2 : résolution refresh-aware (J3) ───────────────────────────────────
+
+async def _oauth2_headers(user_id: str, srv) -> dict[str, str]:
+    """Bearer OAuth2 frais : refresh proactif si l'access token est expiré.
+
+    Lève ``PermissionError`` si le Vault est verrouillé (fail-closed),
+    ``MCPAuthRequired`` si aucun token utilisable (bundle purgé, refresh
+    expiré/révoqué)."""
+    try:
+        bundle = await load_oauth_bundle(user_id, srv)
+    except KeyError:
+        # Secret purgé (déconnexion) ⇒ ré-autorisation requise.
+        raise MCPAuthRequired("Bundle OAuth absent — reconnexion requise")
+    if not bundle or not bundle.get("access_token"):
+        raise MCPAuthRequired("Aucun token OAuth — connexion requise")
+
+    expires_at = bundle.get("expires_at")
+    if expires_at is None or time.time() < expires_at - _REFRESH_LEEWAY_SECONDS:
+        return {"Authorization": f"Bearer {bundle['access_token']}"}
+
+    refreshed = await _refresh_oauth_bundle(user_id, srv, bundle)
+    return {"Authorization": f"Bearer {refreshed['access_token']}"}
+
+
+async def _refresh_oauth_bundle(user_id: str, srv, bundle: dict) -> dict:
+    """Rafraîchit le bundle (refresh-once), persiste la rotation, le renvoie."""
+    rt = bundle.get("refresh_token")
+    meta_raw = getattr(srv, "oauth_metadata_json", None)
+    client_id = getattr(srv, "oauth_client_id", None)
+    if not rt or not meta_raw or not client_id:
+        raise MCPAuthRequired("Refresh impossible — reconnexion requise")
+    try:
+        meta = json.loads(meta_raw)
+    except (json.JSONDecodeError, TypeError):
+        raise MCPAuthRequired("Métadonnées OAuth illisibles — reconnexion requise")
+    token_endpoint = meta.get("token_endpoint")
+    resource = meta.get("resource")
+    if not token_endpoint or not resource:
+        raise MCPAuthRequired("Métadonnées OAuth incomplètes — reconnexion requise")
+
+    client_secret = None
+    if getattr(srv, "oauth_client_secret_ref", None):
+        from app.services.secrets_at_rest import decrypt
+        client_secret = decrypt(srv.oauth_client_secret_ref) or None
+
+    from app.services import mcp_oauth
+
+    client = mcp_oauth.default_http_client(
+        allow_private=bool(getattr(srv, "allow_private_network", False)))
+    try:
+        token = await mcp_oauth.refresh_access_token(
+            client, token_endpoint, refresh_token=rt, client_id=client_id,
+            resource=resource, client_secret=client_secret,
+        )
+    except mcp_oauth.MCPOAuthError as exc:
+        # Refresh expiré/révoqué : on ne garde pas un bundle inutilisable.
+        raise MCPAuthRequired("Refresh refusé — reconnexion requise") from exc
+    finally:
+        await client.aclose()
+
+    new_bundle = mcp_oauth.build_bundle(token, prev_refresh_token=rt)
+    # Overwrite sous le même label (credential_ref inchangé).
+    await store_oauth_bundle(user_id, getattr(srv, "slug", ""), new_bundle)
+    return new_bundle
+
+
+async def revoke_oauth(user_id: str, srv) -> None:
+    """Révoque les tokens OAuth d'un utilisateur côté AS (best-effort) puis purge
+    le bundle local. Ne lève pas : une révocation distante en échec ne doit pas
+    empêcher la purge locale."""
+    try:
+        bundle = await load_oauth_bundle(user_id, srv)
+    except (KeyError, PermissionError):
+        bundle = None
+
+    meta_raw = getattr(srv, "oauth_metadata_json", None)
+    if bundle and meta_raw:
+        try:
+            meta = json.loads(meta_raw)
+        except (json.JSONDecodeError, TypeError):
+            meta = {}
+        rev = meta.get("revocation_endpoint")
+        rt = bundle.get("refresh_token") or bundle.get("access_token")
+        if rev and rt:
+            from app.services import mcp_oauth
+
+            client = mcp_oauth.default_http_client(
+                allow_private=bool(getattr(srv, "allow_private_network", False)))
+            try:
+                await mcp_oauth.revoke_token(
+                    client, rev, rt, client_id=getattr(srv, "oauth_client_id", None))
+            finally:
+                await client.aclose()
+
+    await clear_oauth_bundle(user_id, srv)

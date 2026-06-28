@@ -104,12 +104,15 @@ async def test_resolve_returns_none_when_not_connected():
 
 
 @pytest.mark.asyncio
-async def test_resolve_none_when_bundle_missing_access_token():
+async def test_resolve_auth_required_when_bundle_missing_access_token():
+    # J3 : un bundle sans access_token n'est plus silencieusement None — on
+    # signale qu'une (ré)autorisation est requise (MCPAuthRequired).
     uid = f"oauth-{uuid.uuid4().hex[:8]}"
     await _make_user(uid)
     await _unlocked_vault(uid)
     ref = await cred.store_oauth_bundle(uid, "empty", {"refresh_token": "rt"})
-    assert await cred.resolve_user_headers(uid, _srv("empty", ref)) is None
+    with pytest.raises(cred.MCPAuthRequired):
+        await cred.resolve_user_headers(uid, _srv("empty", ref))
 
 
 @pytest.mark.asyncio
