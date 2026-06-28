@@ -12,7 +12,6 @@
 #
 # RÉSUMÉ DES CONDITIONS :
 #   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - AUTORISÉ : Modification et redistribution avec attribution.
 #   - INTERDIT : Revente comme SaaS / service managé à des tiers.
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
@@ -100,14 +99,30 @@ class MCPServer(Base):
     env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Authentification distante (J4) ─────────────────────────────────
-    # "none" | "bearer" | "api_key". Le secret n'est JAMAIS stocké ici :
-    # `credential_ref` est une référence opaque (label Vault du propriétaire).
+    # "none" | "bearer" | "api_key" | "oauth2". Le secret n'est JAMAIS stocké
+    # ici : `credential_ref` est une référence opaque (label Vault du
+    # propriétaire). Pour oauth2, le bundle de tokens vit dans le Vault sous
+    # un label dédié (cf. `mcp_credentials.oauth_label`).
     auth_type:         Mapped[str]        = mapped_column(String, default="none")
     credential_ref:    Mapped[str | None] = mapped_column(String, nullable=True)
     # Nom de header pour auth_type=api_key (ex. "X-API-Key").
     auth_header_name:  Mapped[str | None] = mapped_column(String, nullable=True)
     # Exception LAN explicite (admin, hors V1) : autorise une cible réseau privée.
     allow_private_network: Mapped[bool]   = mapped_column(Boolean, default=False)
+
+    # ── OAuth 2.1 / PKCE (Client MCP v2, J1+) ──────────────────────────
+    # Métadonnées NON secrètes du flow OAuth. Le secret (access/refresh
+    # tokens) n'est JAMAIS ici : il vit en bundle JSON dans le Vault du
+    # propriétaire (label `mcp::<slug>::oauth`). `oauth_client_secret_ref`
+    # est une référence opaque (DCR confidentiel / serveur d'instance) — la
+    # valeur n'est jamais stockée ni renvoyée par l'API.
+    # Cache de découverte (RFC 9728 / 8414) : endpoints d'autorisation,
+    # de token, d'enregistrement (DCR) et de révocation, sérialisés en JSON.
+    oauth_metadata_json:     Mapped[str | None] = mapped_column(Text, nullable=True)
+    oauth_client_id:         Mapped[str | None] = mapped_column(String, nullable=True)
+    oauth_client_secret_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Scopes demandés (séparés par des espaces, format OAuth standard).
+    oauth_scopes:            Mapped[str | None] = mapped_column(String, nullable=True)
 
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
