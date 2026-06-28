@@ -156,8 +156,13 @@ export default function ScheduledTasksPage() {
                               running: { cls: "bg-cyber-cyan/10 border-cyber-cyan/30 text-cyber-cyan animate-pulse", label: t("statusRunning"), dot: "●" },
                               success: { cls: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400", label: t("statusSuccess"), dot: "✓" },
                               error:   { cls: "bg-red-500/10 border-red-500/30 text-red-400", label: t("statusError"), dot: "✕" },
+                              // [SILENT] : la tâche a tourné sans rien à signaler — ce n'est PAS un échec.
+                              silent:  { cls: "bg-bg-primary border-border-dim text-text-muted", label: t("statusSilent"), dot: "○" },
                             } as const;
-                            const m = s ? map[s] : { cls: "bg-bg-primary border-border-dim text-text-muted", label: t("statusNever"), dot: "○" };
+                            const fallback = { cls: "bg-bg-primary border-border-dim text-text-muted", label: t("statusNever"), dot: "○" };
+                            // Défensif : un statut inconnu (ex. nouvelle valeur côté backend) NE DOIT PAS
+                            // crasher le rendu de toute la page (cause du blocus /scheduled sur 'silent').
+                            const m = (s ? map[s as keyof typeof map] : undefined) ?? fallback;
                             return (
                               <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 inline-flex items-center gap-1 ${m.cls}`}>
                                 <span>{m.dot}</span>{m.label}

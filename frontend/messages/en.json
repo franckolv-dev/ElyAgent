@@ -951,6 +951,7 @@
     "statusRunning": "Running",
     "statusSuccess": "Succeeded",
     "statusError": "Failed",
+    "statusSilent": "Silent",
     "statusNever": "Never run",
     "lastRun": "Last run",
     "runNow": "Run now",
