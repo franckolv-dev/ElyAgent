@@ -644,6 +644,13 @@ app.include_router(_reversible_actions_router.router, tags=["trust"])
 # (J4) métriques du journal — /admin/reversible-actions/stats (admin only)
 app.include_router(_reversible_actions_router.admin_router, tags=["trust"])
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
+# Client MCP v2 / J2 — OAuth 2.1 par utilisateur : « Se connecter » + callback.
+# Sous /api (per-user, callback joignable sans auth admin, borné par state).
+# ⚠️ DOIT rester enregistré AVANT `app.mount("/api/mcp", ...)` (serveur FastMCP,
+# plus bas) : Starlette résout au premier match dans l'ordre, sinon le mount
+# /api/mcp masquerait /api/mcp/oauth/*.
+from app.routers import mcp_oauth as _mcp_oauth_router
+app.include_router(_mcp_oauth_router.router, prefix="/api", tags=["mcp-oauth"])
 app.include_router(telegram_webhook_router.router, tags=["telegram"])
 app.include_router(vault_router.router)
 app.include_router(conversations_router.router)
