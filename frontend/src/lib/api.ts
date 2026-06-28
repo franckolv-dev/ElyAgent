@@ -490,6 +490,26 @@ export const api = {
       body: JSON.stringify({ config }),
     }) as Promise<{ status: string; count: number; ids: string[] }>,
 
+  // ── J4 — OAuth 2.1 « Se connecter » (per-user, endpoints sous /api) ──────
+  /** Démarre le flow OAuth d'un serveur : renvoie l'URL de consentement. */
+  mcpOAuthStart: (id: string) =>
+    fetchAPI(`/api/mcp/oauth/${id}/start`) as Promise<{ url: string }>,
+
+  /** État de connexion OAuth du current_user pour ce serveur (lecture seule). */
+  mcpOAuthStatus: (id: string) =>
+    fetchAPI(`/api/mcp/oauth/${id}/status`) as Promise<{
+      oauth: boolean;
+      connected: boolean;
+      locked?: boolean;
+      scope?: string | null;
+    }>,
+
+  /** Déconnecte le current_user : révoque + purge ses tokens (per-user). */
+  mcpOAuthDisconnect: (id: string) =>
+    fetchAPI(`/api/mcp/oauth/${id}`, { method: "DELETE" }) as Promise<{
+      status: string;
+    }>,
+
   // ── My learned skills (Sprint 4b Phase 5.b) ─────────────────────────────
   /** List every LearnedSkill the caller owns, across all statuses. The
    *  backend orders by status then use_count so the UI can render the
@@ -662,6 +682,11 @@ export interface MCPServerOut {
   kill_switch: boolean | null;
   description: string | null;
   enabled: boolean;
+  /** OAuth (J4) — config NON secrète. Le secret client et les tokens ne
+   *  transitent jamais ici. auth_type==="oauth2" ⇒ serveur connectable. */
+  auth_type: string | null;
+  oauth_client_id: string | null;
+  oauth_scopes: string | null;
   /** Filled by the backend from the live skill registry — null when the
    *  server is disabled or has failed to load. */
   tool_count: number | null;
@@ -689,6 +714,10 @@ export interface MCPServerCreateBody {
   description?: string | null;
   enabled?: boolean;
   kill_switch?: boolean;
+  /** OAuth (J4) config non secrète. */
+  auth_type?: string | null;
+  oauth_client_id?: string | null;
+  oauth_scopes?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
