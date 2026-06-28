@@ -20,8 +20,10 @@ import Link from "next/link";
 import {
   Plug, Plus, RefreshCw, Trash2, Pencil, Save, X, ArrowLeft,
   CheckCircle2, AlertCircle, Loader2, Terminal, Wifi,
-  Upload, ShieldCheck, ShieldAlert, Lock,
+  Upload, ShieldCheck, ShieldAlert, Lock, LogIn, LogOut, KeyRound,
 } from "lucide-react";
+
+type OAuthStatus = { oauth: boolean; connected: boolean; locked?: boolean; scope?: string | null };
 import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -38,11 +40,16 @@ const EMPTY_FORM: FormState = {
   env_json: "",
   description: "",
   enabled: true,
+  auth_type: "none",
+  oauth_client_id: "",
+  oauth_scopes: "",
 };
 
 function toCreateBody(form: FormState): MCPServerCreateBody {
   // Send only the relevant transport field; leave the other null so the
-  // backend doesn't store a stale command on an SSE server (and vice versa).
+  // backend doesn't store a stale command on an HTTP server (and vice versa).
+  const isStdio = form.transport === "stdio";
+  const isOAuth = !isStdio && form.auth_type === "oauth2";
   const body: MCPServerCreateBody = {
     name: form.name.trim(),
     slug: form.slug.trim(),
@@ -50,8 +57,12 @@ function toCreateBody(form: FormState): MCPServerCreateBody {
     description: (form.description || "").trim() || null,
     env_json: (form.env_json || "").trim() || null,
     enabled: form.enabled ?? true,
-    command: form.transport === "stdio" ? (form.command || "").trim() || null : null,
-    url: form.transport === "sse" ? (form.url || "").trim() || null : null,
+    command: isStdio ? (form.command || "").trim() || null : null,
+    url: !isStdio ? (form.url || "").trim() || null : null,
+    // OAuth (J4) : config non secrète, seulement pour un serveur distant.
+    auth_type: isStdio ? "none" : (form.auth_type || "none"),
+    oauth_client_id: isOAuth ? (form.oauth_client_id || "").trim() || null : null,
+    oauth_scopes: isOAuth ? (form.oauth_scopes || "").trim() || null : null,
   };
   return body;
 }
@@ -65,8 +76,8 @@ function validate(form: FormState): string | null {
   if (form.transport === "stdio" && !(form.command || "").trim()) {
     return "La commande est requise pour le transport stdio (ex. « uv tool run mcp-server-time »).";
   }
-  if (form.transport === "sse" && !(form.url || "").trim()) {
-    return "L'URL est requise pour le transport SSE.";
+  if (form.transport !== "stdio" && !(form.url || "").trim()) {
+    return "L'URL est requise pour un transport distant (streamable_http / sse).";
   }
   if ((form.env_json || "").trim()) {
     try {
@@ -98,11 +109,35 @@ export default function MCPSettingsPage() {
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
 
+  // J4 — OAuth : statut de connexion per-user + spinners connect/disconnect.
+  const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthStatus>>({});
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       setError("");
       const data = await api.mcpServersList();
       setServers(data);
+      // Statut OAuth per-user des serveurs oauth2 (fail-soft : un /status en
+      // échec ne casse pas la page).
+      const oauthSrvs = data.filter((s) => s.auth_type === "oauth2");
+      if (oauthSrvs.length) {
+        const entries = await Promise.all(
+          oauthSrvs.map(async (s) => {
+            try {
+              return [s.id, await api.mcpOAuthStatus(s.id)] as const;
+            } catch {
+              return [s.id, null] as const;
+            }
+          }),
+        );
+        setOauthStatus(
+          Object.fromEntries(entries.filter((e): e is readonly [string, OAuthStatus] => e[1] !== null)),
+        );
+      } else {
+        setOauthStatus({});
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -119,6 +154,23 @@ export default function MCPSettingsPage() {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
+  // J4 — retour du callback OAuth : le backend redirige vers
+  // /settings/mcp?mcp_oauth=connected|error|locked. On affiche un toast puis on
+  // nettoie l'URL (pattern identique au flow Google).
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get("mcp_oauth");
+    if (!r) return;
+    if (r === "connected") {
+      showToast("ok", "Serveur MCP connecté via OAuth.");
+      // Recharge le statut pour que le badge passe « connecté » sans attendre
+      // (symétrie avec handleOAuthDisconnect qui rafraîchit déjà).
+      refresh();
+    } else if (r === "locked")
+      showToast("err", "Coffre-fort verrouillé — déverrouille-le puis réessaie « Se connecter ».");
+    else showToast("err", "Connexion OAuth échouée.");
+    window.history.replaceState({}, "", "/settings/mcp");
+  }, [showToast, refresh]);
+
   const startEdit = useCallback((srv: MCPServerOut) => {
     setForm({
       id: srv.id,
@@ -132,6 +184,9 @@ export default function MCPSettingsPage() {
       env_json: "",
       description: srv.description ?? "",
       enabled: srv.enabled,
+      auth_type: srv.auth_type ?? "none",
+      oauth_client_id: srv.oauth_client_id ?? "",
+      oauth_scopes: srv.oauth_scopes ?? "",
     });
     setShowForm(true);
   }, []);
@@ -235,6 +290,42 @@ export default function MCPSettingsPage() {
         showToast("err", e instanceof Error ? e.message : String(e));
       } finally {
         setActioningId(null);
+      }
+    },
+    [refresh, showToast],
+  );
+
+  const handleOAuthConnect = useCallback(
+    async (srv: MCPServerOut) => {
+      setConnectingId(srv.id);
+      try {
+        const { url } = await api.mcpOAuthStart(srv.id);
+        // Redirection complète vers le serveur d'autorisation (comme Google).
+        window.location.href = url;
+      } catch (e) {
+        showToast("err", e instanceof Error ? e.message : String(e));
+        setConnectingId(null);
+      }
+    },
+    [showToast],
+  );
+
+  const handleOAuthDisconnect = useCallback(
+    async (srv: MCPServerOut) => {
+      if (!confirm(
+        `Te déconnecter de « ${srv.name} » ?\n\n` +
+        "Tes tokens OAuth seront révoqués et purgés. Cela ne déconnecte que TOI " +
+        "(les autres utilisateurs gardent leur connexion).",
+      )) return;
+      setDisconnectingId(srv.id);
+      try {
+        await api.mcpOAuthDisconnect(srv.id);
+        showToast("ok", `Déconnecté de « ${srv.name} ».`);
+        await refresh();
+      } catch (e) {
+        showToast("err", e instanceof Error ? e.message : String(e));
+      } finally {
+        setDisconnectingId(null);
       }
     },
     [refresh, showToast],
@@ -421,14 +512,15 @@ export default function MCPSettingsPage() {
                     />
                   </Field>
 
-                  <Field label="Transport" hint="stdio = sous-processus local. sse = HTTP distant.">
+                  <Field label="Transport" hint="stdio = sous-processus local. streamable_http = HTTP distant (MCP moderne). sse = HTTP historique.">
                     <select
                       value={form.transport}
-                      onChange={(e) => setForm({ ...form, transport: e.target.value as "stdio" | "sse" })}
+                      onChange={(e) => setForm({ ...form, transport: e.target.value as FormState["transport"] })}
                       className="ely-input"
                     >
                       <option value="stdio">stdio (sous-processus)</option>
-                      <option value="sse">sse (HTTP)</option>
+                      <option value="streamable_http">streamable_http (HTTP)</option>
+                      <option value="sse">sse (HTTP historique)</option>
                     </select>
                   </Field>
 
@@ -458,6 +550,54 @@ export default function MCPSettingsPage() {
                       />
                     )}
                   </Field>
+
+                  {form.transport !== "stdio" && (
+                    <>
+                      <Field
+                        label="Authentification"
+                        hint="oauth2 = flow « Se connecter » (PKCE, tokens au Vault). Configurable depuis l'UI sans toucher la DB."
+                      >
+                        <select
+                          value={form.auth_type ?? "none"}
+                          onChange={(e) => setForm({ ...form, auth_type: e.target.value })}
+                          className="ely-input"
+                        >
+                          <option value="none">none (public / sans auth)</option>
+                          <option value="oauth2">oauth2 (Authorization Code + PKCE)</option>
+                        </select>
+                      </Field>
+                      {form.auth_type === "oauth2" && (
+                        <Field
+                          label="client_id (optionnel)"
+                          hint="Laisse vide pour l'enregistrement dynamique (DCR). Renseigne-le si le serveur ne supporte pas la DCR."
+                        >
+                          <input
+                            type="text"
+                            value={form.oauth_client_id ?? ""}
+                            onChange={(e) => setForm({ ...form, oauth_client_id: e.target.value })}
+                            placeholder="(DCR automatique si vide)"
+                            className="ely-input"
+                          />
+                        </Field>
+                      )}
+                      {form.auth_type === "oauth2" && (
+                        <div className="sm:col-span-2">
+                          <Field
+                            label="scopes (optionnel)"
+                            hint="Scopes OAuth séparés par des espaces (ex. « repo read:user »). Vide = scopes annoncés par le serveur."
+                          >
+                            <input
+                              type="text"
+                              value={form.oauth_scopes ?? ""}
+                              onChange={(e) => setForm({ ...form, oauth_scopes: e.target.value })}
+                              placeholder="repo read:user"
+                              className="ely-input"
+                            />
+                          </Field>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   <div className="sm:col-span-2">
                     <Field
@@ -565,7 +705,7 @@ export default function MCPSettingsPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2 align-top">
-                          <TrustBadge srv={srv} />
+                          <TrustBadge srv={srv} oauth={oauthStatus[srv.id]} />
                         </td>
                         <td className="px-3 py-2 align-top font-mono text-[10px] text-text-muted break-all max-w-xs">
                           {srv.transport === "stdio" ? srv.command : srv.url}
@@ -607,6 +747,27 @@ export default function MCPSettingsPage() {
                                 {actioningId === srv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />}
                               </button>
                             ) : null}
+                            {srv.auth_type === "oauth2" && (
+                              oauthStatus[srv.id]?.connected ? (
+                                <button
+                                  onClick={() => handleOAuthDisconnect(srv)}
+                                  disabled={disconnectingId === srv.id}
+                                  title="Te déconnecter (révoque tes tokens OAuth)"
+                                  className="p-1.5 rounded border border-border-dim text-text-muted hover:text-amber-400 hover:border-amber-400/30 transition-all disabled:opacity-30"
+                                >
+                                  {disconnectingId === srv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleOAuthConnect(srv)}
+                                  disabled={connectingId === srv.id}
+                                  title="Se connecter via OAuth"
+                                  className="p-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all disabled:opacity-30"
+                                >
+                                  {connectingId === srv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
+                                </button>
+                              )
+                            )}
                             <button
                               onClick={() => handleReload(srv)}
                               disabled={reloadingId === srv.id || !srv.enabled}
@@ -670,7 +831,7 @@ export default function MCPSettingsPage() {
   );
 }
 
-function TrustBadge({ srv }: { srv: MCPServerOut }) {
+function TrustBadge({ srv, oauth }: { srv: MCPServerOut; oauth?: OAuthStatus }) {
   const trust = srv.trust_state ?? "active";
   const health = srv.health_state ?? "unknown";
   const trustStyle =
@@ -691,6 +852,18 @@ function TrustBadge({ srv }: { srv: MCPServerOut }) {
         {srv.scope === "user" && <span className="inline-flex items-center gap-0.5"><Lock className="w-2.5 h-2.5" />perso</span>}
         {srv.kill_switch && <span className="text-cyber-red">⛔ kill</span>}
       </div>
+      {srv.auth_type === "oauth2" && (
+        <div className="flex items-center gap-1 text-[10px]">
+          <KeyRound className="w-2.5 h-2.5" />
+          {oauth?.locked ? (
+            <span className="text-amber-400">coffre verrouillé</span>
+          ) : oauth?.connected ? (
+            <span className="text-cyber-green">OAuth connecté</span>
+          ) : (
+            <span className="text-text-muted">OAuth non connecté</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

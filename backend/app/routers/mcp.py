@@ -58,6 +58,12 @@ class MCPServerCreate(BaseModel):
     description: Optional[str] = None
     enabled: bool = True
     kill_switch: bool = False
+    # ── OAuth (J4) — config non secrète. Le secret client / les tokens ne
+    # passent JAMAIS par ici (cf. mcp_oauth + Vault). auth_type="oauth2"
+    # rend le serveur connectable via le bouton « Se connecter ».
+    auth_type: Optional[str] = None
+    oauth_client_id: Optional[str] = None
+    oauth_scopes: Optional[str] = None
 
 
 class MCPServerUpdate(BaseModel):
@@ -70,6 +76,9 @@ class MCPServerUpdate(BaseModel):
     description: Optional[str] = None
     enabled: Optional[bool] = None
     kill_switch: Optional[bool] = None
+    auth_type: Optional[str] = None
+    oauth_client_id: Optional[str] = None
+    oauth_scopes: Optional[str] = None
 
 
 class MCPServerOut(BaseModel):
@@ -91,6 +100,12 @@ class MCPServerOut(BaseModel):
     trust_state: Optional[str] = None
     health_state: Optional[str] = None
     kill_switch: Optional[bool] = None
+    # ── OAuth (J4) — config NON secrète seulement. `oauth_client_secret_ref`
+    # et `oauth_metadata_json` ne sont JAMAIS exposés (secret chiffré / cache
+    # backend). L'UI s'en sert pour afficher les boutons « Se connecter ».
+    auth_type: Optional[str] = None
+    oauth_client_id: Optional[str] = None
+    oauth_scopes: Optional[str] = None
     # Live-state fields filled by the list endpoint (not stored in DB).
     # None = unknown (skill not in registry, e.g. enabled=False).
     tool_count: Optional[int] = None
@@ -150,7 +165,9 @@ async def create_mcp_server(body: MCPServerCreate, _=Depends(require_admin)):
         if existing.scalar_one_or_none():
             raise HTTPException(400, f"Un serveur MCP avec le slug '{body.slug}' existe déjà.")
 
-        srv = MCPServer(**body.model_dump())
+        # exclude_none : les Optional non fournis (dont auth_type) retombent sur
+        # les défauts du modèle ("none", etc.) — préserve le comportement pré-J4.
+        srv = MCPServer(**body.model_dump(exclude_none=True))
         db.add(srv)
         await db.commit()
         await db.refresh(srv)

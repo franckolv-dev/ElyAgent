@@ -77,6 +77,31 @@ def _frontend_redirect(status: str) -> RedirectResponse:
     return RedirectResponse(url=f"{base}/settings/mcp?mcp_oauth={status}")
 
 
+@router.get("/{server_id}/status")
+async def oauth_status(server_id: str, current_user: User = Depends(get_current_user)):
+    """État de connexion OAuth du **current_user** pour ce serveur (lecture seule).
+
+    Aucun effet de bord réseau : on lit le bundle du Vault, on ne rafraîchit
+    pas. ``connected`` = bundle présent avec access_token. ``locked`` si le Vault
+    est verrouillé (l'utilisateur doit le déverrouiller avant de voir l'état)."""
+    _require_flag()
+    async with async_session() as db:
+        srv = await db.get(MCPServer, server_id)
+        if not _visible(srv, current_user.id):
+            raise HTTPException(status_code=404, detail="Serveur introuvable")
+        if (srv.auth_type or "none") != "oauth2":
+            return {"oauth": False, "connected": False}
+        try:
+            bundle = await mcp_credentials.load_oauth_bundle(current_user.id, srv)
+        except PermissionError:
+            return {"oauth": True, "connected": False, "locked": True}
+        except KeyError:
+            return {"oauth": True, "connected": False}
+    connected = bool(bundle and bundle.get("access_token"))
+    scope = bundle.get("scope") if bundle else None
+    return {"oauth": True, "connected": connected, "scope": scope}
+
+
 @router.get("/{server_id}/start")
 async def oauth_start(server_id: str, current_user: User = Depends(get_current_user)):
     """Démarre le flow OAuth pour un serveur MCP. Renvoie l'URL de consentement."""
