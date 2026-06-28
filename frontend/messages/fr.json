@@ -951,6 +951,7 @@
     "statusRunning": "En cours",
     "statusSuccess": "Réussie",
     "statusError": "Échec",
+    "statusSilent": "Silencieuse",
     "statusNever": "Jamais exécutée",
     "lastRun": "Dernière exécution",
     "runNow": "Exécuter maintenant",
