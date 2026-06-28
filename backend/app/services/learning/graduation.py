@@ -13,7 +13,6 @@
 #
 # RÉSUMÉ DES CONDITIONS :
 #   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - AUTORISÉ : Modification et redistribution avec attribution.
 #   - INTERDIT : Revente comme SaaS / service managé à des tiers.
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
