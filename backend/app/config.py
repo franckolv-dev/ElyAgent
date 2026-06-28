@@ -193,6 +193,19 @@ class Settings(BaseSettings):
     # fait QUE de la découverte — aucune connexion, zéro confiance implicite.
     mcp_registry_url: str = "https://registry.modelcontextprotocol.io"
 
+    # ── Client MCP v2 — OAuth 2.1 / PKCE (chantier 2026-06, J1+) ──────────
+    # Interrupteur dédié du sous-système OAuth distant (Authorization Code +
+    # PKCE, découverte RFC 9728/8414, tokens au Vault du propriétaire). OFF
+    # par défaut — indépendant de `mcp_client_v2_enabled`. Tant qu'il est
+    # OFF, `auth_type=oauth2` reste inerte et le comportement V1 (none /
+    # bearer / api_key) est strictement préservé.
+    mcp_oauth_enabled: bool = False
+    # Redirect URI EXACTE enregistrée auprès des serveurs d'autorisation.
+    # Callback unique : le `server_id` + `state` voyagent dans `state`.
+    # En prod, surcharger via MCP_OAUTH_REDIRECT_URI (doit matcher l'URL
+    # publique du backend).
+    mcp_oauth_redirect_uri: str = "http://localhost:8000/api/mcp/oauth/callback"
+
     # ── Substrat de confiance (chantier P1, 2026-06) ──────────────────────
     # Interrupteur maître du substrat : CapabilityManifest, ActionPlan +
     # empreinte, idempotence, EventEnvelope. OFF par défaut. Tant qu'il est
