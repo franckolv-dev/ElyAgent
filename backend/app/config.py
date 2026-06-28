@@ -206,6 +206,23 @@ class Settings(BaseSettings):
     # publique du backend).
     mcp_oauth_redirect_uri: str = "http://localhost:8000/api/mcp/oauth/callback"
 
+    # ── Client MCP v2 — Sandbox des serveurs stdio (chantier 2026-06, J5) ──
+    # Interrupteur dédié du confinement des serveurs MCP **stdio** locaux.
+    # OFF par défaut → spawn actuel STRICTEMENT inchangé (rétrocompat). Quand
+    # ON, chaque serveur stdio est lancé via un launcher (setsid + rlimits +
+    # cwd) qui borne les RESSOURCES (mémoire/descripteurs/taille de fichier)
+    # et garantit le kill de l'arbre de processus à l'arrêt (zéro orphelin).
+    # NB : l'isolation RÉSEAU / user dédié / mounts n'est PAS couverte ici
+    # (nécessiterait un conteneur sidecar — backlog). RLIMIT_CPU volontairement
+    # exclu (serveur persistant), RLIMIT_NPROC exclu (compteur par-UID partagé).
+    mcp_stdio_sandbox_enabled: bool = False
+    # Limites par défaut (overridables par serveur via sandbox_profile_json, ou
+    # globalement via MCP_STDIO_SANDBOX_*). Généreuses pour ne pas casser des
+    # serveurs réels (npx/uv/puppeteer). RLIMIT_AS best-effort (inactif macOS).
+    mcp_stdio_sandbox_mem_bytes: int = 512 * 1024 * 1024   # 512 MiB (RLIMIT_AS)
+    mcp_stdio_sandbox_nofile: int = 256                    # RLIMIT_NOFILE
+    mcp_stdio_sandbox_fsize_bytes: int = 64 * 1024 * 1024  # 64 MiB (RLIMIT_FSIZE)
+
     # ── Substrat de confiance (chantier P1, 2026-06) ──────────────────────
     # Interrupteur maître du substrat : CapabilityManifest, ActionPlan +
     # empreinte, idempotence, EventEnvelope. OFF par défaut. Tant qu'il est

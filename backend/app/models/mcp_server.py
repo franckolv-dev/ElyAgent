@@ -88,6 +88,8 @@ class MCPServer(Base):
     #         retombe sur shlex.split(command) (rétro-compat). Aucun shell.
     command:   Mapped[str | None] = mapped_column(Text, nullable=True)
     args_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Répertoire de travail du sous-processus stdio. Dormant jusqu'au J5, où il
+    # est câblé au spawn (cwd du serveur sandboxé). Nul ⇒ cwd du backend.
     cwd:       Mapped[str | None] = mapped_column(Text, nullable=True)
     # remote : endpoint MCP (streamable_http / legacy_sse)
     url:       Mapped[str | None] = mapped_column(String, nullable=True)
@@ -97,6 +99,10 @@ class MCPServer(Base):
     # router : on n'expose que les *noms* de clés). Migration du stockage
     # vers le Vault / secret d'instance = Lot 3 (J4).
     env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ── Sandbox stdio (J5) — override de profil par serveur (NON secret) ──
+    # Objet JSON optionnel : {mem_bytes, nofile, fsize_bytes}. Nul ⇒ profil
+    # par défaut (config). Lu seulement si `mcp_stdio_sandbox_enabled` est ON.
+    sandbox_profile_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Authentification distante (J4) ─────────────────────────────────
     # "none" | "bearer" | "api_key" | "oauth2". Le secret n'est JAMAIS stocké

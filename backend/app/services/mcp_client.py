@@ -36,11 +36,53 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import shlex
+import signal
+import tempfile
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
+
+
+def _pgroup_alive(pgid: int) -> bool:
+    """Le groupe a-t-il encore un membre vivant ? ``signal 0`` = test seul.
+
+    ``ProcessLookupError`` ⇒ groupe vide. ``PermissionError`` ⇒ il existe mais
+    on ne peut pas le signaler (ex. leader zombie pas encore reapé) → on le
+    considère vivant (fail-safe : on ira jusqu'au SIGKILL)."""
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+async def _terminate_pgroup(pgid: int, grace: float = 2.0) -> None:
+    """Tue un groupe de processus (SIGTERM → grâce → SIGKILL). Idempotent.
+
+    Filet de sécurité du J5 : après l'arrêt du serveur stdio par le SDK, on
+    s'assure qu'aucun descendant (npx → node → chromium…) ne survit. ``pgid``
+    vient du launcher (setsid). Ne tue JAMAIS le groupe du backend."""
+    if pgid <= 1 or pgid == os.getpgrp():
+        return
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        return
+    waited = 0.0
+    while waited < grace:
+        await asyncio.sleep(0.1)
+        waited += 0.1
+        if not _pgroup_alive(pgid):
+            return  # tout le groupe est parti proprement
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 # B-12 (revue 2026-06-10) — slug serveur → noms d'outils exposés. Permet à
 # tool_acl de réserver les outils MCP (lancés avec les secrets admin) au
@@ -161,6 +203,39 @@ def _build_mcp_env(env_json: str | None) -> dict[str, str]:
     return env
 
 
+def _resolve_sandbox_profile(srv) -> dict | None:
+    """Profil sandbox stdio d'un serveur, ou None si le flag est OFF.
+
+    Fusionne les défauts (config, overridables par env) avec l'override
+    optionnel ``sandbox_profile_json`` du serveur. Clés bornées :
+    ``mem_bytes`` / ``nofile`` / ``fsize_bytes`` (entiers positifs)."""
+    from app.config import get_settings
+
+    s = get_settings()
+    if not getattr(s, "mcp_stdio_sandbox_enabled", False):
+        return None
+
+    profile = {
+        "mem_bytes": int(getattr(s, "mcp_stdio_sandbox_mem_bytes", 0) or 0),
+        "nofile": int(getattr(s, "mcp_stdio_sandbox_nofile", 0) or 0),
+        "fsize_bytes": int(getattr(s, "mcp_stdio_sandbox_fsize_bytes", 0) or 0),
+    }
+    raw = getattr(srv, "sandbox_profile_json", None)
+    if raw:
+        try:
+            override = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            override = None
+        if isinstance(override, dict):
+            for key in ("mem_bytes", "nofile", "fsize_bytes"):
+                val = override.get(key)
+                # `not isinstance(val, bool)` : en Python True/False SONT des int
+                # (isinstance(True, int) ⇒ True) — on refuse les booléens.
+                if isinstance(val, int) and not isinstance(val, bool) and val > 0:
+                    profile[key] = val
+    return profile
+
+
 class _StdioConnection:
     """Connexion stdio persistante vers un processus MCP (reconnexion auto).
 
@@ -186,13 +261,19 @@ class _StdioConnection:
     """
 
     def __init__(self, command: str, env: dict | None = None,
-                 args: list[str] | None = None):
+                 args: list[str] | None = None,
+                 sandbox: dict | None = None, cwd: str | None = None):
         # ``command`` est soit l'exécutable seul (quand ``args`` est fourni),
         # soit la ligne complète legacy (shlex.split dans _lifecycle). Aucun
         # passage par un shell dans les deux cas.
         self.command = command
         self.env = env
         self.args = args
+        # J5 — confinement : ``sandbox`` = profil rlimits (None ⇒ flag OFF ⇒
+        # spawn legacy strictement inchangé) ; ``cwd`` = répertoire de travail.
+        self.sandbox = sandbox
+        self.cwd = cwd
+        self._pgid_file: str | None = None
         self._lock = asyncio.Lock()
         self._session = None
         self._task: asyncio.Task | None = None
@@ -216,11 +297,27 @@ class _StdioConnection:
             # `self.env` was already scrubbed by `_build_mcp_env` in the
             # caller (`_build_tools`). Falls back to None for backward-
             # compat callsites that pass a pre-scrubbed dict directly.
-            params = StdioServerParameters(
-                command=executable,
-                args=args,
-                env=self.env,
-            )
+            #
+            # J5 — si un profil sandbox est présent (flag ON), on PRÉFIXE la
+            # commande réelle par le launcher de confinement (setsid + rlimits)
+            # et on passe le cwd. Sinon : spawn legacy STRICTEMENT inchangé.
+            if self.sandbox is not None:
+                from app.services.mcp_stdio_launcher import build_launcher_argv
+
+                fd, self._pgid_file = tempfile.mkstemp(prefix="ely-mcp-pgid-")
+                os.close(fd)
+                executable, args = build_launcher_argv(
+                    executable, args, profile=self.sandbox, pgid_file=self._pgid_file,
+                )
+                params = StdioServerParameters(
+                    command=executable, args=args, env=self.env, cwd=self.cwd,
+                )
+            else:
+                params = StdioServerParameters(
+                    command=executable,
+                    args=args,
+                    env=self.env,
+                )
             async with stdio_client(params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
@@ -234,6 +331,14 @@ class _StdioConnection:
         except BaseException as exc:  # noqa: BLE001 — funnel all init failures
             logger.error("MCP stdio lifecycle failed (%s): %s", self.command, exc)
             self._init_error = exc
+            # Le serveur n'a pas démarré : purge la sentinelle pgid (évite une
+            # fuite de fichier temp ; close() ne tuera rien).
+            if self._pgid_file:
+                try:
+                    os.unlink(self._pgid_file)
+                except OSError:
+                    pass
+                self._pgid_file = None
             # Unblock any task waiting in _connect; it will re-raise.
             self._ready.set()
         finally:
@@ -278,6 +383,31 @@ class _StdioConnection:
         self._shutdown.set()
         await self._reap_task()
         self._session = None
+        # J5 — kill-arbre : le SDK a déjà arrêté le process direct ; on tue le
+        # groupe (via le PGID écrit par le launcher) pour balayer d'éventuels
+        # descendants orphelins. Best-effort, jamais bloquant.
+        await self._kill_process_group()
+
+    async def _kill_process_group(self) -> None:
+        # Swap atomique : deux close() concurrents ne lisent pas le même fichier
+        # deux fois (l'un récupère le chemin, l'autre None) — pas de double kill,
+        # et pas besoin du lock (qui déclencherait un deadlock avec call_tool).
+        if not self._pgid_file:
+            return
+        pgid_file, self._pgid_file = self._pgid_file, None
+        try:
+            with open(pgid_file) as fh:
+                pgid = int((fh.read() or "0").strip() or "0")
+        except (OSError, ValueError):
+            pgid = 0
+        if pgid > 1:
+            await _terminate_pgroup(pgid)
+        # Délier APRÈS la terminaison : tant que le kill n'est pas fini, la
+        # sentinelle reste (réduit la fenêtre de réutilisation du PGID).
+        try:
+            os.unlink(pgid_file)
+        except OSError:
+            pass
 
     async def call_tool(self, tool_name: str, arguments: dict):
         async with self._lock:
@@ -397,7 +527,11 @@ class MCPClientManager:
             if srv.transport == "stdio":
                 env = _build_mcp_env(srv.env_json)
                 args = _parse_args_json(getattr(srv, "args_json", None))
-                conn = _StdioConnection(srv.command, env, args=args)
+                # J5 — profil sandbox (None si flag OFF ⇒ spawn legacy) + cwd.
+                sandbox = _resolve_sandbox_profile(srv)
+                cwd = (getattr(srv, "cwd", None) or None) if sandbox else None
+                conn = _StdioConnection(srv.command, env, args=args,
+                                        sandbox=sandbox, cwd=cwd)
                 self._connections[srv.slug] = conn
                 mcp_tools: list[MCPTool] = await _collect_tools(conn.list_tools)
                 await _persist_catalogue(srv, mcp_tools)
