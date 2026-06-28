@@ -15,6 +15,8 @@
  */
 import { useEffect } from "react";
 
+import { hardRecoverAndReload } from "@/lib/recover";
+
 const RELOAD_FLAG = "ely-chunk-reloaded";
 
 function isChunkError(message: string): boolean {
@@ -37,7 +39,7 @@ export default function GlobalError({
     } catch {
       /* sessionStorage indispo — on recharge quand même une fois */
     }
-    window.location.reload();
+    void hardRecoverAndReload();
   }, [error]);
 
   return (
@@ -65,7 +67,7 @@ export default function GlobalError({
           </p>
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => void hardRecoverAndReload()}
             style={{
               padding: "10px 20px",
               borderRadius: 8,
