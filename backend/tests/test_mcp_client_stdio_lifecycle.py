@@ -94,10 +94,11 @@ def fake_mcp_module(monkeypatch):
         return _RecordingAsyncCM(sess, label="session", recorder=recorder)
 
     class _StdioServerParameters:
-        def __init__(self, command, args, env):
+        def __init__(self, command, args, env, cwd=None):
             self.command = command
             self.args = args
             self.env = env
+            self.cwd = cwd
 
     mcp_root = types.ModuleType("mcp")
     mcp_root.ClientSession = _make_client_session
@@ -220,7 +221,7 @@ async def test_init_failure_propagates_and_cleans_up(monkeypatch):
         return _RecordingAsyncCM(s, label="session", recorder=recorder)
 
     class _Params:
-        def __init__(self, command, args, env):
+        def __init__(self, command, args, env, cwd=None):
             pass
 
     mcp_root = types.ModuleType("mcp")

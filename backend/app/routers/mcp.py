@@ -64,6 +64,11 @@ class MCPServerCreate(BaseModel):
     auth_type: Optional[str] = None
     oauth_client_id: Optional[str] = None
     oauth_scopes: Optional[str] = None
+    # ── Sandbox stdio (J5) — config NON secrète. `cwd` = répertoire de travail ;
+    # `sandbox_profile_json` = override {mem_bytes, nofile, fsize_bytes}. Lus
+    # seulement si `mcp_stdio_sandbox_enabled` est ON.
+    cwd: Optional[str] = None
+    sandbox_profile_json: Optional[str] = None
 
 
 class MCPServerUpdate(BaseModel):
@@ -79,6 +84,8 @@ class MCPServerUpdate(BaseModel):
     auth_type: Optional[str] = None
     oauth_client_id: Optional[str] = None
     oauth_scopes: Optional[str] = None
+    cwd: Optional[str] = None
+    sandbox_profile_json: Optional[str] = None
 
 
 class MCPServerOut(BaseModel):
@@ -106,6 +113,9 @@ class MCPServerOut(BaseModel):
     auth_type: Optional[str] = None
     oauth_client_id: Optional[str] = None
     oauth_scopes: Optional[str] = None
+    # ── Sandbox stdio (J5) — config NON secrète exposée pour l'admin.
+    cwd: Optional[str] = None
+    sandbox_profile_json: Optional[str] = None
     # Live-state fields filled by the list endpoint (not stored in DB).
     # None = unknown (skill not in registry, e.g. enabled=False).
     tool_count: Optional[int] = None
