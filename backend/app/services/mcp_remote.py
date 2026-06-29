@@ -84,3 +84,52 @@ async def remote_call_tool(srv, user_id: str, remote_tool: str, args: dict,
                         bool(getattr(srv, "allow_private_network", False))) as session:
         result = await session.call_tool(remote_tool, args)
     return normalize_call_result(result, local_name=local_name)
+
+
+# ── Resources / Prompts (J6) — lecture seule, à la demande ───────────────────
+
+def _allow_private(srv) -> bool:
+    return bool(getattr(srv, "allow_private_network", False))
+
+
+async def remote_list_resources(srv, user_id: str) -> list:
+    """Liste paginée des resources d'un serveur distant (credentials du propriétaire)."""
+    from app.services.mcp_client import _collect_resources
+    from app.services.mcp_credentials import resolve_user_headers
+
+    headers = await resolve_user_headers(user_id, srv)
+    async with _session(srv.url, srv.transport, headers, _allow_private(srv)) as session:
+        return await _collect_resources(session.list_resources)
+
+
+async def remote_read_resource(srv, user_id: str, uri: str, *, local_name: str = "mcp") -> str:
+    """Lit une resource distante et normalise (binaires hors-contexte, bornée)."""
+    from app.services.mcp_credentials import resolve_user_headers
+    from app.services.mcp_results import normalize_resource_result
+
+    headers = await resolve_user_headers(user_id, srv)
+    async with _session(srv.url, srv.transport, headers, _allow_private(srv)) as session:
+        result = await session.read_resource(uri)
+    return normalize_resource_result(result, local_name=local_name)
+
+
+async def remote_list_prompts(srv, user_id: str) -> list:
+    """Liste paginée des prompts d'un serveur distant."""
+    from app.services.mcp_client import _collect_prompts
+    from app.services.mcp_credentials import resolve_user_headers
+
+    headers = await resolve_user_headers(user_id, srv)
+    async with _session(srv.url, srv.transport, headers, _allow_private(srv)) as session:
+        return await _collect_prompts(session.list_prompts)
+
+
+async def remote_get_prompt(srv, user_id: str, name: str, arguments: dict | None,
+                            *, local_name: str = "mcp") -> str:
+    """Récupère un prompt distant et normalise (bandeau anti-injection, bornée)."""
+    from app.services.mcp_credentials import resolve_user_headers
+    from app.services.mcp_results import normalize_prompt_result
+
+    headers = await resolve_user_headers(user_id, srv)
+    async with _session(srv.url, srv.transport, headers, _allow_private(srv)) as session:
+        result = await session.get_prompt(name, arguments or None)
+    return normalize_prompt_result(result, local_name=local_name)
