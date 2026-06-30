@@ -117,7 +117,12 @@ async def _call_patch_llm(prompt: str, user_id: str | None = None) -> tuple[str,
     response = await llm.ainvoke(
         [{"role": "user", "content": prompt}], config={"callbacks": []},
     )
-    raw = getattr(response, "content", "") or ""
+    # content_to_text : sur les tiers à blocs (Responses API / codex, modèles à
+    # « reasoning », Anthropic), ``response.content`` est une LISTE de blocs, pas
+    # une str. Sans coercition, ``parse_patch`` plante (``list.strip``) HORS du
+    # try → HTTP 500. Helper partagé, comme mission_critic / mission_spec_runtime.
+    from app.agent.helpers.message_content import content_to_text
+    raw = content_to_text(getattr(response, "content", "") or "")
     if user_id:
         try:
             from app.services.analytics_service import log_response_usage

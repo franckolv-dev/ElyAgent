@@ -138,6 +138,44 @@ async def test_propose_patch_creates_proposed(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_propose_patch_handles_list_content(monkeypatch) -> None:
+    """Régression : un provider tier-C qui renvoie ``content`` en LISTE de
+    blocs (Responses API / codex, modèles à reasoning, Anthropic) ne doit PAS
+    faire planter (HTTP 500 via ``list.strip``) — le contenu est coercé en str.
+
+    On exerce le VRAI ``_call_patch_llm`` (pas le stub) en n'interceptant que
+    ``get_llm_for_tier``, pour couvrir la coercition ``content_to_text``.
+    """
+    import app.services.llm_provider as provider
+
+    class _FakeLLM:
+        model = "fake-reasoning"
+
+        async def ainvoke(self, _messages, config=None):  # noqa: ARG002
+            # Forme réelle d'OpenAI Responses API / openai-codex (output_version
+            # v0) : une LISTE de blocs typés, pas une str (cf. message_content).
+            # Les blocs « reasoning » n'ont pas de champ ``text`` → ignorés.
+            class _R:
+                content = [
+                    {"type": "reasoning", "index": 0},
+                    {"type": "text", "index": 0,
+                     "text": '{"new_prompt": "Récupère PUIS écris dans le CSV.",'
+                             ' "rationale": "rendu impératif"}'},
+                ]
+            return _R()
+
+    monkeypatch.setattr(provider, "get_llm_for_tier", lambda _tier: _FakeLLM())
+    uid = await _seed_user()
+    tid, _oc, did = await _seed_scheduled_incident(uid, prompt="fais le truc")
+
+    import app.services.learning.patch_service as ps
+    patch = await ps.propose_patch(did)        # ne doit pas lever
+    assert patch is not None
+    assert patch.status == "proposed"
+    assert "CSV" in patch.new_value
+
+
+@pytest.mark.asyncio
 async def test_propose_patch_rejects_non_scheduled(monkeypatch) -> None:
     import app.services.learning.patch_service as ps
     from app.database import async_session
