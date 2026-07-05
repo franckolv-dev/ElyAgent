@@ -43,6 +43,7 @@ const EMPTY_FORM: FormState = {
   auth_type: "none",
   oauth_client_id: "",
   oauth_scopes: "",
+  allow_private_network: false,
 };
 
 function toCreateBody(form: FormState): MCPServerCreateBody {
@@ -63,6 +64,8 @@ function toCreateBody(form: FormState): MCPServerCreateBody {
     auth_type: isStdio ? "none" : (form.auth_type || "none"),
     oauth_client_id: isOAuth ? (form.oauth_client_id || "").trim() || null : null,
     oauth_scopes: isOAuth ? (form.oauth_scopes || "").trim() || null : null,
+    // Exception réseau privé/LAN : pertinente pour une cible distante uniquement.
+    allow_private_network: isStdio ? false : !!form.allow_private_network,
   };
   return body;
 }
@@ -187,6 +190,7 @@ export default function MCPSettingsPage() {
       auth_type: srv.auth_type ?? "none",
       oauth_client_id: srv.oauth_client_id ?? "",
       oauth_scopes: srv.oauth_scopes ?? "",
+      allow_private_network: srv.allow_private_network ?? false,
     });
     setShowForm(true);
   }, []);
@@ -596,6 +600,20 @@ export default function MCPSettingsPage() {
                           </Field>
                         </div>
                       )}
+                      <div className="sm:col-span-2 flex items-start gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          id="allow_private_network"
+                          checked={!!form.allow_private_network}
+                          onChange={(e) => setForm({ ...form, allow_private_network: e.target.checked })}
+                          className="mt-0.5 accent-amber-400"
+                        />
+                        <label htmlFor="allow_private_network" className="cursor-pointer text-text-muted">
+                          <span className="text-amber-400">⚠️ Autoriser une cible réseau privée / LAN / localhost</span>
+                          {" "}— désactive la garde SSRF pour CE serveur (à réserver à un serveur de
+                          confiance sur ton réseau, ex. un serveur MCP de test local).
+                        </label>
+                      </div>
                     </>
                   )}
 

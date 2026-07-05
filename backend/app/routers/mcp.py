@@ -69,6 +69,9 @@ class MCPServerCreate(BaseModel):
     # seulement si `mcp_stdio_sandbox_enabled` est ON.
     cwd: Optional[str] = None
     sandbox_profile_json: Optional[str] = None
+    # ── Exception réseau privé/LAN (admin) — désactive la garde SSRF pour CE
+    # serveur (cible loopback/LAN/privée autorisée). Opt-in explicite, admin-only.
+    allow_private_network: Optional[bool] = None
 
 
 class MCPServerUpdate(BaseModel):
@@ -86,6 +89,7 @@ class MCPServerUpdate(BaseModel):
     oauth_scopes: Optional[str] = None
     cwd: Optional[str] = None
     sandbox_profile_json: Optional[str] = None
+    allow_private_network: Optional[bool] = None
 
 
 class MCPServerOut(BaseModel):
@@ -116,6 +120,8 @@ class MCPServerOut(BaseModel):
     # ── Sandbox stdio (J5) — config NON secrète exposée pour l'admin.
     cwd: Optional[str] = None
     sandbox_profile_json: Optional[str] = None
+    # Exception réseau privé/LAN (admin) — cf. schémas d'entrée.
+    allow_private_network: Optional[bool] = None
     # Live-state fields filled by the list endpoint (not stored in DB).
     # None = unknown (skill not in registry, e.g. enabled=False).
     tool_count: Optional[int] = None

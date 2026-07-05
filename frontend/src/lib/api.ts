@@ -687,6 +687,8 @@ export interface MCPServerOut {
   auth_type: string | null;
   oauth_client_id: string | null;
   oauth_scopes: string | null;
+  /** Exception réseau privé/LAN (admin) — désactive la garde SSRF pour ce serveur. */
+  allow_private_network: boolean | null;
   /** Filled by the backend from the live skill registry — null when the
    *  server is disabled or has failed to load. */
   tool_count: number | null;
@@ -718,6 +720,8 @@ export interface MCPServerCreateBody {
   auth_type?: string | null;
   oauth_client_id?: string | null;
   oauth_scopes?: string | null;
+  /** Exception réseau privé/LAN (admin). */
+  allow_private_network?: boolean | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
