@@ -189,3 +189,25 @@ def test_unknown_version_still_rejected() -> None:
     with pytest.raises(MissionSpecError) as exc:
         parse_mission_spec("version: 3\nsteps:\n  - id: s1\n    do: x")
     assert any("version" in e for e in exc.value.errors)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Gate flag — fail-closed par défaut
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_flag_off_by_default_and_gate_message() -> None:
+    from app.config import get_settings
+    from app.services.mission_spec import validate_mission_spec
+
+    assert get_settings().autonomous_missions_enabled is False
+
+    # Défaut fail-closed du validateur (celui des endpoints)
+    errs = validate_mission_spec(_CANONICAL_V2)
+    assert errs and any("missions autonomes désactivées" in e for e in errs)
+
+    # Flag ON simulé : le même document passe
+    assert validate_mission_spec(_CANONICAL_V2, allow_mandate=True) == []
+
+    # Une spec v1 n'est jamais affectée par le gate
+    assert validate_mission_spec(_V1_CANONICAL) == []
