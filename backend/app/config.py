@@ -256,6 +256,17 @@ class Settings(BaseSettings):
     # refusée). 7 j par défaut, < les ~30 j de la corbeille Drive réelle.
     reversible_journal_ttl_seconds: int = 7 * 24 * 3600
 
+    # ── Missions autonomes (chantier 2026-07, J1+) ────────────────────────
+    # Interrupteur maître du mandat d'autonomie par mission (spec v2, bloc
+    # `mandate:` — cadrage : docs_internes/cadrage_missions_autonomes.md).
+    # OFF par défaut ⇒ toute spec portant un mandat est REFUSÉE à la
+    # création/édition (message explicite) ; specs v1 et missions
+    # supervisées strictement inchangées. Les chemins de LECTURE (runtime,
+    # viewer) restent tolérants : une mission créée flag ON n'est jamais
+    # briquée par un rebasculement OFF. L'enforcement (bypass HITL scopé au
+    # mandat) arrive en J2 — J1 ne fait que valider et stocker le contrat.
+    autonomous_missions_enabled: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

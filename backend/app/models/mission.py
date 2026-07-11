@@ -119,6 +119,18 @@ class Mission(Base):
     # security_filter.NEVER_AUTONOMOUS_TOOLS) are still NOT auto-approved.
     autonomous: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # ── Mandat d'autonomie (Missions autonomes J1, 2026-07-11) ──
+    # NULL = mission sans mandat (supervisée) — rétrocompat totale.
+    # `mandate_json` est la forme CANONIQUE (mission_spec.mandate_to_json :
+    # défauts appliqués, clés triées) figée à la création — c'est ELLE que
+    # J2 lira pour l'enforcement, pas le YAML brut. `autonomy_state` trace
+    # le cycle de vie du mandat (J1 : 'pending_validation' ; validation
+    # HITL + activation en J2/J6). Distinct du booléen `autonomous`
+    # ci-dessus (auto-approve léger 2026-06-04) : le mandat est le grant
+    # déclaratif complet. Révision Alembic 0018.
+    mandate_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    autonomy_state: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
     # ── Final state ──
     final_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

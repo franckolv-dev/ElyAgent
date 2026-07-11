@@ -70,12 +70,29 @@ async def create_mission(
     """
     if source not in MISSION_SOURCES:
         raise ValueError(f"invalid source: {source!r}")
+    mandate_json: Optional[str] = None
+    autonomy_state: Optional[str] = None
     if spec_yaml is not None and spec_yaml.strip():
-        from app.services.mission_spec import MissionSpecError, parse_mission_spec
+        from app.services.mission_spec import (
+            MissionSpecError,
+            mandate_to_json,
+            parse_mission_spec,
+        )
         try:
-            parse_mission_spec(spec_yaml)
+            spec = parse_mission_spec(spec_yaml)
         except MissionSpecError as exc:
             raise ValueError(f"spec invalide : {exc}") from exc
+        if spec.mandate is not None:
+            from app.config import get_settings
+            if not get_settings().autonomous_missions_enabled:
+                # Défense en profondeur : le router gate déjà, mais les
+                # sources non-UI (Telegram, scheduler) passent par ici.
+                raise ValueError(
+                    "spec invalide : mandate : missions autonomes désactivées "
+                    "(flag autonomous_missions_enabled)"
+                )
+            mandate_json = mandate_to_json(spec.mandate)
+            autonomy_state = "pending_validation"
     else:
         spec_yaml = None
 
@@ -93,6 +110,8 @@ async def create_mission(
         deadline=deadline,
         autonomous=autonomous,
         spec_yaml=spec_yaml,
+        mandate_json=mandate_json,
+        autonomy_state=autonomy_state,
     )
     async with async_session() as db:
         db.add(mission)

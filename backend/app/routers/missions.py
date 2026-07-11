@@ -142,8 +142,12 @@ async def create_mission(
     current_user: User = Depends(get_current_user),
 ) -> MissionOut:
     if body.spec_yaml and body.spec_yaml.strip():
+        from app.config import get_settings
         from app.services.mission_spec import validate_mission_spec
-        spec_errors = validate_mission_spec(body.spec_yaml)
+        spec_errors = validate_mission_spec(
+            body.spec_yaml,
+            allow_mandate=get_settings().autonomous_missions_enabled,
+        )
         if spec_errors:
             raise HTTPException(
                 status_code=422,
