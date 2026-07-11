@@ -211,3 +211,103 @@ def test_flag_off_by_default_and_gate_message() -> None:
 
     # Une spec v1 n'est jamais affectée par le gate
     assert validate_mission_spec(_V1_CANONICAL) == []
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Modèle + persistance service + migration 0018
+# ─────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mission_persists_mandate(monkeypatch) -> None:
+    import json
+
+    from sqlalchemy import delete, select
+
+    from app.config import get_settings
+    from app.database import async_session, init_db
+    from app.models.mission import Mission
+    from app.models.user import User
+    from app.services import mission_service
+    from app.services.alembic_runner import ensure_migrations
+
+    await init_db()
+    await ensure_migrations()
+    uid = f"test_j1_{uuid.uuid4().hex[:8]}"
+    async with async_session() as db:
+        db.add(User(
+            id=uid, username=f"u_{uid[-8:]}", email=f"{uid}@bench.local",
+            hashed_password="x",
+        ))
+        await db.commit()
+    try:
+        # Flag OFF (défaut) : le SERVICE refuse aussi le mandat — défense en
+        # profondeur, les sources non-UI (Telegram, scheduler) passent par lui.
+        with pytest.raises(ValueError, match="missions autonomes désactivées"):
+            await mission_service.create_mission(
+                user_id=uid, title="x", goal="y", spec_yaml=_CANONICAL_V2,
+            )
+
+        # Flag ON : mandat normalisé persisté + état 'pending_validation'.
+        monkeypatch.setattr(get_settings(), "autonomous_missions_enabled", True)
+        m = await mission_service.create_mission(
+            user_id=uid, title="Chaîne YouTube", goal="gérer la chaîne",
+            spec_yaml=_CANONICAL_V2,
+        )
+        async with async_session() as db:
+            row = (await db.execute(
+                select(Mission).where(Mission.id == m.id)
+            )).scalar_one()
+        assert row.autonomy_state == "pending_validation"
+        mandate = json.loads(row.mandate_json)
+        assert mandate["tools_allow"] == ["youtube", "drive", "files", "web"]
+        assert mandate["on_unforeseen"] == "escalate"
+        assert mandate["budgets"]["daily_llm_calls_notify"] == 100
+
+        # Rétrocompat : v1 et legacy ⇒ colonnes NULL, quel que soit le flag.
+        v1 = await mission_service.create_mission(
+            user_id=uid, title="V1", goal="g", spec_yaml=_V1_CANONICAL,
+        )
+        legacy = await mission_service.create_mission(
+            user_id=uid, title="Legacy", goal="prompt monolithe",
+        )
+        assert v1.mandate_json is None and v1.autonomy_state is None
+        assert legacy.mandate_json is None and legacy.autonomy_state is None
+    finally:
+        async with async_session() as db:
+            await db.execute(delete(Mission).where(Mission.user_id == uid))
+            u = await db.get(User, uid)
+            if u is not None:
+                await db.delete(u)
+            await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_migration_0018_adds_columns_to_legacy_db(tmp_path, monkeypatch) -> None:
+    """Même piège d'adoption que 0002 : une base existante jamais vue par
+    Alembic doit recevoir les 2 colonnes via stamp baseline + upgrade."""
+    import sqlite3
+    import types
+
+    import app.config as app_config
+    from app.services import alembic_runner as ar
+
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE missions (id TEXT PRIMARY KEY, goal TEXT)")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        app_config, "get_settings",
+        lambda: types.SimpleNamespace(database_url=f"sqlite+aiosqlite:///{db_path}"),
+    )
+
+    assert await ar.ensure_migrations() == "stamped+upgraded"
+
+    check = sqlite3.connect(db_path)
+    cols = {r[1] for r in check.execute("PRAGMA table_info(missions)")}
+    check.close()
+    assert {"mandate_json", "autonomy_state"} <= cols, (
+        "la révision 0018 n'a pas été appliquée à la base legacy"
+    )
