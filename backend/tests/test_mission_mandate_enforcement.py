@@ -38,6 +38,17 @@ async def _user_j2():
         await db.commit()
     yield uid
     async with async_session() as db:
+        from sqlalchemy import select
+
+        from app.models.mission import MissionDailyCounter
+
+        # J3 : sous mandat actif, dispatch_tool incrémente un compteur du jour
+        # (FK missions) → le purger avant les missions.
+        mids = [r[0] for r in (await db.execute(
+            select(Mission.id).where(Mission.user_id == uid))).all()]
+        if mids:
+            await db.execute(delete(MissionDailyCounter).where(
+                MissionDailyCounter.mission_id.in_(mids)))
         await db.execute(delete(Mission).where(Mission.user_id == uid))
         u = await db.get(User, uid)
         if u is not None:
