@@ -235,3 +235,98 @@ def test_strict_directives_only_in_decide_mode():
     # les 2 consignes D2 seulement en decide
     assert "loi française" in d_decide and "loi française" not in d_escalate
     assert "carnet" in d_decide.lower()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Task 3 — anti-boucle branchée dans act_node
+# ─────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_antiloop_blocks_fourth_identical_call(_ws_env, _user_j5, monkeypatch):
+    """3 échecs identiques déjà en base + un 4e appel identique proposé par
+    le LLM ⇒ act_node NE dispatche PAS, renvoie un échec instructif et
+    incrémente consecutive_failures (→ replan)."""
+    from app.agent.missions import nodes
+    from app.services import mission_service
+
+    mid = await _mandated_mission(_user_j5, monkeypatch, "decide", allow="web")
+    # 3 échecs identiques déjà consignés
+    for _ in range(3):
+        await mission_service.add_step(
+            mid, phase="act", thought="x", tool_name="web_search",
+            tool_input={"q": "boucle"}, tool_output="err", success=False,
+        )
+
+    # Le LLM (stubé) ré-émet EXACTEMENT le même appel
+    dispatched = {"n": 0}
+
+    async def _never(*a, **k):
+        dispatched["n"] += 1
+        return "ne devrait pas être appelé", True
+    monkeypatch.setattr(nodes, "dispatch_tool", _never)
+
+    class _Resp:
+        content = ""
+        tool_calls = [{"name": "web_search", "args": {"q": "boucle"},
+                       "id": "call-1"}]
+
+    async def _fake_actor_llms(**kwargs):
+        class _LLM:
+            async def ainvoke(self, msgs):
+                return _Resp()
+        return _LLM(), [], []
+    monkeypatch.setattr(nodes, "_get_actor_llms", _fake_actor_llms)
+
+    state = {
+        "mission_id": mid, "user_id": _user_j5, "goal": "g",
+        "plan_json": {"steps": [{"id": "1", "description": "cherche",
+                                 "status": "pending"}]},
+        "plan_text": "1. cherche", "consecutive_failures": 0,
+    }
+    out = await nodes.act_node(state)
+    assert dispatched["n"] == 0                       # AUCUN dispatch
+    assert out["last_eval_success"] is False
+    assert out["consecutive_failures"] == 1          # nudge vers replan
+    assert "stratégie" in (out["last_eval_reason"] or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_antiloop_inactive_without_mandate(_ws_env, _user_j5, monkeypatch):
+    """Sans mandat actif : l'anti-boucle est un no-op — le dispatch a lieu
+    même après 3 échecs identiques (filet supervisé = replan seul)."""
+    from app.agent.missions import nodes
+    from app.services import mission_service
+
+    m = await mission_service.create_mission(user_id=_user_j5, title="t", goal="g")
+    for _ in range(3):
+        await mission_service.add_step(
+            m.id, phase="act", thought="x", tool_name="web_search",
+            tool_input={"q": "boucle"}, tool_output="err", success=False,
+        )
+
+    dispatched = {"n": 0}
+
+    async def _yes(*a, **k):
+        dispatched["n"] += 1
+        return "ok", True
+    monkeypatch.setattr(nodes, "dispatch_tool", _yes)
+
+    class _Resp:
+        content = ""
+        tool_calls = [{"name": "web_search", "args": {"q": "boucle"}, "id": "c"}]
+
+    async def _fake_actor_llms(**kwargs):
+        class _LLM:
+            async def ainvoke(self, msgs):
+                return _Resp()
+        return _LLM(), [], []
+    monkeypatch.setattr(nodes, "_get_actor_llms", _fake_actor_llms)
+
+    state = {
+        "mission_id": m.id, "user_id": _user_j5, "goal": "g",
+        "plan_json": {"steps": [{"id": "1", "description": "c", "status": "pending"}]},
+        "plan_text": "1. c", "consecutive_failures": 0,
+    }
+    await nodes.act_node(state)
+    assert dispatched["n"] == 1                       # dispatch bien effectué

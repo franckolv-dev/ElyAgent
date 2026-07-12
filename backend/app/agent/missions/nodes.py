@@ -1571,6 +1571,54 @@ async def act_node(state: MissionState) -> dict:
     tool_args = dict(call.get("args") or {})
     tool_id = call.get("id", "act-" + mission_id[:6])
 
+    # ── Anti-boucle D4 (Missions autonomes J5) ─────────────────────────────
+    # Sous mandat actif uniquement : si CE MÊME appel (outil + args) a déjà
+    # échoué COOLDOWN_THRESHOLD fois de suite, on refuse de le redispatcher
+    # une fois de plus. On force une divergence (nudge replan via
+    # consecutive_failures) et on consigne au carnet — jamais un arrêt (D4).
+    if _mandate is not None:
+        from app.services import mission_antiloop
+        _reps = await mission_antiloop.consecutive_identical_failures(
+            mission_id, tool_name, tool_args)
+        if _reps >= mission_antiloop.COOLDOWN_THRESHOLD:
+            logger.warning(
+                "[mission %s] anti-boucle : %s a échoué %d× à l'identique — "
+                "appel bloqué, stratégie alternative requise",
+                mission_id, tool_name, _reps,
+            )
+            try:
+                from app.services.mission_workspace import carnet_append_section
+                carnet_append_section(
+                    mission_id, "Anti-boucle",
+                    f"Appel « {tool_name} » identique en échec {_reps}× — bloqué, "
+                    "changement de stratégie imposé.",
+                )
+            except Exception as _c_exc:  # noqa: BLE001
+                logger.debug("Anti-boucle carnet %s non écrit : %s", mission_id, _c_exc)
+            await mission_service.add_step(
+                mission_id, phase="act",
+                thought=f"Anti-boucle : « {tool_name} » déjà tenté {_reps}× à l'identique",
+                tool_name=tool_name, tool_input=tool_args,
+                evaluation="Appel identique répété bloqué (D4) — stratégie alternative requise",
+                success=False, duration_ms=elapsed_ms, model_used=model_used,
+            )
+            return {
+                "current_step_id": current_step_id,
+                "current_item_index": _current_item_index,
+                "last_edge_case": None,
+                "last_tool_name": tool_name,
+                "last_tool_input": tool_args,
+                "last_tool_output": None,
+                "last_eval_success": False,
+                "last_eval_reason": (
+                    f"« {tool_name} » a déjà échoué {_reps} fois avec ces mêmes "
+                    "arguments. Change de stratégie : autres arguments, autre "
+                    "outil de ton mandat, ou signale pourquoi l'objectif est "
+                    "hors de portée."
+                ),
+                "consecutive_failures": state.get("consecutive_failures", 0) + 1,
+            }
+
     output, ok = await dispatch_tool(
         tool_name, tool_args, tool_id, user_id,
         user_request=state.get("goal", ""),
