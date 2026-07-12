@@ -70,3 +70,69 @@ def test_escalate_always_set_covers_escape_hatches() -> None:
     assert "gmail_empty_trash" in MANDATE_ESCALATE_ALWAYS
     assert "gmail_raw_api_call" in MANDATE_ESCALATE_ALWAYS
     assert "drive_raw_api_call" in MANDATE_ESCALATE_ALWAYS
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Reconstruction du mandat + chargement de l'actif
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_mandate_json_roundtrip() -> None:
+    from app.services.mission_spec import (
+        mandate_from_json,
+        mandate_to_json,
+        parse_mission_spec,
+    )
+
+    spec = parse_mission_spec(
+        "version: 2\nmandate:\n  tools_allow: [youtube, drive]\n"
+        "  on_unforeseen: decide\n  llm_tier: medium\n"
+        "steps:\n  - id: s1\n    do: x"
+    )
+    restored = mandate_from_json(mandate_to_json(spec.mandate))
+    assert restored == spec.mandate  # frozen dataclass ⇒ égalité structurelle
+
+
+@pytest.mark.asyncio
+async def test_load_active_mandate_gated_by_flag_and_state(monkeypatch) -> None:
+    from sqlalchemy import delete
+
+    from app.config import get_settings
+    from app.database import async_session, init_db
+    from app.models.mission import Mission
+    from app.models.user import User
+    from app.services import mission_service
+    from app.services.alembic_runner import ensure_migrations
+
+    await init_db()
+    await ensure_migrations()
+    uid = f"test_j2_{uuid.uuid4().hex[:8]}"
+    async with async_session() as db:
+        db.add(User(id=uid, username=f"u_{uid[-8:]}",
+                    email=f"{uid}@bench.local", hashed_password="x"))
+        await db.commit()
+    monkeypatch.setattr(get_settings(), "autonomous_missions_enabled", True)
+    try:
+        m = await mission_service.create_mission(
+            user_id=uid, title="YT", goal="gérer",
+            spec_yaml="version: 2\nmandate:\n  tools_allow: [youtube]\n"
+                      "steps:\n  - id: s1\n    do: x",
+        )
+        # pending_validation (défaut J1) ⇒ pas encore actif
+        assert await mission_service.load_active_mandate(m.id) is None
+
+        # activé ⇒ le mandat est chargé
+        await mission_service.set_autonomy_state(m.id, "active")
+        mandate = await mission_service.load_active_mandate(m.id)
+        assert mandate is not None and mandate.tools_allow == ("youtube",)
+
+        # flag OFF ⇒ inerte même si actif (fail-closed)
+        monkeypatch.setattr(get_settings(), "autonomous_missions_enabled", False)
+        assert await mission_service.load_active_mandate(m.id) is None
+    finally:
+        async with async_session() as db:
+            await db.execute(delete(Mission).where(Mission.user_id == uid))
+            u = await db.get(User, uid)
+            if u is not None:
+                await db.delete(u)
+            await db.commit()

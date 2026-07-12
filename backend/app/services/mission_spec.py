@@ -501,3 +501,21 @@ def mandate_to_json(mandate: MissionMandate) -> str:
     from dataclasses import asdict
 
     return json.dumps(asdict(mandate), ensure_ascii=False, sort_keys=True)
+
+
+def mandate_from_json(s: str) -> MissionMandate:
+    """Reconstruit un :class:`MissionMandate` depuis la forme stockée par
+    :func:`mandate_to_json`. Défensif : applique les défauts J1 si une clé
+    manque (mandat écrit par une version antérieure)."""
+    data = json.loads(s)
+    b = data.get("budgets") or {}
+    return MissionMandate(
+        tools_allow=tuple(data.get("tools_allow", ())),
+        autonomy=data.get("autonomy", "autonomous"),
+        on_unforeseen=data.get("on_unforeseen", "escalate"),
+        llm_tier=data.get("llm_tier"),
+        budgets=MandateBudgets(
+            daily_tool_actions_notify=b.get("daily_tool_actions_notify", 500),
+            daily_llm_calls_notify=b.get("daily_llm_calls_notify", 100),
+        ),
+    )
