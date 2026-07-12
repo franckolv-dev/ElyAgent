@@ -192,6 +192,36 @@ def _spawn_mission_outcome(m: Mission, declared_status: str) -> None:
     )
 
 
+def _spawn_lessons_promotion(m: Mission) -> None:
+    """Missions autonomes J4 — promotion des leçons du CARNET.md en mémoire
+    durable (fait sémantique, cherchable par ``memory_recall``) quand une
+    mission mandatée se termine. Best-effort, fire-and-forget.
+
+    Périmètre assumé : le ProceduralStore V1 est un stub sans voie
+    d'écriture (moisson Sprint 2.5 jamais livrée) — on promeut via
+    ``store_memory`` ; la vraie voie PROCEDURAL reste une dette séparée."""
+    if not m.mandate_json:
+        return
+    try:
+        from app.services.mission_workspace import extract_section
+        lessons = extract_section(m.id, "Leçons")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Leçons de %s illisibles : %s", m.id, exc)
+        return
+    if not lessons.strip():
+        return
+    from app.services.background_tasks import spawn
+    from app.services.memory_manager import get_memory_manager
+    spawn(
+        get_memory_manager().store_memory(
+            f"Leçons de la mission « {m.title} » : {lessons}",
+            m.user_id,
+            extra_payload={"source": "mission_carnet", "mission_id": m.id},
+        ),
+        label=f"carnet-lessons-{m.id}",
+    )
+
+
 async def complete_mission(mission_id: str, summary: str) -> Mission:
     """planning|running → completed.
 
@@ -205,6 +235,7 @@ async def complete_mission(mission_id: str, summary: str) -> Mission:
         completed_at=_utcnow(), final_summary=summary,
     )
     _spawn_mission_outcome(m, "completed")
+    _spawn_lessons_promotion(m)
     return m
 
 
@@ -265,6 +296,25 @@ async def set_autonomy_state(mission_id: str, state: str) -> None:
             raise ValueError(f"mission introuvable : {mission_id!r}")
         m.autonomy_state = state
         await db.commit()
+        title, goal, mandate_json = m.title, m.goal, m.mandate_json
+
+    # J4 — l'activation initialise le squelette du CARNET.md (idempotent :
+    # une reprise ne touche jamais un carnet existant). Flag OFF ou mission
+    # sans mandat ⇒ aucun fichier créé. Best-effort : jamais bloquant.
+    if state == "active" and mandate_json:
+        from app.config import get_settings
+        if not get_settings().autonomous_missions_enabled:
+            return
+        try:
+            from app.services.mission_spec import mandate_from_json
+            from app.services.mission_workspace import init_carnet
+            try:
+                mandate = mandate_from_json(mandate_json)
+            except Exception:  # noqa: BLE001 — mandat illisible : carnet sans détail
+                mandate = None
+            init_carnet(mission_id, title or "", goal or "", mandate)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Carnet de %s non initialisé : %s", mission_id, exc)
 
 
 async def list_missions_for_user(

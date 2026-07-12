@@ -155,6 +155,46 @@ async def _log_mission_llm_usage(
 
 # ── Tool dispatch helper (factored from agent/nodes.py:tool_node) ────────────
 
+def _journal_tool_run(
+    mission_id: str,
+    mandate,
+    tool_name: str,
+    ok: bool,
+    duration_s: float,
+    result,
+) -> None:
+    """Missions autonomes J4 — une ligne de ``journal.jsonl`` par outil exécuté
+    sous mandat actif (résumé tronqué, PAS les args bruts). Best-effort : un
+    disque plein ne bloque jamais l'exécution d'une mission."""
+    if mandate is None or not mission_id:
+        return
+    try:
+        from app.services import mission_workspace
+        mission_workspace.journal_append(mission_id, {
+            "tool": tool_name,
+            "ok": ok,
+            "duration_s": round(duration_s, 2),
+            "summary": mission_workspace.summarize_result(result),
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Journal workspace %s non écrit : %s", mission_id, exc)
+
+
+async def _mandate_carnet_block(mission_id: str) -> str:
+    """Missions autonomes J4 — le CARNET.md formaté pour le prompt du planner
+    ou du replan, chaîne vide si pas de mandat actif (flag OFF inclus) ou pas
+    de carnet. Best-effort : jamais bloquant."""
+    try:
+        from app.services.mission_service import load_active_mandate
+        if await load_active_mandate(mission_id) is None:
+            return ""
+        from app.services.mission_workspace import carnet_context_block
+        return carnet_context_block(mission_id) or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Bloc carnet %s indisponible : %s", mission_id, exc)
+        return ""
+
+
 async def dispatch_tool(
     tool_name: str,
     tool_args: dict,
@@ -537,14 +577,17 @@ async def dispatch_tool(
                     return _msg, False
 
     # Actually run the tool
+    t0 = time.monotonic()
     try:
-        t0 = time.monotonic()
         result = await tool.ainvoke(args)
         elapsed = time.monotonic() - t0
         logger.warning("⏱ TIMING[mission_tool:%s] %.2fs", tool_name, elapsed)
+        _journal_tool_run(mission_id, _mandate, tool_name, True, elapsed, result)
         return str(result), True
     except Exception as exc:
         logger.warning("Mission tool %s failed: %s", tool_name, exc)
+        _journal_tool_run(mission_id, _mandate, tool_name, False,
+                          time.monotonic() - t0, exc)
         return f"Erreur d'exécution: {exc}", False
 
 
@@ -1078,6 +1121,12 @@ async def plan_node(state: MissionState) -> dict:
             sys_prompt = sys_prompt + "\n\n" + _vocab
     except Exception as _exc:
         logger.debug("Vocabulary injection (planner) failed: %s", _exc)
+
+    # Missions autonomes J4 — le carnet de bord (mémoire de travail longue
+    # durée) est relu en tête de chaque planification sous mandat actif.
+    _carnet = await _mandate_carnet_block(mission_id)
+    if _carnet:
+        sys_prompt = sys_prompt + "\n\n" + _carnet
 
     messages: list[BaseMessage] = [
         SystemMessage(content=sys_prompt),
@@ -1930,6 +1979,11 @@ async def replan_node(state: MissionState) -> dict:
         tools_catalog=_esc(_registry.tools_catalog(per_domain=True)),
         n_tools=len(_registry.all_tool_names()),
     )
+    # Missions autonomes J4 — même relecture du carnet qu'au plan initial :
+    # les leçons déjà consignées orientent la nouvelle stratégie.
+    _carnet = await _mandate_carnet_block(mission_id)
+    if _carnet:
+        prompt = prompt + "\n\n" + _carnet
     # Cycle PII missions — même couture que plan/act/eval.
     from app.agent.missions.pii import anonymize_messages, deanonymize_any, mission_filter
     _sf = mission_filter(mission_id)
