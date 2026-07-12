@@ -57,6 +57,19 @@ _PREFIX_TO_FAMILY: Final[dict[str, str]] = {
     "admin": "admin",
 }
 
+# Substrat de l'agent : outils de découverte / lecture pure, sans effet sur
+# les données de l'utilisateur ni le monde extérieur. TOUJOURS autorisés sous
+# mandat (sinon une mission autonome ne peut même pas découvrir ses outils ni
+# consulter sa mémoire pour décider). N'inclut AUCUN write ni action externe.
+MANDATE_UNIVERSAL_TOOLS: Final[frozenset[str]] = frozenset({
+    "find_tool",                       # filet de sécurité : tirer un outil du catalogue
+    "skill_view",                      # lire un playbook appris
+    "memory_search", "memory_view_profile", "memory_recall",
+    "knowledge_search", "knowledge_list", "smart_knowledge_query",
+    "notes_search", "notes_list",
+    "search_past_conversations_tool",
+})
+
 # Escape-hatches SANS annulation possible (pas de compensation au journal
 # réversible) : escaladent TOUJOURS au HITL humain, même si leur famille est
 # autorisée. `*_raw_api_call` = appel d'API arbitraire (contourne le HITL

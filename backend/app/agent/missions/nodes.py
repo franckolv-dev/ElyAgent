@@ -274,6 +274,61 @@ async def dispatch_tool(
     _crit_desc = f"Outil: {tool_name} | Arguments: {json.dumps(_crit_args, ensure_ascii=False)}"
     needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
 
+    # ── Gate du mandat d'autonomie (Missions autonomes J2) ────────────────
+    # Sous un mandat ACTIF (flag ON + autonomy_state='active'), le HITL se
+    # déplace de l'action vers le grant (cadrage §3.2). Ordre STRICT :
+    #   1. noyau interdit          → refus sec, inconditionnel (invariant n°1)
+    #   2. substrat de l'agent     → toujours autorisé (find_tool, lectures)
+    #   3. escape-hatch sans undo  → escalade (HITL forcé), même famille OK
+    #   4. famille autorisée       → bypass HITL (c'est L'autonomie)
+    #   5. hors mandat / inconnu   → escalade forcée (containment ; mode
+    #                                'escalate'. 'decide' = J5)
+    # Absence de mandat actif ⇒ ce bloc est un no-op total (passthrough).
+    _mandate = None
+    if mission_id:
+        try:
+            from app.services.mission_service import load_active_mandate
+            _mandate = await load_active_mandate(mission_id)
+        except Exception as _mexc:  # noqa: BLE001
+            logger.debug("Mandate lookup failed: %s", _mexc)
+    if _mandate is not None:
+        from app.services.mission_spec import MANDATE_FORBIDDEN_FAMILIES
+        from app.services.mission_tool_families import (
+            MANDATE_ESCALATE_ALWAYS,
+            MANDATE_UNIVERSAL_TOOLS,
+            tool_family,
+        )
+        _fam = tool_family(tool_name)
+        if _fam in MANDATE_FORBIDDEN_FAMILIES:
+            logger.warning(
+                "Mission %s : outil %s (famille %s) REFUSÉ — noyau interdit",
+                mission_id, tool_name, _fam,
+            )
+            return (
+                f"Action « {tool_name} » refusée : la famille « {_fam} » fait "
+                "partie du noyau interdit — hors de portée d'une mission "
+                "autonome, quel que soit le mandat.",
+                False,
+            )
+        if tool_name in MANDATE_UNIVERSAL_TOOLS:
+            logger.debug("Mission %s : %s substrat universel → autorisé", mission_id, tool_name)
+            # needs_hitl inchangé (ces outils sont non critiques ⇒ déjà False)
+        elif tool_name in MANDATE_ESCALATE_ALWAYS:
+            logger.info("Mission %s : %s escape-hatch → escalade HITL", mission_id, tool_name)
+            needs_hitl = True   # sans annulation possible : l'humain tranche
+        elif _fam is not None and _fam in _mandate.tools_allow:
+            logger.info(
+                "Mission %s : %s (famille %s) couvert par le mandat → sans HITL",
+                mission_id, tool_name, _fam,
+            )
+            needs_hitl = False
+        else:
+            logger.info(
+                "Mission %s : %s (famille %s) HORS mandat → escalade HITL",
+                mission_id, tool_name, _fam,
+            )
+            needs_hitl = True   # containment : hors périmètre ⇒ l'humain tranche
+
     # ── Self-mail auto-approve ────────────────────────────────────────
     # Sending an email to the calling user's own address carries near-zero
     # risk (no data leak to oneself) but used to trigger HITL — impossible
@@ -353,7 +408,10 @@ async def dispatch_tool(
     # timeout wait), the step fails, and the mission keeps going. The flag is
     # fetched here (not threaded through the graph) — one cheap query, only
     # when a HITL-gated tool is about to prompt.
-    if needs_hitl and mission_id:
+    # Sous un mandat actif, la décision d'auto-approbation a DÉJÀ été prise
+    # par le gate ci-dessus (autorité supérieure) — le bool `autonomous`
+    # legacy ne s'applique qu'aux missions SANS mandat (Missions autonomes J2).
+    if needs_hitl and mission_id and _mandate is None:
         try:
             from app.services import mission_service
             _m = await mission_service.get_mission(mission_id)
