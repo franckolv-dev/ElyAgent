@@ -26,7 +26,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from app.services.mission_spec import MissionMandate
 
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -220,6 +223,40 @@ async def abort_mission(mission_id: str, reason: str = "User-requested abort") -
 async def get_mission(mission_id: str) -> Optional[Mission]:
     async with async_session() as db:
         return (await db.execute(select(Mission).where(Mission.id == mission_id))).scalar_one_or_none()
+
+
+async def load_active_mandate(mission_id: str) -> "MissionMandate | None":
+    """Le mandat d'une mission SI l'autonomie est active ET le flag global ON.
+
+    Renvoie ``None`` (⇒ comportement supervisé inchangé) dès que : flag OFF,
+    mission absente, pas de mandat, ou état ≠ 'active'. C'est le SEUL point
+    d'entrée du gate d'enforcement (nodes.dispatch_tool) — Missions autonomes J2."""
+    from app.config import get_settings
+    if not get_settings().autonomous_missions_enabled:
+        return None
+    if not mission_id:
+        return None
+    m = await get_mission(mission_id)
+    if m is None or not m.mandate_json or m.autonomy_state != "active":
+        return None
+    from app.services.mission_spec import mandate_from_json
+    try:
+        return mandate_from_json(m.mandate_json)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Mandat illisible pour mission %s : %s", mission_id, exc)
+        return None
+
+
+async def set_autonomy_state(mission_id: str, state: str) -> None:
+    """Transition de l'état d'autonomie du mandat (pending_validation →
+    active → paused_*). Utilisé par l'activation (J6) et la pause (J3).
+    Missions autonomes J2."""
+    async with async_session() as db:
+        m = await db.get(Mission, mission_id)
+        if m is None:
+            raise ValueError(f"mission introuvable : {mission_id!r}")
+        m.autonomy_state = state
+        await db.commit()
 
 
 async def list_missions_for_user(
