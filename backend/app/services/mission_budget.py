@@ -156,6 +156,21 @@ async def pause_autonomous_mission(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Snapshot de pause %s non écrit : %s", mission_id, exc)
 
+    # 3bis. CARNET.md (J4) — la pause devient lisible par un humain ET par la
+    #       mission à sa reprise (le carnet est relu au plan/replan).
+    try:
+        from app.services.mission_workspace import carnet_append_section
+        carnet_append_section(
+            mission_id, "Pause",
+            f"Mission mise en pause ({reason}) : {counter.tool_actions} actions "
+            f"et {counter.llm_calls} appels LLM aujourd'hui, seuils "
+            f"{mandate.budgets.daily_tool_actions_notify}/"
+            f"{mandate.budgets.daily_llm_calls_notify}. Reprise : bouton "
+            "Démarrer — l'exécution repartira exactement ici.",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Section Pause du carnet %s non écrite : %s", mission_id, exc)
+
     # 4. Notification (web + telegram + ntfy) — réutilise le canal heartbeat.
     try:
         m = await mission_service.get_mission(mission_id)
