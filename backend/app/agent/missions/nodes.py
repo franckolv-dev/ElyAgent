@@ -142,6 +142,16 @@ async def _log_mission_llm_usage(
         logger.debug("log_mission_llm_usage failed for mission %s phase %s: %s",
                      mission_id, phase, exc)
 
+    # Missions autonomes J3 — compteur d'appels LLM (seuils D4). Flag OFF ⇒
+    # aucune écriture (zéro changement observable) ; best-effort intégral.
+    try:
+        from app.config import get_settings
+        if mission_id and get_settings().autonomous_missions_enabled:
+            from app.services.mission_budget import incr_llm_call
+            await incr_llm_call(mission_id)
+    except Exception as exc:  # noqa: BLE001 — le comptage ne casse pas une mission
+        logger.debug("Compteur LLM mission %s ignoré : %s", mission_id, exc)
+
 
 # ── Tool dispatch helper (factored from agent/nodes.py:tool_node) ────────────
 
@@ -486,6 +496,45 @@ async def dispatch_tool(
             # fall through to execute
         elif decision != "allow":
             return "Action refusée par l'utilisateur pour cette occurrence.", False
+
+    # ── Disjoncteurs D4 (Missions autonomes J3) ────────────────────────────
+    # Compteur d'actions + check des seuils de NOTIFICATION du mandat. En ≥,
+    # AVANT l'exécution : l'action au-delà d'un seuil non-acquitté attend la
+    # réponse de l'utilisateur (30 min, HITL standard) — allow ⇒ acquitté
+    # pour la journée ; deny/timeout ⇒ pause propre + snapshot, l'outil n'est
+    # PAS exécuté. Un incident de comptage ne bloque JAMAIS la mission.
+    if _mandate is not None:
+        from app.services import mission_budget
+        try:
+            _counter = await mission_budget.incr_tool_action(mission_id)
+        except Exception as _cb_exc:  # noqa: BLE001
+            logger.warning("Compteur mission %s indisponible : %s", mission_id, _cb_exc)
+            _counter = None
+        if _counter is not None:
+            _which = mission_budget.breached(_counter, _mandate)
+            if _which is not None:
+                _seuil = (_mandate.budgets.daily_tool_actions_notify if _which == "tool"
+                          else _mandate.budgets.daily_llm_calls_notify)
+                _hitl = get_hitl_manager()
+                _decision, _reason = await _hitl.request_validation(
+                    description=(
+                        "⚠️ Disjoncteur mission autonome : seuil "
+                        f"{'d’actions' if _which == 'tool' else 'd’appels LLM'} atteint "
+                        f"({_counter.tool_actions} actions / {_counter.llm_calls} appels "
+                        f"LLM aujourd’hui, seuil {_seuil}). Continuer la mission ?"
+                    ),
+                    user_id=user_id,
+                )
+                if _decision == "allow":
+                    await mission_budget.ack_threshold(mission_id, _which)
+                else:
+                    _msg = await mission_budget.pause_autonomous_mission(
+                        mission_id,
+                        reason=("budget_tool_actions" if _which == "tool" else "budget_llm_calls")
+                               + ("_no_response" if _reason == "timeout" else ""),
+                        counter=_counter, mandate=_mandate,
+                    )
+                    return _msg, False
 
     # Actually run the tool
     try:

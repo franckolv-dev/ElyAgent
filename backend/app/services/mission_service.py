@@ -156,7 +156,15 @@ async def start_mission(mission_id: str) -> Mission:
         m = (await db.execute(select(Mission).where(Mission.id == mission_id))).scalar_one_or_none()
         if m and m.started_at is None:
             fields["started_at"] = _utcnow()
-    return await _transition(mission_id, from_={"draft", "paused"}, to="planning", **fields)
+    started = await _transition(mission_id, from_={"draft", "paused"}, to="planning", **fields)
+    # Missions autonomes J3 — reprise : une mission dont le mandat était en
+    # pause (disjoncteur…) repart en autonomie. Les compteurs du jour restent
+    # INTACTS (la reprise n'est pas une remise à zéro) ; le snapshot
+    # autonomy_pause_json est conservé comme trace (CARNET J4).
+    if (started.autonomy_state or "").startswith("paused"):
+        await set_autonomy_state(mission_id, "active")
+        started.autonomy_state = "active"
+    return started
 
 
 async def mark_running(mission_id: str) -> Mission:
