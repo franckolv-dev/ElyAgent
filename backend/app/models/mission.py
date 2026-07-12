@@ -130,6 +130,10 @@ class Mission(Base):
     # déclaratif complet. Révision Alembic 0018.
     mandate_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     autonomy_state: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # J3 — snapshot de la dernière pause disjoncteur (JSON : paused_at, reason,
+    # counters, thresholds). Trace conservée après reprise ; le CARNET (J4)
+    # la rend lisible. NULL = jamais pausée par un disjoncteur. Révision 0019.
+    autonomy_pause_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # ── Final state ──
     final_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -255,3 +259,20 @@ class MissionStepRun(Base):
     __table_args__ = (
         Index("ix_mission_step_runs_lookup", "mission_id", "step_id", "item_index", unique=True),
     )
+
+
+class MissionDailyCounter(Base):
+    """Compteurs journaliers d'une mission autonome (Missions autonomes J3).
+
+    PERSISTÉS (pas en mémoire) : un restart backend ne réinitialise pas le
+    compteur du jour — les seuils D4 restent honnêtes. Une ligne par
+    (mission, jour UTC). ``*_ack`` = seuil acquitté par l'utilisateur
+    (« continuer ») → plus de re-prompt ce jour-là pour ce compteur."""
+    __tablename__ = "mission_daily_counters"
+
+    mission_id: Mapped[str] = mapped_column(String, ForeignKey("missions.id"), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD UTC
+    tool_actions: Mapped[int] = mapped_column(Integer, default=0)
+    llm_calls: Mapped[int] = mapped_column(Integer, default=0)
+    tool_ack: Mapped[bool] = mapped_column(Boolean, default=False)
+    llm_ack: Mapped[bool] = mapped_column(Boolean, default=False)
