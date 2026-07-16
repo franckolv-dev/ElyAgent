@@ -405,3 +405,13 @@ class TestProviderBuilder:
         assert llm.model_kwargs.get("instructions")
         assert llm.include == ["reasoning.encrypted_content"]
         assert isinstance(llm.http_async_client._auth, CodexBearerAuth)
+
+
+def test_providers_meta_lists_gpt_5_6_models() -> None:
+    """Catalogue codex : les GPT-5.6 (slugs du backend, juillet 2026) sont
+    sélectionnables — la création d'instance valide `model in meta["models"]`."""
+    from app.routers.settings_llm import PROVIDERS_META
+
+    codex = next(p for p in PROVIDERS_META if p["id"] == "openai_codex")
+    for slug in ("gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"):
+        assert slug in codex["models"]

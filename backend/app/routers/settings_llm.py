@@ -99,9 +99,14 @@ PROVIDERS_META = [
         # fair-use → prévoir un fallback de chaîne (DeepSeek pro) sur le tier.
         "env_key": None,
         "config_key": None,
-        # Ids acceptés par le backend chatgpt.com/backend-api/codex
-        # (mêmes valeurs que le CLI officiel / Hermes, juin 2026).
-        "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"],
+        # Ids acceptés par le backend chatgpt.com/backend-api/codex (mêmes
+        # valeurs que le CLI officiel — vérifiés dans son models_cache.json,
+        # juillet 2026). GPT-5.6 : sol = flagship, terra = équilibré,
+        # luna = rapide/éco. Premier = candidat par défaut à la création
+        # d'instance ; le défaut du chemin legacy reste gpt-5.5 (pinné en
+        # test) tant que l'admin ne route pas via une instance.
+        "models": ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna",
+                   "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"],
     },
     {
         "id": "deepseek",
