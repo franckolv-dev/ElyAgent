@@ -375,6 +375,8 @@
     "status_validated": "validé",
     "status_rejected": "rejeté",
     "status_actioned": "traité",
+    "status_merged": "fusionné",
+    "seenTimes": "vu {count} fois · dernier le {date}",
     "generate": "Générer un outil",
     "generateHint": "Lance l'auto-développement (tier S) pour créer un python_tool depuis cette cause. Coût LLM réel.",
     "validate": "Valider",
