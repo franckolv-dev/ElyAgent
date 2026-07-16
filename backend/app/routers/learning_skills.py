@@ -877,6 +877,10 @@ class IncidentOut(BaseModel):
     critic_model: Optional[str]
     created_at: str
     processed_at: Optional[str]
+    # Dédup des récurrences : nombre de runs repliés sur cet incident + date
+    # du dernier run vu (None tant que jamais dédupliqué).
+    occurrences: int = 1
+    last_seen_at: Optional[str] = None
     # Contexte de l'exécution (joint depuis execution_outcomes)
     outcome: str
     declared_status: Optional[str]
@@ -909,6 +913,8 @@ def _incident_to_out(diag: Any, outcome: Any, patch: Any = None) -> IncidentOut:
         critic_model=diag.critic_model,
         created_at=diag.created_at.isoformat() if diag.created_at else "",
         processed_at=diag.processed_at.isoformat() if diag.processed_at else None,
+        occurrences=diag.occurrences or 1,
+        last_seen_at=diag.last_seen_at.isoformat() if diag.last_seen_at else None,
         outcome=outcome.outcome,
         declared_status=outcome.declared_status,
         channel=outcome.channel,
@@ -993,7 +999,9 @@ async def resolve_incident(
     from app.models.execution_outcome import ExecutionOutcome
 
     new_status = (body.status or "").strip().lower()
-    if new_status not in DIAGNOSIS_STATUSES or new_status == "open":
+    # "open" est l'état initial, "merged" est posé par la garde de dédup —
+    # ni l'un ni l'autre ne se pose à la main.
+    if new_status not in DIAGNOSIS_STATUSES or new_status in ("open", "merged"):
         raise HTTPException(
             400,
             f"Unknown status {body.status!r}. Valid: validated, rejected, actioned",

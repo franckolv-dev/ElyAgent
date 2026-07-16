@@ -375,6 +375,8 @@
     "status_validated": "validated",
     "status_rejected": "rejected",
     "status_actioned": "actioned",
+    "status_merged": "merged",
+    "seenTimes": "seen {count} times · last {date}",
     "generate": "Generate a tool",
     "generateHint": "Runs auto-dev (tier S) to create a python_tool from this cause. Real LLM cost.",
     "validate": "Validate",

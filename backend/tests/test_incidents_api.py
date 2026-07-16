@@ -44,7 +44,8 @@ async def _seed_user() -> str:
 
 async def _seed_incident(uid: str, *, outcome: str = "dubious",
                          category: str = "binding", signals=None,
-                         status: str = "open") -> tuple[int, int]:
+                         status: str = "open", occurrences: int = 1,
+                         last_seen=None) -> tuple[int, int]:
     """Crée un execution_outcome + son execution_diagnosis. Renvoie (outcome_id, diag_id)."""
     import json
     from app.database import async_session
@@ -63,6 +64,7 @@ async def _seed_incident(uid: str, *, outcome: str = "dubious",
             execution_outcome_id=oc_id, user_id=uid, source="scheduled",
             category=category, hypothesis="Trou de binding probable.",
             confidence="medium", status=status, critic_model="rule-based",
+            occurrences=occurrences, last_seen_at=last_seen,
         )
         db.add(diag)
         await db.commit()
@@ -151,3 +153,55 @@ def test_incidents_router_registered() -> None:
     paths = {r.path for r in router.routes}
     assert "/admin/learning/incidents" in paths
     assert "/admin/learning/incidents/{incident_id}/resolve" in paths
+
+
+# ── Dédup des récurrences (occurrences / last_seen_at / merged) ────────────
+
+
+@pytest.mark.asyncio
+async def test_list_incidents_exposes_occurrences_and_last_seen() -> None:
+    from datetime import datetime, timezone
+
+    from app.database import async_session
+    from app.routers.learning_skills import list_incidents
+    uid = await _seed_user()
+    seen = datetime(2026, 7, 16, 8, 30, tzinfo=timezone.utc)
+    await _seed_incident(uid, occurrences=7, last_seen=seen)
+    async with async_session() as db:
+        rows = await list_incidents(status="open", user_id=uid, limit=100,
+                                    _admin=_fake_admin(), db=db)
+    assert len(rows) == 1
+    assert rows[0].occurrences == 7
+    assert rows[0].last_seen_at is not None
+    assert rows[0].last_seen_at.startswith("2026-07-16")
+
+
+@pytest.mark.asyncio
+async def test_list_incidents_open_hides_merged() -> None:
+    from app.database import async_session
+    from app.routers.learning_skills import list_incidents
+    uid = await _seed_user()
+    await _seed_incident(uid, status="open")
+    await _seed_incident(uid, status="merged")
+    async with async_session() as db:
+        open_rows = await list_incidents(status="open", user_id=uid, limit=100,
+                                         _admin=_fake_admin(), db=db)
+    async with async_session() as db:
+        all_rows = await list_incidents(status="all", user_id=uid, limit=100,
+                                        _admin=_fake_admin(), db=db)
+    assert [r.status for r in open_rows] == ["open"]
+    assert sorted(r.status for r in all_rows) == ["merged", "open"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_incident_rejects_merged_status() -> None:
+    """merged est posé par la garde de dédup, jamais par l'humain."""
+    from app.database import async_session
+    from app.routers.learning_skills import IncidentResolveRequest, resolve_incident
+    uid = await _seed_user()
+    _oc, did = await _seed_incident(uid)
+    async with async_session() as db:
+        with pytest.raises(HTTPException) as ei:
+            await resolve_incident(did, IncidentResolveRequest(status="merged"),
+                                   _admin=_fake_admin(), db=db)
+    assert ei.value.status_code == 400

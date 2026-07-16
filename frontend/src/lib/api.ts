@@ -948,13 +948,17 @@ export interface Incident {
   hypothesis: string;
   /** low | medium | high */
   confidence: string;
-  /** open | validated | rejected | actioned */
+  /** open | validated | rejected | actioned | merged (folded duplicate) */
   status: string;
   resolution: string | null;
   /** Model that produced the diagnosis, or "rule-based" fallback. */
   critic_model: string | null;
   created_at: string;
   processed_at: string | null;
+  /** Dedup: number of runs folded into this incident (1 = never deduped). */
+  occurrences: number;
+  /** Dedup: timestamp of the latest folded run, null if never deduped. */
+  last_seen_at: string | null;
   // Execution context (joined from execution_outcomes)
   /** dubious | failed */
   outcome: string;

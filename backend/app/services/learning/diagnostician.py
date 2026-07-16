@@ -50,6 +50,7 @@ from app.models.execution_diagnosis import (
     ExecutionDiagnosis,
 )
 from app.models.execution_outcome import ExecutionOutcome
+from app.models.proposed_patch import ProposedPatch
 from app.services.learning.prompt_version import prompt_hash
 from app.services.learning.signals import OUTCOME_DUBIOUS, OUTCOME_FAILED
 
@@ -455,6 +456,78 @@ def _filter_for(outcome: ExecutionOutcome):
     return SecurityFilter()
 
 
+async def _fold_duplicate(execution_outcome_id: int, user_id: str, source: str,
+                          source_id: str | None, rule_cat: str, rule_conf: str,
+                          evidence: dict) -> int | None:
+    """Garde anti-doublon : replie un run récurrent sur l'incident open existant.
+
+    Clé de récurrence : (user, source, source_id, catégorie à RÈGLES) — la
+    catégorie à règles est déterministe, donc stable d'un run à l'autre, et
+    disponible AVANT l'appel LLM (un doublon ne re-paye pas le diagnostic).
+    En cas de repli : ``occurrences``/``last_seen_at`` cumulés sur le
+    canonique (celui qui porte le correctif le plus récent, sinon la première
+    occurrence), les autres doublons open passent ``merged``, et un MARQUEUR
+    ``merged`` est posé pour CET outcome — sans lui, ``run_pending_diagnoses``
+    (qui cherche les outcomes SANS diagnose) re-traiterait le même outcome à
+    chaque tick. Retourne l'id du canonique, ou None si pas de doublon.
+    """
+    async with async_session() as db:
+        dups = list((await db.execute(
+            select(ExecutionDiagnosis)
+            .where(
+                ExecutionDiagnosis.user_id == user_id,
+                ExecutionDiagnosis.source == source,
+                ExecutionDiagnosis.source_id == source_id,
+                ExecutionDiagnosis.category == rule_cat,
+                ExecutionDiagnosis.status == "open",
+            )
+            .order_by(ExecutionDiagnosis.created_at.asc(),
+                      ExecutionDiagnosis.id.asc())
+        )).scalars().all())
+        if not dups:
+            return None
+
+        # Canonique = l'incident qui porte le correctif le plus récent (ne
+        # pas orphaniner un patch déjà proposé), sinon la première occurrence.
+        patched_id = (await db.execute(
+            select(ProposedPatch.execution_diagnosis_id)
+            .where(ProposedPatch.execution_diagnosis_id.in_([d.id for d in dups]))
+            .order_by(ProposedPatch.created_at.desc(), ProposedPatch.id.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        canonical = next((d for d in dups if d.id == patched_id), dups[0])
+        canonical_id = canonical.id
+
+        note = f"Doublon de l'incident #{canonical_id} (même tâche, même cause)."
+        total = sum((d.occurrences or 1) for d in dups) + 1  # + le run courant
+        canonical.occurrences = total
+        canonical.last_seen_at = datetime.now(timezone.utc)
+        for d in dups:
+            if d.id != canonical_id:
+                d.status = "merged"
+                d.resolution = note
+
+        # Marqueur pour CE run (1 outcome = 1 ligne, UNIQUE respecté).
+        db.add(ExecutionDiagnosis(
+            execution_outcome_id=execution_outcome_id,
+            user_id=user_id, source=source, source_id=source_id,
+            category=rule_cat, hypothesis=note, confidence=rule_conf,
+            supporting_signals=json.dumps(evidence, ensure_ascii=False, default=str),
+            critic_model="dedup", status="merged", resolution=note,
+        ))
+        try:
+            await db.commit()
+        except Exception as exc:
+            # Collision UNIQUE probable (cron concurrent) — pas une erreur.
+            logger.debug("diagnostician: dedup fold skipped for outcome=%s : %s",
+                         execution_outcome_id, exc)
+            await db.rollback()
+            return None
+        logger.info("diagnostician: outcome=%s replié sur incident #%s (occurrences=%d)",
+                    execution_outcome_id, canonical_id, total)
+        return canonical_id
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # API publique
 # ─────────────────────────────────────────────────────────────────────────
@@ -462,7 +535,10 @@ def _filter_for(outcome: ExecutionOutcome):
 
 async def diagnose_execution(execution_outcome_id: int) -> int | None:
     """Diagnostique une exécution douteuse/échouée. Idempotent (UNIQUE sur
-    execution_outcome_id). Retourne l'id de la diagnose, ou None."""
+    execution_outcome_id) et dédupliqué : un run récurrent (même user/source/
+    source_id/catégorie-règles qu'un incident open) est replié sur l'incident
+    canonique au lieu d'ouvrir un doublon. Retourne l'id de la diagnose (ou
+    du canonique en cas de repli), ou None."""
     if _is_disabled():
         return None
 
@@ -492,6 +568,14 @@ async def diagnose_execution(execution_outcome_id: int) -> int | None:
 
     evidence = await gather_evidence(outcome_ref)
     rule_cat, rule_conf, rule_hyp = rule_based_diagnosis(evidence)
+
+    # Garde anti-doublon — AVANT le LLM : une tâche planifiée qui échoue de
+    # la même façon chaque jour cumule sur UN incident open (occurrences) au
+    # lieu d'en ouvrir un par run (62+ doublons observés en prod).
+    folded = await _fold_duplicate(execution_outcome_id, oc_user, oc_source,
+                                   oc_source_id, rule_cat, rule_conf, evidence)
+    if folded is not None:
+        return folded
 
     category, confidence, hypothesis, model_name = rule_cat, rule_conf, rule_hyp, "rule-based"
 

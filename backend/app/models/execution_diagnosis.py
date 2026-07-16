@@ -56,9 +56,10 @@ DIAGNOSIS_CATEGORIES: frozenset[str] = frozenset({
 
 DIAGNOSIS_CONFIDENCES: frozenset[str] = frozenset({"low", "medium", "high"})
 
-# Arbitrage humain (J4).
+# Arbitrage humain (J4) ; "merged" = doublon replié sur l'incident canonique
+# (dédup des récurrences — posé par la garde, jamais par l'humain).
 DIAGNOSIS_STATUSES: frozenset[str] = frozenset({
-    "open", "validated", "rejected", "actioned",
+    "open", "validated", "rejected", "actioned", "merged",
 })
 
 
@@ -95,6 +96,12 @@ class ExecutionDiagnosis(Base):
     status: Mapped[str] = mapped_column(String(16), default="open", index=True)
     resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Dédup des récurrences : nombre de runs repliés sur cet incident (le sien
+    # + les doublons fusionnés + chaque nouveau run identique) et date du
+    # dernier run vu. Reste 1/NULL tant qu'aucun doublon n'a été replié.
+    occurrences: Mapped[int] = mapped_column(Integer, default=1)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
 

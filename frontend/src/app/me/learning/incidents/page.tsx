@@ -134,8 +134,10 @@ export default function IncidentsPage() {
     if (busyId) return;
     setBusyId(inc.id);
     try {
-      await api.adminLearningProposePatch(inc.id);
-      await fetchRows();              // recharge → le diff s'affiche
+      const patch = await api.adminLearningProposePatch(inc.id);
+      // MAJ locale (pas de refetch) : le diff s'affiche et la carte RESTE en
+      // place — fetchRows() re-triait la liste et la déplaçait hors de vue.
+      setRows((cur) => cur.map((r) => (r.id === inc.id ? { ...r, patch } : r)));
       showFlash("ok", t("flash_patch_proposed"));
     } catch (e) {
       showFlash("err", e instanceof Error ? e.message : t("actionError"));
@@ -311,7 +313,11 @@ export default function IncidentsPage() {
                                 {t(`voie_${voie}`)}
                               </span>
                               {!isOpen && (
-                                <span className="px-1.5 py-0.5 text-[10px] font-mono rounded border bg-emerald-500/10 text-emerald-300 border-emerald-500/30">
+                                <span className={`px-1.5 py-0.5 text-[10px] font-mono rounded border ${
+                                  inc.status === "merged"
+                                    ? "bg-bg-primary text-text-muted border-border-dim"
+                                    : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                                }`}>
                                   {t(`status_${inc.status}`)}
                                 </span>
                               )}
@@ -331,6 +337,14 @@ export default function IncidentsPage() {
                             {/* Metadata */}
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-text-muted">
                               <span>{t("createdLabel", { date: fmtDate(inc.created_at) })}</span>
+                              {(inc.occurrences ?? 1) > 1 && (
+                                <span className="text-amber-300/90">
+                                  {t("seenTimes", {
+                                    count: inc.occurrences,
+                                    date: fmtDate(inc.last_seen_at ?? inc.created_at),
+                                  })}
+                                </span>
+                              )}
                               <span className="font-mono">{inc.source}{inc.tier_llm ? ` · tier ${inc.tier_llm}` : ""}</span>
                               {inc.model_used && <span className="font-mono">{inc.model_used}</span>}
                               {inc.channel && <span className="font-mono">{inc.channel}</span>}
