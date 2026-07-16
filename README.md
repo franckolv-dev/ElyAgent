@@ -76,6 +76,7 @@ ELY is a personal AI agent **that runs on your own hardware, masks sensitive dat
 - **Structural HITL** — every irreversible tool (mail send, file delete, SSH, sharing) pauses for explicit approval. Allow once · deny once · **ban permanently** (persisted across sessions).
 - Server-side encrypted vault (AES-256-GCM, key derived from your master password) for credentials.
 - Immutable audit trail — every approval logged, exportable for compliance.
+- **Tamper-proof approvals** — the action you approve is cryptographically the one that runs (fail-closed fingerprint); external mutations are never replayed twice (idempotency keys).
 
 </td>
 </tr>
@@ -98,7 +99,7 @@ ELY is a personal AI agent **that runs on your own hardware, masks sensitive dat
 
 - **Multi-user native — and hardened for it** *(June 2026 campaign: 11 releases)* — one deployment serves you or a household. Each user has their own memory, vault, approval queue, **daily LLM budget**, rate limits and storage quota. Secrets encrypted at rest, Alembic migrations, nightly backups, deep healthchecks.
 - **Multi-LLM with complexity tiers** — assign different models to Tier A (fast) / B (standard) / C (deep) / IMG / SYS. Local for simple tasks, Mistral or Anthropic for complex ones — your choice, no restart.
-- 11 LLM providers supported · auto-fallback on provider outage (per-conversation chain, auto-return after cooldown)
+- 12 LLM providers supported · auto-fallback on provider outage (per-conversation chain, auto-return after cooldown)
 - Channel-to-user mapping prevents impersonation across messaging platforms
 
 </td>
@@ -115,10 +116,11 @@ Most agents are static. **ELY watches its own failures and gets better — trans
 - **Diagnoses its own "façade successes".** A background loop records, after each autonomous run, whether the agent *actually* did what it claimed — flagging *"reported success, no real effect"* — then **diagnoses the cause** and surfaces a **reviewable fix proposal** on an admin Incidents page. ELY measures its real success rate, not its declared one.
 - **Structured missions that ask instead of guessing** *(v1.17)*. Describe a multi-step workflow in simple YAML — `steps`, `foreach` over a previous step's results, and **edge-case handlers**: `on_ambiguous: ask_user("…")`, `on_not_found: skip_with_note("…")`. When ELY hesitates, she **pings you** (web, push, Telegram), you answer, she resumes — while the other items keep running. A live list viewer shows every step and item (✓ ⏳ ⏸ ⊝) with inline answers.
 - **Radical transparency.** Two dashboards — `/me/learning` and `/me/state` — show you exactly what ELY learned from you and the model it holds of you (mood, focus, open loops). Editable, killable, never hidden.
+- **Undo — ELY can take back what she just did.** Say *"undo"* (or click **Undo** in `/me/reversible-actions`) and ELY reverses her last action — a deleted, renamed or moved Drive file restored exactly as it was — in chat, via API or the UI, with a check that the reversal actually landed.
 - **Cognitive typed memory.** Five memory types (episodic · semantic · procedural · error · constraint) instead of one opaque blob — recalled per-type, across conversations, all local.
-- **MCP client.** Consume any Model Context Protocol server — ELY's toolset extends without a code change.
+- **MCP client — hardened.** Consume any Model Context Protocol server (admin-configured): per-user credentials encrypted in your Vault, SSRF / DNS-rebinding guard, and per-tool ACL/HITL — reads run friction-free, writes are confirmed once then remembered; a quarantine/trust workflow and MCP-registry search grow ELY's toolset without a code change. *(OAuth 2.1/PKCE sign-in, a sandbox for local stdio servers, and read-only resources/prompts are landing behind their own off-by-default flags.)*
 - **MCP server.** ELY is also exposed *as* an MCP server — connect Claude Desktop, Cursor or any MCP client (authenticated by a personal API key) to chat, schedule tasks and search memory.
-- **50-scenario regression bench + nightly CI.** Self-improvement ships safely because every subsystem is pinned by a deterministic harness, on top of 1,900+ automated tests.
+- **50-scenario regression bench + nightly CI.** Self-improvement ships safely because every subsystem is pinned by a deterministic harness, on top of 2,000+ automated tests.
 
 > *Experimental:* ELY can also generate executable Python **tools** from a description (AST-guarded, admin-reviewed, sandboxed) and a network "io" variant behind a filtering egress proxy. These are kept **behind a flag and off by default** — for a single-user assistant the playbook approach above carries the day, so that's where the loop now focuses.
 
@@ -247,7 +249,7 @@ A real product UI on every surface — not a terminal dressed as a website. ELY 
 
 Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/SYS) to a model. Switch any time, no code, no restart.
 
-- **Cloud:** Mistral (preferred, EU) · Anthropic · OpenAI · Gemini · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
+- **Cloud:** Mistral (preferred, EU) · Anthropic · OpenAI · Gemini · GPT-5.5 (via your ChatGPT subscription, no API key) · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
 - **Local:** Ollama · LM Studio (MLX on Apple Silicon)
 - Auto-detected compact prompts so 7B local models actually obey `tool_choice="required"`
 - Auto-fallback if a provider goes down — disable per-tier for pure-local testing
@@ -302,6 +304,13 @@ Everything stays auditable and reversible — playbooks are prose you can read, 
 <summary><strong>Radical transparency</strong> — see what ELY learned about you, and change it</summary>
 
 `/me/learning` shows the failure signals + verdicts ELY recorded; `/me/state` shows the live model it holds of you (mood, focus, recent topics, open loops, energy). Both are user-readable, editable, and killable — no hidden profiling.
+
+</details>
+
+<details>
+<summary><strong>Undo — reversible actions</strong> — take back the last delete / rename / move</summary>
+
+ELY records a compensating action for the destructive operations she runs, so you can reverse the last one — a Drive file deleted, renamed or moved is restored exactly as it was. Trigger it in chat (*"undo that"*), via the API, or from the **`/me/reversible-actions`** page (list, one-click Undo, expiry window). Each undo is **verified** — ELY confirms the reversal actually landed — and entries auto-purge after their window.
 
 </details>
 
@@ -365,7 +374,7 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 | Frontend | Next.js 16 · TypeScript · Tailwind · Three.js |
 | Mobile | iOS SwiftUI · Android Kotlin/Compose |
 | Desktop daemon | Go (Linux · macOS · Windows) |
-| LLM providers | 11 (cloud + local) |
+| LLM providers | 12 (cloud + local) |
 | Memory | Qdrant · SQLite FTS5 · fastembed |
 | Auth | JWT HS256 · Argon2id · HttpOnly refresh cookie |
 | Vault | AES-256-GCM, per-user key derivation |
@@ -385,9 +394,11 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 - **Multi-user hardening campaign** *(11 releases, v1.14.x)* — cross-user isolation audit, per-user budgets/quotas/rate limits, secrets encrypted at rest, Alembic migrations, nightly backups, deep healthchecks
 - **Cognitive typed memory** — 5 memory types, cross-conversation recall
 - **Radical transparency** — `/me/learning` + `/me/state` dashboards
-- **MCP client** — consume any Model Context Protocol server
+- **Undo / reversible actions** — revert ELY's last delete, rename or move (Drive) from chat · API · `/me/reversible-actions`, with verification
+- **MCP client, hardened** — consume any MCP server with per-user Vault credentials, SSRF guard and per-tool ACL/HITL; quarantine/trust workflow + registry search (OAuth sign-in, local-server sandbox and read-only resources/prompts landing behind off-by-default flags)
+- **GPT-5.5 via your ChatGPT subscription** — use it as an LLM tier without an API key (token import + auto-refresh), with fallback on quota
 - **MCP server** *(v2.2)* — ELY exposed AS a Model Context Protocol server (authenticated `/api/mcp` endpoint, personal API keys) so you can drive it from Claude Desktop / Cursor (ely_chat, scheduled tasks, typed-memory search)
-- **50-scenario regression bench** + nightly CI · 1,900+ automated tests
+- **50-scenario regression bench** + nightly CI · 2,000+ automated tests
 
 **Maybe next** *(optional — this is a personal project, no roadmap pressure)*
 - **Anthropic prompt-cache markers** — shave multi-turn input cost on the Anthropic tier.

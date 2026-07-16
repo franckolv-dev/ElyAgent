@@ -80,7 +80,13 @@ ELY se connecte au compte Google de chaque utilisateur via OAuth2 :
 - **Clés API personnelles** : Réglages → Clés API (`/settings/api-keys`), préfixe `ely_api_`, affichée en clair une seule fois (hash SHA-256), max 20 actives par utilisateur, révocable ; sert de bearer pour l'endpoint MCP.
 - **4 outils MCP v1** : `ely_chat` (mode autonome-sûr, actions irréversibles bloquées), lister les tâches planifiées, créer une tâche planifiée, recherche mémoire.
 - Permet de connecter Claude Desktop, Cursor, etc.
-- ELY est aussi **client MCP** : elle consomme des serveurs MCP externes (configuration admin).
+- ELY est aussi **client MCP (durci)** : elle consomme des serveurs MCP externes (config admin) — identifiants par-utilisateur chiffrés dans le Vault, garde SSRF/anti-DNS-rebinding, ACL/HITL par outil (lecture sans friction, écriture confirmée une fois), workflow quarantaine/confiance, recherche du registre MCP officiel. Connexion OAuth 2.1/PKCE, sandbox des serveurs stdio locaux et resources/prompts en lecture seule arrivent derrière des flags désactivés par défaut. Détails : [integrations/mcp-as-client.md](integrations/mcp-as-client.md).
+
+## Actions réversibles (annuler)
+
+- ELY enregistre une **action de compensation** pour ses opérations destructives → vous pouvez **annuler la dernière** (fichier Drive supprimé, renommé ou déplacé, remis à l'identique).
+- Déclenchement en **chat** (« annule »), via l'**API**, ou depuis **`/me/reversible-actions`** (liste, Annuler en un clic, fenêtre d'expiration).
+- Chaque annulation est **vérifiée** (ELY confirme que le retour arrière a eu lieu) ; les entrées se purgent automatiquement après leur fenêtre.
 
 ## Fournisseurs LLM
 
@@ -89,6 +95,7 @@ ELY se connecte au compte Google de chaque utilisateur via OAuth2 :
 | **Anthropic Claude** | USA | B/C |
 | **Google Gemini** | USA | C |
 | **OpenAI** | USA | C |
+| **GPT-5.5** (via abonnement ChatGPT, sans clé API) | USA | C |
 | **OpenRouter** | Agrégateur | variable |
 | **Mistral AI** | France/Europe | A (RGPD) |
 | **DeepSeek** | Chine | C |
@@ -98,7 +105,7 @@ ELY se connecte au compte Google de chaque utilisateur via OAuth2 :
 | **Ollama** (local) | Votre machine | A (100% local) |
 | **LM Studio** (local) | Votre machine | A (100% local) |
 
-≈ 11 fournisseurs au total. Le provider se configure par tier (A / B / C / IMG / SYS) dans Réglages → Modèles IA, avec auto-fallback par conversation.
+≈ 12 fournisseurs au total. Le provider se configure par tier (A / B / C / IMG / SYS) dans Réglages → Modèles IA, avec auto-fallback par conversation.
 
 ## Interface utilisateur
 
