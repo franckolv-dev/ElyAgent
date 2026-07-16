@@ -69,6 +69,7 @@ ELY est un agent IA **personnel** **qui tourne sur votre matériel, masque les d
 - **HITL structurel** — chaque outil irréversible (envoi de mail, suppression, SSH, partage) attend une validation explicite. Autoriser une fois · refuser une fois · **bannir définitivement**.
 - Coffre chiffré côté serveur (AES-256-GCM, clé dérivée du mot de passe maître par Argon2id) pour les identifiants.
 - Journal d'audit immuable — chaque validation tracée, exportable pour la conformité.
+- **Approbations infalsifiables** — l'action que vous validez au HITL est cryptographiquement celle qui s'exécute (empreinte fail-closed) ; les mutations externes ne sont jamais rejouées deux fois (clés d'idempotence).
 
 </td>
 </tr>
@@ -91,7 +92,7 @@ ELY est un agent IA **personnel** **qui tourne sur votre matériel, masque les d
 
 - **Multi-utilisateur natif — et durci pour ça** *(campagne juin 2026 : 11 releases)* — un déploiement vous sert, vous ou votre foyer. Chaque utilisateur a sa mémoire, son coffre, sa file de validation, **son budget LLM quotidien**, ses quotas et limites de débit. Secrets chiffrés au repos, migrations Alembic, sauvegardes nocturnes, healthchecks profonds.
 - **Multi-LLM avec tiers de complexité** — assignez des modèles différents aux Tiers A (rapide) / B (standard) / C (profond) / IMG / SYS. Local pour les tâches simples, Mistral ou Anthropic pour les complexes — votre choix, sans redémarrage.
-- 11 fournisseurs LLM supportés · bascule automatique en cas de panne (chaîne par-conversation, retour auto au primaire après cooldown)
+- 12 fournisseurs LLM supportés · bascule automatique en cas de panne (chaîne par-conversation, retour auto au primaire après cooldown)
 - Mappage canal-utilisateur empêchant l'usurpation entre plateformes
 
 </td>
@@ -108,9 +109,10 @@ La plupart des agents sont statiques. **ELY observe ses propres échecs et progr
 - **Elle diagnostique ses propres « succès en façade ».** Une boucle de fond vérifie, après chaque exécution autonome, si l'agent a *vraiment* fait ce qu'il prétend — détecte le *« réussi annoncé, aucun effet réel »* — puis **diagnostique la cause** et propose un **correctif validable** sur une page admin Incidents. ELY mesure son taux de réussite réel, pas déclaré.
 - **Missions structurées qui demandent au lieu de deviner** *(v1.17)*. Décrivez un workflow multi-étapes en YAML simple — `steps`, `foreach` sur les résultats d'un step précédent, et des **handlers d'edge-case** : `on_ambiguous: ask_user("…")`, `on_not_found: skip_with_note("…")`. Quand ELY hésite, elle **vous ping** (web, push, Telegram), vous répondez, elle reprend — pendant que les autres items continuent. Un viewer liste vivant montre chaque step et item (✓ ⏳ ⏸ ⊝) avec réponse inline.
 - **Transparence radicale.** Deux tableaux de bord — `/me/learning` et `/me/state` — vous montrent exactement ce qu'ELY a appris de vous et le modèle qu'elle se fait de vous (humeur, focus, dossiers ouverts). Lisibles, modifiables, supprimables, jamais cachés.
+- **Annuler — ELY peut revenir sur ce qu'elle vient de faire.** Dites *« annule »* (ou cliquez **Annuler** dans `/me/reversible-actions`) et ELY défait sa dernière action — un fichier Drive supprimé, renommé ou déplacé, remis à l'identique — en chat, via l'API ou l'UI, avec vérification que l'annulation a bien pris.
 - **Mémoire cognitive typée.** Cinq types de mémoire (épisodique · sémantique · procédurale · erreur · contrainte) au lieu d'un blob opaque — rappelés par type, entre conversations, 100 % en local.
-- **Client MCP.** Consommez n'importe quel serveur Model Context Protocol — l'outillage d'ELY s'étend sans changement de code.
-- **Banc de régression 50 scénarios + CI nocturne.** L'auto-amélioration ne ship en sécurité que parce que chaque sous-système est verrouillé par un banc déterministe, par-dessus 1 900+ tests automatisés.
+- **Client MCP — durci.** Consommez n'importe quel serveur Model Context Protocol (config admin) : identifiants par-utilisateur chiffrés dans votre Vault, garde SSRF / anti-DNS-rebinding, et ACL/HITL par outil — lecture sans friction, écriture confirmée une fois puis mémorisée ; un workflow quarantaine/confiance et la recherche du registre MCP étendent l'outillage sans changement de code. *(Connexion OAuth 2.1/PKCE, sandbox pour les serveurs stdio locaux, et resources/prompts en lecture seule arrivent derrière leurs propres flags, désactivés par défaut.)*
+- **Banc de régression 50 scénarios + CI nocturne.** L'auto-amélioration ne ship en sécurité que parce que chaque sous-système est verrouillé par un banc déterministe, par-dessus 2 000+ tests automatisés.
 
 > *Expérimental, désactivé par défaut :* ELY peut aussi générer des **outils Python** exécutables depuis une description (garde AST → ruff → mypy → smoke test sandboxé → revue admin → canary HITL), y compris une variante réseau « io » derrière un proxy egress filtrant avec domaines déclarés et secrets injectés du Vault. Pour un assistant mono-utilisateur ça paye rarement (un bon modèle fait la tâche triviale en ligne), donc la boucle se concentre désormais sur les playbooks ; la génération de code reste derrière un flag.
 
@@ -130,7 +132,7 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 | Apps mobiles natives (iOS + Android) | ✅ | ❌ Rare | ✅ |
 | Coffre chiffré côté serveur | ✅ AES-256-GCM | ❌ Rare | ❌ |
 | Interface française complète | ✅ | ⚠️ Souvent EN only | ⚠️ Partielle |
-| Licence | Source-available | Variable | Propriétaire |
+| Licence | Elastic v2 (usage interne gratuit, pas de revente SaaS) | Variable | Propriétaire |
 
 > **Notre lecture honnête.** D'autres agents auto-hébergés ont des communautés plus larges et plus d'adaptateurs de canaux. **Si vous traitez des données que vous ne pouvez pas vous permettre de divulguer — les vôtres, celles de votre famille, celles de vos clients — le pipeline d'anonymisation et le HITL structurel d'ELY sont les raisons qui vous le feront choisir face aux alternatives.**
 
@@ -138,7 +140,7 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 
 ## À qui s'adresse ELY
 
-**Particuliers et familles soucieux de leur vie privée** — vous voulez un assistant IA puissant mais vous refusez d'envoyer votre boîte mail, vos relevés bancaires et votre historique médical à OpenAI ou Anthropic. Tournez ELY sur votre matériel. Gratuit sous la licence Elastic v2.
+**Particuliers et familles soucieux de leur vie privée** — vous voulez un assistant IA puissant mais vous refusez d'envoyer votre boîte mail, vos relevés bancaires et votre historique médical à OpenAI, Google ou Anthropic. Tournez ELY sur votre matériel. Gratuit sous la licence Elastic v2.
 
 ELY est un **projet perso non-commercial**. Cela dit, la licence Elastic v2 couvre aussi l'**usage professionnel interne**, gratuitement et sans contrat additionnel — donc si c'est utile au sein de votre propre structure, c'est autorisé.
 
@@ -211,7 +213,7 @@ Une vraie UI produit sur chaque surface — **pas un terminal déguisé en site 
 
 Configurez les fournisseurs dans **Réglages → Modèles IA**. Assignez chaque tier (A/B/C/IMG/SYS) à un modèle. Changez à tout moment, sans redémarrage. Les modèles locaux (Ollama, LM Studio) bénéficient de prompts compacts auto-détectés pour que les modèles 7B obéissent réellement à `tool_choice="required"`.
 
-- **Cloud :** OpenAI · Anthropic · Gemini · Qwen API · Moonshot Kimi K2.x · Mistral · DeepSeek · Zhipu · OpenRouter
+- **Cloud :** OpenAI · GPT-5.5 (via votre abonnement ChatGPT, sans clé API) · Anthropic · Gemini · Qwen API · Moonshot Kimi K2.x · Mistral · DeepSeek · Zhipu · OpenRouter
 - **Local :** Ollama · LM Studio (MLX sur Apple Silicon)
 - **Bascule automatique** si un fournisseur tombe — désactivable par tier pour des tests 100 % locaux.
 - **Préfixe système cacheable** séparé du contenu dynamique, pour réduire le coût d'entrée multi-tours sur les fournisseurs qui cachent le préfixe.
@@ -267,9 +269,16 @@ Tout reste auditable et réversible — les playbooks sont de la prose que vous 
 </details>
 
 <details>
+<summary><strong>Annuler — actions réversibles</strong> — revenir sur la dernière suppression / renommage / déplacement</summary>
+
+ELY enregistre une action de compensation pour les opérations destructives qu'elle exécute : vous pouvez donc défaire la dernière — un fichier Drive supprimé, renommé ou déplacé est remis exactement dans son état d'origine. Déclenchez-la en chat (*« annule ça »*), via l'API, ou depuis la page **`/me/reversible-actions`** (liste, Annuler en un clic, fenêtre d'expiration). Chaque annulation est **vérifiée** — ELY confirme que le retour arrière a bien eu lieu — et les entrées se purgent automatiquement après leur fenêtre.
+
+</details>
+
+<details>
 <summary><strong>Canaux</strong> — 10 façons de joindre ELY</summary>
 
-Web · Voix (mot-clé « Ély ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy.
+Web · Voix (mot-clé « Éli ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy.
 
 Même agent, même mémoire, même sécurité sur toutes les surfaces. Apps natives iOS (SwiftUI) et Android (Kotlin/Compose) avec push FCM/APNs pour les validations HITL — la plupart des concurrents ne proposent qu'un proxy via bot de messagerie.
 
@@ -346,7 +355,7 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 | Frontend | Next.js 16 · TypeScript · Tailwind · Three.js |
 | Mobile | iOS SwiftUI · Android Kotlin/Compose |
 | Daemon desktop | Go (Linux · macOS · Windows) |
-| Fournisseurs LLM | 11 (cloud + local) |
+| Fournisseurs LLM | 12 (cloud + local) |
 | Mémoire | Qdrant · SQLite FTS5 · fastembed |
 | Automation navigateur | Playwright |
 | STT / TTS | faster-whisper · edge-tts |
@@ -368,9 +377,11 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 - **Campagne de durcissement multi-utilisateur** *(11 releases, v1.14.x)* — audit d'isolation cross-user, budgets/quotas/limites par utilisateur, secrets chiffrés au repos, migrations Alembic, sauvegardes nocturnes, healthchecks profonds
 - **Mémoire cognitive typée** — 5 types de mémoire, rappel transversal entre conversations
 - **Transparence radicale** — tableaux de bord `/me/learning` + `/me/state`
-- **Client MCP** — consommer n'importe quel serveur Model Context Protocol
+- **Annuler / actions réversibles** — revenir sur la dernière suppression, renommage ou déplacement (Drive) depuis le chat · l'API · `/me/reversible-actions`, avec vérification
+- **Client MCP, durci** — consommer n'importe quel serveur MCP avec identifiants par-utilisateur dans le Vault, garde SSRF et ACL/HITL par outil ; workflow quarantaine/confiance + recherche de registre (connexion OAuth, sandbox des serveurs locaux et resources/prompts en lecture seule arrivent derrière des flags désactivés par défaut)
+- **GPT-5.5 via votre abonnement ChatGPT** — l'utiliser comme tier LLM sans clé API (import de tokens + rafraîchissement auto), avec bascule de secours au quota
 - **Serveur MCP** *(juin 2026)* — ELY est exposée **comme** un serveur MCP sur `/api/mcp` (FastMCP Streamable-HTTP), authentifié par clés API personnelles. Pilotez-la depuis Claude Desktop / Cursor : chat en un tour (mode autonome-sûr), lister/créer des tâches planifiées, recherche mémoire.
-- **Banc de régression 50 scénarios** + CI nocturne · 1 900+ tests automatisés
+- **Banc de régression 50 scénarios** + CI nocturne · 2 000+ tests automatisés
 
 **Peut-être ensuite** *(optionnel — projet perso, pas de pression de roadmap)*
 - **Marqueurs de cache de prompt Anthropic** — réduire le coût d'entrée multi-tours sur le tier Anthropic.

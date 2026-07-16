@@ -17,6 +17,21 @@ Deux façons d'utiliser un serveur MCP :
    elle-même à un serveur distant et utilise ses outils. Tu valides
    l'installation et les permissions ; Ely fait le reste.
 
+## V2 — durcissement (2026)
+
+Le client MCP a été durci au-delà de la V1 :
+
+- **Identité par utilisateur** — les credentials d'un serveur distant (bearer / API key / OAuth) vivent dans le **Vault du propriétaire**, jamais en base ni dans les logs ; chaque appel agit avec l'identité de l'utilisateur.
+- **Garde réseau** — HTTPS imposé, validation DNS/IP et **épinglage sur l'IP validée** (anti-SSRF / anti-DNS-rebinding), redirections re-validées. Exception réseau privé/LAN réglable par l'admin, par serveur (`allow_private_network`).
+- **ACL / HITL par outil** — lecture sans friction, écriture confirmée une fois puis mémorisée ; classe de risque par outil ; workflow quarantaine → confiance.
+- **Recherche du registre MCP officiel** — découverte only, zéro confiance implicite (même parcours de consentement qu'un import manuel).
+
+Arrivant derrière leurs propres flags, **désactivés par défaut** :
+
+- **OAuth 2.1 / PKCE** (`MCP_OAUTH_ENABLED`) — bouton « Se connecter » : découverte du serveur d'autorisation (RFC 9728/8414), PKCE, tokens rafraîchis/révocables rangés au Vault du propriétaire, identité par utilisateur. Débloque les serveurs MCP distants authentifiés (GitHub, Notion, Linear…).
+- **Sandbox des serveurs stdio locaux** (`MCP_STDIO_SANDBOX_ENABLED`) — le processus est lancé sous limites de ressources (mémoire virtuelle / descripteurs / taille de fichier écrit) et **tout son arbre de processus est tué proprement à l'arrêt** (zéro orphelin). Limites par défaut overridables globalement (`MCP_STDIO_SANDBOX_*`) ou par serveur (`sandbox_profile_json`). *Validé en canary.* NB : l'isolation réseau/utilisateur/mounts du serveur local relève d'un conteneur sidecar (non couvert).
+- **Resources / Prompts** (`MCP_RESOURCES_ENABLED`) — lecture seule : lister/lire les *resources* d'un serveur distant, lister/récupérer ses *prompts* (contenu tiers **marqué non fiable, jamais auto-injecté**). `roots` / `sampling` / `elicitation` restent hors périmètre.
+
 ## Transports pris en charge (V1)
 
 | Transport | Usage |
