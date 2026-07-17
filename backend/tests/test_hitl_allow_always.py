@@ -177,9 +177,10 @@ def test_nodes_py_imports_user_requires_hitl_check() -> None:
     tool as always-allowed. Mirror of sub_agents/factory.py:806.
 
     After the 2026-05-25 refactor (Phase 3), the HITL handler lives in
-    app/agent/tool_node.py rather than nodes.py.
+    app/agent/tool_node.py rather than nodes.py, and since C3a in
+    app/services/tool_gateway.py (the single tool-execution gateway).
     """
-    src = (_REPO / "app" / "agent" / "tool_node.py").read_text(encoding="utf-8")
+    src = (_REPO / "app" / "services" / "tool_gateway.py").read_text(encoding="utf-8")
     assert "user_requires_hitl" in src, (
         "tool_node.py must check user_requires_hitl before triggering the "
         "HITL prompt — otherwise the user's 'always allow' preference "
@@ -193,9 +194,10 @@ def test_nodes_py_handles_allow_always_decision() -> None:
     execute the tool this time.
 
     After the 2026-05-25 refactor (Phase 3), the HITL handler lives in
-    app/agent/tool_node.py rather than nodes.py.
+    app/agent/tool_node.py rather than nodes.py, and since C3a in
+    app/services/tool_gateway.py (the single tool-execution gateway).
     """
-    src = (_REPO / "app" / "agent" / "tool_node.py").read_text(encoding="utf-8")
+    src = (_REPO / "app" / "services" / "tool_gateway.py").read_text(encoding="utf-8")
     assert 'decision == "allow_always"' in src
     assert "set_user_preference" in src
     # Order : the allow_always branch comes BEFORE the catch-all "not allow"

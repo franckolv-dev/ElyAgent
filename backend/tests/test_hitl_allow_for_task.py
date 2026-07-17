@@ -102,7 +102,7 @@ def test_snapshot_is_a_copy() -> None:
 
 
 def test_tool_node_checks_task_approval_before_prompt() -> None:
-    src = (_BACKEND / "app" / "agent" / "tool_node.py").read_text(encoding="utf-8")
+    src = (_BACKEND / "app" / "services" / "tool_gateway.py").read_text(encoding="utf-8")
     # The check must run and be keyed by tool_name (args-agnostic), and gate
     # `needs_hitl` BEFORE request_validation is called.
     assert "is_tool_approved_for_task(_conv_id, tool_name)" in src, (
