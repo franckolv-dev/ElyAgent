@@ -57,6 +57,17 @@ def _patch_common(monkeypatch, tool_name: str, *, decision: str | None, hitl_rai
 
     monkeypatch.setattr(hd, "build_human_hitl_description", _fake_human)
 
+    # C3b-2 : le dispatch missions passe par le ToolGateway, qui applique
+    # l'ACL outils d'instance (B-12, admin-only pour ssh) — hors sujet ici
+    # (l'intention de ces tests = la sémantique des DÉCISIONS HITL). L'ACL
+    # gagnée par les missions a son propre pin ci-dessous.
+    import app.services.tool_acl as ta
+
+    async def _no_acl(_uid, _tool):  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(ta, "check_tool_access", _no_acl)
+
 
 # ssh_execute is in ALWAYS_CRITICAL_TOOLS (→ needs_hitl) and LOCKED_HITL_TOOLS
 # (→ persistent pref can't skip it, but task-scoped approval still can).
@@ -115,3 +126,20 @@ async def test_task_approval_skips_prompt_even_for_locked(monkeypatch):
         assert out == "EXECUTED"
     finally:
         task_approvals.clear_task_approvals("m-pre")
+
+
+@pytest.mark.asyncio
+async def test_mission_gains_instance_tool_acl(monkeypatch):
+    """C3b-2 — trou fermé : le chemin missions n'appliquait PAS l'ACL B-12
+    (outils à ressources d'instance, admin-only). Via la passerelle, une
+    mission d'un non-admin ne peut plus piloter ssh_execute."""
+    _patch_common(monkeypatch, _TOOL, decision="allow")
+    import app.services.tool_acl as ta
+
+    async def _admin_only(_uid, _tool):  # noqa: ARG001
+        return "⛔ Outil réservé à l'administrateur."
+
+    monkeypatch.setattr(ta, "check_tool_access", _admin_only)
+    out, ok = await mnodes.dispatch_tool(_TOOL, {}, "tc1", "user-1", mission_id="m-acl")
+    assert ok is False
+    assert "administrateur" in out

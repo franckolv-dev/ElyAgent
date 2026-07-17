@@ -287,70 +287,10 @@ async def dispatch_tool(
         from app.agent.missions.pii import deanonymize_any, mission_filter
         tool_args = deanonymize_any(mission_filter(mission_id), tool_args)
 
-    # Injected args (never visible in logs/UI)
     args = dict(tool_args)
-    if tool_name in GOOGLE_TOOLS:
-        from app.services.credential_store import get_credential_store
-        _store = get_credential_store()
-        _creds = _store.get(user_id) or ""
-        # Fallback to DB if the in-memory store is empty — happens for
-        # mission heartbeats / scheduled tasks / cron jobs that don't
-        # go through chat.py to populate the store (and after every
-        # backend restart that wipes the in-memory store). Without this
-        # fallback, all Google tools fail with "Google non connecté"
-        # even though credentials exist in DB. April 2026 mission #19/15
-        # spam-delete loop was caused by exactly this.
-        if not _creds and user_id:
-            try:
-                from app.database import async_session as _async_session
-                from app.models.google_account import GoogleAccount as _GA
-                from app.models.user import User as _U
-                from sqlalchemy import select as _select
-                async with _async_session() as _db:
-                    # 1. Prefer the default GoogleAccount row
-                    _row = await _db.execute(
-                        _select(_GA.credentials_json).where(
-                            _GA.user_id == user_id,
-                            _GA.is_default == True,  # noqa: E712
-                        )
-                    )
-                    _creds = _row.scalar_one_or_none() or ""
-                    # 2. Legacy fallback : User.google_credentials column
-                    if not _creds:
-                        _u = await _db.get(_U, user_id)
-                        if _u and _u.google_credentials:
-                            _creds = _u.google_credentials
-                if _creds:
-                    _store.set(user_id, _creds)
-                    logger.info(
-                        "Mission credential store re-populated from DB for user %s",
-                        user_id[:8] + "…",
-                    )
-            except Exception as _exc:
-                logger.warning(
-                    "Mission credential DB fallback failed for %s: %s",
-                    user_id[:8] + "…", _exc,
-                )
-        args["user_google_credentials_json"] = _creds
-    if tool_name in USER_ID_TOOLS:
-        args["user_id"] = user_id
-
     _hidden = {"user_google_credentials_json", "user_id"}
     display_args = {k: v for k, v in args.items() if k not in _hidden}
     action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
-
-    # Vault refs resolution
-    if any(isinstance(v, str) and v.startswith("vault://") for v in args.values()):
-        from app.services.vault_service import get_vault_service
-        vault = get_vault_service()
-        if vault.is_locked(user_id):
-            return "⛔ Vault verrouillé — déverrouillez-le dans Paramètres → Vault.", False
-        try:
-            args, _resolved = await vault.resolve_vault_refs(user_id, args)
-            if _resolved:
-                logger.info("Mission: resolved vault refs %s for tool %s", _resolved, tool_name)
-        except KeyError as exc:
-            return f"⛔ Secret introuvable dans le Vault : {exc}", False
 
     # HITL gate for sensitive tools. The is_critical keyword scan EXCLUDES
     # deferred-instruction args (prompt/code): a keyword in a SCHEDULED task's
@@ -555,107 +495,88 @@ async def dispatch_tool(
             )
             needs_hitl = False
 
-    if needs_hitl:
-        # Replace the technical action_desc with a human-readable version
-        # that includes pre-count, the user's original request, and any
-        # detected mismatches (May 2026 fix #21 — Temu incident :
-        # validating a JSON blob without context = blind approval).
-        try:
-            from app.services.hitl_descriptions import build_human_hitl_description
-            humanized = await build_human_hitl_description(
-                tool_name=tool_name,
-                args=args,
-                user_request=user_request,
-                user_credentials_json=args.get("user_google_credentials_json", ""),
-            )
-        except Exception as _e:
-            humanized = action_desc  # fallback to technical
-            logger.debug("HITL humanizer failed: %s", _e)
-        logger.info("Mission HITL required: %s", action_desc)
-        hitl = get_hitl_manager()
-        decision, reason = await hitl.request_validation(description=humanized, user_id=user_id)
-        if decision == "ban":
-            rule = f"INTERDICTION PERMANENTE: {action_desc}"
-            if reason:
-                rule += f" — Raison: {reason}"
-            await get_memory_manager().store_constraint(rule, user_id)
-            return "Action interdite définitivement et règle de sécurité enregistrée.", False
-        elif decision == "allow_always":
-            # Persist the preference so future runs (incl. unattended
-            # scheduled ones) skip HITL for this tool — then execute now.
-            # (Before this fix the mission path treated allow_always as a
-            # refusal — bug reported 2026-06-04.)
-            try:
-                from app.services.hitl_preferences import set_user_preference
-                await set_user_preference(user_id, tool_name, requires_confirmation=False)
-            except Exception as _save_exc:
-                logger.debug("Mission: could not save HITL preference: %s", _save_exc)
-            # fall through to execute
-        elif decision == "allow_for_task":
-            # Approve this tool for the rest of THIS mission — then execute.
-            # (Was also wrongly treated as a refusal before this fix.)
-            try:
-                from app.services.task_approvals import approve_tool_for_task
-                if mission_id:
-                    approve_tool_for_task(mission_id, tool_name)
-            except Exception as _ta_exc:
-                logger.debug("Mission: could not register task approval: %s", _ta_exc)
-            # fall through to execute
-        elif decision != "allow":
-            return "Action refusée par l'utilisateur pour cette occurrence.", False
+    # ── Délégation à la passerelle unique (C3b-2) ─────────────────────────
+    # La DÉCISION HITL ci-dessus (base + gate mandat J2 + self-mail +
+    # task-scoped + préférences + plancher autonome legacy) reste SOUVERAINE
+    # au niveau mission : la passerelle reçoit needs_hitl_final et garde le
+    # prompt humanisé, le traitement des décisions (allow / allow_always /
+    # allow_for_task / deny / ban), les creds Google (multi-comptes inclus —
+    # nouveauté pour les missions), le vault, l'empreinte fail-closed,
+    # l'idempotence, le journal réversible, les événements typés et les
+    # signaux d'apprentissage (refus HITL et erreurs d'outil : enfin comptés
+    # pour les missions). anonymize_results=False : les missions anonymisent
+    # à LEUR frontière LLM (anonymize_messages) — steps et carnet restent
+    # lisibles. Disjoncteurs J3 = hook pre_execute (ordre historique : après
+    # le HITL, avant l'exécution) ; journal de bord J4 = hook post_execute.
+    from app.services.tool_gateway import GatewayContext, execute_tool_call
 
-    # ── Disjoncteurs D4 (Missions autonomes J3) ────────────────────────────
-    # Compteur d'actions + check des seuils de NOTIFICATION du mandat. En ≥,
-    # AVANT l'exécution : l'action au-delà d'un seuil non-acquitté attend la
-    # réponse de l'utilisateur (30 min, HITL standard) — allow ⇒ acquitté
-    # pour la journée ; deny/timeout ⇒ pause propre + snapshot, l'outil n'est
-    # PAS exécuté. Un incident de comptage ne bloque JAMAIS la mission.
-    if _mandate is not None:
+    async def _budget_gate(_tn: str, _args: dict):
+        # ── Disjoncteurs D4 (Missions autonomes J3) — bloc historique ──
+        if _mandate is None:
+            return None
         from app.services import mission_budget
         try:
             _counter = await mission_budget.incr_tool_action(mission_id)
         except Exception as _cb_exc:  # noqa: BLE001
             logger.warning("Compteur mission %s indisponible : %s", mission_id, _cb_exc)
             _counter = None
-        if _counter is not None:
-            _which = mission_budget.breached(_counter, _mandate)
-            if _which is not None:
-                _seuil = (_mandate.budgets.daily_tool_actions_notify if _which == "tool"
-                          else _mandate.budgets.daily_llm_calls_notify)
-                _hitl = get_hitl_manager()
-                _decision, _reason = await _hitl.request_validation(
-                    description=(
-                        "⚠️ Disjoncteur mission autonome : seuil "
-                        f"{'d’actions' if _which == 'tool' else 'd’appels LLM'} atteint "
-                        f"({_counter.tool_actions} actions / {_counter.llm_calls} appels "
-                        f"LLM aujourd’hui, seuil {_seuil}). Continuer la mission ?"
-                    ),
-                    user_id=user_id,
-                )
-                if _decision == "allow":
-                    await mission_budget.ack_threshold(mission_id, _which)
-                else:
-                    _msg = await mission_budget.pause_autonomous_mission(
-                        mission_id,
-                        reason=("budget_tool_actions" if _which == "tool" else "budget_llm_calls")
-                               + ("_no_response" if _reason == "timeout" else ""),
-                        counter=_counter, mandate=_mandate,
-                    )
-                    return _msg, False
+        if _counter is None:
+            return None
+        _which = mission_budget.breached(_counter, _mandate)
+        if _which is None:
+            return None
+        _seuil = (_mandate.budgets.daily_tool_actions_notify if _which == "tool"
+                  else _mandate.budgets.daily_llm_calls_notify)
+        _hitl = get_hitl_manager()
+        _decision, _reason = await _hitl.request_validation(
+            description=(
+                "⚠️ Disjoncteur mission autonome : seuil "
+                f"{'d’actions' if _which == 'tool' else 'd’appels LLM'} atteint "
+                f"({_counter.tool_actions} actions / {_counter.llm_calls} appels "
+                f"LLM aujourd’hui, seuil {_seuil}). Continuer la mission ?"
+            ),
+            user_id=user_id,
+        )
+        if _decision == "allow":
+            await mission_budget.ack_threshold(mission_id, _which)
+            return None
+        return await mission_budget.pause_autonomous_mission(
+            mission_id,
+            reason=("budget_tool_actions" if _which == "tool" else "budget_llm_calls")
+                   + ("_no_response" if _reason == "timeout" else ""),
+            counter=_counter, mandate=_mandate,
+        )
 
-    # Actually run the tool
-    t0 = time.monotonic()
-    try:
-        result = await tool.ainvoke(args)
-        elapsed = time.monotonic() - t0
-        logger.warning("⏱ TIMING[mission_tool:%s] %.2fs", tool_name, elapsed)
-        _journal_tool_run(mission_id, _mandate, tool_name, True, elapsed, result)
-        return str(result), True
-    except Exception as exc:
-        logger.warning("Mission tool %s failed: %s", tool_name, exc)
-        _journal_tool_run(mission_id, _mandate, tool_name, False,
-                          time.monotonic() - t0, exc)
-        return f"Erreur d'exécution: {exc}", False
+    def _journal_hook(_tn: str, _ok: bool, _elapsed: float, _res):
+        _journal_tool_run(mission_id, _mandate, _tn, _ok, _elapsed, _res)
+
+    _pii_sf = None
+    if mission_id:
+        from app.agent.missions.pii import mission_filter as _mf
+        _pii_sf = _mf(mission_id)
+    _meta: dict = {}
+    _gw_ctx = GatewayContext(
+        user_id=user_id,
+        conversation_id=mission_id or "",
+        pii_filter=_pii_sf,
+        criticality_filter=sf,
+        hitl=get_hitl_manager(),
+        memory=get_memory_manager(),
+        user_request=user_request,
+        label="mission",
+        needs_hitl_final=needs_hitl,
+        anonymize_results=False,
+        pre_execute=_budget_gate,
+        post_execute=_journal_hook,
+    )
+    _msg = await execute_tool_call(
+        _gw_ctx, {"name": tool_name, "args": tool_args, "id": tool_call_id},
+        tool_map, meta=_meta,
+    )
+    _content = getattr(_msg, "content", None)
+    if _content is None and isinstance(_msg, dict):
+        _content = _msg.get("content", "")
+    return str(_content or ""), bool(_meta.get("success"))
 
 
 # ── LLM helpers ──────────────────────────────────────────────────────────────
