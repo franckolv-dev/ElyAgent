@@ -134,7 +134,7 @@ We respect what other projects do well. We are explicit about what sets us apart
 |---|:---:|:---:|:---:|
 | Self-Hosted on Your Hardware | ✅ | ✅ | ❌ |
 | **Anonymized PII before LLM Call** | ✅ Native | ⚠️ Plugin or Absent | ❌ |
-| **HITL Enabled by Default, Cannot Be Disabled** | ✅ Structural | ⚠️ Configurable | N/A |
+| **HITL on by default (per-tool opt-out; forbidden core stays locked under autonomous mandates)** | ✅ Structural | ⚠️ Configurable | N/A |
 | **Multi-User (one person or a household)** | ✅ | ❌ Often Single-User | ✅ (Cloud Publisher) |
 | **Hybrid Local/Cloud Routing** | ✅ Explicit Third Parties | ⚠️ Manual / Partial | ❌ |
 | Native Mobile Apps (iOS + Android) | ✅ | ❌ Rare | ✅ |
@@ -266,7 +266,7 @@ Gmail · Calendar · Drive · Docs · Sheets · Tasks · Contacts. High-level to
 <details>
 <summary><strong>Missions</strong> — goal-driven loop that survives restarts, now with structured specs</summary>
 
-Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures. Every terminal mission is graded by an external **LLM-as-judge** that flags "façade success".
+Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures. Failed missions are always graded by an external **LLM-as-judge** that flags "façade success"; successful ones are spot-checked (1 in 5).
 
 **Structured missions** *(v1.17)* — replace the monolithic prompt with a YAML spec:
 
