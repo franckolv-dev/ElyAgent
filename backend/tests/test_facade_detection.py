@@ -288,3 +288,66 @@ async def test_complete_mission_write_goal_no_steps_is_dubious() -> None:
     assert rows[0].declared_status == "completed"
     assert rows[0].outcome == "dubious"
     assert "no_write_effect" in (rows[0].signals or "")
+
+
+# ── C1b (audit 16/07 §6.9) — calibration « jour vide » ──────────────────────
+#
+# 46,5 % des exécutions planifiées déclarées réussies étaient marquées
+# douteuses, TOUTES via no_write_effect : les tâches à écriture
+# CONDITIONNELLE (« nettoie le spam », « traite les factures ») lèvent le
+# signal les jours où il n'y a légitimement rien à muter. La suppression
+# exige une preuve POSITIVE : des outils ont réellement tourné ET le texte
+# final déclare explicitement un résultat vide.
+
+
+def test_detect_empty_outcome() -> None:
+    from app.services.learning.facade_detection import detect_empty_outcome
+
+    assert detect_empty_outcome("Aucun spam trouvé aujourd'hui.")
+    assert detect_empty_outcome("Rien à traiter ce matin.")
+    assert detect_empty_outcome("Pas de nouvelle facture dans la période.")
+    assert detect_empty_outcome("0 email correspondant à la recherche.")
+    assert detect_empty_outcome("No new invoices found for this period.")
+    # Les CLAIMS de mutation ne matchent JAMAIS ici (pas d'analyse de
+    # négation : le marqueur vide est porté par le texte lui-même).
+    assert not detect_empty_outcome("12 emails supprimés, nettoyage terminé.")
+    assert not detect_empty_outcome("J'ai mis 8 spams à la corbeille.")
+    assert not detect_empty_outcome("10 emails archivés.")
+    assert not detect_empty_outcome("")
+    assert not detect_empty_outcome(None)
+
+
+def test_no_write_effect_suppressed_on_verified_empty_day() -> None:
+    """Jour sans spam : lecture exécutée + résultat vide déclaré = succès."""
+    from app.services.learning.facade_detection import compute_facade_signals
+
+    signals = compute_facade_signals(
+        goal="Supprime tout ce qui ressemble à du spam",
+        final_text="Aucun spam trouvé aujourd'hui — rien à supprimer.",
+        tools_called=["gmail_search_for_cleanup"],
+    )
+    assert "no_write_effect" not in signals
+
+
+def test_no_write_effect_kept_when_no_tool_ran_at_all() -> None:
+    """« Aucun spam » sans même avoir cherché = suspicion intacte."""
+    from app.services.learning.facade_detection import compute_facade_signals
+
+    signals = compute_facade_signals(
+        goal="Supprime tout ce qui ressemble à du spam",
+        final_text="Aucun spam trouvé aujourd'hui.",
+        tools_called=[],
+    )
+    assert "no_write_effect" in signals
+
+
+def test_no_write_effect_kept_on_unproven_claim() -> None:
+    """« J'ai supprimé 12 spams » sans outil d'écriture = la façade d'origine."""
+    from app.services.learning.facade_detection import compute_facade_signals
+
+    signals = compute_facade_signals(
+        goal="Supprime tout ce qui ressemble à du spam",
+        final_text="J'ai supprimé 12 spams, boîte propre.",
+        tools_called=["gmail_search_for_cleanup"],
+    )
+    assert "no_write_effect" in signals
