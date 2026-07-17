@@ -53,7 +53,22 @@ async def _user():
         db.add(User(id=uid, username=f"auto_{uid}", email=f"{uid}@t.local", hashed_password="x"))
         await db.commit()
     yield uid
+    # C3b-2 : un deny du dispatch (via la passerelle) enregistre désormais un
+    # signal HitlRefusal (+ failure_case) référençant le user — drainer les
+    # tâches de fond puis supprimer les ENFANTS avant le user (FK, flaky CI).
+    import asyncio as _aio
+
+    import app.services.background_tasks as bg
+    for _ in range(10):
+        _tasks = [t for t in list(bg._BG_TASKS) if not t.done()]
+        if not _tasks:
+            break
+        await _aio.gather(*_tasks, return_exceptions=True)
+    from app.models.failure_case import FailureCase
+    from app.models.hitl_refusal import HitlRefusal
     async with async_session() as db:
+        await db.execute(delete(FailureCase).where(FailureCase.user_id == uid))
+        await db.execute(delete(HitlRefusal).where(HitlRefusal.user_id == uid))
         await db.execute(delete(Mission).where(Mission.user_id == uid))
         await db.execute(delete(User).where(User.id == uid))
         await db.commit()
