@@ -109,9 +109,8 @@ async def _log_mission_llm_usage(
     per mission × many missions per day, this represents the bulk of
     LLM activity.
     """
+    # Extraction UNE fois — sert à l'analytics ET au budget mission (C1a).
     try:
-        from app.services.analytics_service import log_usage
-
         usage = getattr(response, "usage_metadata", None) or {}
         in_tok = int(usage.get("input_tokens") or 0)
         out_tok = int(usage.get("output_tokens") or 0)
@@ -124,6 +123,11 @@ async def _log_mission_llm_usage(
             # better than 0 for cost graphs (and most local models cost $0
             # anyway so the imprecision doesn't matter financially).
             in_tok = max(1, len(content) // 4)
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        in_tok = out_tok = 0
+
+    try:
+        from app.services.analytics_service import log_usage
 
         provider, model = _extract_provider_model(llm)
 
@@ -141,6 +145,16 @@ async def _log_mission_llm_usage(
         # Non-critical — analytics must never break a mission.
         logger.debug("log_mission_llm_usage failed for mission %s phase %s: %s",
                      mission_id, phase, exc)
+
+    # C1a (audit 16/07 §6.4) — câble le budget de tokens de la MISSION :
+    # chaque invocation LLM du graphe alimente Mission.tokens_used, ce qui
+    # rend check_budget (heartbeat + /tick) enfin effectif. Best-effort.
+    try:
+        if mission_id and (in_tok or out_tok):
+            from app.services.mission_service import add_tokens_used
+            await add_tokens_used(mission_id, in_tok + out_tok)
+    except Exception as exc:  # noqa: BLE001 — le comptage ne casse pas une mission
+        logger.debug("Compteur tokens mission %s ignoré : %s", mission_id, exc)
 
     # Missions autonomes J3 — compteur d'appels LLM (seuils D4). Flag OFF ⇒
     # aucune écriture (zéro changement observable) ; best-effort intégral.
@@ -646,10 +660,30 @@ async def dispatch_tool(
 
 # ── LLM helpers ──────────────────────────────────────────────────────────────
 
-def _get_planner_llm():
+async def _mission_llm_tier(mission_id: str):
+    """Tier LLM des nœuds de mission (C1a, audit 16/07 §6.6).
+
+    D3 : sous mandat ACTIF (flag ON + ``autonomy_state='active'``), le tier
+    vient du mandat — ``llm_tier`` explicite, sinon COMPLEX forcé. Sans
+    mandat actif : MEDIUM, comportement historique des missions supervisées,
+    inchangé. Avant C1a, ``mandate.llm_tier`` était validé/stocké mais
+    jamais lu — les nœuds tournaient en MEDIUM en dur.
+    """
+    from app.services.llm_provider import ComplexityTier
+    try:
+        from app.services.mission_service import load_active_mandate
+        mandate = await load_active_mandate(mission_id)
+        if mandate is not None:
+            return ComplexityTier(mandate.llm_tier or "complex")
+    except Exception as exc:  # noqa: BLE001 — le tier ne casse jamais un tick
+        logger.debug("_mission_llm_tier: repli MEDIUM (%s)", exc)
+    return ComplexityTier.MEDIUM
+
+
+def _get_planner_llm(tier=None):
     """LLM used for plan / replan — needs reasoning, not tool-calling."""
     from app.services.llm_provider import get_llm_for_tier, ComplexityTier
-    return get_llm_for_tier(ComplexityTier.MEDIUM)
+    return get_llm_for_tier(tier or ComplexityTier.MEDIUM)
 
 
 def _norm(s: str) -> str:
@@ -976,7 +1010,7 @@ async def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal
     return candidates[:_TOOL_CAP] if candidates else all_tools[:_TOOL_CAP]
 
 
-async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
+async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "", tier=None) -> tuple[Any, list[tuple[str, Any]], list[Any]]:
     """Return (primary_llm_bound, [(label, fallback_llm_bound)], raw_tools).
 
     `primary` is the local model (xLAM-2-8B or Gemma 4 21B REAP) — fast
@@ -1006,17 +1040,17 @@ async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", curre
     logger.info("act: filtered %d → %d tools (hint=%s, step=%r)",
                 len(all_tools), len(tools), tool_hint, current_step_desc[:60])
 
-    primary = get_llm_for_tier(ComplexityTier.MEDIUM)
+    primary = get_llm_for_tier(tier or ComplexityTier.MEDIUM)
     primary_bound = primary.bind_tools(tools)
 
     fallbacks_bound = [(label, fb.bind_tools(tools)) for label, fb in get_fallback_llms()]
     return primary_bound, fallbacks_bound, tools
 
 
-def _get_evaluator_llm():
+def _get_evaluator_llm(tier=None):
     """LLM used for eval — judgment, no tools."""
     from app.services.llm_provider import get_llm_for_tier, ComplexityTier
-    return get_llm_for_tier(ComplexityTier.MEDIUM)
+    return get_llm_for_tier(tier or ComplexityTier.MEDIUM)
 
 
 def _strip_json_fence(raw: str) -> str:
@@ -1148,7 +1182,7 @@ async def plan_node(state: MissionState) -> dict:
 
     # Generate v1 plan
     t0 = time.monotonic()
-    llm = _get_planner_llm()
+    llm = _get_planner_llm(tier=await _mission_llm_tier(mission_id))
 
     # Sprint 2 — inject the live tool catalog + current date into the
     # system prompt so the planner cannot hallucinate tool names (root
@@ -1437,6 +1471,7 @@ async def act_node(state: MissionState) -> dict:
         goal=state.get("goal", ""),
         current_step_desc=current_step_desc,
         user_id=user_id,
+        tier=await _mission_llm_tier(mission_id),
     )
 
     # Load outputs of previous successful tool invocations so the LLM can
@@ -1850,7 +1885,7 @@ async def eval_node(state: MissionState) -> dict:
         return {"last_eval_success": True, "last_eval_reason": "no-op iteration"}
 
     t0 = time.monotonic()
-    llm = _get_evaluator_llm()
+    llm = _get_evaluator_llm(tier=await _mission_llm_tier(mission_id))
     current_step = next(
         (s for s in plan_json.get("steps", []) if s.get("id") == current_step_id),
         {"description": "?"},

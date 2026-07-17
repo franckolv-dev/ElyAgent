@@ -474,6 +474,25 @@ async def list_steps(mission_id: str, *, limit: int = 200) -> list[MissionStep]:
         return list((await db.execute(q)).scalars().all())
 
 
+async def add_tokens_used(mission_id: str, tokens: int) -> None:
+    """Cumule la consommation LLM réelle sur le budget de la mission.
+
+    C1a (audit 16/07 §6.4) : avant ce compteur, ``tokens_used`` restait à 0
+    — ``add_step`` acceptait le paramètre mais aucun appelant ne le passait —
+    et ``check_budget`` (heartbeat + /tick) donnait une fausse assurance.
+    UPDATE atomique côté SQL (pas de read-modify-write).
+    """
+    if tokens <= 0:
+        return
+    async with async_session() as db:
+        await db.execute(
+            update(Mission)
+            .where(Mission.id == mission_id)
+            .values(tokens_used=Mission.tokens_used + int(tokens))
+        )
+        await db.commit()
+
+
 # ── Budget guards (called by the loop before each LLM call) ─────────────────
 
 async def check_budget(mission_id: str) -> Optional[str]:
