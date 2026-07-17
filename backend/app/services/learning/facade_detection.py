@@ -170,9 +170,37 @@ _SCHEDULE_INTENT = re.compile(
 )
 
 
+# Résultat explicitement VIDE (« aucun spam », « rien à traiter », « 0
+# facture ») — marqueur POSITIF d'un jour sans travail pour les tâches à
+# écriture CONDITIONNELLE (C1b, audit 16/07 §6.9). La négation est portée
+# par le marqueur lui-même, jamais déduite : « 12 emails supprimés » ne
+# matche pas ici, il reste traité comme un claim sans preuve.
+_EMPTY_OUTCOME = re.compile(
+    r"\b("
+    r"aucun[e]?s?\s+(?:nouveau[x]?|nouvelle[s]?|e-?mail[s]?|mail[s]?|"
+    r"message[s]?|facture[s]?|spam[s]?|newsletter[s]?|[ée]l[ée]ment[s]?|"
+    r"r[ée]sultat[s]?|action[s]?|item[s]?|courriel[s]?)|"
+    r"rien\s+(?:[àa]\s+(?:faire|traiter|nettoyer|signaler|supprimer|archiver)|"
+    r"de\s+nouveau|trouv[ée]|d[ée]tect[ée])|"
+    r"pas\s+de\s+(?:nouveau[x]?|nouvelle[s]?|spam[s]?|facture[s]?|"
+    r"e-?mail[s]?|mail[s]?|message[s]?)|"
+    r"0\s+(?:e-?mail[s]?|mail[s]?|message[s]?|facture[s]?|spam[s]?|r[ée]sultat[s]?)|"
+    r"n[’']a\s+(?:rien|trouv[ée]\s+aucun)|"
+    r"no\s+(?:new\s+)?(?:e-?mails?|messages?|invoices?|items?|results?|spam)|"
+    r"nothing\s+(?:to\s+(?:do|clean|process|report)|found|new)"
+    r")",
+    re.IGNORECASE,
+)
+
+
 def detect_write_intent(text: str | None) -> bool:
     """Le texte exprime-t-il une intention d'écriture externe forte ?"""
     return bool(text) and bool(_WRITE_INTENT.search(text))
+
+
+def detect_empty_outcome(text: str | None) -> bool:
+    """Le texte final déclare-t-il explicitement un résultat vide ?"""
+    return bool(text) and bool(_EMPTY_OUTCOME.search(text))
 
 
 def detect_claimed_no_tool(text: str | None) -> bool:
@@ -226,8 +254,19 @@ def compute_facade_signals(
     tools = {t for t in (tools_called or []) if t}
 
     # 1. Réussi sans effet observable.
+    #    C1b (audit 16/07 §6.9) — calibration « jour vide » : une tâche à
+    #    écriture CONDITIONNELLE (« supprime le spam », « traite les
+    #    factures ») qui n'a rien trouvé à muter est un succès légitime, pas
+    #    une façade — 46,5 % des exécutions déclarées réussies étaient
+    #    marquées douteuses, toutes via ce signal, ce qui décrédibilisait la
+    #    mesure. Suppression du signal UNIQUEMENT sur preuve positive : des
+    #    outils ont réellement tourné ET le texte final déclare explicitement
+    #    un résultat vide. « J'ai tout nettoyé » sans outil d'écriture reste
+    #    douteux (la façade d'origine) ; « aucun spam » sans avoir cherché
+    #    aussi (pas regardé).
     if detect_write_intent(goal) and not any(is_write_tool(t) for t in tools):
-        signals.append(SIGNAL_NO_WRITE_EFFECT)
+        if not (tools and detect_empty_outcome(final_text)):
+            signals.append(SIGNAL_NO_WRITE_EFFECT)
 
     # 2. Fallback déclenché (corrélé en amont).
     if fallback_occurred:
