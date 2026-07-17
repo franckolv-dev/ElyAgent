@@ -96,6 +96,18 @@ async def purge_old_uploads() -> int:
                     removed += 1
             except OSError:
                 continue
+        # Élague les sous-dossiers d'upload devenus vides (un dossier par
+        # upload depuis le fix « isolation des pièces jointes » — sans ça,
+        # des milliers de dossiers vides s'accumulent au rythme des purges).
+        # rmdir ne supprime que les dossiers vides ; tri inversé = enfants
+        # d'abord. Un dossier user vidé est recréé au prochain upload.
+        for d in sorted(
+            (p for p in UPLOADS_DIR.rglob("*") if p.is_dir()), reverse=True
+        ):
+            try:
+                d.rmdir()
+            except OSError:
+                continue
         return removed
 
     removed = await asyncio.to_thread(_scan)
@@ -210,10 +222,20 @@ async def upload_file(
     # B-9 — quota par user (le scan disque part en thread, pas sur la loop)
     await asyncio.to_thread(_check_user_quota, user_dir, size)
 
-    # Store with a UUID prefix to avoid collisions
+    # Un sous-dossier par upload (au lieu d'un stockage à plat) : quand Ely
+    # passe le dossier PARENT d'une pièce jointe à un outil « dossier »
+    # (ex. MCP translate_pdf_folder(input_dir=…)), il ne doit contenir que
+    # la pièce jointe de la demande en cours — pas tout l'historique
+    # d'uploads (incident 17/07 : manuscrit 400 p. mis en traduction 3×
+    # + 4 PDF sans rapport). Le nom d'origine est conservé dans le
+    # sous-dossier : plus lisible pour les outils et l'utilisateur.
     file_id = str(uuid.uuid4())
-    stored_name = f"{file_id[:8]}_{_safe_name(original_name)}"
-    file_path = user_dir / stored_name
+    safe_name = _safe_name(original_name)
+    if safe_name in ("", ".", ".."):
+        safe_name = "file"
+    upload_dir = user_dir / file_id[:8]
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / safe_name
     file_path.write_bytes(content)
 
     logger.info("Uploaded %s (%d bytes) for user %s → %s", original_name, size, user_id, file_path)
