@@ -225,8 +225,8 @@ async def test_canary_disabled_paths(monkeypatch) -> None:
 
 
 def test_tool_node_wires_canary_check() -> None:
-    """Pin source-level : le HITL de tool_node consulte le canary io."""
+    """Pin source-level : le HITL du chemin d'exécution (tool_gateway depuis C3a) consulte le canary io."""
     from pathlib import Path
 
-    src = Path("app/agent/tool_node.py").read_text()
+    src = Path("app/services/tool_gateway.py").read_text()
     assert "io_canary_requires_hitl" in src
