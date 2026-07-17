@@ -736,62 +736,47 @@ async def websocket_chat(websocket: WebSocket):
             # actually deleted but the user thinks the action happened.
             # This is the worst-class bug for ELY (silent break of the HITL
             # promise), so we gate hard server-side regardless of the model.
+            #
+            # C3c — the verification itself now lives in the shared
+            # OutcomeVerifier (services/output_verifier.py): it runs the same
+            # completion guard, logs, and records the learning signal, so
+            # channels / scheduler / voice can verify identically before
+            # delivery. The web surface keeps its own `hallucination_blocked`
+            # websocket event on top of the returned verdict (UI-only).
             try:
-                from app.services.completion_guard import (
-                    build_warning_replacement,
-                    detect_unbacked_completion_claim,
-                )
-                _guard_verdict = detect_unbacked_completion_claim(
-                    ai_content, tools_called,
-                    # 2026-05-23 — pass the user's last message so the
-                    # guard can recognise memory-recall questions ("qu'as-tu
-                    # enregistré sur X ?") and bypass the false positive
-                    # otherwise triggered by the assistant's honest reply.
+                from app.services.output_verifier import verify_outcome
+                _verified = verify_outcome(
+                    ai_content,
+                    tools_invoked=tools_called,
+                    surface="web",
+                    # 2026-05-23 — pass the user's last message so the guard
+                    # recognises memory-recall questions ("qu'as-tu enregistré
+                    # sur X ?") and bypasses the false positive otherwise
+                    # triggered by the assistant's honest reply.
                     user_message=user_content,
+                    locale="fr",
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    model_used=model_used_out or "unknown",
                 )
-                if _guard_verdict.is_hallucination:
-                    logger.error(
-                        "completion_guard: HALLUCINATION BLOCKED "
-                        "(user=%s conv=%s model=%s reason=%s)",
-                        user_id, conversation_id, model_used_out or "unknown",
-                        _guard_verdict.reason,
-                    )
-                    # Sprint 3.7 Jalon 2 — persist as learning signal
-                    try:
-                        from app.services.learning import record_hallucination_block
-                        spawn(record_hallucination_block(
-                            user_id=user_id,
-                            conversation_id=conversation_id,
-                            model_used=model_used_out or "unknown",
-                            matched_patterns=list(_guard_verdict.matched_patterns),
-                            tools_invoked=list(_guard_verdict.tools_invoked),
-                            destructive_tools_invoked=list(
-                                _guard_verdict.destructive_tools_invoked
-                            ),
-                            reason=_guard_verdict.reason,
-                            original_response=ai_content,
-                        ))
-                    except Exception as _sig_exc:
-                        logger.debug("hallucination signal skipped: %s", _sig_exc)
+                if _verified.blocked:
                     # Surface to the frontend so the UI can show a red badge
                     # next to the assistant message (and so a future analytics
                     # event collector can count occurrences per model/tier).
                     try:
                         await websocket.send_text(_dumps({
                             "type": "hallucination_blocked",
-                            "reason": _guard_verdict.reason,
-                            "matched_patterns": _guard_verdict.matched_patterns,
-                            "tools_in_turn": _guard_verdict.tools_invoked,
+                            "reason": _verified.verdict.reason,
+                            "matched_patterns": _verified.verdict.matched_patterns,
+                            "tools_in_turn": _verified.verdict.tools_invoked,
                         }))
                     except Exception as _wse:
                         logger.debug("hallucination_blocked event skipped: %s", _wse)
-                    # Replace the lying content with an honest warning.
-                    # Persisted as-is so the conversation history shows the
-                    # incident (auditability) and the user can reference it
-                    # later in support.
-                    ai_content = build_warning_replacement(
-                        ai_content, _guard_verdict, locale="fr",
-                    )
+                # Replace the lying content with the honest warning (or keep the
+                # original text untouched when nothing was blocked). Persisted
+                # as-is so the conversation history shows the incident
+                # (auditability) and the user can reference it later in support.
+                ai_content = _verified.content
             except Exception as _guard_exc:
                 # Never let the guard itself break the response delivery.
                 logger.warning("completion_guard skipped: %s", _guard_exc)
