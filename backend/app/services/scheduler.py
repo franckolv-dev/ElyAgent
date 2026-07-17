@@ -187,6 +187,24 @@ async def _execute_task(task_id: str) -> None:
             )
             return
 
+        # ── Anti-hallucination completion guard (C3c) ──────────────────────
+        # Same verification the web/chat surface runs, before this scheduled
+        # result is persisted and delivered to its channel(s). [SILENT] tasks
+        # already returned above; here a claimed action with no backing tool
+        # this run is replaced by an honest warning (derived tools list, like
+        # the facade-detection spawn below). Never breaks the task.
+        try:
+            from app.services.output_verifier import verify_outcome_from_result
+            ai_content = verify_outcome_from_result(
+                invoke_result, ai_content,
+                surface="scheduler",
+                user_message=task.prompt,
+                user_id=task.user_id,
+                conversation_id=conv_id,
+            ).content
+        except Exception as _guard_exc:
+            logger.warning("completion_guard skipped (scheduler): %s", _guard_exc)
+
         # Save result. Split into two sessions to avoid autoflush
         # interference between the new Message insert and the subsequent
         # ScheduledTask UPDATE (they touch unrelated tables but share the

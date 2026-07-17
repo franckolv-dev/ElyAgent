@@ -22,6 +22,8 @@ Run with:
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.services.completion_guard import GuardVerdict
@@ -29,6 +31,7 @@ from app.services.output_verifier import (
     VerifiedOutcome,
     _hallucination_signal_kwargs,
     verify_outcome,
+    verify_outcome_from_result,
 )
 
 
@@ -207,3 +210,135 @@ def test_signal_kwargs_default_missing_ids_and_model():
     assert kw["user_id"] == ""
     assert kw["conversation_id"] == ""
     assert kw["model_used"] == "unknown"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# verify_outcome_from_result — the buffered (ainvoke) surface convenience.
+# Channels + scheduler have the full result["messages"], from which the
+# tools-in-turn list is derived (no streaming instrumentation needed).
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _ai_with_tool(tool_name: str):
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[{"name": tool_name, "args": {}, "id": "call_1"}],
+        ),
+        ToolMessage(content="ok", name=tool_name, tool_call_id="call_1"),
+    ]
+
+
+def test_from_result_backed_by_tool_in_messages_passes(monkeypatch):
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.output_verifier._spawn_hallucination_signal",
+        lambda **kw: calls.append(kw),
+    )
+    invoke_result = {"messages": _ai_with_tool("gmail_trash_by_query")}
+    out = verify_outcome_from_result(
+        invoke_result, _LYING, surface="telegram", user_message="supprime"
+    )
+    assert out.blocked is False
+    assert out.content == _LYING
+    assert calls == []  # backed → no signal
+
+
+def test_from_result_unbacked_blocks_and_records(monkeypatch):
+    from langchain_core.messages import AIMessage
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.output_verifier._spawn_hallucination_signal",
+        lambda **kw: calls.append(kw),
+    )
+    invoke_result = {"messages": [AIMessage(content=_LYING)]}  # no tool ran
+    out = verify_outcome_from_result(
+        invoke_result,
+        _LYING,
+        surface="scheduler",
+        user_message="nettoie ma boîte",
+        user_id="u1",
+        conversation_id="c1",
+    )
+    assert out.blocked is True
+    assert "garde-fou" in out.content.lower()
+    assert len(calls) == 1
+    assert calls[0]["surface"] == "scheduler"
+
+
+def test_from_result_non_dict_defaults_to_no_tools():
+    """Defensive: a malformed / non-dict result → tools=[] → an unbacked
+    completion claim is still caught rather than silently trusted."""
+    out = verify_outcome_from_result(
+        None, _LYING, surface="whatsapp", record_signal=False
+    )
+    assert out.blocked is True
+
+
+def test_from_result_derives_tools_for_backing():
+    """The tools list really comes from the result messages (not passed in):
+    a non-destructive tool does not back a completion claim."""
+    invoke_result = {"messages": _ai_with_tool("github_repo_stats")}
+    out = verify_outcome_from_result(
+        invoke_result, _LYING, surface="discord", record_signal=False
+    )
+    assert out.blocked is True  # read-only tool doesn't back "j'ai supprimé"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Wiring pins (source-grep) — C3c-2 applied the shared verifier to every
+# delivery surface. These pins fail loudly if a surface stops routing its
+# final response through the OutcomeVerifier before delivery.
+# ──────────────────────────────────────────────────────────────────────
+
+_REPO = Path(__file__).resolve().parents[1]
+
+# (relative module path, expected wiring needle). Buffered surfaces use the
+# result-deriving helper; the streaming surfaces (web, voice) call
+# verify_outcome directly with their own tools_called.
+_WIRED_SURFACES = [
+    ("app/routers/chat.py", "verify_outcome"),
+    ("app/routers/voice.py", 'surface="voice"'),
+    ("app/channels/telegram_bot.py", 'surface="telegram"'),
+    ("app/channels/slack_bot.py", 'surface="slack"'),
+    ("app/channels/discord_bot.py", 'surface="discord"'),
+    ("app/channels/whatsapp.py", 'surface="whatsapp"'),
+    ("app/services/scheduler.py", 'surface="scheduler"'),
+]
+
+
+@pytest.mark.parametrize("rel_path, needle", _WIRED_SURFACES)
+def test_surface_wires_outcome_verifier(rel_path: str, needle: str):
+    src = (_REPO / rel_path).read_text(encoding="utf-8")
+    assert "output_verifier" in src, (
+        f"{rel_path} must import the shared OutcomeVerifier."
+    )
+    assert needle in src, (
+        f"{rel_path} must route its final response through the OutcomeVerifier "
+        f"before delivery (missing {needle!r})."
+    )
+
+
+def test_buffered_surfaces_use_the_result_helper():
+    """Channels + scheduler run a buffered ainvoke; they must derive the
+    tools-in-turn list via verify_outcome_from_result, not pass [] blindly."""
+    for rel_path in (
+        "app/channels/telegram_bot.py",
+        "app/channels/slack_bot.py",
+        "app/channels/discord_bot.py",
+        "app/channels/whatsapp.py",
+        "app/services/scheduler.py",
+    ):
+        src = (_REPO / rel_path).read_text(encoding="utf-8")
+        assert "verify_outcome_from_result" in src, (
+            f"{rel_path} (buffered ainvoke surface) must use "
+            "verify_outcome_from_result so tools are derived from result messages."
+        )
+
+# NOTE — mcp_server.py (ely_chat) is a known, deliberately deferred surface:
+# it delivers to a machine MCP client and does not yet track a tools-in-turn
+# list, so it is out of C3c-2 scope (to be wired in C3d once tool tracking is
+# added). It is intentionally absent from the pins above.

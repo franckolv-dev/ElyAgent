@@ -487,6 +487,25 @@ async def websocket_voice(websocket: WebSocket):
             if stop_event.is_set() and ai_content:
                 ai_content = ai_content.rstrip()
 
+            # ── Anti-hallucination completion guard (C3c) ────────────────
+            # Streaming surface: it tracks its own tools_called (on_tool_start),
+            # so call verify_outcome directly. Inserting before persist means
+            # the honest replacement flows into the DB, the final {"type":
+            # "message"} payload AND the downstream TTS — the lie is not spoken.
+            try:
+                from app.services.output_verifier import verify_outcome
+                ai_content = verify_outcome(
+                    ai_content,
+                    tools_invoked=tools_called,
+                    surface="voice",
+                    user_message=user_text,
+                    user_id=user_id,
+                    conversation_id=str(conversation_id) if conversation_id else None,
+                    model_used=model_used_out or "unknown",
+                ).content
+            except Exception as _guard_exc:
+                logger.warning("completion_guard skipped (voice): %s", _guard_exc)
+
             # ── Persist assistant message ────────────────────────────────
             async with async_session() as db:
                 ai_msg = Message(

@@ -221,3 +221,50 @@ def verify_outcome(
 
     safe = build_warning_replacement(content, verdict, locale=locale)
     return VerifiedOutcome(content=safe, blocked=True, verdict=verdict)
+
+
+def verify_outcome_from_result(
+    invoke_result,
+    content: str,
+    *,
+    surface: str,
+    user_message: str | None = None,
+    locale: str = "fr",
+    user_id: str | None = None,
+    conversation_id: str | None = None,
+    model_used: str | None = None,
+    record_signal: bool = True,
+    destructive_tools: frozenset[str] = DESTRUCTIVE_TOOLS,
+) -> VerifiedOutcome:
+    """Verify a response on a buffered (``ainvoke``) surface.
+
+    Convenience wrapper for the messaging channels and the scheduler, which run
+    the agent with a single buffered ``agent.ainvoke(...)`` and therefore hold
+    the whole turn in ``invoke_result["messages"]`` — no streaming
+    ``on_tool_start`` instrumentation. The tools-in-turn list is derived from
+    those messages (``AIMessage.tool_calls`` + ``ToolMessage.name``) exactly the
+    way the scheduler already does for facade detection, then handed to
+    :func:`verify_outcome`.
+
+    A malformed / non-dict ``invoke_result`` degrades to an empty tool list —
+    fail-safe: an unbacked completion claim is caught rather than trusted.
+
+    Streaming surfaces (web, voice) accumulate their own ``tools_called`` and
+    should call :func:`verify_outcome` directly instead.
+    """
+    from app.services.learning.facade_detection import tools_called_from_messages
+
+    messages = invoke_result.get("messages") if isinstance(invoke_result, dict) else None
+    tools_invoked = tools_called_from_messages(messages)
+    return verify_outcome(
+        content,
+        tools_invoked=tools_invoked,
+        surface=surface,
+        user_message=user_message,
+        locale=locale,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        model_used=model_used,
+        record_signal=record_signal,
+        destructive_tools=destructive_tools,
+    )
