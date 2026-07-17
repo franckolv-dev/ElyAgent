@@ -15,7 +15,14 @@
 #   - INTERDIT : Revente comme SaaS / service managé à des tiers.
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
-"""Registry of active ELY Desktop daemon connections, keyed by user_id."""
+"""Registry of active ELY Desktop daemon connections, keyed by user_id.
+
+Le tunnel Cloudflare reset périodiquement la WS du daemon (rotation des
+connexions edge) ; le daemon se reconnecte en ~2 s. Ce module tolère ces
+blips : ensure_connected() attend la reconnexion pendant une grâce, et
+send_command() détecte le remplacement de connexion en cours de commande
+pour re-tenter une fois sur la nouvelle.
+"""
 import asyncio
 import json
 import logging
@@ -27,9 +34,19 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
+# Grâce accordée au daemon pour se reconnecter après un reset du tunnel
+# Cloudflare (observé : ~2 s). Doit rester nettement sous le timeout de
+# commande (30 s) pour qu'un vrai débranchement échoue en temps utile.
+RECONNECT_GRACE = 15.0
+_POLL_INTERVAL = 0.5
+
 
 class DesktopNotConnectedError(RuntimeError):
     pass
+
+
+class _ConnectionReplacedError(RuntimeError):
+    """Interne : la connexion utilisée est morte ou a été remplacée."""
 
 
 class DesktopCommandError(RuntimeError):
@@ -70,9 +87,24 @@ def register(user_id: str, ws: WebSocket, handshake: dict) -> DesktopConnection:
     return conn
 
 
-def unregister(user_id: str) -> None:
-    if _connections.pop(user_id, None) is not None:
-        logger.info("Desktop agent unregistered for user %s", user_id)
+def unregister(user_id: str, ws: WebSocket | None = None) -> None:
+    """Unregister the user's connection.
+
+    Si `ws` est fourni, ne désenregistre que si c'est encore CETTE connexion :
+    quand le daemon se reconnecte avant que le vieux handler WS ne meure, le
+    finally du vieux handler ne doit pas éjecter la connexion fraîche.
+    """
+    conn = _connections.get(user_id)
+    if conn is None:
+        return
+    if ws is not None and conn.ws is not ws:
+        logger.debug(
+            "Desktop agent for user %s already replaced — stale unregister ignored",
+            user_id,
+        )
+        return
+    _connections.pop(user_id, None)
+    logger.info("Desktop agent unregistered for user %s", user_id)
 
 
 def get(user_id: str) -> DesktopConnection | None:
@@ -83,36 +115,128 @@ def is_connected(user_id: str) -> bool:
     return user_id in _connections
 
 
-async def send_command(
-    user_id: str, cmd: str, args: dict, timeout: float = 30.0
-) -> dict:
-    conn = _connections.get(user_id)
-    if not conn:
-        raise DesktopNotConnectedError(
-            f"No desktop agent connected for user {user_id}"
-        )
+async def ensure_connected(user_id: str, grace: float = RECONNECT_GRACE) -> bool:
+    """Attend jusqu'à `grace` secondes que le daemon soit connecté.
 
+    Rend un blip de reconnexion (~2 s après un reset Cloudflare) invisible
+    pour l'appelant. Retourne False si le daemon n'est pas revenu à temps.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + grace
+    while True:
+        if is_connected(user_id):
+            return True
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return False
+        await asyncio.sleep(min(_POLL_INTERVAL, remaining))
+
+
+async def _wait_for_new_connection(
+    user_id: str, old_conn: DesktopConnection, grace: float
+) -> DesktopConnection | None:
+    """Attend une connexion DIFFÉRENTE de `old_conn` (reconnexion effective)."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + grace
+    while True:
+        conn = _connections.get(user_id)
+        if conn is not None and conn is not old_conn:
+            return conn
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return None
+        await asyncio.sleep(min(_POLL_INTERVAL, remaining))
+
+
+async def _run_command(
+    conn: DesktopConnection, user_id: str, cmd: str, args: dict, timeout: float
+) -> dict:
+    """Envoie une commande sur `conn` et attend son résultat.
+
+    Lève _ConnectionReplacedError si le socket meurt à l'envoi ou si la
+    connexion est remplacée/perdue pendant l'attente — l'attente se fait par
+    tranches pour le détecter sans consommer le timeout de 30 s.
+    """
     cmd_id = uuid.uuid4().hex[:8]
     event = asyncio.Event()
     conn._pending[cmd_id] = event
 
     try:
         payload = json.dumps({"cmd_id": cmd_id, "cmd": cmd, "args": args})
-        await conn.ws.send_text(payload)
-        await asyncio.wait_for(event.wait(), timeout=timeout)
+        try:
+            await conn.ws.send_text(payload)
+        except Exception as exc:  # socket mort : la commande n'est jamais partie
+            raise _ConnectionReplacedError(str(exc)) from exc
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while not event.is_set():
+            if _connections.get(user_id) is not conn:
+                raise _ConnectionReplacedError(
+                    f"connection replaced while waiting for '{cmd}'"
+                )
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise DesktopTimeoutError(
+                    f"Desktop command '{cmd}' timed out after {timeout}s"
+                )
+            try:
+                await asyncio.wait_for(
+                    event.wait(), timeout=min(_POLL_INTERVAL, remaining)
+                )
+            except asyncio.TimeoutError:
+                continue
+
         result = conn._results.pop(cmd_id, {})
         if result.get("status") == "error":
             raise DesktopCommandError(
                 result.get("error", "Unknown error from desktop agent")
             )
         return result.get("result", {})
-    except asyncio.TimeoutError:
-        raise DesktopTimeoutError(
-            f"Desktop command '{cmd}' timed out after {timeout}s"
-        )
     finally:
         conn._pending.pop(cmd_id, None)
         conn._results.pop(cmd_id, None)
+
+
+async def send_command(
+    user_id: str,
+    cmd: str,
+    args: dict,
+    timeout: float = 30.0,
+    reconnect_grace: float = RECONNECT_GRACE,
+) -> dict:
+    conn = _connections.get(user_id)
+    if not conn:
+        if not await ensure_connected(user_id, grace=reconnect_grace):
+            raise DesktopNotConnectedError(
+                f"No desktop agent connected for user {user_id}"
+            )
+        conn = _connections[user_id]
+
+    try:
+        return await _run_command(conn, user_id, cmd, args, timeout)
+    except _ConnectionReplacedError:
+        # Reset du tunnel Cloudflare en cours de commande : on attend la
+        # reconnexion du daemon et on re-tente UNE fois sur la nouvelle.
+        logger.info(
+            "Desktop connection lost during '%s' for user %s — waiting for "
+            "reconnection (grace %.0fs)",
+            cmd,
+            user_id,
+            reconnect_grace,
+        )
+        new_conn = await _wait_for_new_connection(user_id, conn, reconnect_grace)
+        if new_conn is None:
+            raise DesktopNotConnectedError(
+                f"Desktop connection lost during '{cmd}' and did not come back "
+                f"within {reconnect_grace:.0f}s"
+            ) from None
+        try:
+            return await _run_command(new_conn, user_id, cmd, args, timeout)
+        except _ConnectionReplacedError as exc:
+            raise DesktopNotConnectedError(
+                f"Desktop connection lost again while retrying '{cmd}': {exc}"
+            ) from None
 
 
 def deliver_result(user_id: str, message: dict) -> None:

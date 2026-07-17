@@ -206,7 +206,9 @@ async def websocket_desktop(websocket: WebSocket):
     except Exception as exc:
         logger.error("[desktop-ws] unexpected error for user %s: %s", user_id, exc, exc_info=True)
     finally:
-        desktop_registry.unregister(user_id)
+        # ws= : si le daemon s'est déjà reconnecté (reset Cloudflare + retour
+        # en ~2 s), ce vieux handler ne doit pas éjecter la connexion fraîche.
+        desktop_registry.unregister(user_id, ws=websocket)
         logger.debug("[desktop-ws] unregistered user %s", user_id)
 
 
