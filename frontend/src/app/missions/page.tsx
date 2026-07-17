@@ -278,6 +278,21 @@ function MissionCard({ mission, onChanged, onEdit }: { mission: Mission; onChang
             🤖 {t("autonomousBadge")}
           </span>
         )}
+        {mission.autonomy_state === "pending_validation" && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
+            🛡️ {t("mandatePendingBadge")}
+          </span>
+        )}
+        {mission.autonomy_state === "active" && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyber-cyan/10 border border-cyber-cyan/30 text-cyber-cyan">
+            🛡️ {t("mandateActiveBadge")}
+          </span>
+        )}
+        {(mission.autonomy_state || "").startsWith("paused") && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
+            🛡️ {t("mandatePausedBadge")}
+          </span>
+        )}
       </div>
 
       {/* Progress bar */}

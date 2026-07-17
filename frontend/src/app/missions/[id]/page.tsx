@@ -19,10 +19,12 @@ import {
   ArrowLeft, Loader2, Play, Pause, X, Zap, AlertCircle, CheckCircle,
   Wrench, Brain, Eye, RefreshCw, ChevronDown, ChevronRight,
   CircleSlash, MessageCircleQuestion, Send, ListChecks,
+  ShieldCheck, BookOpen,
 } from "lucide-react";
 import {
   missionsApi, type Mission, type MissionStep, type MissionPlan,
   type MissionStructure, type SpecStepOutline, type StepRun,
+  type MissionWorkspace,
   STATUS_META, PHASE_META, isTerminal,
 } from "@/lib/missions";
 
@@ -39,20 +41,25 @@ export default function MissionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [busy, setBusy]       = useState<string | null>(null); // which action is in flight
+  // J6 — workspace (carnet/journal/compteurs) + modal de validation du mandat
+  const [workspace, setWorkspace] = useState<MissionWorkspace | null>(null);
+  const [showMandate, setShowMandate] = useState(false);
 
   const fetchAll = useCallback(async () => {
     if (!id) return;
     try {
-      const [m, s, p, st] = await Promise.all([
+      const [m, s, p, st, ws] = await Promise.all([
         missionsApi.get(id),
         missionsApi.steps(id),
         missionsApi.plan(id).catch(() => null),
         missionsApi.structure(id).catch(() => null),
+        missionsApi.workspace(id).catch(() => null),
       ]);
       setMission(m);
       setSteps(s);
       setPlan(p);
       setStructure(st && st.steps.length > 0 ? st : null);
+      setWorkspace(ws);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur de chargement");
@@ -103,6 +110,27 @@ export default function MissionDetailPage() {
     catch (e) { setError(e instanceof Error ? e.message : "Abort échoué"); }
     finally { setBusy(null); }
   };
+  // J6 — validation HUMAINE du mandat (D6) : le clic sur le résumé du mandat
+  // EST la validation ; pending_validation → active, une seule fois.
+  const onActivate = async () => {
+    if (!id) return;
+    setBusy("activate");
+    try { await missionsApi.activate(id); setShowMandate(false); await fetchAll(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Activation échouée"); setShowMandate(false); }
+    finally { setBusy(null); }
+  };
+  // Mandat parsé (défensif) pour le badge et le modal.
+  const mandate = (() => {
+    if (!mission?.mandate_json) return null;
+    try {
+      return JSON.parse(mission.mandate_json) as {
+        tools_allow?: string[];
+        on_unforeseen?: string;
+        llm_tier?: string | null;
+        budgets?: { daily_tool_actions_notify?: number; daily_llm_calls_notify?: number };
+      };
+    } catch { return null; }
+  })();
 
   if (loading) {
     return (
@@ -173,6 +201,22 @@ export default function MissionDetailPage() {
                     <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${meta.color}`}>
                       {meta.emoji} {meta.label}
                     </span>
+                    {mission.autonomy_state === "pending_validation" && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-300 border-amber-500/30">
+                        <ShieldCheck className="w-3 h-3" /> Mandat à valider
+                      </span>
+                    )}
+                    {mission.autonomy_state === "active" && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-cyber-cyan/10 text-cyber-cyan border-cyber-cyan/30">
+                        <ShieldCheck className="w-3 h-3" /> Autonome — mandat actif
+                      </span>
+                    )}
+                    {(mission.autonomy_state || "").startsWith("paused") && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-300 border-amber-500/30">
+                        <ShieldCheck className="w-3 h-3" />
+                        Autonomie en pause{mission.autonomy_state === "paused_budget" ? " (budget)" : ""}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-text-secondary whitespace-pre-wrap">{mission.goal}</p>
                 </div>
@@ -218,6 +262,11 @@ export default function MissionDetailPage() {
 
               {/* Action buttons */}
               <div className="flex flex-wrap gap-2 pt-1">
+                {mission.autonomy_state === "pending_validation" && (
+                  <button onClick={() => setShowMandate(true)} disabled={busy !== null} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 disabled:opacity-50">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Activer l&apos;autonomie
+                  </button>
+                )}
                 {!terminal && mission.status === "draft" && (
                   <button onClick={onStart} disabled={busy !== null} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 disabled:opacity-50">
                     <Play className="w-3.5 h-3.5" /> Démarrer
@@ -241,11 +290,42 @@ export default function MissionDetailPage() {
                 )}
                 {!terminal && (
                   <button onClick={onAbort} disabled={busy !== null} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-red/30 text-cyber-red hover:bg-cyber-red/5 disabled:opacity-50">
-                    <X className="w-3.5 h-3.5" /> Abandonner
+                    <X className="w-3.5 h-3.5" />
+                    {mission.autonomy_state === "active" ? "Arrêt d'urgence" : "Abandonner"}
                   </button>
                 )}
               </div>
             </div>
+
+            {/* J6 — Carnet de bord + compteurs journaliers (mission sous mandat) */}
+            {workspace && (workspace.carnet || workspace.counters) && (
+              <div className="bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-cyber-cyan" />
+                  <h2 className="text-sm font-medium text-text-primary">Carnet de bord</h2>
+                  {workspace.counters && (
+                    <span className="ml-auto text-[11px] text-text-muted font-mono" title="Compteurs du jour (disjoncteurs : notification à 500 actions / 100 appels LLM)">
+                      Aujourd&apos;hui : {workspace.counters.tool_actions} action{workspace.counters.tool_actions > 1 ? "s" : ""} · {workspace.counters.llm_calls} appel{workspace.counters.llm_calls > 1 ? "s" : ""} LLM
+                    </span>
+                  )}
+                </div>
+                {workspace.carnet && (
+                  <pre className="text-[11px] text-text-secondary whitespace-pre-wrap break-words max-h-80 overflow-y-auto bg-bg-primary border border-border-dim rounded p-3">{workspace.carnet}</pre>
+                )}
+                {workspace.journal.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-[11px] text-text-muted">Dernières actions journalisées</div>
+                    <ul className="space-y-0.5 max-h-40 overflow-y-auto">
+                      {workspace.journal.slice().reverse().map((e, i) => (
+                        <li key={i} className="text-[10px] font-mono text-text-muted truncate">
+                          {JSON.stringify(e)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Plan card */}
             {structure && (
@@ -305,6 +385,54 @@ export default function MissionDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* J6 — Modal de validation du mandat (D6) : le clic ci-dessous EST la
+          validation humaine unique ; Ely ne peut jamais modifier un mandat. */}
+      {showMandate && mission && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-bg-secondary border border-border-dim rounded-lg max-w-md w-full mx-4 p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-cyber-cyan" />
+              <h2 className="text-sm font-medium text-text-primary">Activer l&apos;autonomie de cette mission ?</h2>
+            </div>
+            <p className="text-xs text-text-secondary">
+              Une fois le mandat activé, Ely agit <strong>sans confirmation par action</strong> dans
+              les limites ci-dessous. Le noyau interdit (ssh, admin, secrets, config…) reste bloqué
+              quoi qu&apos;il arrive, et tu gardes l&apos;arrêt d&apos;urgence.
+            </p>
+            <div className="text-xs text-text-secondary bg-bg-primary border border-border-dim rounded p-3 space-y-1.5">
+              <div><span className="text-text-muted">Familles d&apos;outils autorisées :</span>{" "}
+                <span className="font-mono">{(mandate?.tools_allow ?? []).join(", ") || "—"}</span></div>
+              <div><span className="text-text-muted">En cas d&apos;imprévu :</span>{" "}
+                {mandate?.on_unforeseen === "decide"
+                  ? "autonomie stricte — Ely tranche seule et consigne tout au carnet"
+                  : "escalade — Ely te pose la question et attend"}</div>
+              <div><span className="text-text-muted">Tier LLM :</span>{" "}
+                <span className="font-mono">{mandate?.llm_tier || "complex (forcé)"}</span></div>
+              <div><span className="text-text-muted">Disjoncteurs journaliers :</span>{" "}
+                notification à {mandate?.budgets?.daily_tool_actions_notify ?? 500} actions
+                / {mandate?.budgets?.daily_llm_calls_notify ?? 100} appels LLM,
+                pause propre sans réponse sous 30 min</div>
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => setShowMandate(false)}
+                className="px-3 py-1.5 text-[11px] rounded border border-border-dim text-text-muted hover:text-text-secondary"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={onActivate}
+                disabled={busy !== null}
+                className="px-3 py-1.5 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 flex items-center gap-1 disabled:opacity-50"
+              >
+                {busy === "activate" ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                Je valide ce mandat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AuthGuard>
   );
 }
