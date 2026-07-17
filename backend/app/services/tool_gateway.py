@@ -80,7 +80,9 @@ class GatewayContext:
     ExecutionSecurityContext) : construit à l'entrée, transmis à la
     passerelle. ``pii_filter`` est l'instance PARTAGÉE de la conversation
     (registre conversation_filters) ; ``criticality_filter`` ne sert qu'au
-    scan de criticité HITL."""
+    scan de criticité HITL. ``user_request`` (dernier message humain) nourrit
+    la description HITL humanisée (fix Temu #21) ; ``label`` préfixe les logs
+    de timing (nom du sous-agent, vide pour le chat)."""
 
     user_id: str
     conversation_id: str
@@ -88,6 +90,95 @@ class GatewayContext:
     criticality_filter: SecurityFilter
     hitl: Any
     memory: Any
+    user_request: str = ""
+    label: str = ""
+
+
+# Envois de mail « à soi-même » : risque quasi nul (on ne fuit pas ses
+# propres données vers soi) mais le HITL les bloquait — impossible à
+# satisfaire hors-ligne (digest quotidien de 6 h). Historiquement réservé
+# aux spécialistes, généralisé en C3b.
+_SELF_MAIL_TOOLS: frozenset[str] = frozenset({
+    "gmail_send_email", "gmail_reply_email", "gmail_send_with_attachment",
+})
+
+
+async def _inject_google_credentials(user_id: str, args: dict) -> None:
+    """Injecte les credentials Google depuis le stockage SERVEUR (jamais
+    l'état du graphe — SEC-1). Multi-comptes (C3b, historiquement réservé
+    aux spécialistes) : l'alias ``account`` passé par le LLM cible un
+    GoogleAccount lié ; alias vide/« default »/inconnu → store mémoire →
+    GoogleAccount par défaut → User.google_credentials legacy, avec
+    repeuplement du store pour les appels suivants."""
+    _uid = user_id or ""
+    _requested_alias = (args.pop("account", "") or "").strip()
+    _resolved_creds: str | None = None
+    if _uid and _requested_alias and _requested_alias.lower() != "default":
+        try:
+            from sqlalchemy import select as _select
+
+            from app.database import async_session as _async_session
+            from app.models.google_account import GoogleAccount as _GA
+            async with _async_session() as _db:
+                _row = await _db.execute(
+                    _select(_GA.credentials_json).where(
+                        _GA.user_id == _uid,
+                        _GA.alias == _requested_alias,
+                    )
+                )
+                _resolved_creds = _row.scalar_one_or_none()
+        except Exception as _ga_exc:
+            logger.warning(
+                "GoogleAccount lookup failed for uid=%s alias=%s: %s — falling back to default",
+                _uid, _requested_alias, _ga_exc,
+            )
+            _resolved_creds = None
+        if _resolved_creds is None:
+            logger.warning(
+                "Google account alias '%s' not found for user %s — using default credentials",
+                _requested_alias, _uid,
+            )
+    if _resolved_creds:
+        args["user_google_credentials_json"] = _resolved_creds
+        return
+
+    from app.services.credential_store import get_credential_store
+    _creds = get_credential_store().get(_uid) or ""
+    # Fallback DB si le store est vide — heartbeats de mission, tâches
+    # planifiées, cron (qui ne passent pas par chat.py), et chaque restart
+    # backend qui vide le store en mémoire. Sans lui, tous les outils
+    # Google mentent « Google non connecté » (mission #19/15, avril 2026).
+    if not _creds and _uid:
+        try:
+            from sqlalchemy import select as _select
+
+            from app.database import async_session as _async_session
+            from app.models.google_account import GoogleAccount as _GA
+            from app.models.user import User as _U
+            async with _async_session() as _db:
+                # 1. Le GoogleAccount marqué par défaut
+                _row = await _db.execute(
+                    _select(_GA.credentials_json).where(
+                        _GA.user_id == _uid,
+                        _GA.is_default == True,  # noqa: E712
+                    )
+                )
+                _creds = _row.scalar_one_or_none() or ""
+                # 2. Legacy : User.google_credentials
+                if not _creds:
+                    _u = await _db.get(_U, _uid)
+                    if _u and _u.google_credentials:
+                        _creds = _u.google_credentials
+            if _creds:
+                get_credential_store().set(_uid, _creds)
+                logger.info(
+                    "Credential store re-populated from DB for user %s",
+                    _uid[:8] + "…",
+                )
+        except Exception as _creds_exc:
+            logger.warning("[creds] DB fallback failed for %s: %s",
+                           _uid[:8] + "…", _creds_exc)
+    args["user_google_credentials_json"] = _creds
 
 
 async def execute_tool_call(
@@ -116,34 +207,9 @@ async def execute_tool_call(
 
     # Inject hidden arguments — credentials are fetched from the server-side
     # store (never stored in graph state) to prevent exposure in logs/events.
+    # Multi-comptes inclus (alias ``account``) — voir _inject_google_credentials.
     if tool_name in GOOGLE_TOOLS:
-        from app.services.credential_store import get_credential_store
-        _uid = user_id or ""
-        _store = get_credential_store()
-        _creds = _store.get(_uid) or ""
-        # Fallback (audit 2026-05-07): if the in-process cache is empty
-        # — happens after a backend restart while the WebSocket is
-        # still alive but the 5-min refresh hasn't ticked yet, or after
-        # an OAuth re-consent that didn't propagate to the cache —
-        # refresh straight from the DB. Better to pay one query per
-        # tool call than to lie « Google non connecté » when the user
-        # is in fact connected.
-        if not _creds and _uid:
-            try:
-                from app.database import async_session as _async_session
-                from app.models.user import User as _U
-                async with _async_session() as _db:
-                    _u = await _db.get(_U, _uid)
-                    if _u and _u.google_credentials:
-                        _creds = _u.google_credentials
-                        _store.set(_uid, _creds)
-                        logger.warning(
-                            "[creds] cache miss for user=%s — refreshed from DB",
-                            _uid,
-                        )
-            except Exception as _creds_exc:
-                logger.warning("[creds] DB fallback failed: %s", _creds_exc)
-        args["user_google_credentials_json"] = _creds
+        await _inject_google_credentials(user_id, args)
     if tool_name in USER_ID_TOOLS:
         args["user_id"] = user_id or ""
 
@@ -262,10 +328,59 @@ async def execute_tool_call(
                 needs_hitl = False
         except Exception as _pref_exc:
             logger.debug("HITL preference lookup failed: %s", _pref_exc)
+    # ── Self-mail auto-approve (C3b, ex-spécialistes) ─────────────────
+    # Envoyer un mail à SA PROPRE adresse (User.email ou tout GoogleAccount
+    # lié) ne déclenche pas de HITL — sinon le digest planifié de 6 h reste
+    # bloqué sur une confirmation que personne ne peut donner. Toute erreur
+    # de résolution ⇒ HITL conservé (défaut sûr).
+    if needs_hitl and tool_name in _SELF_MAIL_TOOLS:
+        try:
+            _to = (args.get("to") or "").strip().lower()
+            from sqlalchemy import select as _sel
+
+            from app.database import async_session as _async_session
+            from app.models.google_account import GoogleAccount as _GA
+            from app.models.user import User as _U
+            async with _async_session() as _db:
+                _u = await _db.get(_U, user_id) if user_id else None
+                _self_emails: set[str] = set()
+                if _u and _u.email:
+                    _self_emails.add(_u.email.strip().lower())
+                if user_id:
+                    _rows = await _db.execute(
+                        _sel(_GA.email).where(_GA.user_id == user_id)
+                    )
+                    for (_em,) in _rows.all():
+                        if _em:
+                            _self_emails.add(str(_em).strip().lower())
+            # Match also handles "Name <email@x.com>" formatting
+            if any(em and em in _to for em in _self_emails):
+                logger.info(
+                    "HITL skipped (self-mail) — to=%s matches user's own address",
+                    _to[:80],
+                )
+                needs_hitl = False
+        except Exception as _sm_exc:
+            # Any error here → keep HITL enabled (safer default)
+            logger.debug("self-mail check failed: %s", _sm_exc)
     if needs_hitl:
+        # Fix #21 (Temu, mai 2026) — description HITL humanisée : pré-compte,
+        # demande d'origine de l'utilisateur, alertes d'écart args/intention.
+        # Historiquement réservée aux spécialistes, généralisée en C3b.
+        try:
+            from app.services.hitl_descriptions import build_human_hitl_description
+            _hitl_desc = await build_human_hitl_description(
+                tool_name=tool_name,
+                args=args,
+                user_request=ctx.user_request,
+                user_credentials_json=args.get("user_google_credentials_json", ""),
+            )
+        except Exception as _hum_exc:
+            _hitl_desc = action_desc
+            logger.debug("HITL humanizer failed: %s", _hum_exc)
         logger.info("HITL required for action: %s", action_desc)
         decision, reason = await hitl.request_validation(
-            description=action_desc,
+            description=_hitl_desc,
             user_id=user_id,
         )
         # P1/J4 — événement d'approbation (décision seule, aucun contenu).
@@ -418,7 +533,21 @@ async def execute_tool_call(
             import time as _tt
             _ts = _tt.monotonic()
             result = await tool.ainvoke(args)
-            logger.warning("⏱ TIMING[tool:%s] %.2fs", tool_name, _tt.monotonic() - _ts)
+            _tlabel = f"{ctx.label}.tool" if ctx.label else "tool"
+            logger.warning("⏱ TIMING[%s:%s] %.2fs", _tlabel, tool_name, _tt.monotonic() - _ts)
+            # Résultat qui RESSEMBLE à une erreur → logue aussi les args
+            # (credentials expurgés) pour comprendre ce que le LLM a passé
+            # (comportement ex-spécialistes, généralisé en C3b).
+            _raw_probe = str(result)
+            if "Erreur" in _raw_probe or "Error" in _raw_probe or "HttpError" in _raw_probe:
+                _safe_args_log = {
+                    k: ("<redacted>" if k == "user_google_credentials_json" else v)
+                    for k, v in args.items()
+                }
+                logger.warning(
+                    "[tool_error_args] %s:%s ARGS=%s — ERROR=%.400s",
+                    _tlabel, tool_name, _safe_args_log, _raw_probe,
+                )
             # Strip oversized base64 / binary payloads from the tool result
             # BEFORE storing in LangGraph state. The frontend has already
             # consumed the full payload via the on_tool_end event ; only

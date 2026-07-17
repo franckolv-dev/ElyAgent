@@ -680,300 +680,39 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             hitl = get_hitl_manager()
             memory = get_memory_manager()
 
-            for tool_call in last_message.tool_calls:
-                tool_name = tool_call["name"]
-                args = dict(tool_call["args"])
-                tc_id = tool_call["id"]
-
-                # Inject hidden arguments — credentials fetched from server-side
-                # store, never from graph state (SEC-1).
-                if tool_name in _GOOGLE_TOOLS:
-                    from app.services.credential_store import get_credential_store
-                    _uid = state.get("user_id") or ""
-                    # Multi-account resolution — the LLM may pass an `account`
-                    # alias (e.g. "pro") to target a specific linked Google
-                    # account. Empty / "default" / unknown alias falls back
-                    # to the credential_store (which mirrors the row flagged
-                    # is_default = True). The `account` arg is stripped from
-                    # the args before the tool runs — downstream Google API
-                    # wrappers don't accept it.
-                    _requested_alias = (args.pop("account", "") or "").strip()
-                    _resolved_creds: str | None = None
-                    if _uid and _requested_alias and _requested_alias.lower() != "default":
-                        try:
-                            from app.database import async_session as _async_session
-                            from app.models.google_account import GoogleAccount as _GA
-                            from sqlalchemy import select as _select
-                            async with _async_session() as _db:
-                                _row = await _db.execute(
-                                    _select(_GA.credentials_json).where(
-                                        _GA.user_id == _uid,
-                                        _GA.alias == _requested_alias,
-                                    )
-                                )
-                                _resolved_creds = _row.scalar_one_or_none()
-                        except Exception as _ga_exc:
-                            logger.warning(
-                                "GoogleAccount lookup failed for uid=%s alias=%s: %s — falling back to default",
-                                _uid, _requested_alias, _ga_exc,
-                            )
-                            _resolved_creds = None
-                        if _resolved_creds is None:
-                            logger.warning(
-                                "Google account alias '%s' not found for user %s — using default credentials",
-                                _requested_alias, _uid,
-                            )
-                    if _resolved_creds:
-                        args["user_google_credentials_json"] = _resolved_creds
-                    else:
-                        # Try the in-memory store first (fast path, populated
-                        # by the WebSocket chat handshake).
-                        _creds_default = get_credential_store().get(_uid) or ""
-                        # Fallback to DB if store is empty — happens for
-                        # mission heartbeats / scheduled tasks / cron jobs
-                        # that don't go through chat.py to populate the store
-                        # (and after every backend restart that wipes the
-                        # in-memory store). Without this fallback, all Google
-                        # tools fail with "Google not connected" even though
-                        # credentials exist in DB. April 2026 mission #19/15
-                        # spam-delete loop was caused by exactly this.
-                        if not _creds_default and _uid:
-                            try:
-                                from app.database import async_session as _async_session
-                                from app.models.google_account import GoogleAccount as _GA
-                                from app.models.user import User as _U
-                                from sqlalchemy import select as _select
-                                async with _async_session() as _db:
-                                    # 1. Prefer the default GoogleAccount row
-                                    _row = await _db.execute(
-                                        _select(_GA.credentials_json).where(
-                                            _GA.user_id == _uid,
-                                            _GA.is_default == True,  # noqa: E712
-                                        )
-                                    )
-                                    _creds_default = _row.scalar_one_or_none() or ""
-                                    # 2. Legacy fallback : User.google_credentials
-                                    if not _creds_default:
-                                        _u = await _db.get(_U, _uid)
-                                        if _u and _u.google_credentials:
-                                            _creds_default = _u.google_credentials
-                                # Re-populate the store so subsequent tool
-                                # calls in this turn (and beyond) are fast.
-                                if _creds_default:
-                                    get_credential_store().set(_uid, _creds_default)
-                                    logger.info(
-                                        "Credential store re-populated from DB for user %s",
-                                        _uid[:8] + "…",
-                                    )
-                            except Exception as _exc:
-                                logger.warning(
-                                    "Credential DB fallback failed for %s: %s",
-                                    _uid[:8] + "…", _exc,
-                                )
-                        args["user_google_credentials_json"] = _creds_default
-                if tool_name in _USER_ID_TOOLS:
-                    args["user_id"] = state.get("user_id") or ""
-
-                # ── Frontière PII (C0, audit 16/07 P0) ────────────────────
-                # Le LLM voit [EMAIL_0]/[IBAN_0]/etc. (anonymisés par le
-                # SecurityFilter PARTAGÉ de la conversation). Deux devoirs :
-                #   1. restaurer les vraies valeurs dans les args AVANT
-                #      l'appel API (sinon Gmail reçoit "[EMAIL_0]" et échoue) ;
-                #   2. ré-anonymiser les RÉSULTATS avant leur retour au LLM
-                #      (fait par _tool_result(sf=_pii_sf) plus bas).
-                # L'ancien accès ``chat._filters.get`` était une couture
-                # morte : la méthode n'existait pas, l'AttributeError était
-                # avalée, et les résultats repartaient en clair vers le cloud.
-                _conv_id = state.get("conversation_id")
-                _pii_sf = None
-                if _conv_id:
-                    try:
-                        from app.services.conversation_filters import (
-                            get_filter as _get_conv_filter,
-                        )
-                        _pii_sf = _get_conv_filter(_conv_id)
-                        args = _deanonymize_args(_pii_sf, args)
-                    except Exception:
-                        logger.warning(
-                            "PII: désanonymisation des args impossible "
-                            "(conv=%s, tool=%s)", _conv_id, tool_name,
-                            exc_info=True,
-                        )
-
-                # Display args (never expose tokens/injected IDs)
-                _hidden = {"user_google_credentials_json", "user_id"}
-                display_args = {k: v for k, v in args.items() if k not in _hidden}
-                action_desc = (
-                    f"Outil: {tool_name} | Arguments: "
-                    f"{json.dumps(display_args, ensure_ascii=False)}"
-                )
-
-                # ── Vault: resolve vault://label references ────────────────
-                vault_refs_found = any(
-                    isinstance(v, str) and v.startswith("vault://")
-                    for v in args.values()
-                )
-                if vault_refs_found:
-                    from app.services.vault_service import get_vault_service
-                    vault = get_vault_service()
-                    if vault.is_locked(user_id):
-                        results.append(_tool_result(
-                            "Vault verrouille — deverrouillez votre coffre-fort dans "
-                            "Parametres > Vault pour utiliser ce secret.",
-                            tc_id,
-                        ))
-                        continue
-                    try:
-                        args, _resolved = await vault.resolve_vault_refs(user_id, args)
-                        if _resolved:
-                            logger.info(
-                                "Resolved vault refs %s for tool %s", _resolved, tool_name
-                            )
-                    except KeyError as exc:
-                        results.append(_tool_result(
-                            f"Secret introuvable dans le Vault : {exc}", tc_id
-                        ))
-                        continue
-
-                # ── HITL check ─────────────────────────────────────────────
-                needs_hitl = (
-                    tool_name in ALWAYS_CRITICAL_TOOLS
-                ) or sf.is_critical(action_desc)
-
-                # ── Per-user HITL preferences override (Phase 3 below) ────
-                # Users can disable HITL for specific tools via Settings →
-                # HITL preferences. We honour their choice except for the
-                # most dangerous tools (which the UI also locks).
-                if needs_hitl:
-                    try:
-                        from app.services.hitl_preferences import (
-                            user_requires_hitl as _user_requires_hitl,
-                        )
-                        if not await _user_requires_hitl(user_id, tool_name):
-                            logger.info(
-                                "HITL skipped (user preference) for %s on tool %s",
-                                user_id[:8] + "…", tool_name,
-                            )
-                            needs_hitl = False
-                    except Exception:
-                        pass
-
-                # ── Self-mail auto-approve ────────────────────────────────
-                # Sending an email to the calling user's own email address
-                # carries near-zero risk (you can't 'leak' your own data to
-                # yourself) but used to trigger HITL — which is impossible
-                # to satisfy when the user is offline (e.g. scheduled task
-                # at 6 a.m. sends a daily AI digest to you@example.com →
-                # HITL prompt nobody approves → email never sent).
-                if needs_hitl and tool_name in {
-                    "gmail_send_email", "gmail_reply_email",
-                    "gmail_send_with_attachment",
-                }:
-                    try:
-                        _to = (args.get("to") or "").strip().lower()
-                        # Resolve user's email(s) — both User.email and any
-                        # GoogleAccount.email belonging to this user count
-                        # as "self" for this check.
-                        from app.database import async_session as _async_session
-                        from app.models.user import User as _U
-                        from app.models.google_account import GoogleAccount as _GA
-                        from sqlalchemy import select as _sel
-                        async with _async_session() as _db:
-                            _u = await _db.get(_U, user_id) if user_id else None
-                            _self_emails: set[str] = set()
-                            if _u and _u.email:
-                                _self_emails.add(_u.email.strip().lower())
-                            if user_id:
-                                _rows = await _db.execute(
-                                    _sel(_GA.email).where(_GA.user_id == user_id)
-                                )
-                                for (_em,) in _rows.all():
-                                    if _em:
-                                        _self_emails.add(str(_em).strip().lower())
-                        # Match also handles "Name <email@x.com>" formatting
-                        if any(em and em in _to for em in _self_emails):
-                            logger.info(
-                                "HITL skipped (self-mail) — to=%s matches user's own address",
-                                _to[:80],
-                            )
-                            needs_hitl = False
-                    except Exception as _exc:
-                        # Any error here → keep HITL enabled (safer default)
-                        logger.debug("self-mail check failed: %s", _exc)
-
-                if needs_hitl:
-                    # Build a human-readable HITL message with pre-count,
-                    # the user's original request, and mismatch warnings.
-                    # Fix #21 (May 2026 Temu incident).
-                    try:
-                        from app.services.hitl_descriptions import build_human_hitl_description
-                        humanized = await build_human_hitl_description(
-                            tool_name=tool_name,
-                            args=args,
-                            user_request=_last_user_request,
-                            user_credentials_json=args.get("user_google_credentials_json", ""),
-                        )
-                    except Exception as _exc:
-                        humanized = action_desc
-                        logger.debug("HITL humanizer failed: %s", _exc)
-                    logger.info("HITL required for action: %s", action_desc)
-                    decision, reason = await hitl.request_validation(
-                        description=humanized,
-                        user_id=user_id,
+            # ── Délégation à la passerelle unique (C3b) ────────────────────
+            # Le pipeline complet (PII, creds Google multi-comptes, vault,
+            # gates HITL — manifeste, canary io, ACL MCP/instance, task-scoped,
+            # self-mail, préférences —, empreinte fail-closed, idempotence,
+            # journal réversible, exécution, ré-anonymisation, événements,
+            # signaux d'apprentissage) vit dans services/tool_gateway.py.
+            # Les spécialistes y GAGNENT aussi les décisions « Toujours
+            # autoriser » / « Autoriser pour cette tâche », que l'ancienne
+            # boucle locale refusait à tort (traitées comme un deny).
+            from app.services.conversation_filters import get_filter as _get_conv_filter
+            from app.services.tool_gateway import GatewayContext, execute_tool_call
+            _conv_id = state.get("conversation_id") or ""
+            _pii_sf = None
+            if _conv_id:
+                try:
+                    _pii_sf = _get_conv_filter(_conv_id)
+                except Exception:
+                    logger.warning(
+                        "PII: filtre de conversation indisponible (conv=%s)",
+                        _conv_id, exc_info=True,
                     )
-                    if decision == "ban":
-                        rule = f"INTERDICTION PERMANENTE: {action_desc}"
-                        if reason:
-                            rule += f" — Raison: {reason}"
-                        await memory.store_constraint(rule, user_id)
-                        results.append(_tool_result(
-                            "Action interdite definitvement et regle de securite enregistree.",
-                            tc_id,
-                        ))
-                        continue
-                    elif decision != "allow":
-                        results.append(_tool_result(
-                            "Action refusee par l'utilisateur pour cette occurrence.", tc_id
-                        ))
-                        continue
-
-                # ── Execute ────────────────────────────────────────────────
-                tool = tool_map.get(tool_name)
-                if tool:
-                    import time as _tt
-                    _ts = _tt.monotonic()
-                    try:
-                        result = await tool.ainvoke(args)
-                        # Log args too when result indicates an error — critical for debugging
-                        _result_str = str(result)
-                        _is_error = "Erreur" in _result_str or "Error" in _result_str or "HttpError" in _result_str
-                        if _is_error:
-                            # Log args (redacting credentials) to understand what the LLM passed
-                            _safe_args = {k: ("<redacted>" if k == "user_google_credentials_json" else v) for k, v in args.items()}
-                            logger.warning(
-                                "⏱ TIMING[%s.tool:%s] %.2fs — ARGS=%s — ERROR=%.400s",
-                                cfg.name, tool_name, _tt.monotonic() - _ts, _safe_args, _result_str,
-                            )
-                        else:
-                            logger.warning(
-                                "⏱ TIMING[%s.tool:%s] %.2fs — result=%.120s",
-                                cfg.name, tool_name, _tt.monotonic() - _ts, _result_str,
-                            )
-                        # C0 : ré-anonymise la PII rapportée par l'outil avant
-                        # son retour au LLM spécialiste (contrat tool_node).
-                        results.append(_tool_result(_result_str, tc_id, sf=_pii_sf))
-                    except Exception as exc:
-                        logger.warning(
-                            "⏱ TIMING[%s.tool:%s] %.2fs — ERROR: %s",
-                            cfg.name, tool_name, _tt.monotonic() - _ts, exc,
-                        )
-                        results.append(_tool_result(f"Erreur d'execution: {exc}",
-                                                    tc_id, sf=_pii_sf))
-                else:
-                    logger.warning("⏱ TIMING[%s.tool:%s] UNAVAILABLE for this agent", cfg.name, tool_name)
-                    results.append(_tool_result(
-                        f"Outil '{tool_name}' non disponible pour cet agent.", tc_id
-                    ))
+            _gw_ctx = GatewayContext(
+                user_id=user_id,
+                conversation_id=_conv_id,
+                pii_filter=_pii_sf,
+                criticality_filter=sf,
+                hitl=hitl,
+                memory=memory,
+                user_request=_last_user_request,
+                label=cfg.name,
+            )
+            for tool_call in last_message.tool_calls:
+                results.append(await execute_tool_call(_gw_ctx, tool_call, tool_map))
 
             return {"messages": results}
 
