@@ -111,3 +111,88 @@ async def test_gateway_hitl_deny_blocks_execution():
     )
     assert "refusée" in msg["content"]
     assert prompts, "le HITL doit avoir été sollicité"
+
+
+# ── C3b — capacités absorbées des spécialistes ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_gateway_self_mail_skips_hitl():
+    """Envoi à sa PROPRE adresse : pas de HITL — le digest planifié de 6 h
+    part sans confirmation impossible à donner (capacité ex-spécialistes,
+    généralisée par la passerelle)."""
+    from app.database import async_session
+    from app.models.user import User
+    from app.services.tool_gateway import execute_tool_call
+
+    uid = "gwsm_" + uuid.uuid4().hex[:8]
+    email = f"{uid}@moi.example"
+    async with async_session() as db:
+        db.add(User(id=uid, username=uid, email=email, hashed_password="x"))
+        await db.commit()
+
+    class _NoHitl:
+        async def request_validation(self, description, user_id):
+            raise AssertionError("HITL sollicité pour un self-mail")
+
+    sent: dict = {}
+
+    class _Send:
+        name = "gmail_send_email"
+
+        async def ainvoke(self, args):
+            sent.update(args)
+            return "Message envoyé."
+
+    ctx = _ctx(hitl=_NoHitl())
+    ctx.user_id = uid
+    msg = await execute_tool_call(
+        ctx,
+        {"name": "gmail_send_email",
+         "args": {"to": email, "subject": "digest", "body": "…"}, "id": "t4"},
+        {"gmail_send_email": _Send()},
+    )
+    assert "envoyé" in msg["content"]
+    assert sent.get("to") == email
+
+
+@pytest.mark.asyncio
+async def test_gateway_google_multiaccount_alias():
+    """L'alias ``account`` cible le GoogleAccount lié (multi-boîtes) ; l'arg
+    est retiré avant l'outil (les wrappers Google ne l'acceptent pas)."""
+    from app.database import async_session
+    from app.models.google_account import GoogleAccount
+    from app.models.user import User
+    from app.services.tool_gateway import execute_tool_call
+
+    uid = "gwma_" + uuid.uuid4().hex[:8]
+    async with async_session() as db:
+        db.add(User(id=uid, username=uid, email=f"{uid}@t.local",
+                    hashed_password="x"))
+        await db.commit()
+    async with async_session() as db:
+        db.add(GoogleAccount(user_id=uid, alias="pro",
+                             email=f"pro-{uid}@boulot.example",
+                             credentials_json='{"tok":"pro"}'))
+        await db.commit()
+
+    captured: dict = {}
+
+    class _List:
+        name = "gmail_list_emails"
+
+        async def ainvoke(self, args):
+            captured.update(args)
+            return "3 messages."
+
+    ctx = _ctx()
+    ctx.user_id = uid
+    msg = await execute_tool_call(
+        ctx,
+        {"name": "gmail_list_emails",
+         "args": {"query": "in:inbox", "account": "pro"}, "id": "t5"},
+        {"gmail_list_emails": _List()},
+    )
+    assert "messages" in msg["content"]
+    assert captured.get("user_google_credentials_json") == '{"tok":"pro"}'
+    assert "account" not in captured
