@@ -286,8 +286,20 @@ def test_nodes_py_wires_record_provider_switch() -> None:
 
 
 def test_chat_py_wires_record_hallucination_block() -> None:
-    src = (_REPO / "app" / "routers" / "chat.py").read_text(encoding="utf-8")
-    assert "record_hallucination_block" in src, (
-        "chat.py must call record_hallucination_block when completion_guard "
-        "verdict.is_hallucination (~ line 612)."
+    # C3c relocation — the completion-guard wiring (including the
+    # record_hallucination_block learning signal) moved out of chat.py into
+    # the shared OutcomeVerifier (services/output_verifier.py) so every surface
+    # verifies identically. The signal must now live there; chat.py must route
+    # its final response through the shared verifier.
+    verifier_src = (
+        _REPO / "app" / "services" / "output_verifier.py"
+    ).read_text(encoding="utf-8")
+    assert "record_hallucination_block" in verifier_src, (
+        "output_verifier.py must call record_hallucination_block when the "
+        "completion-guard verdict is a hallucination."
+    )
+    chat_src = (_REPO / "app" / "routers" / "chat.py").read_text(encoding="utf-8")
+    assert "verify_outcome" in chat_src, (
+        "chat.py must run its final response through the shared OutcomeVerifier "
+        "(verify_outcome) before delivery."
     )
