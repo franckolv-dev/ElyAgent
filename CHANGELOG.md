@@ -17,7 +17,27 @@ Categories used:
 
 ## [Unreleased]
 
-_(empty — next batch starts here)_
+> Lot des 16–17 juillet 2026 (chantier Consolidation C0→C3b + fixes). Le backfill fin juin → mi-juillet (client MCP v2, substrat de confiance, journal réversible…) sera complété à la prochaine release.
+
+### Added
+- **Missions : activation humaine du mandat + carnet dans le viewer** (`23bda47`, PR #194) : le mandat d'une mission autonome (budget de tokens, tier LLM, outils autorisés) doit être explicitement activé par un humain avant toute exécution ; le viewer affiche un carnet vivant (workspace + décisions) et un arrêt d'urgence. Toujours derrière le flag `autonomous_missions_enabled` (off par défaut).
+- **Catalogue codex GPT-5.6 — terra, sol, luna** (`a04624d`, PR #189) : les modèles GPT-5.6 du forfait ChatGPT deviennent sélectionnables sur l'instance LLM (le défaut du provider reste 5.5).
+- **Dédup des incidents d'auto-diagnostic récurrents** (`f559e3a`, PR #188) : garde anti-doublon AVANT l'appel LLM (clé user/source/source_id/catégorie) + compteur `occurrences`/`last_seen_at` (migration 0020) + marqueur `merged` anti-boucle — un échec répétitif fait UN incident, plus une inondation.
+- **MCP : exception LAN configurable dans l'admin** (`6accb69`, PR #181) : `allow_private_network` exposé par serveur MCP pour autoriser explicitement un serveur du réseau local malgré la garde SSRF.
+
+### Changed
+- **ToolGateway — pipeline d'exécution d'outil unifié** (`374d83b`/`c1fdb5a`/`f48af01`, PR #195/#196/#197) : le chat, les sous-agents spécialistes et les missions autonomes exécutent chaque outil via la même passerelle (filtre sécurité → HITL → frontière PII → journal réversible → métriques). La décision de mandat reste souveraine côté missions. Une garantie ajoutée une fois vaut partout.
+
+### Fixed
+- **Missions : budget de tokens réel + tier LLM du mandat appliqué** (`e5b106d`, PR #191) : le budget comptabilisé correspond aux tokens réellement consommés et le tier LLM déclaré dans le mandat est celui utilisé.
+- **Learning : calibration « jour vide » du signal no_write_effect** (`7fd6345`, PR #192) : une tâche à écriture conditionnelle (« supprime le spam », « traite les factures ») ne lève plus le signal les jours où il n'y a légitimement rien à muter — suppression sur preuve positive uniquement (outils réellement exécutés + résultat vide déclaré explicitement). 46,5 % des exécutions réussies étaient marquées douteuses à tort.
+- **ELY Desktop : résilience aux resets du tunnel Cloudflare** (`7d26c2a`, PR #198) : le tunnel CF reset la WS périodiquement (rotation edge) et le blip de ~2 s avortait la tâche en cours. Désormais : grâce de reconnexion 15 s avant chaque outil `desktop_*`, `send_command` détecte le remplacement de connexion en cours de commande et re-tente une fois, garde d'identité sur `unregister` (un vieux handler ne peut plus éjecter la connexion fraîche), keepalive uvicorn pinné (`--ws-ping-*` 20 s). Daemon Go inchangé.
+
+### Security
+- **Frontière PII uniforme — sous-agents, canaux, scheduler** (`723c67d`, PR #190) : trois surfaces n'appliquaient pas le contrat PII du nœud d'outils central — chez les sous-agents spécialistes, les résultats d'outils (Gmail, Calendar, Drive…) repartaient EN CLAIR vers le LLM cloud. Registre de filtres partagé + dé/ré-anonymisation récursive : le contrat vaut désormais identiquement sur toutes les surfaces.
+
+### Docs
+- **README (EN+FR) + `.env.example` alignés sur la réalité du code** (`9db825f`, PR #193) et **docs à jour — MCP client v2, undo, GPT-5.5** (`867faca`, PR #187).
 
 ---
 
