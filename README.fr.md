@@ -126,7 +126,7 @@ Nous respectons ce que les autres projets font bien. Nous sommes explicites sur 
 |---|:---:|:---:|:---:|
 | Auto-hébergé sur votre matériel | ✅ | ✅ | ❌ |
 | **PII anonymisées avant l'appel LLM** | ✅ Natif | ⚠️ Plugin ou absent | ❌ |
-| **HITL actif par défaut, non désactivable** | ✅ Structurel | ⚠️ Configurable | N/A |
+| **HITL actif par défaut (préférences par outil ; noyau interdit verrouillé sous mandat autonome)** | ✅ Structurel | ⚠️ Configurable | N/A |
 | **Multi-utilisateur (une personne ou un foyer)** | ✅ | ❌ Souvent mono-user | ✅ (cloud éditeur) |
 | **Routage hybride local / cloud** | ✅ Tiers explicites | ⚠️ Manuel / partiel | ❌ |
 | Apps mobiles natives (iOS + Android) | ✅ | ❌ Rare | ✅ |
@@ -225,7 +225,7 @@ Configurez les fournisseurs dans **Réglages → Modèles IA**. Assignez chaque 
 
 Donnez un objectif à ELY — elle le décompose en étapes, choisit les outils, exécute, évalue, replanifie en cas d'échec et vous notifie quand c'est terminé. Survit aux redémarrages backend (checkpointer LangGraph SQLite).
 
-Cinq garde-fous : budget de tokens · budget d'itérations · deadline optionnelle · HITL sur outils critiques · anti-boucle après 3 échecs consécutifs. Notifications en parallèle : web · DM Telegram · push ntfy. Chaque mission terminée est notée par un **LLM-juge** externe qui détecte le « succès en façade ».
+Cinq garde-fous : budget de tokens · budget d'itérations · deadline optionnelle · HITL sur outils critiques · anti-boucle après 3 échecs consécutifs. Notifications en parallèle : web · DM Telegram · push ntfy. Les missions échouées sont systématiquement notées par un **LLM-juge** externe qui détecte le « succès en façade » ; les réussites sont contrôlées par échantillonnage (1 sur 5).
 
 **Missions structurées** *(v1.17)* — remplacez le prompt monolithe par une spec YAML :
 
