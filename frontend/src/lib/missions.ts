@@ -40,6 +40,23 @@ export interface Mission {
   failure_reason: string | null;
   /** Sprint 4c — présent = mission structurée (viewer liste). */
   spec_yaml?: string | null;
+  /** J6 — mandat d'autonomie : pending_validation | active | paused_*. */
+  autonomy_state?: string | null;
+  /** J6 — mandat sérialisé (JSON : tools_allow, on_unforeseen, budgets…). */
+  mandate_json?: string | null;
+}
+
+/** J6 — vue lecture seule du workspace d'une mission autonome. */
+export interface MissionWorkspace {
+  carnet: string | null;
+  journal: Record<string, unknown>[];
+  counters: {
+    day: string;
+    tool_actions: number;
+    llm_calls: number;
+    tool_ack: boolean;
+    llm_ack: boolean;
+  } | null;
 }
 
 export interface MissionStep {
@@ -161,6 +178,12 @@ export const missionsApi = {
       body: JSON.stringify({ answer }),
     }),
   plan: (id: string): Promise<MissionPlan | null> => call(`/api/missions/${id}/plan`),
+  /** J6 — validation HUMAINE du mandat : pending_validation → active. */
+  activate: (id: string): Promise<Mission> =>
+    call(`/api/missions/${id}/activate`, { method: "POST" }),
+  /** J6 — carnet de bord + journal + compteurs du jour (lecture seule). */
+  workspace: (id: string): Promise<MissionWorkspace> =>
+    call(`/api/missions/${id}/workspace`),
   start: (id: string): Promise<Mission> => call(`/api/missions/${id}/start`, { method: "POST" }),
   pause: (id: string): Promise<Mission> => call(`/api/missions/${id}/pause`, { method: "POST" }),
   abort: (id: string, reason = "User-requested abort"): Promise<Mission> =>

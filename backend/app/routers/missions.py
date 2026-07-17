@@ -97,8 +97,21 @@ class MissionOut(BaseModel):
     failure_reason: Optional[str]
     # Sprint 4c — None pour les missions legacy ; le viewer J4 s'en sert.
     spec_yaml: Optional[str] = None
+    # J6 — mandat d'autonomie : état (pending_validation/active/paused_*) et
+    # mandat sérialisé (JSON, parsé côté frontend pour le résumé/badge).
+    autonomy_state: Optional[str] = None
+    mandate_json: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class MissionWorkspaceOut(BaseModel):
+    """Vue lecture seule du workspace d'une mission autonome (J6) : carnet de
+    bord, queue du journal d'actions, compteurs journaliers (disjoncteurs)."""
+
+    carnet: Optional[str] = None
+    journal: list[dict] = Field(default_factory=list)
+    counters: Optional[dict] = None
 
 
 class MissionStepOut(BaseModel):
@@ -383,6 +396,69 @@ async def _own_or_404(mission_id: str, user: User):
     if not m or m.user_id != user.id:
         raise HTTPException(status_code=404, detail="Mission introuvable")
     return m
+
+
+@router.post("/{mission_id}/activate", response_model=MissionOut)
+async def activate_mission_mandate(
+    mission_id: str, current_user: User = Depends(get_current_user),
+) -> MissionOut:
+    """J6 (D6) — validation HUMAINE du mandat : ``pending_validation →
+    active``. C'est l'UNIQUE transition qui allume le moteur d'autonomie
+    (enforcement J2, disjoncteurs J3, carnet J4, mode strict J5) ; la
+    reprise (``/start``) ne couvre que ``paused_* → active``, mandat déjà
+    validé. Le clic explicite dans l'UI — sur le résumé lisible du mandat —
+    EST la validation ; Ely ne peut jamais modifier un mandat."""
+    from app.config import get_settings
+    if not get_settings().autonomous_missions_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Missions autonomes désactivées (AUTONOMOUS_MISSIONS_ENABLED).",
+        )
+    m = await _own_or_404(mission_id, current_user)
+    if not m.mandate_json:
+        raise HTTPException(status_code=400,
+                            detail="Cette mission n'a pas de mandat d'autonomie.")
+    if (m.autonomy_state or "") != "pending_validation":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Mandat non activable depuis l'état {m.autonomy_state!r}.",
+        )
+    await mission_service.set_autonomy_state(mission_id, "active")
+    from app.services.audit_log import audit
+    await audit(current_user.id, "mission_mandate_activated",
+                details=(getattr(m, "title", None) or "")[:200],
+                command=mission_id, channel="web")
+    m = await mission_service.get_mission(mission_id)
+    return MissionOut.model_validate(m)
+
+
+@router.get("/{mission_id}/workspace", response_model=MissionWorkspaceOut)
+async def get_mission_workspace(
+    mission_id: str, current_user: User = Depends(get_current_user),
+) -> MissionWorkspaceOut:
+    """J6 — carnet de bord + queue du journal + compteurs du jour, pour le
+    viewer. Lecture seule, vide proprement si la mission n'a pas de
+    workspace (jamais activée / flag OFF)."""
+    await _own_or_404(mission_id, current_user)
+    from app.services import mission_workspace as ws
+    from app.services.mission_budget import get_today
+
+    try:
+        carnet = ws.read_carnet(mission_id)
+        journal = ws.read_journal_tail(mission_id, n=30)
+    except Exception:  # noqa: BLE001 — id hostile ou FS indisponible → vide
+        carnet, journal = None, []
+    today = await get_today(mission_id)
+    counters = None
+    if today is not None:
+        counters = {
+            "day": today.day,
+            "tool_actions": today.tool_actions,
+            "llm_calls": today.llm_calls,
+            "tool_ack": today.tool_ack,
+            "llm_ack": today.llm_ack,
+        }
+    return MissionWorkspaceOut(carnet=carnet, journal=journal, counters=counters)
 
 
 @router.post("/{mission_id}/start", response_model=MissionOut)
