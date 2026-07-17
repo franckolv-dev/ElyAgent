@@ -92,6 +92,21 @@ class GatewayContext:
     memory: Any
     user_request: str = ""
     label: str = ""
+    # C3b-2 — composition avec les appelants à politique PROPRE (missions) :
+    # needs_hitl_final : None = la passerelle décide (pipeline complet) ;
+    #   bool = l'appelant a déjà arbitré (gate mandat, autorité supérieure) —
+    #   la passerelle garde le PROMPT et le traitement des décisions.
+    # anonymize_results : False = l'appelant anonymise à SA frontière LLM
+    #   (missions : anonymize_messages autour de chaque ainvoke) — les
+    #   résultats restent bruts pour les steps/carnet visibles utilisateur.
+    # pre_execute : hook async (tool_name, args) -> str|None — un refus
+    #   n'exécute PAS l'outil (disjoncteurs J3 des missions).
+    # post_execute : hook (tool_name, ok, elapsed_s, result_ou_exc) -> None
+    #   (journal de bord J4).
+    needs_hitl_final: bool | None = None
+    anonymize_results: bool = True
+    pre_execute: Any = None
+    post_execute: Any = None
 
 
 # Envois de mail « à soi-même » : risque quasi nul (on ne fuit pas ses
@@ -181,77 +196,19 @@ async def _inject_google_credentials(user_id: str, args: dict) -> None:
     args["user_google_credentials_json"] = _creds
 
 
-async def execute_tool_call(
-    ctx: GatewayContext,
-    tool_call: dict,
-    tool_map: dict[str, Any],
-) -> Any:
-    """Exécute UN appel d'outil à travers toutes les gates.
-
-    Retourne le message-outil à ajouter à l'historique (dict ``role="tool"``,
-    ou ``ToolMessage`` si l'outil est inconnu). Corps extrait VERBATIM de
-    ``tool_node`` — les alias ci-dessous conservent les noms d'origine pour
-    garder le diff d'extraction lisible et le comportement identique.
-    """
+async def _decide_hitl(ctx: GatewayContext, tool_name: str, args: dict,
+                       display_args: dict) -> bool:
+    """Pipeline de DÉCISION HITL de la passerelle (extrait en C3b-2) :
+    base (manifeste/criticité) → canary io → gating MCP → approbation
+    task-scoped → préférence utilisateur → self-mail. Les appelants à
+    politique propre (gate mandat des missions) court-circuitent CE
+    pipeline entier via ``ctx.needs_hitl_final`` — indispensable car le
+    canary io est STATEFUL (le court-circuit doit empêcher son exécution,
+    pas seulement ignorer son résultat)."""
     user_id = ctx.user_id
     _conv_id = ctx.conversation_id
-    _vault_sf = ctx.pii_filter
     sf = ctx.criticality_filter
-    hitl = ctx.hitl
-    memory = ctx.memory
-
-    tool_name = tool_call["name"]
-    # Deanonymize tool args BEFORE any other processing so HITL preview,
-    # logs, and the actual API call all see the real values.
-    args = deanonymize_args(_vault_sf, dict(tool_call["args"]))
-
-    # Inject hidden arguments — credentials are fetched from the server-side
-    # store (never stored in graph state) to prevent exposure in logs/events.
-    # Multi-comptes inclus (alias ``account``) — voir _inject_google_credentials.
-    if tool_name in GOOGLE_TOOLS:
-        await _inject_google_credentials(user_id, args)
-    if tool_name in USER_ID_TOOLS:
-        args["user_id"] = user_id or ""
-
-    # Build display args — never expose tokens or injected IDs in UI/logs
-    _hidden = {"user_google_credentials_json", "user_id"}
-    display_args = {k: v for k, v in args.items() if k not in _hidden}
-    action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
-    tc_id = tool_call["id"]
-
-    # Substrat de confiance (P1/J2) — empreinte du plan d'action canonique.
-    # Calculée sur display_args (AVANT résolution vault:// → pas de secret),
-    # liée à l'approbation, et re-vérifiée juste avant l'exécution
-    # (fail-closed). Devient pleinement protectrice quand approbation et
-    # exécution sont séparées dans le temps (file durable / Intent Escrow).
-    _action_fp = None
     from app.config import get_settings as _get_settings
-    if _get_settings().trust_substrate_enabled:
-        from app.services.action_plan import build_action_plan, fingerprint as _action_fingerprint
-        _action_fp = _action_fingerprint(
-            build_action_plan(tool_name, display_args, user_id, _conv_id)
-        )
-
-    # ── Vault: resolve vault://label references in args ───────────────
-    vault_refs_found = any(
-        isinstance(v, str) and v.startswith("vault://")
-        for v in args.values()
-    )
-    if vault_refs_found:
-        from app.services.vault_service import get_vault_service
-        vault = get_vault_service()
-        if vault.is_locked(user_id):
-            return _tool_result(
-                "⛔ Vault verrouillé — déverrouillez votre coffre-fort dans Paramètres > Vault "
-                "pour utiliser ce secret.", tc_id
-            )
-        try:
-            args, _resolved = await vault.resolve_vault_refs(user_id, args)
-            if _resolved:
-                logger.info("Resolved vault refs %s for tool %s", _resolved, tool_name)
-        except KeyError as exc:
-            return _tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id)
-
     # HITL check. The is_critical keyword scan EXCLUDES deferred-instruction
     # args (prompt/code) — a keyword in "what to run later" (e.g. a
     # scheduled task « supprimer … ») must not gate the harmless CURRENT
@@ -363,6 +320,88 @@ async def execute_tool_call(
         except Exception as _sm_exc:
             # Any error here → keep HITL enabled (safer default)
             logger.debug("self-mail check failed: %s", _sm_exc)
+    return needs_hitl
+
+
+async def execute_tool_call(
+    ctx: GatewayContext,
+    tool_call: dict,
+    tool_map: dict[str, Any],
+    meta: dict | None = None,
+) -> Any:
+    """Exécute UN appel d'outil à travers toutes les gates.
+
+    Retourne le message-outil à ajouter à l'historique (dict ``role="tool"``,
+    ou ``ToolMessage`` si l'outil est inconnu). Corps extrait VERBATIM de
+    ``tool_node`` — les alias ci-dessous conservent les noms d'origine pour
+    garder le diff d'extraction lisible et le comportement identique.
+    """
+    if meta is not None:
+        meta.setdefault("success", False)  # seuls exécution OK / cache passent à True
+    user_id = ctx.user_id
+    _conv_id = ctx.conversation_id
+    _vault_sf = ctx.pii_filter
+    sf = ctx.criticality_filter
+    hitl = ctx.hitl
+    memory = ctx.memory
+
+    tool_name = tool_call["name"]
+    # Deanonymize tool args BEFORE any other processing so HITL preview,
+    # logs, and the actual API call all see the real values.
+    args = deanonymize_args(_vault_sf, dict(tool_call["args"]))
+
+    # Inject hidden arguments — credentials are fetched from the server-side
+    # store (never stored in graph state) to prevent exposure in logs/events.
+    # Multi-comptes inclus (alias ``account``) — voir _inject_google_credentials.
+    if tool_name in GOOGLE_TOOLS:
+        await _inject_google_credentials(user_id, args)
+    if tool_name in USER_ID_TOOLS:
+        args["user_id"] = user_id or ""
+
+    # Build display args — never expose tokens or injected IDs in UI/logs
+    _hidden = {"user_google_credentials_json", "user_id"}
+    display_args = {k: v for k, v in args.items() if k not in _hidden}
+    action_desc = f"Outil: {tool_name} | Arguments: {json.dumps(display_args, ensure_ascii=False)}"
+    tc_id = tool_call["id"]
+
+    # Substrat de confiance (P1/J2) — empreinte du plan d'action canonique.
+    # Calculée sur display_args (AVANT résolution vault:// → pas de secret),
+    # liée à l'approbation, et re-vérifiée juste avant l'exécution
+    # (fail-closed). Devient pleinement protectrice quand approbation et
+    # exécution sont séparées dans le temps (file durable / Intent Escrow).
+    _action_fp = None
+    from app.config import get_settings as _get_settings
+    if _get_settings().trust_substrate_enabled:
+        from app.services.action_plan import build_action_plan, fingerprint as _action_fingerprint
+        _action_fp = _action_fingerprint(
+            build_action_plan(tool_name, display_args, user_id, _conv_id)
+        )
+
+    # ── Vault: resolve vault://label references in args ───────────────
+    vault_refs_found = any(
+        isinstance(v, str) and v.startswith("vault://")
+        for v in args.values()
+    )
+    if vault_refs_found:
+        from app.services.vault_service import get_vault_service
+        vault = get_vault_service()
+        if vault.is_locked(user_id):
+            return _tool_result(
+                "⛔ Vault verrouillé — déverrouillez votre coffre-fort dans Paramètres > Vault "
+                "pour utiliser ce secret.", tc_id
+            )
+        try:
+            args, _resolved = await vault.resolve_vault_refs(user_id, args)
+            if _resolved:
+                logger.info("Resolved vault refs %s for tool %s", _resolved, tool_name)
+        except KeyError as exc:
+            return _tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id)
+
+    if ctx.needs_hitl_final is not None:
+        # C3b-2 — décision de l'appelant (gate mandat mission).
+        needs_hitl = ctx.needs_hitl_final
+    else:
+        needs_hitl = await _decide_hitl(ctx, tool_name, args, display_args)
     if needs_hitl:
         # Fix #21 (Temu, mai 2026) — description HITL humanisée : pré-compte,
         # demande d'origine de l'utilisateur, alertes d'écart args/intention.
@@ -510,10 +549,24 @@ async def execute_tool_call(
         _cached = await check_idempotent(tool_name, _action_fp)
         if _cached is not None:
             logger.info("[trust] idempotence — résultat mémorisé renvoyé (tool=%s)", tool_name)
+            if meta is not None:
+                meta["success"] = True
             from app.services.event_envelope import EventKind, emit
             emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
                  fingerprint=_action_fp, outcome="idempotent_cache")
             return _tool_result(_cached, tc_id)
+
+    # C3b-2 — hook pré-exécution de l'appelant (disjoncteurs J3 des
+    # missions) : un refus ici N'EXÉCUTE PAS l'outil. Une exception du
+    # hook ne bloque jamais (fail-open, le hook gère son propre fail-safe).
+    if ctx.pre_execute is not None:
+        try:
+            _pre_refusal = await ctx.pre_execute(tool_name, args)
+        except Exception as _pre_exc:  # noqa: BLE001
+            logger.warning("pre_execute hook failed (%s): %s", tool_name, _pre_exc)
+            _pre_refusal = None
+        if _pre_refusal:
+            return _tool_result(_pre_refusal, tc_id)
 
     # Reversible Journal (J3) — capture l'état AVANT exécution pour les
     # compensations par snapshot (rename/move : l'état d'avant est perdu
@@ -571,12 +624,19 @@ async def execute_tool_call(
             # response is deanonymized for display there, and if the model
             # passes [EMAIL_5] back as a tool arg it's deanonymized above.
             # Capped at the filter's 50k ReDoS guard.
-            if _vault_sf is not None:
+            if _vault_sf is not None and ctx.anonymize_results:
                 # ner_detection=False : contenu MACHINE — regex + vault
                 # seulement, pas de détection NER fraîche (les résultats
                 # web/GitHub/emails sont publics ; les masquer casse
                 # l'agent — retour terrain 2026-06-11).
                 _safe_result = _vault_sf.anonymize(_safe_result, ner_detection=False)
+            if ctx.post_execute is not None:
+                try:
+                    ctx.post_execute(tool_name, True, _tt.monotonic() - _ts, result)
+                except Exception as _pe_exc:  # noqa: BLE001
+                    logger.debug("post_execute hook failed: %s", _pe_exc)
+            if meta is not None:
+                meta["success"] = True
             _msg = _tool_result(_safe_result, tc_id)
             # P1/J3 — mémorise le résultat d'une action « supported » réussie
             # (no-op si le manifeste ne déclare pas l'idempotence).
@@ -604,6 +664,11 @@ async def execute_tool_call(
             return _msg
         except Exception as exc:
             logger.warning("Tool %s failed: %s", tool_name, exc)
+            if ctx.post_execute is not None:
+                try:
+                    ctx.post_execute(tool_name, False, _tt.monotonic() - _ts, exc)
+                except Exception as _pe_exc:  # noqa: BLE001
+                    logger.debug("post_execute hook failed: %s", _pe_exc)
             # P1/J4 — événement outil (erreur, type seulement — pas de message).
             if _action_fp is not None:
                 from app.services.event_envelope import EventKind, emit
@@ -626,7 +691,7 @@ async def execute_tool_call(
                 logger.debug("tool error signal skipped: %s", _sig_exc)
             # Error strings can echo PII-bearing args → anonymize too.
             _err = f"Erreur d'exécution: {exc}"
-            if _vault_sf is not None:
+            if _vault_sf is not None and ctx.anonymize_results:
                 _err = _vault_sf.anonymize(_err, ner_detection=False)
             return _tool_result(_err, tc_id)
     else:
