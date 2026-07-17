@@ -147,7 +147,7 @@ async def process_whatsapp_message(from_phone: str, message_text: str) -> None:
     from app.agent.graph import build_agent_graph
     from app.models.conversation import Conversation, Message
     from app.services.memory_manager import get_memory_manager
-    from app.services.security_filter import SecurityFilter
+    from app.services.conversation_filters import get_filter
     from langchain_core.messages import HumanMessage, AIMessage
 
     # Check if user is linked
@@ -199,13 +199,18 @@ async def process_whatsapp_message(from_phone: str, message_text: str) -> None:
             )
             history_rows = hist_result.scalars().all()
 
-        sf = SecurityFilter()
+        # PII (C0) : filtre PARTAGÉ du registre (indexé conversation_id) — un
+        # filtre jetable rendait les placeholders irrésolubles par tool_node
+        # et les sous-agents (voir telegram_bot.py).
+        sf = get_filter(conversation_id)
         history_msgs = []
         for row in history_rows[:-1]:
             if row.role == "user":
                 history_msgs.append(HumanMessage(content=sf.anonymize(row.content)))
             elif row.role == "assistant":
-                history_msgs.append(AIMessage(content=row.content))
+                # Stockés désanonymisés → re-masquer avant le LLM (cf. chat.py).
+                history_msgs.append(AIMessage(
+                    content=sf.anonymize(row.content, ner_detection=False)))
         history_msgs = history_msgs[-40:]
         history_msgs.append(HumanMessage(content=sf.anonymize(message_text)))
 
