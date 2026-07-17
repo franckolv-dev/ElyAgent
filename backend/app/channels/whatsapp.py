@@ -226,6 +226,24 @@ async def process_whatsapp_message(from_phone: str, message_text: str) -> None:
         ai_content = invoke_result["messages"][-1].content
         ai_content = sf.deanonymize(ai_content)
 
+        # ── Anti-hallucination completion guard (C3c) ──────────────────────
+        # Verify before delivery, exactly as the web surface does (shared
+        # OutcomeVerifier). Buffered surface → tools derived from the result
+        # messages. One guard point covers both transports (Meta Cloud API +
+        # neonize) since they funnel through send_whatsapp_message. Never
+        # breaks delivery.
+        try:
+            from app.services.output_verifier import verify_outcome_from_result
+            ai_content = verify_outcome_from_result(
+                invoke_result, ai_content,
+                surface="whatsapp",
+                user_message=message_text,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            ).content
+        except Exception as _guard_exc:
+            logger.warning("completion_guard skipped (whatsapp): %s", _guard_exc)
+
         # Save response
         async with async_session() as db:
             db.add(Message(

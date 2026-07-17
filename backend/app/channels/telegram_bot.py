@@ -335,6 +335,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         ai_content = invoke_result["messages"][-1].content
         ai_content = sf.deanonymize(ai_content)
 
+        # ── Anti-hallucination completion guard (C3c) ──────────────────────
+        # Same verification the web surface runs, before delivery: replace a
+        # claimed action ("c'est supprimé") that no tool actually performed
+        # this turn with an honest warning. Buffered surface → derive the
+        # tools-in-turn list from the result messages. Never breaks delivery.
+        try:
+            from app.services.output_verifier import verify_outcome_from_result
+            ai_content = verify_outcome_from_result(
+                invoke_result, ai_content,
+                surface="telegram",
+                user_message=user_content,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            ).content
+        except Exception as _guard_exc:
+            logger.warning("completion_guard skipped (telegram): %s", _guard_exc)
+
         # Save assistant message
         async with async_session() as db:
             db.add(Message(conversation_id=conversation_id, role="assistant", content=ai_content))
