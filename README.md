@@ -249,7 +249,7 @@ A real product UI on every surface — not a terminal dressed as a website. ELY 
 
 Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/SYS) to a model. Switch any time, no code, no restart.
 
-- **Cloud:** Mistral (preferred, EU) · Anthropic · OpenAI · Gemini · GPT-5.5 (via your ChatGPT subscription, no API key) · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
+- **Cloud:** Mistral (preferred, EU) · Anthropic · OpenAI · Gemini · GPT-5.5 / 5.6 (via your ChatGPT subscription, no API key) · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
 - **Local:** Ollama · LM Studio (MLX on Apple Silicon)
 - Auto-detected compact prompts so 7B local models actually obey `tool_choice="required"`
 - Auto-fallback if a provider goes down — disable per-tier for pure-local testing
@@ -384,6 +384,13 @@ Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automat
 ---
 
 ## Roadmap
+
+**Shipped** *(July 2026)*
+- **Unified tool gateway** — chat, autonomous missions and scheduled tasks now execute every tool through one shared pipeline (security filter → HITL → PII boundary → reversible-action journal), so a guarantee added once holds on all three surfaces ([#190](https://github.com/franckolv-dev/ElyAgent/pull/190), [#195](https://github.com/franckolv-dev/ElyAgent/pull/195)–[#197](https://github.com/franckolv-dev/ElyAgent/pull/197))
+- **Autonomous missions: human-activated mandate + mission logbook** — a mission's mandate (token budget, LLM tier, allowed tools) must be explicitly activated by a human, its real budget and tier are actually enforced, and the viewer shows a live logbook of what the mission did; still behind an off-by-default flag ([#191](https://github.com/franckolv-dev/ElyAgent/pull/191), [#194](https://github.com/franckolv-dev/ElyAgent/pull/194))
+- **GPT-5.6 via your ChatGPT subscription** — terra / sol / luna catalogue added next to GPT-5.5, selectable per LLM instance ([#189](https://github.com/franckolv-dev/ElyAgent/pull/189))
+- **Self-diagnosis: recurring incidents deduplicated** — a repeating failure folds into one incident with an occurrence counter instead of flooding the admin page ([#188](https://github.com/franckolv-dev/ElyAgent/pull/188))
+- **ELY Desktop: resilient to tunnel blips** — a Cloudflare-tunnel reset (the daemon reconnects in ~2 s) no longer aborts a running task: tools wait through a 15 s reconnection grace and in-flight commands retry once on the new connection ([#198](https://github.com/franckolv-dev/ElyAgent/pull/198))
 
 **Shipped** *(May–June 2026)*
 - **Self-improving skills loop** *(v2.2)* — ELY mines its real failures into Markdown playbooks and **creates + activates them autonomously**; seeded library; **import community `SKILL.md` from a URL** into the review queue

@@ -213,7 +213,7 @@ Une vraie UI produit sur chaque surface — **pas un terminal déguisé en site 
 
 Configurez les fournisseurs dans **Réglages → Modèles IA**. Assignez chaque tier (A/B/C/IMG/SYS) à un modèle. Changez à tout moment, sans redémarrage. Les modèles locaux (Ollama, LM Studio) bénéficient de prompts compacts auto-détectés pour que les modèles 7B obéissent réellement à `tool_choice="required"`.
 
-- **Cloud :** OpenAI · GPT-5.5 (via votre abonnement ChatGPT, sans clé API) · Anthropic · Gemini · Qwen API · Moonshot Kimi K2.x · Mistral · DeepSeek · Zhipu · OpenRouter
+- **Cloud :** OpenAI · GPT-5.5 / 5.6 (via votre abonnement ChatGPT, sans clé API) · Anthropic · Gemini · Qwen API · Moonshot Kimi K2.x · Mistral · DeepSeek · Zhipu · OpenRouter
 - **Local :** Ollama · LM Studio (MLX sur Apple Silicon)
 - **Bascule automatique** si un fournisseur tombe — désactivable par tier pour des tests 100 % locaux.
 - **Préfixe système cacheable** séparé du contenu dynamique, pour réduire le coût d'entrée multi-tours sur les fournisseurs qui cachent le préfixe.
@@ -367,6 +367,13 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 ---
 
 ## Roadmap
+
+**Livré** *(juillet 2026)*
+- **Passerelle d'outils unifiée** — le chat, les missions autonomes et les tâches planifiées exécutent désormais chaque outil via un pipeline commun (filtre sécurité → HITL → frontière PII → journal d'actions réversibles) : une garantie ajoutée une fois vaut pour les trois surfaces ([#190](https://github.com/franckolv-dev/ElyAgent/pull/190), [#195](https://github.com/franckolv-dev/ElyAgent/pull/195)–[#197](https://github.com/franckolv-dev/ElyAgent/pull/197))
+- **Missions autonomes : mandat activé par l'humain + carnet de mission** — le mandat d'une mission (budget de tokens, tier LLM, outils autorisés) doit être explicitement activé par un humain, son budget et son tier sont réellement appliqués, et le viewer affiche un carnet vivant de ce que la mission a fait ; toujours derrière un flag désactivé par défaut ([#191](https://github.com/franckolv-dev/ElyAgent/pull/191), [#194](https://github.com/franckolv-dev/ElyAgent/pull/194))
+- **GPT-5.6 via votre abonnement ChatGPT** — catalogue terra / sol / luna ajouté à côté de GPT-5.5, sélectionnable par instance LLM ([#189](https://github.com/franckolv-dev/ElyAgent/pull/189))
+- **Auto-diagnostic : incidents récurrents dédupliqués** — un échec qui se répète se replie en un seul incident avec compteur d'occurrences au lieu d'inonder la page admin ([#188](https://github.com/franckolv-dev/ElyAgent/pull/188))
+- **ELY Desktop : résiliente aux coupures du tunnel** — un reset du tunnel Cloudflare (le daemon se reconnecte en ~2 s) n'avorte plus une tâche en cours : les outils attendent la reconnexion (grâce de 15 s) et les commandes en vol re-tentent une fois sur la nouvelle connexion ([#198](https://github.com/franckolv-dev/ElyAgent/pull/198))
 
 **Livré** *(mai–juin 2026)*
 - **Boucle de skills auto-améliorante** *(v2.2)* — ELY transforme ses vrais échecs en playbooks Markdown et les **crée + active toute seule** ; bibliothèque amorcée ; **import de `SKILL.md` communautaires depuis une URL** dans la file de revue
