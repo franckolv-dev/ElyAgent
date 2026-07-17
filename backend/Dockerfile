@@ -106,4 +106,7 @@ EXPOSE 8000
 # dependencies. This is critical because the post-sync neonize upgrade
 # introduces a protobuf version that `uv run` would want to "fix" by
 # reverting to the locked version → breaks WhatsApp.
-CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --ws-ping-* : keepalive protocole des WS (daemon ELY Desktop notamment) —
+# valeurs = défauts uvicorn actuels, pinnées pour qu'un changement de défaut
+# ne supprime pas silencieusement le ping ni la détection de socket mort.
+CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--ws-ping-interval", "20", "--ws-ping-timeout", "20"]

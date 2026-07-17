@@ -18,8 +18,10 @@
 """ELY Desktop skill — 9 filesystem tools relayed to the local daemon.
 
 Each tool:
-1. Verifies the desktop daemon is connected via desktop_registry.is_connected(user_id)
-2. Sends the command via desktop_registry.send_command(user_id, cmd, args)
+1. Waits for the daemon connection via _ensure_connected() — grâce ~15 s qui
+   tolère les resets périodiques du tunnel Cloudflare (reconnexion en ~2 s)
+2. Sends the command via desktop_registry.send_command(user_id, cmd, args),
+   which itself retries once if the connection is replaced mid-command
 3. Formats the response as a readable string
 
 Write/move/delete tools are listed in ALWAYS_CRITICAL_TOOLS in security_filter.py
@@ -36,6 +38,32 @@ from app.skills.registry import get_skill_registry
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_NOT_CONNECTED_MSG = (
+    "ELY Desktop n'est pas connecté. "
+    "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
+)
+
+
+async def _ensure_connected(user_id: str) -> str | None:
+    """Attend la reconnexion du daemon (grâce ~15 s) avant de statuer.
+
+    Le tunnel Cloudflare reset la WS du daemon périodiquement (rotation
+    edge) ; il se reconnecte en ~2 s. Sans cette grâce, le blip faisait
+    avorter la tâche en cours avec « ELY Desktop n'est pas connecté ».
+    Retourne le message d'erreur si le daemon est toujours absent après
+    la grâce, None sinon.
+    """
+    from app.services import desktop_registry
+
+    if await desktop_registry.ensure_connected(user_id):
+        return None
+    return _NOT_CONNECTED_MSG
+
+
+# ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
 
@@ -45,11 +73,9 @@ async def desktop_list_dir(path: str, user_id: str = "") -> str:
     Requiert ELY Desktop connecté. path: chemin absolu dans un répertoire autorisé."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "list_dir", {"path": path}
@@ -80,11 +106,9 @@ async def desktop_read_file(path: str, user_id: str = "") -> str:
     Limite : 5 Mo. Les fichiers binaires sont encodés en base64."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "read_file", {"path": path}
@@ -111,11 +135,9 @@ async def desktop_write_file(path: str, content: str, user_id: str = "") -> str:
     content: contenu texte à écrire."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "write_file", {"path": path, "content": content}
@@ -136,11 +158,9 @@ async def desktop_move_file(src: str, dst: str, user_id: str = "") -> str:
     src: chemin source absolu. dst: chemin destination absolu."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "move_file", {"src": src, "dst": dst}
@@ -161,11 +181,9 @@ async def desktop_delete_file(path: str, user_id: str = "") -> str:
     path: chemin absolu dans un répertoire autorisé."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "delete_file", {"path": path}
@@ -185,11 +203,9 @@ async def desktop_create_dir(path: str, user_id: str = "") -> str:
     Requiert ELY Desktop connecté. path: chemin absolu dans un répertoire autorisé."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "create_dir", {"path": path}
@@ -209,11 +225,9 @@ async def desktop_stat_file(path: str, user_id: str = "") -> str:
     Requiert ELY Desktop connecté. path: chemin absolu dans un répertoire autorisé."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "stat_file", {"path": path}
@@ -236,11 +250,9 @@ async def desktop_hash_file(path: str, user_id: str = "") -> str:
     Requiert ELY Desktop connecté. path: chemin absolu dans un répertoire autorisé."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "hash_file", {"path": path}
@@ -267,11 +279,9 @@ async def desktop_search_files(
     directory: répertoire de recherche absolu. pattern: motif glob (ex: *.py, **/*.txt)."""
     from app.services import desktop_registry
 
-    if not desktop_registry.is_connected(user_id):
-        return (
-            "ELY Desktop n'est pas connecté. "
-            "Téléchargez et lancez le daemon depuis Paramètres > ELY Desktop."
-        )
+    error = await _ensure_connected(user_id)
+    if error:
+        return error
     try:
         result = await desktop_registry.send_command(
             user_id, "search_files", {"directory": directory, "pattern": pattern}
