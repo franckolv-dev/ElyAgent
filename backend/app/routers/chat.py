@@ -77,6 +77,12 @@ class _FiltersProxy:
     def setdefault(self, conversation_id: str, _default=None):
         return _get_filter(conversation_id)
 
+    def get(self, conversation_id: str, default=None):
+        # C0 (audit 16/07 P0) : factory.py appelait ``get`` qui n'existait
+        # pas — AttributeError avalée → couture PII morte. Même sémantique
+        # get-or-create que le registre (un filtre vide désanonymise no-op).
+        return _get_filter(conversation_id)
+
     def pop(self, conversation_id: str, default=None):
         _discard_filter(conversation_id)
         return default

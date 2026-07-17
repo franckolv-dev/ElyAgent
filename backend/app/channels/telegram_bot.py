@@ -49,7 +49,7 @@ from app.database import async_session
 from app.models.user import User
 from app.models.conversation import Conversation, Message
 from app.services.memory_manager import get_memory_manager
-from app.services.security_filter import SecurityFilter
+from app.services.conversation_filters import discard_filter, get_filter
 from app.services.hitl_manager import get_hitl_manager
 
 logger = logging.getLogger(__name__)
@@ -62,8 +62,11 @@ _linked_users: dict[int, str] = {}
 # telegram_user_id → conversation_id
 _conversations: dict[int, str] = {}
 
-# telegram_user_id → SecurityFilter
-_filters: dict[int, SecurityFilter] = {}
+# PII (C0, audit 16/07 P0) : plus de dict de filtres LOCAL par id Telegram —
+# le SecurityFilter vit dans le registre PARTAGÉ conversation_filters, indexé
+# par conversation_id, le même que tool_node et les sous-agents. Sinon leurs
+# lookups par conversation_id tombent sur un filtre vide et les placeholders
+# deviennent irrésolubles (args) ou les résultats repartent en clair.
 
 # Shared agent graph
 _agent_graph = None
@@ -171,8 +174,9 @@ async def cmd_unlink(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /new — start a new conversation."""
     tg_id = update.effective_user.id
-    _conversations.pop(tg_id, None)
-    _filters.pop(tg_id, None)
+    _old_conv = _conversations.pop(tg_id, None)
+    if _old_conv:
+        discard_filter(_old_conv)
     await update.message.reply_text("Nouvelle conversation. Que puis-je faire pour toi ?")
 
 
@@ -299,13 +303,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         from langchain_core.messages import HumanMessage, AIMessage
 
-        sf = _filters.setdefault(tg_id, SecurityFilter())
+        sf = get_filter(conversation_id)
         history_msgs = []
         for row in history_rows[:-1]:
             if row.role == "user":
                 history_msgs.append(HumanMessage(content=sf.anonymize(row.content)))
             elif row.role == "assistant":
-                history_msgs.append(AIMessage(content=row.content))
+                # Stockés désanonymisés (vraies valeurs, pour l'affichage) →
+                # re-masquer avant le LLM, comme chat.py (ner off : machine).
+                history_msgs.append(AIMessage(
+                    content=sf.anonymize(row.content, ner_detection=False)))
         history_msgs = history_msgs[-40:]
         history_msgs.append(HumanMessage(content=sf.anonymize(user_content)))
 

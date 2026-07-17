@@ -44,7 +44,7 @@ from app.database import async_session
 from app.models.conversation import Conversation, Message
 from app.models.user import User
 from app.services.memory_manager import get_memory_manager
-from app.services.security_filter import SecurityFilter
+from app.services.conversation_filters import discard_filter, get_filter
 from app.services.hitl_manager import get_hitl_manager
 
 logger = logging.getLogger(__name__)
@@ -57,8 +57,8 @@ _linked_users: dict[str, str] = {}
 # slack_user_id → conversation_id
 _conversations: dict[str, str] = {}
 
-# slack_user_id → SecurityFilter
-_filters: dict[str, SecurityFilter] = {}
+# PII (C0) : le SecurityFilter vit dans le registre PARTAGÉ
+# conversation_filters (indexé par conversation_id) — voir telegram_bot.py.
 
 # Shared agent graph
 _agent_graph = None
@@ -138,8 +138,9 @@ async def _handle_message(body: dict, say, client) -> None:
         await _do_unlink(slack_user_id, say)
         return
     if cmd == "new":
-        _conversations.pop(slack_user_id, None)
-        _filters.pop(slack_user_id, None)
+        _old_conv = _conversations.pop(slack_user_id, None)
+        if _old_conv:
+            discard_filter(_old_conv)
         await say("Nouvelle conversation. Que puis-je faire pour toi ?")
         return
     if cmd == "help":
@@ -197,13 +198,15 @@ async def _handle_message(body: dict, say, client) -> None:
 
         from langchain_core.messages import HumanMessage, AIMessage
 
-        sf = _filters.setdefault(slack_user_id, SecurityFilter())
+        sf = get_filter(conversation_id)
         history_msgs = []
         for row in history_rows[:-1]:
             if row.role == "user":
                 history_msgs.append(HumanMessage(content=sf.anonymize(row.content)))
             elif row.role == "assistant":
-                history_msgs.append(AIMessage(content=row.content))
+                # Stockés désanonymisés → re-masquer avant le LLM (cf. chat.py).
+                history_msgs.append(AIMessage(
+                    content=sf.anonymize(row.content, ner_detection=False)))
         history_msgs = history_msgs[-40:]
         history_msgs.append(HumanMessage(content=sf.anonymize(text)))
 

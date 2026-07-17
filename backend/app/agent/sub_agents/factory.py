@@ -62,8 +62,40 @@ def _sanitize_messages_for_mistral(messages: list[BaseMessage]) -> list[BaseMess
 # Helpers shared with nodes.py (duplicated here to keep sub-agents isolated)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _tool_result(content: str, tool_call_id: str) -> dict:
+def _tool_result(content: str, tool_call_id: str, sf=None) -> dict:
+    """Message outil pour l'historique du spécialiste.
+
+    Si un filtre PII partagé est fourni (C0, audit 16/07 P0), le contenu est
+    RÉ-ANONYMISÉ — même contrat que le nœud central (tool_node.py) : la PII
+    récupérée par l'outil (corps de mail, contact, événement, document…) ne
+    repart jamais en clair vers le LLM spécialiste, cloud sur tiers B/C.
+    ``ner_detection=False`` : contenu machine, regex + vault seulement.
+    """
+    if sf is not None:
+        try:
+            content = sf.anonymize(content, ner_detection=False)
+        except Exception:
+            logger.warning(
+                "PII: ré-anonymisation d'un résultat d'outil spécialiste "
+                "échouée — résultat transmis masqué par prudence", exc_info=True,
+            )
+            content = "[résultat retenu : échec de l'anonymisation PII]"
     return {"role": "tool", "content": content, "tool_call_id": tool_call_id}
+
+
+def _deanonymize_args(sf, args: dict) -> dict:
+    """Restaure récursivement les placeholders PII ([EMAIL_0]…) dans les
+    arguments d'outil — même contrat que le nœud central, sinon Gmail/
+    Calendar/Drive reçoivent le placeholder littéral et échouent."""
+    def _walk(v):
+        if isinstance(v, str):
+            return sf.deanonymize(v)
+        if isinstance(v, dict):
+            return {k: _walk(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [_walk(x) for x in v]
+        return v
+    return {k: _walk(v) for k, v in args.items()}
 
 
 # Canonical tool sets — imported from the single source of truth.
@@ -742,22 +774,31 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 if tool_name in _USER_ID_TOOLS:
                     args["user_id"] = state.get("user_id") or ""
 
-                # ── De-anonymize PII placeholders in args ──────────────────
-                # The LLM sees [EMAIL_0]/[IBAN_0]/etc. (anonymized by SecurityFilter
-                # before prompt). If the LLM uses those placeholders as tool args,
-                # we must restore the real values BEFORE calling external APIs,
-                # otherwise Gmail/Calendar/etc. receive literal "[EMAIL_0]" and fail.
+                # ── Frontière PII (C0, audit 16/07 P0) ────────────────────
+                # Le LLM voit [EMAIL_0]/[IBAN_0]/etc. (anonymisés par le
+                # SecurityFilter PARTAGÉ de la conversation). Deux devoirs :
+                #   1. restaurer les vraies valeurs dans les args AVANT
+                #      l'appel API (sinon Gmail reçoit "[EMAIL_0]" et échoue) ;
+                #   2. ré-anonymiser les RÉSULTATS avant leur retour au LLM
+                #      (fait par _tool_result(sf=_pii_sf) plus bas).
+                # L'ancien accès ``chat._filters.get`` était une couture
+                # morte : la méthode n'existait pas, l'AttributeError était
+                # avalée, et les résultats repartaient en clair vers le cloud.
                 _conv_id = state.get("conversation_id")
+                _pii_sf = None
                 if _conv_id:
                     try:
-                        from app.routers.chat import _filters as _chat_filters
-                        _sf = _chat_filters.get(_conv_id)
-                        if _sf is not None:
-                            for _k, _v in list(args.items()):
-                                if isinstance(_v, str) and "[" in _v and "]" in _v:
-                                    args[_k] = _sf.deanonymize(_v)
+                        from app.services.conversation_filters import (
+                            get_filter as _get_conv_filter,
+                        )
+                        _pii_sf = _get_conv_filter(_conv_id)
+                        args = _deanonymize_args(_pii_sf, args)
                     except Exception:
-                        pass
+                        logger.warning(
+                            "PII: désanonymisation des args impossible "
+                            "(conv=%s, tool=%s)", _conv_id, tool_name,
+                            exc_info=True,
+                        )
 
                 # Display args (never expose tokens/injected IDs)
                 _hidden = {"user_google_credentials_json", "user_id"}
@@ -918,13 +959,16 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                                 "⏱ TIMING[%s.tool:%s] %.2fs — result=%.120s",
                                 cfg.name, tool_name, _tt.monotonic() - _ts, _result_str,
                             )
-                        results.append(_tool_result(_result_str, tc_id))
+                        # C0 : ré-anonymise la PII rapportée par l'outil avant
+                        # son retour au LLM spécialiste (contrat tool_node).
+                        results.append(_tool_result(_result_str, tc_id, sf=_pii_sf))
                     except Exception as exc:
                         logger.warning(
                             "⏱ TIMING[%s.tool:%s] %.2fs — ERROR: %s",
                             cfg.name, tool_name, _tt.monotonic() - _ts, exc,
                         )
-                        results.append(_tool_result(f"Erreur d'execution: {exc}", tc_id))
+                        results.append(_tool_result(f"Erreur d'execution: {exc}",
+                                                    tc_id, sf=_pii_sf))
                 else:
                     logger.warning("⏱ TIMING[%s.tool:%s] UNAVAILABLE for this agent", cfg.name, tool_name)
                     results.append(_tool_result(

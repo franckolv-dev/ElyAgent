@@ -121,10 +121,17 @@ async def _execute_task(task_id: str) -> None:
         # (bug terrain 13/06, Prospection). Voir config.py.
         from app.config import get_settings as _get_settings
         _recursion = _get_settings().scheduler_recursion_limit
+        # ── PII (C0, audit 16/07 §6.2) : le prompt d'une tâche peut contenir
+        # adresse, téléphone ou consigne personnelle → anonymiser AVANT le
+        # LLM cloud, avec le filtre PARTAGÉ de la conversation (tool_node
+        # ré-anonymise déjà les résultats d'outils via ce même filtre, et les
+        # placeholders des tool args y sont restaurés).
+        from app.services.conversation_filters import get_filter as _get_conv_filter
+        _pii_sf = _get_conv_filter(conv_id)
         agent = build_simple_agent_graph()
         invoke_result = await agent.ainvoke(
             {
-                "messages": [HumanMessage(content=task.prompt)],
+                "messages": [HumanMessage(content=_pii_sf.anonymize(task.prompt))],
                 "user_id": task.user_id,
                 "conversation_id": conv_id,
                 "google_credentials": google_credentials or "",
@@ -148,6 +155,9 @@ async def _execute_task(task_id: str) -> None:
             )
         else:
             ai_content = str(ai_content_raw or "")
+        # PII (C0) : restaure les vraies valeurs pour la persistance et la
+        # livraison à l'utilisateur (le LLM n'a vu que des placeholders).
+        ai_content = _pii_sf.deanonymize(ai_content)
 
         # ── [SILENT] (J2) ──────────────────────────────────────────────────
         # A monitor task that has nothing new to report replies exactly
