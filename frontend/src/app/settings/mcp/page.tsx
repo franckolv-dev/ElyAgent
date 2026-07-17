@@ -21,13 +21,21 @@ import {
   Plug, Plus, RefreshCw, Trash2, Pencil, Save, X, ArrowLeft,
   CheckCircle2, AlertCircle, Loader2, Terminal, Wifi,
   Upload, ShieldCheck, ShieldAlert, Lock, LogIn, LogOut, KeyRound,
+  Users,
 } from "lucide-react";
 
 type OAuthStatus = { oauth: boolean; connected: boolean; locked?: boolean; scope?: string | null };
 import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
-import { api, type MCPServerOut, type MCPServerCreateBody } from "@/lib/api";
+import {
+  api,
+  type MCPServerOut,
+  type MCPServerCreateBody,
+  type MCPPermissionOut,
+  type MCPToolOut,
+  type AdminUser,
+} from "@/lib/api";
 
 type FormState = MCPServerCreateBody & { id?: string };
 
@@ -116,6 +124,9 @@ export default function MCPSettingsPage() {
   const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthStatus>>({});
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+
+  // Accès utilisateurs — serveur dont le panneau de permissions est ouvert.
+  const [permServer, setPermServer] = useState<MCPServerOut | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -787,6 +798,13 @@ export default function MCPSettingsPage() {
                               )
                             )}
                             <button
+                              onClick={() => setPermServer(srv)}
+                              title="Gérer les accès utilisateurs (permissions MCP)"
+                              className="p-1.5 rounded border border-border-dim text-text-muted hover:text-cyber-cyan hover:border-cyber-cyan/30 transition-all"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               onClick={() => handleReload(srv)}
                               disabled={reloadingId === srv.id || !srv.enabled}
                               title={srv.enabled ? "Recharger les outils" : "Activer le serveur pour pouvoir le recharger"}
@@ -825,6 +843,15 @@ export default function MCPSettingsPage() {
                 </table>
               </div>
             )}
+
+            {/* Accès utilisateurs — permissions MCP par serveur */}
+            {permServer && (
+              <PermissionsPanel
+                server={permServer}
+                onClose={() => setPermServer(null)}
+                showToast={showToast}
+              />
+            )}
           </main>
         </div>
       </div>
@@ -846,6 +873,284 @@ export default function MCPSettingsPage() {
         }
       `}</style>
     </AdminGuard>
+  );
+}
+
+/**
+ * Panneau « Accès utilisateurs » d'un serveur MCP.
+ *
+ * Écrit dans mcp_tool_permissions : c'est le SEUL moyen pour l'admin d'ouvrir
+ * un serveur d'instance à un autre utilisateur (le « Toujours autoriser » HITL
+ * ne peut jamais écrire pour un non-admin refusé avant le HITL). Une règle
+ * server-wide (tool = « tout le serveur ») suffit pour débloquer tous les
+ * outils du serveur d'un coup. Aucun cache à invalider : l'ACL relit la DB.
+ */
+function PermissionsPanel({
+  server,
+  onClose,
+  showToast,
+}: {
+  server: MCPServerOut;
+  onClose: () => void;
+  showToast: (kind: "ok" | "err", msg: string) => void;
+}) {
+  const [perms, setPerms] = useState<MCPPermissionOut[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [tools, setTools] = useState<MCPToolOut[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>("");
+
+  // Formulaire d'ajout.
+  const [userId, setUserId] = useState<string>("");
+  const [toolId, setToolId] = useState<string>("");   // "" ⇒ tout le serveur
+  // Défaut « ask » : accès sans friction sur les outils anodins, confirmation
+  // gardée sur les sensibles — plus sûr qu'« allow » par défaut.
+  const [decision, setDecision] = useState<"allow" | "ask" | "deny">("ask");
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setError("");
+      const [p, u, t] = await Promise.all([
+        api.mcpServerPermissions(server.id),
+        api.getUsers(),
+        api.mcpServerTools(server.id),
+      ]);
+      setPerms(p);
+      setUsers(u);
+      setTools(t);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [server.id]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // A11y : Échap ferme la modale (le clic sur le fond ferme déjà).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const handleAdd = useCallback(async () => {
+    if (!userId) {
+      showToast("err", "Choisis un utilisateur.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.mcpServerPermissionCreate(server.id, {
+        user_id: userId,
+        tool_id: toolId || null,
+        decision,
+      });
+      showToast("ok", "Règle d'accès enregistrée.");
+      setUserId("");
+      setToolId("");
+      setDecision("ask");
+      await refresh();
+    } catch (e) {
+      showToast("err", e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [server.id, userId, toolId, decision, refresh, showToast]);
+
+  const handleDelete = useCallback(
+    async (perm: MCPPermissionOut) => {
+      setDeletingId(perm.id);
+      try {
+        await api.mcpServerPermissionDelete(server.id, perm.id);
+        showToast("ok", "Règle supprimée.");
+        await refresh();
+      } catch (e) {
+        showToast("err", e instanceof Error ? e.message : String(e));
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [server.id, refresh, showToast],
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mcp-perms-title"
+        className="bg-bg-secondary border border-cyber-cyan/30 rounded-lg w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 id="mcp-perms-title" className="text-sm font-semibold flex items-center gap-2">
+            <Users className="w-4 h-4 text-cyber-cyan" />
+            Accès utilisateurs — <span className="font-mono text-cyber-cyan">{server.name}</span>
+          </h2>
+          <button onClick={onClose} className="text-text-muted hover:text-text-secondary" aria-label="Fermer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <p className="text-[11px] text-text-muted leading-relaxed">
+          {server.scope === "user" ? (
+            <>
+              Ce serveur est <strong>personnel</strong> : seul son propriétaire l'utilise. Les règles
+              ci-dessous affinent le HITL, mais n'ouvrent l'accès à personne d'autre.
+            </>
+          ) : (
+            <>
+              Un serveur d'<strong>instance</strong> est réservé à l'admin. Ajoute une règle{" "}
+              <span className="text-cyber-green">allow</span> pour ouvrir un outil (ou{" "}
+              <strong>tout le serveur</strong>) à un autre utilisateur. Une règle{" "}
+              <span className="text-cyber-red">deny</span> le bloque explicitement.
+            </>
+          )}
+        </p>
+
+        {error && (
+          <div className="rounded-md border border-cyber-red/30 bg-cyber-red/5 px-3 py-2 text-xs text-cyber-red flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5" />
+            {error}
+          </div>
+        )}
+
+        {/* Formulaire d'ajout */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+          <div className="sm:col-span-2 space-y-1">
+            <label className="block text-[10px] text-text-muted uppercase tracking-wider">Utilisateur</label>
+            <select
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="ely-input"
+            >
+              <option value="">— choisir —</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.username} ({u.email}){u.role === "admin" ? " · admin" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[10px] text-text-muted uppercase tracking-wider">Portée</label>
+            <select
+              value={toolId}
+              onChange={(e) => setToolId(e.target.value)}
+              className="ely-input"
+            >
+              <option value="">Tout le serveur</option>
+              {tools.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.remote_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[10px] text-text-muted uppercase tracking-wider">Décision</label>
+            <select
+              value={decision}
+              onChange={(e) => setDecision(e.target.value as "allow" | "ask" | "deny")}
+              className="ely-input"
+            >
+              <option value="allow">allow</option>
+              <option value="ask">ask</option>
+              <option value="deny">deny</option>
+            </select>
+          </div>
+          <div className="sm:col-span-4 space-y-2">
+            <p className="text-[10px] text-text-muted">
+              <span className="text-cyber-green">allow</span> = accès sans confirmation ·{" "}
+              <span className="text-amber-400">ask</span> = accès mais confirmation (HITL) gardée sur
+              les outils sensibles ·{" "}
+              <span className="text-cyber-red">deny</span> = bloqué. Pour ouvrir tout un serveur sans
+              lever la confirmation de ses outils dangereux, préfère <strong>ask</strong>.
+            </p>
+            <button
+              onClick={handleAdd}
+              disabled={submitting || !userId}
+              className="px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 transition-all flex items-center gap-1.5 text-xs disabled:opacity-40"
+            >
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              Ajouter la règle
+            </button>
+          </div>
+        </div>
+
+        {/* Liste des règles */}
+        {loading ? (
+          <div className="text-xs text-text-muted flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Chargement…
+          </div>
+        ) : perms.length === 0 ? (
+          <div className="text-xs text-text-muted text-center py-4">
+            Aucune règle d'accès pour ce serveur.
+          </div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="text-text-muted uppercase tracking-wider text-[10px] border-b border-border-dim">
+              <tr>
+                <th className="text-left px-2 py-1.5">Utilisateur</th>
+                <th className="text-left px-2 py-1.5">Portée</th>
+                <th className="text-left px-2 py-1.5">Décision</th>
+                <th className="text-right px-2 py-1.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {perms.map((p) => (
+                <tr key={p.id} className="border-b border-border-dim last:border-0">
+                  <td className="px-2 py-1.5">
+                    <div className="text-text-primary">{p.username ?? p.user_id}</div>
+                    {p.email && <div className="text-text-muted text-[10px]">{p.email}</div>}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono text-[10px] text-text-muted">
+                    {p.tool_name ?? "tout le serveur"}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] ${
+                        p.decision === "allow"
+                          ? "border-cyber-green/30 text-cyber-green bg-cyber-green/5"
+                          : p.decision === "ask"
+                          ? "border-amber-400/30 text-amber-400 bg-amber-400/5"
+                          : "border-cyber-red/30 text-cyber-red bg-cyber-red/5"
+                      }`}
+                    >
+                      {p.decision}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5 text-right">
+                    <button
+                      onClick={() => handleDelete(p)}
+                      disabled={deletingId === p.id}
+                      title="Supprimer la règle"
+                      className="p-1 rounded border border-border-dim text-text-muted hover:text-cyber-red hover:border-cyber-red/30 transition-all disabled:opacity-30"
+                    >
+                      {deletingId === p.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
 }
 

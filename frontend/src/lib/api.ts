@@ -256,7 +256,7 @@ export const api = {
   restartOnboarding: () =>
     fetchAPI("/api/onboarding/restart", { method: "POST" }),
 
-  getUsers: () => fetchAPI("/admin/users"),
+  getUsers: () => fetchAPI("/admin/users") as Promise<AdminUser[]>,
 
   getAuditLogs: (limit = 50) => fetchAPI(`/admin/audit?limit=${limit}`),
 
@@ -490,6 +490,24 @@ export const api = {
       body: JSON.stringify({ config }),
     }) as Promise<{ status: string; count: number; ids: string[] }>,
 
+  // ── Accès utilisateurs — règles mcp_tool_permissions par serveur ─────────
+  // Seul moyen pour l'admin d'ouvrir un serveur d'instance à un autre user :
+  // le « Toujours autoriser » HITL ne peut jamais écrire pour un non-admin
+  // refusé avant le HITL. tool_id null ⇒ règle pour tout le serveur.
+  mcpServerPermissions: (serverId: string) =>
+    fetchAPI(`/admin/mcp/servers/${serverId}/permissions`) as Promise<MCPPermissionOut[]>,
+
+  mcpServerPermissionCreate: (serverId: string, body: MCPPermissionCreateBody) =>
+    fetchAPI(`/admin/mcp/servers/${serverId}/permissions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }) as Promise<MCPPermissionOut>,
+
+  mcpServerPermissionDelete: (serverId: string, permissionId: string) =>
+    fetchAPI(`/admin/mcp/servers/${serverId}/permissions/${permissionId}`, {
+      method: "DELETE",
+    }) as Promise<{ status: string }>,
+
   // ── J4 — OAuth 2.1 « Se connecter » (per-user, endpoints sous /api) ──────
   /** Démarre le flow OAuth d'un serveur : renvoie l'URL de consentement. */
   mcpOAuthStart: (id: string) =>
@@ -702,6 +720,39 @@ export interface MCPToolOut {
   description: string | null;
   risk_level: string;
   enabled: boolean;
+}
+
+/** Une règle d'accès mcp_tool_permissions. tool_id null ⇒ tout le serveur. */
+export interface MCPPermissionOut {
+  id: string;
+  user_id: string;
+  username: string | null;
+  email: string | null;
+  server_id: string;
+  tool_id: string | null;
+  /** remote_name lisible de l'outil ciblé ; null ⇒ règle « tout le serveur ». */
+  tool_name: string | null;
+  /** ask = accès accordé mais HITL préservé selon le risque de l'outil. */
+  decision: "allow" | "ask" | "deny";
+  granted_by: string | null;
+  granted_at: string | null;
+}
+
+export interface MCPPermissionCreateBody {
+  user_id: string;
+  /** null ⇒ règle pour tout le serveur. */
+  tool_id?: string | null;
+  decision: "allow" | "ask" | "deny";
+}
+
+/** Ligne utilisateur renvoyée par GET /admin/users. */
+export interface AdminUser {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface MCPServerCreateBody {

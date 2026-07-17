@@ -22,11 +22,15 @@ POST   /mcp/servers          — add a new MCP server
 PUT    /mcp/servers/{id}     — update an existing MCP server
 DELETE /mcp/servers/{id}     — delete a MCP server
 POST   /mcp/servers/{id}/reload — reload tools from a running server
+GET    /mcp/servers/{id}/permissions — list per-user access rules
+POST   /mcp/servers/{id}/permissions — grant/deny a user (upsert)
+DELETE /mcp/servers/{id}/permissions/{perm_id} — remove a rule
 """
 from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,6 +40,7 @@ from sqlalchemy import select
 from app.auth.dependencies import require_admin
 from app.database import async_session
 from app.models.mcp_server import MCPServer
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["mcp"])
@@ -365,6 +370,154 @@ async def update_mcp_tool(server_id: str, tool_id: str, body: MCPToolUpdate, _=D
         await db.commit()
         await db.refresh(row)
     return MCPToolOut.model_validate(row)
+
+
+# ------------------------------------------------------------------ #
+# Accès utilisateurs — règles mcp_tool_permissions par (user, serveur) #
+# ------------------------------------------------------------------ #
+# Sur un serveur `scope=instance`, un non-admin est refusé AVANT le HITL
+# (mcp_acl.check_mcp_tool_access) : « Toujours autoriser » ne peut donc
+# jamais lui écrire de règle. Ces endpoints sont le SEUL moyen pour
+# l'admin d'ouvrir un serveur d'instance à un autre utilisateur.
+# `tool_id` nul ⇒ règle pour TOUT le serveur. Aucun cache à invalider :
+# l'ACL relit la DB à chaque appel.
+
+
+# Décisions exposées à l'admin. `ask` ouvre l'accès EN gardant le HITL selon
+# le risque de l'outil (utile server-wide : autoriser un serveur sans lever la
+# confirmation sur ses outils high/critical). `allow_task` (HITL par session)
+# n'a pas de sens en pré-attribution admin → non exposé.
+_ADMIN_DECISIONS = ("allow", "ask", "deny")
+
+
+class MCPPermissionCreate(BaseModel):
+    user_id: str
+    tool_id: Optional[str] = None    # None ⇒ tout le serveur
+    # Défaut « ask » (fail-closed, comme le modèle) : ouvre l'accès sans friction
+    # sur les outils anodins mais garde la confirmation sur les sensibles.
+    decision: str = "ask"            # "allow" | "ask" | "deny"
+
+
+class MCPPermissionOut(BaseModel):
+    id: str
+    user_id: str
+    username: Optional[str] = None
+    email: Optional[str] = None
+    server_id: str
+    tool_id: Optional[str] = None
+    tool_name: Optional[str] = None  # remote_name lisible ; None = tout le serveur
+    decision: str
+    granted_by: Optional[str] = None
+    granted_at: Optional[datetime] = None
+
+
+async def _get_server_or_404(db, server_id: str) -> MCPServer:
+    srv = (await db.execute(
+        select(MCPServer).where(MCPServer.id == server_id)
+    )).scalar_one_or_none()
+    if not srv:
+        raise HTTPException(404, "Serveur MCP introuvable.")
+    return srv
+
+
+def _permission_out(perm, user: User | None, tool) -> MCPPermissionOut:
+    return MCPPermissionOut(
+        id=perm.id, user_id=perm.user_id,
+        username=getattr(user, "username", None),
+        email=getattr(user, "email", None),
+        server_id=perm.server_id, tool_id=perm.tool_id,
+        tool_name=getattr(tool, "remote_name", None),
+        decision=perm.decision, granted_by=perm.granted_by,
+        granted_at=perm.granted_at,
+    )
+
+
+@router.get("/mcp/servers/{server_id}/permissions", response_model=list[MCPPermissionOut])
+async def list_mcp_server_permissions(server_id: str, _=Depends(require_admin)):
+    """Règles d'accès par utilisateur d'un serveur (server-wide et par outil)."""
+    from app.models.mcp_server import MCPTool, MCPToolPermission
+
+    async with async_session() as db:
+        await _get_server_or_404(db, server_id)
+        perms = (await db.execute(
+            select(MCPToolPermission)
+            .where(MCPToolPermission.server_id == server_id)
+            .order_by(MCPToolPermission.granted_at)
+        )).scalars().all()
+        users = {u.id: u for u in (await db.execute(
+            select(User).where(User.id.in_({p.user_id for p in perms}))
+        )).scalars().all()} if perms else {}
+        tools = {t.id: t for t in (await db.execute(
+            select(MCPTool).where(MCPTool.server_id == server_id)
+        )).scalars().all()}
+    return [_permission_out(p, users.get(p.user_id), tools.get(p.tool_id)) for p in perms]
+
+
+@router.post("/mcp/servers/{server_id}/permissions", response_model=MCPPermissionOut)
+async def create_mcp_server_permission(
+    server_id: str, body: MCPPermissionCreate, admin: User = Depends(require_admin),
+):
+    """Crée (ou remplace) une règle pour (user, serveur[, outil]) — upsert."""
+    from app.models.mcp_server import MCPTool, MCPToolPermission
+
+    if body.decision not in _ADMIN_DECISIONS:
+        raise HTTPException(400, "Décision invalide — « allow », « ask » ou « deny » attendu.")
+
+    async with async_session() as db:
+        await _get_server_or_404(db, server_id)
+        user = (await db.execute(
+            select(User).where(User.id == body.user_id)
+        )).scalar_one_or_none()
+        if not user:
+            raise HTTPException(404, "Utilisateur introuvable.")
+        tool = None
+        if body.tool_id is not None:
+            tool = (await db.execute(select(MCPTool).where(
+                MCPTool.id == body.tool_id, MCPTool.server_id == server_id,
+            ))).scalar_one_or_none()
+            if not tool:
+                raise HTTPException(404, "Outil MCP introuvable sur ce serveur.")
+
+        # `.first()` (et non scalar_one_or_none) : la table n'a pas de contrainte
+        # unique sur (user, server, tool_id) — un doublon accidentel ne doit pas
+        # faire échouer l'upsert en 500, on met simplement à jour la 1re ligne.
+        existing = (await db.execute(select(MCPToolPermission).where(
+            MCPToolPermission.user_id == body.user_id,
+            MCPToolPermission.server_id == server_id,
+            MCPToolPermission.tool_id == body.tool_id,
+        ))).scalars().first()
+        if existing is not None:
+            existing.decision = body.decision
+            existing.granted_by = admin.id
+            perm = existing
+        else:
+            perm = MCPToolPermission(
+                user_id=body.user_id, server_id=server_id, tool_id=body.tool_id,
+                decision=body.decision, granted_by=admin.id,
+            )
+            db.add(perm)
+        await db.commit()
+        await db.refresh(perm)
+    return _permission_out(perm, user, tool)
+
+
+@router.delete("/mcp/servers/{server_id}/permissions/{permission_id}")
+async def delete_mcp_server_permission(
+    server_id: str, permission_id: str, _=Depends(require_admin),
+):
+    """Supprime une règle — l'utilisateur retombe sur le défaut (fail-closed)."""
+    from app.models.mcp_server import MCPToolPermission
+
+    async with async_session() as db:
+        perm = (await db.execute(select(MCPToolPermission).where(
+            MCPToolPermission.id == permission_id,
+            MCPToolPermission.server_id == server_id,
+        ))).scalar_one_or_none()
+        if not perm:
+            raise HTTPException(404, "Règle d'autorisation introuvable.")
+        await db.delete(perm)
+        await db.commit()
+    return {"status": "deleted"}
 
 
 class MCPImportBody(BaseModel):
