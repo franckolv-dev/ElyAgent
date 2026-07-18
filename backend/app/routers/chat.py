@@ -660,10 +660,23 @@ async def websocket_chat(websocket: WebSocket):
 
             # If interrupted with no content, notify client and skip saving
             if was_stopped:
-                await websocket.send_text(_dumps({"type": "stopped"}))
-                # Always emit `"done"` to flip isLoading=false on the frontend
-                # (paired with "stopped" so the UI handles either reliably).
-                await websocket.send_text(_dumps({"type": "done"}))
+                # 2026-07-18 — this path also fires when the CLIENT vanished
+                # (network cut → the watcher's receive_text() raised →
+                # stop_event set). Sending on the closed socket raises
+                # RuntimeError ("Unexpected ASGI message 'websocket.send',
+                # after sending 'websocket.close'") which the generic handler
+                # below logged as ERROR + traceback. Nobody is listening —
+                # guard the pair so ERROR logs stay meaningful.
+                try:
+                    await websocket.send_text(_dumps({"type": "stopped"}))
+                    # Always emit `"done"` to flip isLoading=false on the frontend
+                    # (paired with "stopped" so the UI handles either reliably).
+                    await websocket.send_text(_dumps({"type": "done"}))
+                except (RuntimeError, WebSocketDisconnect) as _stop_send_exc:
+                    logger.debug(
+                        "stopped/done events skipped — socket already closed "
+                        "(user=%s): %s", user_id, _stop_send_exc,
+                    )
                 continue
 
             # Si des outils ont tourné, ne garder que le contenu du DERNIER tour
