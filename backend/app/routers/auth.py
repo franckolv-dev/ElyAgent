@@ -15,8 +15,11 @@
 #   - INTERDIT : Revente comme SaaS / service managé à des tiers.
 #   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -56,6 +59,21 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
 def _make_token_payload(user: User) -> dict:
     """JWT payload enrichi avec le rôle et le username (évite des appels /me)."""
     return {"sub": user.id, "role": user.role, "username": user.username, "email": user.email}
+
+
+async def _revoke_refresh_jti(db: AsyncSession, jti: str, expires_at: datetime) -> None:
+    """Blackliste un jti de refresh token — idempotent (ARCH-3).
+
+    Deux refresh concurrents (multi-onglets après un restart backend) passent
+    tous deux le check de blacklist puis tentent le même INSERT : le perdant
+    lève IntegrityError (UNIQUE jti) alors que l'issue métier est identique —
+    le jti est bien révoqué. On avale donc le doublon au lieu de renvoyer 500.
+    """
+    db.add(RevokedToken(jti=jti, expires_at=expires_at))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -161,16 +179,17 @@ async def refresh(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
+    # Les deux tokens sont créés AVANT la révocation : un rollback (jti déjà
+    # révoqué par un refresh concurrent) expire les objets ORM, et relire
+    # user.* après déclencherait un lazy-load sync → MissingGreenlet.
     new_access = create_access_token(_make_token_payload(user))
+    new_refresh = create_refresh_token({"sub": user.id})
 
     # Rotate the refresh token — revoke old one, issue a fresh one (ARCH-3)
     if jti:
-        from datetime import datetime, timezone
         exp_ts = payload.get("exp", 0)
-        expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
-        db.add(RevokedToken(jti=jti, expires_at=expires_at))
-        await db.commit()
-    _set_refresh_cookie(response, create_refresh_token({"sub": user.id}))
+        await _revoke_refresh_jti(db, jti, datetime.fromtimestamp(exp_ts, tz=timezone.utc))
+    _set_refresh_cookie(response, new_refresh)
 
     return AccessTokenResponse(access_token=new_access)
 
@@ -187,11 +206,8 @@ async def logout(
         payload = decode_token(refresh_token)
         jti = payload.get("jti") if payload else None
         if jti:
-            from datetime import datetime, timezone
             exp_ts = payload.get("exp", 0)
-            expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
-            db.add(RevokedToken(jti=jti, expires_at=expires_at))
-            await db.commit()
+            await _revoke_refresh_jti(db, jti, datetime.fromtimestamp(exp_ts, tz=timezone.utc))
 
     settings = get_settings()
     response.delete_cookie(
