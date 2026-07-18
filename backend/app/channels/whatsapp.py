@@ -41,6 +41,7 @@ from typing import Any
 import httpx
 from sqlalchemy import select
 
+from app.agent.helpers.message_content import content_to_text
 from app.database import async_session
 from app.models.user import User
 
@@ -223,7 +224,9 @@ async def process_whatsapp_message(from_phone: str, message_text: str) -> None:
             "google_credentials": google_credentials or "",
         })
 
-        ai_content = invoke_result["messages"][-1].content
+        # content_to_text AVANT deanonymize : sur tier codex (Responses API),
+        # ``content`` arrive en liste de blocs — str.replace crasherait.
+        ai_content = content_to_text(invoke_result["messages"][-1].content)
         ai_content = sf.deanonymize(ai_content)
 
         # ── Anti-hallucination completion guard (C3c) ──────────────────────
