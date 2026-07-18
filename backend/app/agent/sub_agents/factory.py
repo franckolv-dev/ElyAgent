@@ -103,6 +103,25 @@ from app.agent.tool_sets import GOOGLE_TOOLS as _GOOGLE_TOOLS  # noqa: E402
 from app.agent.tool_sets import USER_ID_TOOLS as _USER_ID_TOOLS  # noqa: E402
 
 
+def _last_human_query(messages) -> str:
+    """Dernier message UTILISATEUR de l'historique, aplati en texte plat.
+
+    Après un appel d'outil, ``messages[-1]`` est un ToolMessage : classer la
+    complexité (ou keyer le cache mémoire) sur le RÉSULTAT d'outil escaladait
+    la synthèse vers le tier C à chaque tour outillé, quel que soit le routage
+    tier B choisi (bug prod 18/07/2026, canaux muets). Même règle de remontée
+    que le bloc ``tool_choice`` plus bas dans ce fichier.
+    """
+    from langchain_core.messages import HumanMessage
+
+    from app.agent.helpers.message_content import content_to_text
+
+    for _m in reversed(messages or []):
+        if isinstance(_m, HumanMessage):
+            return content_to_text(_m.content)
+    return content_to_text(messages[-1].content) if messages else ""
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Graph builder
 # ──────────────────────────────────────────────────────────────────────────────
@@ -130,7 +149,7 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
 
             messages = state["messages"]
             user_id = state.get("user_id", "")
-            user_query = messages[-1].content if messages else ""
+            user_query = _last_human_query(messages)
 
             registry = get_skill_registry()
             memory = get_memory_manager()
