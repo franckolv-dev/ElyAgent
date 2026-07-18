@@ -298,6 +298,10 @@ async def desktop_download_config(
         "vps_url": vps_url,
         "token": long_lived_token,
         "sandbox_dirs": sandbox_dirs,
+        # Opt-in : le daemon (>= 1.2.0) n'ouvre l'UI web au démarrage que si
+        # true — l'utilisateur a déjà un onglet ouvert quand il télécharge ce
+        # fichier, l'auto-open dupliquait l'onglet à chaque relance.
+        "open_browser": False,
         "version": "1.0.0",
     }
 
