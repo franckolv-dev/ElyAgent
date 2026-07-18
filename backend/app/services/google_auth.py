@@ -210,6 +210,16 @@ def _parse_expiry(value):
     return None
 
 
+# Short identity aliases from the consent screen (see SCOPES above). They only
+# serve the initial /userinfo account identification ; at refresh time Google
+# reports them in canonical form (…/auth/userinfo.email), so if they were passed
+# back to Credentials, google-auth would log a spurious « Not all requested
+# scopes were granted by the authorization server, missing scopes email »
+# warning on EVERY refresh. Pendant of OAUTHLIB_RELAX_TOKEN_SCOPE (top of file),
+# which relaxes the same alias mismatch during the initial authorization flow.
+_IDENTITY_SCOPE_ALIASES = frozenset({"openid", "email", "profile"})
+
+
 async def build_credentials(creds_dict: dict):
     """Rebuild a Credentials object from stored dict.
 
@@ -220,16 +230,27 @@ async def build_credentials(creds_dict: dict):
     so that ``creds.expired`` reports the truth instead of always returning
     False. Without this, ``get_user_credentials`` skips the refresh and
     every API call eventually 401s after the access token's 1 h lifespan.
+
+    FIX 2026-07-18 : identity aliases are dropped from the rebuilt scopes
+    (see ``_IDENTITY_SCOPE_ALIASES``) ; Google API scopes pass through
+    verbatim. ``_serialize_refreshed`` persists ``creds.scopes``, so stored
+    rows converge to API scopes only — the filter is idempotent.
     """
     from google.oauth2.credentials import Credentials
     client_id, client_secret, _redirect = await _get_oauth_client()
+    stored_scopes = creds_dict.get("scopes")
+    scopes = (
+        [s for s in stored_scopes if s not in _IDENTITY_SCOPE_ALIASES]
+        if stored_scopes is not None
+        else None
+    )
     return Credentials(
         token=creds_dict.get("token"),
         refresh_token=creds_dict.get("refresh_token"),
         token_uri=creds_dict.get("token_uri", "https://oauth2.googleapis.com/token"),
         client_id=client_id,
         client_secret=client_secret,
-        scopes=creds_dict.get("scopes"),
+        scopes=scopes,
         expiry=_parse_expiry(creds_dict.get("expiry")),
     )
 
