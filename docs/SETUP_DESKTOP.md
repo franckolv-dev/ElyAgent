@@ -78,6 +78,7 @@ Ce fichier contient :
 - L'URL WebSocket de ton instance ELY
 - Un token JWT spécifique au daemon (valide 30 jours)
 - Le user_id auquel le daemon est rattaché
+- `open_browser` (défaut `false`) — passe-le à `true` si tu veux que le daemon ouvre l'UI web dans ton navigateur à chaque démarrage. Désactivé par défaut : tu as déjà un onglet ELY ouvert au moment où tu télécharges ce fichier, et l'auto-open rouvrait un onglet en double à chaque relance du daemon.
 
 **Place-le DANS LE MÊME DOSSIER que le binaire `ely-desktop-*`.**
 

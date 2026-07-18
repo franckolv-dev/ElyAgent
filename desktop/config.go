@@ -7,7 +7,7 @@
 // @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 // @license    Elastic License 2.0
 //            https://www.elastic.co/licensing/elastic-license
-// @version    1.1.0
+// @version    1.2.0
 // @link       https://github.com/franckolv-dev/PhysicalAgent
 //
 // RÉSUMÉ DES CONDITIONS :
@@ -36,6 +36,13 @@ type Config struct {
 
 	// SandboxDirs is the list of local directories the daemon is allowed to access.
 	SandboxDirs []string `json:"sandbox_dirs"`
+
+	// OpenBrowser controls whether the daemon opens the ELY web UI in the
+	// default browser at startup. Opt-in — absent or false means no auto-open:
+	// ely-config.json is downloaded from the web UI, so a tab is usually
+	// already open when the daemon starts, and auto-opening duplicated it
+	// on every relaunch.
+	OpenBrowser bool `json:"open_browser"`
 
 	// Version is the config file format version (for future migrations).
 	Version string `json:"version"`

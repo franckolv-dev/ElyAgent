@@ -7,7 +7,7 @@
 // @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
 // @license    Elastic License 2.0
 //            https://www.elastic.co/licensing/elastic-license
-// @version    1.1.0
+// @version    1.2.0
 // @link       https://github.com/franckolv-dev/PhysicalAgent
 //
 // RÉSUMÉ DES CONDITIONS :
@@ -32,7 +32,7 @@ import (
 // at build time as `<base>+<git-short-sha>[+dirty]` via -ldflags so the
 // Settings UI badge reflects the actual code running. Bump base when
 // shipping a new feature set.
-var version = "1.1.0"
+var version = "1.2.0"
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -50,8 +50,12 @@ func main() {
 	// ── Auto-install system dependencies (scrot, xdotool on Linux, etc.) ─
 	EnsureDependencies()
 
-	// ── Open browser in background ────────────────────────────────────────
-	go OpenBrowser(cfg.FrontendURL())
+	// ── Open browser in background (opt-in via "open_browser") ───────────
+	if cfg.OpenBrowser {
+		go OpenBrowser(cfg.FrontendURL())
+	} else {
+		log.Printf("Web UI: %s — auto-open disabled (set \"open_browser\": true in ely-config.json to enable)", cfg.FrontendURL())
+	}
 
 	// ── Build handlers ────────────────────────────────────────────────────
 	fsHandler    := NewFSHandler(cfg.SandboxDirs)
