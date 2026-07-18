@@ -125,6 +125,41 @@ def test_channel_uses_shared_registry(mod_name):
     assert not hasattr(mod, "_filters"), f"{mod_name} garde un dict de filtres local"
 
 
+# ── 3b. Contenu en liste de blocs (openai-codex / Responses API) ────────────
+
+
+def test_content_blocks_flatten_then_deanonymize():
+    """gpt-5.6 (tier codex / Responses API) renvoie ``content`` en LISTE de
+    blocs ``[{"type": "text", "text": ...}]`` — ``deanonymize`` fait du
+    ``str.replace`` et exige une string. Les surfaces doivent aplatir via
+    ``content_to_text`` AVANT de restaurer (crash réel Telegram 18/07 :
+    ``AttributeError: 'list' object has no attribute 'replace'``)."""
+    from app.agent.helpers.message_content import content_to_text
+    from app.services.conversation_filters import get_filter
+
+    conv = _fresh_conv()
+    sf = get_filter(conv)
+    masked = sf.anonymize(f"écris à {EMAIL}", ner_detection=False)
+    placeholder = masked.split()[-1]
+    assert placeholder.startswith("[") and placeholder.endswith("]")
+
+    blocks = [{"type": "text", "text": f"Mail envoyé à {placeholder}", "index": 0}]
+    assert sf.deanonymize(content_to_text(blocks)) == f"Mail envoyé à {EMAIL}"
+
+
+@pytest.mark.parametrize(
+    "mod_name", ["telegram_bot", "slack_bot", "discord_bot", "whatsapp"]
+)
+def test_channel_flattens_content_before_deanonymize(mod_name):
+    """Chaque canal doit extraire la réponse via ``content_to_text(...)`` —
+    l'accès brut ``invoke_result["messages"][-1].content`` passé tel quel à
+    ``deanonymize`` crashe dès que le tier actif renvoie des blocs (le
+    scheduler a son propre aplatissement ; la voix streame du texte)."""
+    mod = importlib.import_module(f"app.channels.{mod_name}")
+    src = inspect.getsource(mod)
+    assert "content_to_text(invoke_result" in src, mod_name
+
+
 # ── 4. Scheduler ────────────────────────────────────────────────────────────
 
 

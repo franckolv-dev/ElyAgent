@@ -39,6 +39,7 @@ import uuid
 from sqlalchemy import select
 
 from app.agent.graph import build_agent_graph
+from app.agent.helpers.message_content import content_to_text
 from app.auth.passwords import verify_password
 from app.database import async_session
 from app.models.conversation import Conversation, Message
@@ -218,7 +219,9 @@ async def _handle_message(body: dict, say, client) -> None:
             "conversation_id": conversation_id,
         })
 
-        ai_content = invoke_result["messages"][-1].content
+        # content_to_text AVANT deanonymize : sur tier codex (Responses API),
+        # ``content`` arrive en liste de blocs — str.replace crasherait.
+        ai_content = content_to_text(invoke_result["messages"][-1].content)
         ai_content = sf.deanonymize(ai_content)
 
         # ── Anti-hallucination completion guard (C3c) ──────────────────────
