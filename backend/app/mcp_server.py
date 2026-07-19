@@ -177,6 +177,25 @@ async def ely_chat(
     else:
         answer = str(raw or "")
 
+    # ── Anti-hallucination completion guard (C3d-1) ────────────────────────
+    # Même vérification que les 7 autres surfaces (OutcomeVerifier commun),
+    # au MÊME point : après l'aplatissement, AVANT persistance/livraison.
+    # Consommateur machine ou pas, une action revendiquée sans outil exécuté
+    # ce tour doit être remplacée par l'avertissement honnête — un agent MCP
+    # amont propagerait la fausse affirmation encore plus loin qu'un humain.
+    # Surface bufferisée → outils dérivés du result. Jamais bloquant.
+    try:
+        from app.services.output_verifier import verify_outcome_from_result
+        answer = verify_outcome_from_result(
+            result, answer,
+            surface="mcp",
+            user_message=message,
+            user_id=user_id,
+            conversation_id=conv_id,
+        ).content
+    except Exception as _guard_exc:  # noqa: BLE001
+        logger.warning("completion_guard skipped (mcp): %s", _guard_exc)
+
     async with async_session() as db:
         db.add(Message(conversation_id=conv_id, role="assistant", content=answer))
         await db.commit()

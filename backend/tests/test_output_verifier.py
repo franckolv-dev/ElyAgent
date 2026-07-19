@@ -307,6 +307,7 @@ _WIRED_SURFACES = [
     ("app/channels/discord_bot.py", 'surface="discord"'),
     ("app/channels/whatsapp.py", 'surface="whatsapp"'),
     ("app/services/scheduler.py", 'surface="scheduler"'),
+    ("app/mcp_server.py", 'surface="mcp"'),
 ]
 
 
@@ -331,6 +332,7 @@ def test_buffered_surfaces_use_the_result_helper():
         "app/channels/discord_bot.py",
         "app/channels/whatsapp.py",
         "app/services/scheduler.py",
+        "app/mcp_server.py",
     ):
         src = (_REPO / rel_path).read_text(encoding="utf-8")
         assert "verify_outcome_from_result" in src, (
@@ -338,7 +340,6 @@ def test_buffered_surfaces_use_the_result_helper():
             "verify_outcome_from_result so tools are derived from result messages."
         )
 
-# NOTE — mcp_server.py (ely_chat) is a known, deliberately deferred surface:
-# it delivers to a machine MCP client and does not yet track a tools-in-turn
-# list, so it is out of C3c-2 scope (to be wired in C3d once tool tracking is
-# added). It is intentionally absent from the pins above.
+# mcp_server.py (ely_chat) était la surface différée de C3c-2 (consommateur
+# machine, pas de suivi d'outils) — câblée en C3d-1 : le helper dérive les
+# outils du result, l'avertissement honnête s'applique aussi aux clients MCP.
