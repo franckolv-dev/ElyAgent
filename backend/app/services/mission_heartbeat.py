@@ -155,13 +155,17 @@ async def _notify_terminal(mission, kind: str, summary: str) -> None:
     if ntfy_url:
         try:
             import httpx
+
+            from app.services.ntfy_headers import ascii_header
             tag = {"completed": "white_check_mark", "failed": "x", "aborted": "no_entry"}.get(kind, "bell")
             priority = "high" if kind in {"failed", "completed"} else "default"
             async with httpx.AsyncClient(timeout=5) as c:
                 await c.post(
                     ntfy_url,
                     headers={
-                        "Title": f"Mission {kind} : {mission.title}"[:120],
+                        # ascii_header : un titre de mission non-ASCII
+                        # (« Veille IA — test mandat ») tuait le push.
+                        "Title": ascii_header(f"Mission {kind} : {mission.title}")[:120],
                         "Tags": tag,
                         "Priority": priority,
                     },

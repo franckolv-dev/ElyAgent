@@ -101,8 +101,10 @@ async def maybe_generate_for_gap(
             from app.services.learning.candidate_notify import notify_candidate
 
             await notify_candidate(summary.get("tool_name", "?"), capability)
+            # NB : notify est best-effort et avale ses erreurs — ne pas
+            # affirmer « envoyée » ici (le succès réel est loggé par _push).
             logger.info(
-                "auto_tool_gen: candidate %r créée pour gap #%s — notification envoyée",
+                "auto_tool_gen: candidate %r créée pour gap #%s (notification demandée)",
                 summary.get("tool_name"), case_id,
             )
         else:

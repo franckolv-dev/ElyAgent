@@ -409,12 +409,16 @@ async def notify_ask_user(
     if ntfy_url:
         try:
             import httpx
+
+            from app.services.ntfy_headers import ascii_header
             body = question if not item_value else f"{item_value} — {question}"
             async with httpx.AsyncClient(timeout=5) as client:
                 await client.post(
                     ntfy_url,
                     headers={
-                        "Title": f"Mission « {title} » — question"[:120],
+                        # ascii_header : ce Title (« » + —) n'était JAMAIS
+                        # parti — httpx encode les en-têtes en ASCII.
+                        "Title": ascii_header(f"Mission « {title} » — question")[:120],
                         "Tags": "question",
                         "Priority": "high",
                     },
