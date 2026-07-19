@@ -36,16 +36,37 @@ logger = logging.getLogger(__name__)
 _BG_TASKS: set[asyncio.Task] = set()
 
 
-def spawn(coro: Coroutine[Any, Any, Any], *, label: str | None = None) -> asyncio.Task:
+def spawn(
+    coro: Coroutine[Any, Any, Any],
+    *,
+    label: str | None = None,
+    detach_context: bool = False,
+) -> asyncio.Task:
     """Schedule ``coro`` with a strong reference held until completion.
 
     Exceptions are logged (warning) instead of disappearing with the task.
     ``label`` defaults to the coroutine's qualname so drop-in replacements
     of bare ``asyncio.create_task(...)`` keep a meaningful name for free.
     Returns the task for callers that want to await/cancel it anyway.
+
+    ``detach_context=True`` (C4-2d) : exécute la coroutine dans un contexte
+    contextvars VIERGE. Indispensable pour les tâches de fond qui font leurs
+    PROPRES appels LLM : ``create_task`` hérite sinon du contexte appelant,
+    et LangChain propage son arbre de callbacks par contextvars — les tokens
+    du LLM de fond partent alors dans le STREAM de l'appelant (bug réel
+    19/07 : le code du générateur tier-S entrelacé caractère par caractère
+    avec la réponse d'Ely dans le chat de l'utilisateur). Contrepartie : la
+    tâche perd aussi les vars de corrélation — passer tout par arguments.
     """
+    import contextvars
+
     resolved = label or getattr(coro, "__qualname__", None) or "bg"
-    task = asyncio.create_task(coro, name=resolved)
+    if detach_context:
+        task = asyncio.get_running_loop().create_task(
+            coro, name=resolved, context=contextvars.Context(),
+        )
+    else:
+        task = asyncio.create_task(coro, name=resolved)
     _BG_TASKS.add(task)
 
     def _done(t: asyncio.Task) -> None:
