@@ -120,7 +120,10 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     """Trouver des outils ELY correspondant à une capacité dont tu as besoin mais qui n'est pas déjà disponible.
 
     APPELLE CET OUTIL AVANT de conclure que tu ne peux pas faire quelque chose
-    faute d'outil. Décris le besoin en langage naturel (ex. « lire un Google
+    faute d'outil — Y COMPRIS quand l'utilisateur POSE LA QUESTION de tes
+    capacités sans demander la tâche (« peux-tu créer un outil qui… »,
+    « sais-tu faire… ») : la recherche consigne les capacités réellement
+    absentes. Décris le besoin en langage naturel (ex. « lire un Google
     Sheet existant », « ajouter des lignes à un tableur », « publier sur
     Slack »). Renvoie les outils les plus pertinents, qui deviennent
     disponibles pour le reste de la conversation — appelle ensuite celui qu'il
@@ -180,7 +183,9 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
             logger.debug("find_tool: gap recording skipped: %s", exc)
         return (
             f"Aucun outil existant ne correspond à « {capability} ». "
-            "C'est peut-être une capacité réellement absente — je l'ai consignée."
+            "Capacité réellement absente — consignée dans "
+            "les « Capacités manquantes » : un outil peut y être généré "
+            "puis soumis à validation humaine avant d'être utilisable."
         )
 
     # Record discoveries so agent_node binds them on the next turn (sticky).
