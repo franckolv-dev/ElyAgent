@@ -205,12 +205,17 @@ async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False
 
             _auto_gen = bool(get_settings().auto_tool_generation_enabled)
             if _auto_gen:
+                # detach_context : la génération fait ses PROPRES appels LLM —
+                # sans détachement, les callbacks LangChain hérités routaient
+                # les tokens tier-S dans le stream du chat (entrelacés avec
+                # la réponse d'Ely — bug réel 19/07).
                 spawn(
                     maybe_generate_for_gap(
                         _case_id, capability, _gap_user,
                         skip_precheck=model_judged,
                     ),
                     label="auto-tool-generation",
+                    detach_context=True,
                 )
         except Exception as exc:  # noqa: BLE001 — le déclencheur non plus
             logger.debug("find_tool: auto-generation skipped: %s", exc)
