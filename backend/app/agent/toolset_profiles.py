@@ -63,6 +63,7 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # Universal — tool discovery (the safety net: lets the model pull in any
     # catalog tool it doesn't currently see, instead of giving up).
     "find_tool",
+    "report_missing_capability",
     # Universal — memory, preferences, knowledge (always present)
     "knowledge_list",
     "knowledge_search",
