@@ -94,6 +94,22 @@ async def test_existing_tool_blocks_generation(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generation_skips_precheck_when_model_judged(monkeypatch):
+    """skip_precheck=True (chemin report_missing_capability) : le modèle a
+    déjà jugé — le pré-check lexical ne re-bloque pas la génération."""
+    _patch_flag(monkeypatch, True)
+    monkeypatch.setattr(
+        "app.skills.builtin.find_tool_skill.capability_has_existing_tool",
+        _Recorder("drive_export_file"))  # bloquerait sans skip
+    gen = _Recorder({"status": "validation_failed"})
+    monkeypatch.setattr(
+        "app.services.learning.tool_creator.generate_and_persist_tool", gen)
+    out = await atg.maybe_generate_for_gap(
+        77, "convertir un pdf en docx", "u1", skip_precheck=True)
+    assert out is not None and len(gen.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_created_candidate_notifies(monkeypatch):
     _patch_flag(monkeypatch, True)
     monkeypatch.setattr(
@@ -148,6 +164,17 @@ async def test_capability_precheck_real_catalog():
     assert hit is not None, "les outils Sheets existent — trou de binding détecté"
     miss = await capability_has_existing_tool("zzz introuvable xyzzy frobnicator")
     assert miss is None
+    # NB (C4-2c) : le pré-check reste un juge LEXICAL — sur « convertir un
+    # pdf en docx » il peut légitimement pointer un voisin (drive_export_file
+    # exporte des Docs en pdf/docx). C'est pourquoi il n'a PAS de droit de
+    # veto sur le chemin report_missing_capability (jugé par le modèle) —
+    # contrat pinné par test_report_records_despite_lexical_neighbor.
+    # Auto-empoisonnement pinné : les méta-outils du funnel ne sont JAMAIS
+    # candidats (le docstring de report_missing_capability contient l'exemple
+    # pdf→docx mot pour mot et se retrouvait « outil existant » à 1.0).
+    meta = await capability_has_existing_tool(
+        "consigner une capacité manquante et générer un outil candidat")
+    assert meta not in {"find_tool", "report_missing_capability"}
 
 
 # ── Notification (transport) ────────────────────────────────────────────────
@@ -200,16 +227,24 @@ def test_skill_autocreate_notifies_promotions():
 
 
 @pytest.mark.asyncio
-async def test_report_refuses_when_existing_tool_covers(monkeypatch):
+async def test_report_records_despite_lexical_neighbor(monkeypatch):
+    """Le pré-check lexical n'a PAS de droit de veto sur le jugement du
+    modèle (leçon 19/07 : drive_export_file bloquait le gap PDF→DOCX
+    fondateur à 0,67 de couverture). Il devient un CAVEAT informatif."""
     from app.skills.builtin import find_tool_skill as fts
 
-    monkeypatch.setattr(fts, "capability_has_existing_tool", _Recorder("sheets_read_spreadsheet"))
-    rec = _Recorder("ne doit pas être appelé")
+    monkeypatch.setattr(fts, "capability_has_existing_tool", _Recorder("drive_export_file"))
+    rec = _Recorder("Capacité consignée — génération lancée.")
     monkeypatch.setattr(fts, "_record_gap_and_trigger", rec)
     out = await fts.report_missing_capability.ainvoke(
-        {"capability": "lire un google sheet"})
-    assert "sheets_read_spreadsheet" in out and "non consigné" in out
-    assert rec.calls == []
+        {"capability": "convertir un fichier pdf en docx"})
+    assert "consignée" in out, "le gap DOIT être consigné malgré le voisin lexical"
+    assert "drive_export_file" in out, "le voisin lexical est signalé en caveat"
+    assert len(rec.calls) == 1
+    assert rec.calls[0][1].get("model_judged") is True, (
+        "la génération issue du jugement modèle saute le pré-check (pas de "
+        "double veto)"
+    )
 
 
 @pytest.mark.asyncio
