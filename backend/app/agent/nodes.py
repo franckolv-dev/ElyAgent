@@ -25,6 +25,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agent.state import AgentState
 from app.services.background_tasks import spawn
+from app.services.llm_deadline import ainvoke_with_deadline
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_llm, get_fallback_llms
@@ -862,7 +863,8 @@ def create_agent_node():
                     _invoke_msgs = maybe_inject_screenshot(_invoke_msgs, _base_llm)
                 except Exception as _vis_exc:
                     logger.debug("vision_injection skipped: %s", _vis_exc)
-                response = await _llm_with_tools_req.ainvoke(_invoke_msgs)
+                response = await ainvoke_with_deadline(
+                    _llm_with_tools_req, _invoke_msgs, tier=_tier, surface="general")
                 # Strip any <think> block that slipped through
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
@@ -947,7 +949,8 @@ def create_agent_node():
                             {"role": "assistant", "content": _post_content_str},
                             _correction_msg,
                         ]
-                        _retry_response = await _llm_with_tools_req.ainvoke(_retry_msgs)
+                        _retry_response = await ainvoke_with_deadline(
+                            _llm_with_tools_req, _retry_msgs, tier=_tier, surface="general-retry")
                         _retry_tc = getattr(_retry_response, "tool_calls", None) or []
                         _retry_content = getattr(_retry_response, "content", "") or ""
                         if _retry_tc:
@@ -1122,7 +1125,8 @@ def create_agent_node():
                                 )
                             else:
                                 _new_with_tools = _new_llm
-                            response = await _new_with_tools.ainvoke(_fallback_msgs)
+                            response = await ainvoke_with_deadline(
+                                _new_with_tools, _fallback_msgs, tier=_tier, surface="general-fallback")
                             logger.warning(
                                 "[fallback] succeeded with %r", _new_provider_id,
                             )
@@ -1177,7 +1181,8 @@ def create_agent_node():
                                 if _bind_tools_flag
                                 else fallback_llm
                             )
-                            response = await _legacy_with_tools.ainvoke(_fallback_msgs)
+                            response = await ainvoke_with_deadline(
+                                _legacy_with_tools, _fallback_msgs, tier=_tier, surface="general-legacy")
                             logger.info(
                                 "[fallback] legacy succeeded with %s", fallback_label,
                             )

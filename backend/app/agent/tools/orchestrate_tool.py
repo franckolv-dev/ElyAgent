@@ -43,6 +43,7 @@ from typing import Annotated
 
 from langchain_core.tools import InjectedToolArg, tool
 
+from app.services.llm_deadline import ainvoke_with_deadline
 from app.skills.base import Domain
 from app.skills.decorator import register
 
@@ -402,7 +403,8 @@ async def _generate_script_from_intent(intent: str) -> str:
         content=f"Intent utilisateur :\n\n{intent}\n\nProduis le script Python."
     )
 
-    response = await llm.ainvoke([system_msg, user_msg])
+    response = await ainvoke_with_deadline(
+        llm, [system_msg, user_msg], tier="complex", surface="orchestrate")
     raw = response.content if hasattr(response, "content") else str(response)
     if isinstance(raw, list):
         # Some providers return content as a list of content blocks.

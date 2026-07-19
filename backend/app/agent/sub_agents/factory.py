@@ -33,6 +33,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.graph import StateGraph, END
 
 from app.agent.sub_agents.state import SubAgentState
+from app.services.llm_deadline import ainvoke_with_deadline
 
 if TYPE_CHECKING:
     from app.agent.sub_agents.config import SubAgentConfig
@@ -204,6 +205,7 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             # MEDIUM tier ensures a reliable tool-caller (typically Qwen 3.6 Plus,
             # Claude Haiku, or whatever the user picked in Settings → Routage).
             _TOOL_HEAVY_AGENTS = {"workspace", "infra", "diag"}
+            tier = None  # C3d-2 : borne l'échéance murale (None → MEDIUM)
             if cfg.llm_provider is not None:
                 llm = get_llm_for_agent(cfg)
             elif cfg.name in _TOOL_HEAVY_AGENTS:
@@ -500,7 +502,9 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             logger.warning("⏱ TIMING[%s.prep] %.2fs — model=%s, tools=%d, msgs=%d", cfg.name, _prep_time, _model_name, len(agent_tools), len(messages))
             _infer_start = _t.monotonic()
             try:
-                response = await llm_with_tools.ainvoke(_invoke_msgs)
+                response = await ainvoke_with_deadline(
+                    llm_with_tools, _invoke_msgs, tier=tier,
+                    surface=f"sub-agent:{cfg.name}")
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
 
@@ -570,7 +574,9 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                                 _fb_bound = _fb_llm.bind_tools(agent_tools)
                             try:
                                 _fb_t = _t.monotonic()
-                                response = await _fb_bound.ainvoke(_fb_msgs)
+                                response = await ainvoke_with_deadline(
+                                    _fb_bound, _fb_msgs, tier=tier,
+                                    surface=f"sub-agent:{cfg.name}:fb-toolchoice")
                                 _n_tc2 = len(getattr(response, 'tool_calls', []) or [])
                                 logger.warning(
                                     "🔁 [%s.fallback] %.2fs — %s, tool_calls=%d",
@@ -602,7 +608,9 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 for _fb_label, _fb_llm in get_fallback_llms():
                     try:
                         _fb_with_tools = _fb_llm.bind_tools(agent_tools)
-                        response = await _fb_with_tools.ainvoke(_fb_msgs2)
+                        response = await ainvoke_with_deadline(
+                            _fb_with_tools, _fb_msgs2, tier=tier,
+                            surface=f"sub-agent:{cfg.name}:fb-exc")
                         logger.info(
                             "Sub-agent '%s' fallback succeeded with %s",
                             cfg.name, _fb_label,
