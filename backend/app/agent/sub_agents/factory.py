@@ -34,6 +34,7 @@ from langgraph.graph import StateGraph, END
 
 from app.agent.sub_agents.state import SubAgentState
 from app.services.llm_deadline import ainvoke_with_deadline
+from app.services.routing_trace import note as routing_note
 
 if TYPE_CHECKING:
     from app.agent.sub_agents.config import SubAgentConfig
@@ -500,6 +501,16 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
             _model_name = getattr(llm, 'model', None) or getattr(llm, 'model_name', '?')
             _prep_time = _t.monotonic() - _t_start
             logger.warning("⏱ TIMING[%s.prep] %.2fs — model=%s, tools=%d, msgs=%d", cfg.name, _prep_time, _model_name, len(agent_tools), len(messages))
+            # C3d-4 — modèle/tier résolus PAR CYCLE (leçon #210 : la sélection
+            # peut changer en plein tour — elle doit être visible à chaque fois).
+            routing_note(
+                state.get("conversation_id", ""), "subagent",
+                user_id=state.get("user_id", ""),
+                decision=str(_model_name),
+                agent=cfg.name,
+                tier=getattr(tier, "value", None) or "agent-config",
+                msgs=len(messages),
+            )
             _infer_start = _t.monotonic()
             try:
                 response = await ainvoke_with_deadline(
@@ -600,6 +611,13 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                 logger.warning(
                     "Sub-agent '%s' primary LLM failed (%s: %s) — trying fallbacks",
                     cfg.name, _fail_reason.value, _primary_exc,
+                )
+                # C3d-4 — rotation locale du sous-agent tracée.
+                routing_note(
+                    state.get("conversation_id", ""), "subagent_fallback",
+                    user_id=state.get("user_id", ""),
+                    decision=_fail_reason.value,
+                    agent=cfg.name,
                 )
                 response = None
                 # Fallback LLMs are non-Qwen — strip /no_think.
