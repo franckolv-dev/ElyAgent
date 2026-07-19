@@ -191,3 +191,57 @@ def test_skill_autocreate_notifies_promotions():
         "L'auto-promotion des playbooks est conservée mais ne doit plus être "
         "silencieuse (arbitrage 19/07)."
     )
+
+
+# ── C4-2b — report_missing_capability (le déclencheur RÉALISTE) ─────────────
+# Un vrai gap a presque toujours des faux-matchs faibles (« pdf » ⊂ outils
+# pdf non pertinents) : le no-match strict de find_tool ne suffit pas — le
+# modèle doit pouvoir CONSIGNER son jugement de non-pertinence.
+
+
+@pytest.mark.asyncio
+async def test_report_refuses_when_existing_tool_covers(monkeypatch):
+    from app.skills.builtin import find_tool_skill as fts
+
+    monkeypatch.setattr(fts, "capability_has_existing_tool", _Recorder("sheets_read_spreadsheet"))
+    rec = _Recorder("ne doit pas être appelé")
+    monkeypatch.setattr(fts, "_record_gap_and_trigger", rec)
+    out = await fts.report_missing_capability.ainvoke(
+        {"capability": "lire un google sheet"})
+    assert "sheets_read_spreadsheet" in out and "non consigné" in out
+    assert rec.calls == []
+
+
+@pytest.mark.asyncio
+async def test_report_records_and_triggers_on_real_gap(monkeypatch):
+    from app.skills.builtin import find_tool_skill as fts
+
+    monkeypatch.setattr(fts, "capability_has_existing_tool", _Recorder(None))
+    rec = _Recorder("consigné — génération lancée")
+    monkeypatch.setattr(fts, "_record_gap_and_trigger", rec)
+    out = await fts.report_missing_capability.ainvoke(
+        {"capability": "convertir un pdf en docx"})
+    assert out == "consigné — génération lancée"
+    assert len(rec.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_report_requires_a_description():
+    from app.skills.builtin import find_tool_skill as fts
+
+    out = await fts.report_missing_capability.ainvoke({"capability": "  "})
+    assert "Précise" in out
+
+
+def test_report_tool_is_bound_and_prompted():
+    from app.agent.toolset_profiles import _DEFAULT_TOOLS
+
+    assert "report_missing_capability" in _DEFAULT_TOOLS, (
+        "L'outil de consignation doit être toujours bindé (comme find_tool) — "
+        "un déclencheur invisible est un funnel mort."
+    )
+    prompts = (_REPO / "app/agent/prompts.py").read_text(encoding="utf-8")
+    assert "report_missing_capability" in prompts, (
+        "Le prompt doit dire QUAND l'appeler : résultats de find_tool non "
+        "pertinents → consigner."
+    )

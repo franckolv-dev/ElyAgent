@@ -146,56 +146,8 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     top = await _rank_capability(capability, k)
     if not top:
         # Nothing matched the FULL catalog → genuine capability gap (not a
-        # binding gap). Record the tool_absent_acknowledged signal, then
-        # (C4-2) kick the auto-generation in the background — the candidate
-        # will await HUMAN validation before ever being bindable.
-        _case_id = None
-        _gap_user = ""
-        try:
-            from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
-            from app.services.learning.failure_capture import record_tool_absent
-            from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
-
-            _gap_user = LEARNED_TOOL_USER_ID.get() or ""
-            _case_id = await record_tool_absent(
-                user_id=_gap_user,
-                capability=capability,
-                conversation_id=ORCHESTRATE_CONVERSATION_ID.get() or None,
-            )
-        except Exception as exc:  # noqa: BLE001 — recording must never break the turn
-            logger.debug("find_tool: gap recording skipped: %s", exc)
-        _auto_gen = False
-        if _case_id:
-            try:
-                from app.config import get_settings
-                from app.services.background_tasks import spawn
-                from app.services.learning.auto_tool_generation import (
-                    maybe_generate_for_gap,
-                )
-
-                _auto_gen = bool(get_settings().auto_tool_generation_enabled)
-                if _auto_gen:
-                    spawn(
-                        maybe_generate_for_gap(_case_id, capability, _gap_user),
-                        label="auto-tool-generation",
-                    )
-            except Exception as exc:  # noqa: BLE001 — le déclencheur non plus
-                logger.debug("find_tool: auto-generation skipped: %s", exc)
-                _auto_gen = False
-        if _auto_gen:
-            return (
-                f"Aucun outil existant ne correspond à « {capability} ». "
-                "Capacité réellement absente — consignée dans "
-                "les « Capacités manquantes », et la génération d'un outil "
-                "candidat démarre automatiquement : il sera soumis à "
-                "validation humaine avant d'être utilisable."
-            )
-        return (
-            f"Aucun outil existant ne correspond à « {capability} ». "
-            "Capacité réellement absente — consignée dans "
-            "les « Capacités manquantes » : un outil peut y être généré "
-            "puis soumis à validation humaine avant d'être utilisable."
-        )
+        # binding gap): record + (C4-2) auto-generate via the shared path.
+        return await _record_gap_and_trigger(capability)
 
     # Record discoveries so agent_node binds them on the next turn (sticky).
     try:
@@ -209,6 +161,95 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     lines = [f"Outils disponibles pour « {capability} » (utilise-les directement maintenant) :"]
     lines += [f"  • {name} — {_tool_first_sentence.get(name, '')}" for name in top]
     return "\n".join(lines)
+
+
+async def _record_gap_and_trigger(capability: str) -> str:
+    """Consigne un gap réel + (C4-2) lance l'auto-génération. Message inclus.
+
+    Chemin PARTAGÉ entre le no-match de ``find_tool`` (score zéro sur tout le
+    catalogue) et ``report_missing_capability`` (C4-2b : le modèle juge les
+    résultats non pertinents — le cas RÉALISTE, un vrai gap a presque toujours
+    des faux-matchs faibles type « pdf » ⊂ outils pdf non pertinents).
+    """
+    _case_id = None
+    _gap_user = ""
+    try:
+        from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+        from app.services.learning.failure_capture import record_tool_absent
+        from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
+
+        _gap_user = LEARNED_TOOL_USER_ID.get() or ""
+        _case_id = await record_tool_absent(
+            user_id=_gap_user,
+            capability=capability,
+            conversation_id=ORCHESTRATE_CONVERSATION_ID.get() or None,
+        )
+    except Exception as exc:  # noqa: BLE001 — recording must never break the turn
+        logger.debug("find_tool: gap recording skipped: %s", exc)
+    _auto_gen = False
+    if _case_id:
+        try:
+            from app.config import get_settings
+            from app.services.background_tasks import spawn
+            from app.services.learning.auto_tool_generation import (
+                maybe_generate_for_gap,
+            )
+
+            _auto_gen = bool(get_settings().auto_tool_generation_enabled)
+            if _auto_gen:
+                spawn(
+                    maybe_generate_for_gap(_case_id, capability, _gap_user),
+                    label="auto-tool-generation",
+                )
+        except Exception as exc:  # noqa: BLE001 — le déclencheur non plus
+            logger.debug("find_tool: auto-generation skipped: %s", exc)
+            _auto_gen = False
+    if _auto_gen:
+        return (
+            f"Aucun outil existant ne couvre « {capability} ». "
+            "Capacité réellement absente — consignée dans "
+            "les « Capacités manquantes », et la génération d'un outil "
+            "candidat démarre automatiquement : il sera soumis à "
+            "validation humaine avant d'être utilisable."
+        )
+    return (
+        f"Aucun outil existant ne couvre « {capability} ». "
+        "Capacité réellement absente — consignée dans "
+        "les « Capacités manquantes » : un outil peut y être généré "
+        "puis soumis à validation humaine avant d'être utilisable."
+    )
+
+
+@tool
+async def report_missing_capability(capability: str) -> str:
+    """Consigner une capacité RÉELLEMENT absente et lancer la génération d'un outil candidat.
+
+    APPELLE CET OUTIL quand `find_tool` a renvoyé des résultats qui ne
+    couvrent PAS le besoin (faux-matchs — ex. des outils « pdf » qui ne
+    convertissent pas), ou quand l'utilisateur te signale explicitement une
+    capacité manquante à implémenter. La consignation apparaît dans
+    « Capacités manquantes » ; un outil candidat est généré automatiquement
+    puis soumis à validation humaine avant d'être utilisable.
+
+    Args:
+        capability: description en langage naturel de la capacité absente
+            (ex. « convertir un fichier PDF en fichier .docx »).
+    """
+    capability = (capability or "").strip()
+    if not capability:
+        return "Précise la capacité manquante (description en langage naturel)."
+    # Anti-bruit : si un outil existant couvre FORTEMENT la capacité, ne pas
+    # consigner un faux gap — renvoyer le modèle vers l'existant.
+    try:
+        existing = await capability_has_existing_tool(capability)
+    except Exception:  # noqa: BLE001
+        existing = None
+    if existing:
+        return (
+            f"Un outil existant couvre déjà cette capacité : {existing}. "
+            "Utilise-le (via find_tool si besoin) — gap non consigné."
+        )
+    return await _record_gap_and_trigger(capability)
 
 
 async def _rank_capability(capability: str, k: int) -> list[str]:
@@ -290,5 +331,5 @@ get_skill_registry().register(Skill(
     icon="🧭",
     scopes=[],
     domains=[Domain.UNIVERSAL],
-    tools=[find_tool],
+    tools=[find_tool, report_missing_capability],
 ))
