@@ -55,6 +55,7 @@ class EventKind(str, Enum):
     COST = "cost"
     INCIDENT = "incident"
     COMPENSATION = "compensation"   # annulation d'une action (Reversible Journal)
+    ROUTING = "routing"             # décision de routage LLM (C3d-4)
 
 
 class EventEnvelope(BaseModel):

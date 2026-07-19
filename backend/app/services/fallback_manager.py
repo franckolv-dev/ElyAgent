@@ -317,6 +317,10 @@ def try_activate(
         )
         # Still record the failed attempt for diagnostics.
         state.reason_history.append((reason, old_provider, "", time.time()))
+        # C3d-4 — épuisement de chaîne tracé (import local : pas de cycle).
+        from app.services.routing_trace import note as _rt_note
+        _rt_note(conversation_id, "switch", decision="exhausted",
+                 last_provider=str(old_provider), reason=reason.value)
         return None
 
     new_provider = state.current_provider
@@ -341,6 +345,11 @@ def try_activate(
         conversation_id, old_provider, new_provider, reason.value,
         state.current_index + 1, len(state.chain),
     )
+    # C3d-4 — bascule de chaîne tracée (import local : pas de cycle).
+    from app.services.routing_trace import note as _rt_note
+    _rt_note(conversation_id, "switch", decision=str(new_provider),
+             from_provider=str(old_provider), reason=reason.value,
+             chain_pos=state.current_index + 1, chain_len=len(state.chain))
     return new_provider
 
 

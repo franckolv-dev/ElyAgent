@@ -26,6 +26,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.agent.state import AgentState
 from app.services.background_tasks import spawn
 from app.services.llm_deadline import ainvoke_with_deadline
+from app.services.routing_trace import note as routing_note
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_llm, get_fallback_llms
@@ -207,6 +208,13 @@ def create_agent_node():
             decision = intent_router.route(user_query, history=messages[:-1])
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
+            # C3d-4 — décision SLM-vs-cloud tracée (aspect "slm").
+            routing_note(
+                state.get("conversation_id", ""), "slm",
+                user_id=state.get("user_id", ""),
+                decision="slm" if use_slm else "cloud",
+                score=decision.score,
+            )
 
         # Refactor 2026-05-25 Phase 4.2 — date / language / IMPORTANT note
         # builders extracted to app/agent/builders/system_prompt.py.
@@ -507,6 +515,15 @@ def create_agent_node():
                         "[chantier4] conv=%s tier=%s chain=%s active_idx=%d (provider=%r)",
                         _conv_id_fb[:8], _tier.value, _chain,
                         _fb_state.current_index, _fb_state.current_provider,
+                    )
+                    # C3d-4 — départ de tour tracé : tier + chaîne + position.
+                    routing_note(
+                        _conv_id_fb, "turn",
+                        user_id=state.get("user_id", ""),
+                        decision=_tier.value,
+                        chain_len=len(_chain),
+                        active_idx=_fb_state.current_index,
+                        provider=str(_fb_state.current_provider),
                     )
                 else:
                     logger.info(

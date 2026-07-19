@@ -68,6 +68,7 @@ from app.agent.state import AgentState
 from app.agent.nodes import tool_node, should_continue, create_agent_node
 from app.config import get_settings
 from app.services.llm_deadline import ainvoke_with_deadline
+from app.services.routing_trace import note as routing_note
 from app.services.llm_provider import get_llm, get_llm_for_tier, ComplexityTier
 
 logger = logging.getLogger(__name__)
@@ -1159,6 +1160,11 @@ def _make_dispatch_node(domain: str):
         sub_graph = registry.get(domain)
 
         logger.warning("⏱ TIMING[dispatch→%s] starting", domain)
+        # C3d-4 — domaine spécialiste retenu par le routeur, tracé.
+        routing_note(
+            state.get("conversation_id", ""), "domain",
+            user_id=state.get("user_id", ""), decision=domain,
+        )
 
         if sub_graph is None:
             logger.warning(
