@@ -66,6 +66,8 @@ from pydantic import BaseModel
 
 from app.agent.state import AgentState
 from app.agent.nodes import tool_node, should_continue, create_agent_node
+from app.config import get_settings
+from app.services.llm_deadline import ainvoke_with_deadline
 from app.services.llm_provider import get_llm, get_llm_for_tier, ComplexityTier
 
 logger = logging.getLogger(__name__)
@@ -992,7 +994,9 @@ async def router_node(state: AgentState) -> dict:
         # Only Qwen understands /no_think; other models would echo it.
         if is_qwen_llm(llm):
             _msgs = inject_no_think(_msgs)
-        response = await llm.ainvoke(_msgs)
+        response = await ainvoke_with_deadline(
+            llm, _msgs,
+            timeout_s=get_settings().llm_deadline_router_s, surface="router-llm")
         response.content = strip_think_block(getattr(response, 'content', '') or '')
         domain = response.content.strip().lower()
         if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "desktop", "general", "diag"):

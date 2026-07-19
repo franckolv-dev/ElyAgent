@@ -23,6 +23,7 @@ from langchain_core.messages import HumanMessage
 
 from app.agent.helpers.message_sanitizer import _sanitize_messages_for_mistral
 from app.agent.routing import MAX_AGENT_ITERATIONS
+from app.services.llm_deadline import ainvoke_with_deadline
 from app.agent.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ async def force_summary_node(state: AgentState) -> dict:
 
     _sanitized = _sanitize_messages_for_mistral(list(messages) + [forcing_msg])
     try:
-        response = await llm.ainvoke(_sanitized)
+        response = await ainvoke_with_deadline(llm, _sanitized, surface="force-summary")
         logger.warning(
             "[force_summary] success : produced %d chars of summary",
             len(getattr(response, "content", "") or ""),

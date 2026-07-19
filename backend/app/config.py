@@ -75,6 +75,17 @@ class Settings(BaseSettings):
     slm_complexity_threshold: int = 40   # 0-100 ; en-dessous → SLM, au-dessus → LLM
     slm_timeout: float = 25.0            # secondes avant fallback automatique vers LLM
 
+    # C3d-2 — échéances MURALES par appel LLM (wall-clock, asyncio.wait_for).
+    # Le timeout httpx est PAR LECTURE : un stream qui goutte ne le déclenche
+    # jamais (pendaison réelle de 907 s le 18/07/2026). Ces échéances bornent
+    # l'attente totale d'un appel ; le TimeoutError levé contient « timed out »
+    # → classé FailoverReason.TIMEOUT → la rotation de chaîne prend le relais.
+    llm_deadline_simple_s: float = 30.0
+    llm_deadline_medium_s: float = 120.0
+    llm_deadline_complex_s: float = 240.0
+    llm_deadline_mission_act_s: float = 180.0
+    llm_deadline_router_s: float = 10.0
+
     # Auth
     jwt_secret_key: str = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
     jwt_algorithm: str = "HS256"

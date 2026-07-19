@@ -39,6 +39,8 @@ from langchain_core.messages import (
 
 from app.agent.helpers.message_content import content_to_text
 from app.agent.missions.state import MissionState
+from app.config import get_settings
+from app.services.llm_deadline import ainvoke_with_deadline
 from app.services import mission_service
 
 logger = logging.getLogger(__name__)
@@ -1145,7 +1147,8 @@ async def plan_node(state: MissionState) -> dict:
     # et l'utilisateur vivent dans le monde réel).
     from app.agent.missions.pii import anonymize_messages, deanonymize_any, mission_filter
     _sf = mission_filter(mission_id)
-    response = await llm.ainvoke(anonymize_messages(_sf, messages))
+    response = await ainvoke_with_deadline(
+        llm, anonymize_messages(_sf, messages), surface="mission-plan")
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "plan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     # content_to_text AVANT deanonymize : certains providers (openai-codex /
@@ -1427,7 +1430,9 @@ async def act_node(state: MissionState) -> dict:
     tool_calls = []
     model_used = "medium-tier (primary)"
     try:
-        response = await primary_llm.ainvoke(messages)
+        response = await ainvoke_with_deadline(
+            primary_llm, messages,
+            timeout_s=get_settings().llm_deadline_mission_act_s, surface="mission-act")
         await _log_mission_llm_usage(response, state["user_id"], mission_id, "act", primary_llm)
         tool_calls = getattr(response, "tool_calls", []) or []
     except Exception as exc:
@@ -1459,7 +1464,10 @@ async def act_node(state: MissionState) -> dict:
         for label, fb_llm in fallbacks:
             try:
                 t_fb = time.monotonic()
-                response = await fb_llm.ainvoke(messages)
+                response = await ainvoke_with_deadline(
+                    fb_llm, messages,
+                    timeout_s=get_settings().llm_deadline_mission_act_s,
+                    surface="mission-act-fallback")
                 await _log_mission_llm_usage(response, state["user_id"], mission_id, "act_fallback", fb_llm)
                 tool_calls = getattr(response, "tool_calls", []) or []
                 logger.warning(
@@ -1822,7 +1830,9 @@ async def eval_node(state: MissionState) -> dict:
     # (reason, final_summary) est dé-anonymisé avant parse/persist.
     from app.agent.missions.pii import anonymize_messages, deanonymize_any, mission_filter
     _sf = mission_filter(mission_id)
-    response = await llm.ainvoke(anonymize_messages(_sf, [HumanMessage(content=prompt)]))
+    response = await ainvoke_with_deadline(
+        llm, anonymize_messages(_sf, [HumanMessage(content=prompt)]),
+        surface="mission-llm")
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "eval", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     raw = deanonymize_any(_sf, content_to_text(getattr(response, "content", "")))
@@ -2054,7 +2064,9 @@ async def replan_node(state: MissionState) -> dict:
     # Cycle PII missions — même couture que plan/act/eval.
     from app.agent.missions.pii import anonymize_messages, deanonymize_any, mission_filter
     _sf = mission_filter(mission_id)
-    response = await llm.ainvoke(anonymize_messages(_sf, [HumanMessage(content=prompt)]))
+    response = await ainvoke_with_deadline(
+        llm, anonymize_messages(_sf, [HumanMessage(content=prompt)]),
+        surface="mission-llm")
     await _log_mission_llm_usage(response, state["user_id"], mission_id, "replan", llm)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     raw = deanonymize_any(_sf, content_to_text(getattr(response, "content", "")))
