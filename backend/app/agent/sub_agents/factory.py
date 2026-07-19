@@ -587,20 +587,19 @@ def build_sub_agent_graph(config: "SubAgentConfig"):
                             except Exception as _fb_exc:
                                 logger.warning("Fallback %s also failed: %s", _fb_label, _fb_exc)
             except Exception as _primary_exc:
-                # Recover from quota/rate-limit/auth errors by trying fallbacks
+                # C3d-3 : classification UNIFIÉE (même mapping que la rotation
+                # chantier4 du nœud général). L'ancienne liste inline divergeait
+                # — pas de timeout/codex/context-length : un dépassement
+                # d'échéance murale (C3d-2) tuait le sous-agent au lieu de
+                # tourner sur ses fallbacks. None = vrai bug → propagé.
+                from app.services.fallback_manager import classify_exception
                 from app.services.llm_provider import get_fallback_llms
-                _exc_str = str(_primary_exc).lower()
-                _recoverable = any(k in _exc_str for k in (
-                    "429", "rate", "quota", "insuffi", "401", "403", "404",
-                    "not_found", "not found", "overloaded", "503", "unavailable",
-                    "deprecated", "no longer available",
-                    "invalid_argument", "bad request", "400",
-                ))
-                if not _recoverable:
+                _fail_reason = classify_exception(_primary_exc)
+                if _fail_reason is None:
                     raise
                 logger.warning(
-                    "Sub-agent '%s' primary LLM failed (%s) — trying fallbacks",
-                    cfg.name, _primary_exc,
+                    "Sub-agent '%s' primary LLM failed (%s: %s) — trying fallbacks",
+                    cfg.name, _fail_reason.value, _primary_exc,
                 )
                 response = None
                 # Fallback LLMs are non-Qwen — strip /no_think.

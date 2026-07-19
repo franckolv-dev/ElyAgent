@@ -1438,7 +1438,16 @@ async def act_node(state: MissionState) -> dict:
     except Exception as exc:
         # Known MLX limitation : Gemma 4 21B REAP-4bit + 76 tools bound
         # → "RotatingKVCache Quantization NYI". Fallthrough to Gemini.
-        logger.warning("[mission %s] act: primary LLM raised %s — falling back", mission_id, type(exc).__name__)
+        # C3d-3 : raison classée avec le mapping unifié (observabilité) —
+        # la boucle de fallback missions reste INCONDITIONNELLE (le
+        # heartbeat ne doit jamais crasher sur un acteur).
+        from app.services.fallback_manager import classify_exception
+        _fail_reason = classify_exception(exc)
+        logger.warning(
+            "[mission %s] act: primary LLM raised %s (reason=%s) — falling back",
+            mission_id, type(exc).__name__,
+            _fail_reason.value if _fail_reason else "unclassified",
+        )
         response = None
 
     # Sprint 4c — l'acteur a signalé un cas particulier prévu par la spec :

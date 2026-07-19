@@ -637,6 +637,12 @@ async def execute_tool_call(
                     logger.debug("post_execute hook failed: %s", _pe_exc)
             if meta is not None:
                 meta["success"] = True
+            # C3d-3 — registre de tour : mémorise le résultat ANONYMISÉ pour
+            # que le général de secours en hérite si le sous-agent meurt
+            # APRÈS cet appel (fallback honnête — exhibits 18/07 : « accès
+            # Gmail indisponible » confabulé alors que le résultat était là).
+            from app.services.turn_ledger import record as _ledger_record
+            _ledger_record(ctx.conversation_id, tool_name, _safe_result)
             _msg = _tool_result(_safe_result, tc_id)
             # P1/J3 — mémorise le résultat d'une action « supported » réussie
             # (no-op si le manifeste ne déclare pas l'idempotence).
