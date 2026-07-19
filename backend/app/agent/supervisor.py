@@ -838,6 +838,10 @@ async def router_node(state: AgentState) -> dict:
     """Classify the user's request and set the routing domain in state."""
     import time as _t
     _start = _t.monotonic()
+    # C3d-3 — nouveau tour utilisateur : registre de tour vierge (sinon le
+    # fallback honnête hériterait des résultats d'un tour PRÉCÉDENT).
+    from app.services.turn_ledger import clear as _ledger_clear
+    _ledger_clear(state.get("conversation_id", ""))
     messages = state["messages"]
     last_user_msg = ""
     for m in reversed(messages):
@@ -1290,6 +1294,27 @@ def _make_dispatch_node(domain: str):
             general = create_agent_node()
             current_state = dict(state)
             current_state["messages"] = _ensure_base_messages(current_state.get("messages", []))
+            # C3d-3 — fallback HONNÊTE : le général de secours doit savoir que
+            # l'échec du spécialiste était TECHNIQUE (pas un problème d'accès)
+            # et hériter des résultats d'outils déjà acquis ce tour (registre
+            # passerelle) — l'état interne du subgraph est perdu avec
+            # l'exception. Exhibits 18/07 : ×4 « accès Gmail indisponible »
+            # confabulé après un gmail_list_emails pourtant réussi.
+            from langchain_core.messages import SystemMessage as _SysM
+            from app.services.fallback_manager import classify_exception as _clf_exc
+            from app.services.turn_ledger import (
+                entries as _ledger_entries,
+                technical_failure_notice,
+            )
+            _fail_reason = _clf_exc(exc)
+            _notice = technical_failure_notice(
+                domain,
+                _fail_reason.value if _fail_reason else type(exc).__name__,
+                _ledger_entries(state.get("conversation_id", "")),
+            )
+            current_state["messages"] = [
+                *current_state["messages"], _SysM(content=_notice),
+            ]
             MAX_STEPS = 10
             for _ in range(MAX_STEPS):
                 result = await general(current_state)
