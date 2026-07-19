@@ -160,6 +160,41 @@ Réponds UNIQUEMENT avec le nom de la catégorie en minuscules (research / works
 Aucune explication. Aucun autre texte.
 """.format(**_DOMAIN_DESCRIPTIONS)
 
+# C3d-5 — vocabulaire de l'arbitre. « general » volontairement en DERNIER :
+# c'est un substring fréquent des explications des petits modèles — le scan
+# tolérant doit trouver un spécialiste d'abord.
+_ROUTER_DOMAINS = (
+    "research", "workspace", "infra", "creative", "data",
+    "memory", "desktop", "diag", "general",
+)
+
+
+def _parse_router_domain(raw: str) -> str:
+    """Sortie de l'arbitre → domaine (C3d-5).
+
+    Égalité stricte d'abord ; sinon parse TOLÉRANT : les modèles locaux
+    enrobent souvent la réponse (« La catégorie est workspace. ») et
+    l'égalité stricte jetait l'arbitrage pour retomber sur general — la
+    passe 2 tournait alors pour rien. Inconnu → general.
+    """
+    cleaned = (raw or "").strip().lower()
+    if cleaned in _ROUTER_DOMAINS:
+        return cleaned
+    return next((d for d in _ROUTER_DOMAINS if d in cleaned), "general")
+
+
+def _routing_keyword_candidate(msg: str) -> str | None:
+    """Requête courte (≤ 4 mots) → candidate mot-clé pour le routeur rapide.
+
+    Une requête longue n'a pas de mot-clé fiable dérivable automatiquement
+    → None (ne rien apprendre vaut mieux qu'apprendre du bruit). L'activation
+    reste gardée par le seuil de confiance (3 arbitrages concordants).
+    """
+    tokens = (msg or "").strip().lower().split()
+    if not tokens or len(tokens) > 4:
+        return None
+    return " ".join(tokens)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Specialist system prompts
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1003,9 +1038,26 @@ async def router_node(state: AgentState) -> dict:
             llm, _msgs,
             timeout_s=get_settings().llm_deadline_router_s, surface="router-llm")
         response.content = strip_think_block(getattr(response, 'content', '') or '')
-        domain = response.content.strip().lower()
-        if domain not in ("research", "workspace", "infra", "creative", "data", "memory", "desktop", "general", "diag"):
-            domain = "general"
+        domain = _parse_router_domain(response.content)
+        # C3d-5 — arbitrage tracé (la passe 2 était la seule décision muette).
+        routing_note(
+            state.get("conversation_id", ""), "domain",
+            user_id=state.get("user_id", ""), decision=domain,
+            arbiter="llm-pass2",
+        )
+        # C3d-5 — l'arbitrage DEVIENT apprentissage : la décision LLM propose
+        # un mot-clé au routeur rapide (actif après 3 concordances, cf.
+        # routing_learning.AUTO_CONFIRM_THRESHOLD) — la passe 2 se rend
+        # elle-même inutile sur les requêtes récurrentes. propose_keyword
+        # n'avait aucun appelant automatique (funnel sans déclencheur).
+        _kw_cand = _routing_keyword_candidate(last_user_msg)
+        if domain != "general" and _kw_cand:
+            from app.services.background_tasks import spawn as _spawn
+            from app.services.routing_learning import propose_keyword as _propose_kw
+            _spawn(
+                _propose_kw(_kw_cand, domain, _uid, rationale="router-llm-pass2"),
+                label="routing-learn-pass2",
+            )
     except Exception as exc:
         logger.warning("Router LLM failed, falling back to general: %s", exc)
         domain = "general"
