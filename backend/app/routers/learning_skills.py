@@ -121,6 +121,13 @@ class ToolCreatorRunRequest(BaseModel):
             "(every LearnedSkill is user-scoped)."
         ),
     )
+    force: bool = Field(
+        False,
+        description=(
+            "C4-2 — outrepasser le pré-check sémantique anti-doublon "
+            "(générer même si un outil existant semble couvrir la capacité)."
+        ),
+    )
     smoke_kwargs: Optional[dict[str, Any]] = Field(
         None,
         description=(
@@ -258,6 +265,24 @@ async def run_tool_creator(
     The response echoes `python_tools_enabled` so the caller knows whether a
     promoted tool would actually go live.
     """
+    # C4-2 — pré-check sémantique anti-doublon : ne pas dépenser du tier-S si
+    # un outil existant couvre déjà la capacité (trou de binding, leçon
+    # Drive/Sheets). `force=true` outrepasse en connaissance de cause.
+    if not body.force:
+        from app.skills.builtin.find_tool_skill import capability_has_existing_tool
+
+        _existing = await capability_has_existing_tool(body.task_description)
+        if _existing:
+            return {
+                "status": "exists",
+                "tool_name": _existing,
+                "detail": (
+                    "Un outil existant couvre déjà cette capacité — génération "
+                    "refusée (passer force=true pour outrepasser)."
+                ),
+                "python_tools_enabled": python_tools_enabled(),
+                "attempts": [],
+            }
     try:
         summary = await generate_and_persist_tool(
             task_description=body.task_description,

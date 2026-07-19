@@ -118,4 +118,16 @@ async def run_pending_skill_creation() -> dict:
             summary["users"], summary["drafts"], summary["passed"],
             summary["promoted"],
         )
+    # C4-2 / arbitrage 19-07 — l'auto-promotion des playbooks est CONSERVÉE
+    # (texte à faible risque, le curator fait le ménage) mais plus jamais
+    # silencieuse : push d'information à chaque activation automatique.
+    if summary.get("promoted"):
+        try:
+            from app.services.learning.candidate_notify import (
+                notify_playbook_activated,
+            )
+
+            await notify_playbook_activated(int(summary["promoted"]))
+        except Exception as exc:  # noqa: BLE001 — jamais bloquant
+            logger.debug("skill_autocreate: notify skipped: %s", exc)
     return summary
