@@ -47,11 +47,15 @@ async def _push(title: str, body: str, *, tags: str, priority: str = "default") 
     try:
         import httpx
 
+        from app.services.ntfy_headers import ascii_header
+
         async with httpx.AsyncClient(timeout=5) as c:
             await c.post(
                 ntfy_url,
                 headers={
-                    "Title": title[:120],
+                    # ascii_header : httpx encode les en-têtes en ASCII — un
+                    # « — » a tué le tout premier push candidate (19/07).
+                    "Title": ascii_header(title)[:120],
                     "Tags": tags,
                     "Priority": priority,
                 },
