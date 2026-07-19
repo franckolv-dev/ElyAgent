@@ -54,13 +54,15 @@ def reset_attempts() -> None:
 
 
 async def maybe_generate_for_gap(
-    case_id: int, capability: str, user_id: str,
+    case_id: int, capability: str, user_id: str, *, skip_precheck: bool = False,
 ) -> dict | None:
     """Génère un outil candidate pour un gap consigné. Jamais levant.
 
     Retourne le résumé de génération (dict) quand une génération a eu lieu,
     ``None`` quand une garde a court-circuité (flag OFF, déjà tenté,
-    outil existant, entrées invalides).
+    outil existant, entrées invalides). ``skip_precheck=True`` quand la
+    pertinence a DÉJÀ été jugée par le modèle (report_missing_capability) —
+    le pré-check lexical n'a pas de droit de veto sur ce jugement.
     """
     try:
         from app.config import get_settings
@@ -75,16 +77,20 @@ async def maybe_generate_for_gap(
         _attempted_cases.add(case_id)
 
         # 3. Pré-check sémantique : existe-t-il DÉJÀ un outil pour ça ?
-        from app.skills.builtin.find_tool_skill import capability_has_existing_tool
-
-        existing = await capability_has_existing_tool(capability)
-        if existing:
-            logger.info(
-                "auto_tool_gen: gap #%s « %.60s » couvert par l'outil existant "
-                "%r — pas de génération (trou de binding, pas de capacité absente)",
-                case_id, capability, existing,
+        if not skip_precheck:
+            from app.skills.builtin.find_tool_skill import (
+                capability_has_existing_tool,
             )
-            return None
+
+            existing = await capability_has_existing_tool(capability)
+            if existing:
+                logger.info(
+                    "auto_tool_gen: gap #%s « %.60s » couvert par l'outil "
+                    "existant %r — pas de génération (trou de binding, pas de "
+                    "capacité absente)",
+                    case_id, capability, existing,
+                )
+                return None
 
         logger.info(
             "auto_tool_gen: génération candidate pour gap #%s « %.80s »",

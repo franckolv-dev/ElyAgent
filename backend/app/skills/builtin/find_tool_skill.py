@@ -59,6 +59,12 @@ _tool_first_sentence: dict[str, str] = {}
 
 _SEM_WEIGHT = 0.5  # semantic is a tiebreak/enhancement; lexical leads
 
+# Méta-outils du funnel lui-même — JAMAIS candidats d'une recherche : le
+# docstring de report_missing_capability contient l'exemple « convertir un
+# fichier PDF en .docx »… que le pré-check a retrouvé à score 1.0 comme
+# « outil existant couvrant la capacité » (auto-empoisonnement, live 19/07).
+_META_TOOLS = frozenset({"find_tool", "report_missing_capability"})
+
 
 def _norm(s: str) -> str:
     """Lowercase + strip accents (so 'créé'~'cree', accent-insensitive)."""
@@ -163,13 +169,15 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     return "\n".join(lines)
 
 
-async def _record_gap_and_trigger(capability: str) -> str:
+async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False) -> str:
     """Consigne un gap réel + (C4-2) lance l'auto-génération. Message inclus.
 
     Chemin PARTAGÉ entre le no-match de ``find_tool`` (score zéro sur tout le
     catalogue) et ``report_missing_capability`` (C4-2b : le modèle juge les
     résultats non pertinents — le cas RÉALISTE, un vrai gap a presque toujours
     des faux-matchs faibles type « pdf » ⊂ outils pdf non pertinents).
+    ``model_judged=True`` : la pertinence a déjà été jugée par le modèle →
+    la génération saute son pré-check lexical (pas de double veto).
     """
     _case_id = None
     _gap_user = ""
@@ -198,7 +206,10 @@ async def _record_gap_and_trigger(capability: str) -> str:
             _auto_gen = bool(get_settings().auto_tool_generation_enabled)
             if _auto_gen:
                 spawn(
-                    maybe_generate_for_gap(_case_id, capability, _gap_user),
+                    maybe_generate_for_gap(
+                        _case_id, capability, _gap_user,
+                        skip_precheck=model_judged,
+                    ),
                     label="auto-tool-generation",
                 )
         except Exception as exc:  # noqa: BLE001 — le déclencheur non plus
@@ -238,18 +249,23 @@ async def report_missing_capability(capability: str) -> str:
     capability = (capability or "").strip()
     if not capability:
         return "Précise la capacité manquante (description en langage naturel)."
-    # Anti-bruit : si un outil existant couvre FORTEMENT la capacité, ne pas
-    # consigner un faux gap — renvoyer le modèle vers l'existant.
+    # Le modèle vient de VOIR les candidats de find_tool et les a jugés non
+    # pertinents — le pré-check lexical (juge plus faible) n'a pas de droit
+    # de veto sur ce jugement (leçon 19/07 : « drive_export_file » matchait
+    # « fichier+pdf+docx » à 0,67 et bloquait le gap PDF→DOCX fondateur).
+    # Il reste INFORMATIF : un voisin lexical fort est signalé en caveat.
+    caveat = ""
     try:
         existing = await capability_has_existing_tool(capability)
+        if existing:
+            caveat = (
+                f"\nNB : l'outil existant {existing} est lexicalement proche — "
+                "si en le relisant il couvre finalement le besoin, utilise-le "
+                "et signale-le."
+            )
     except Exception:  # noqa: BLE001
-        existing = None
-    if existing:
-        return (
-            f"Un outil existant couvre déjà cette capacité : {existing}. "
-            "Utilise-le (via find_tool si besoin) — gap non consigné."
-        )
-    return await _record_gap_and_trigger(capability)
+        pass
+    return await _record_gap_and_trigger(capability, model_judged=True) + caveat
 
 
 async def _rank_capability(capability: str, k: int) -> list[str]:
@@ -276,28 +292,32 @@ async def _rank_capability(capability: str, k: int) -> list[str]:
         sem = _cosine(qv, _tool_vectors[name]) if (qv and name in _tool_vectors) else 0.0
         return lex + _SEM_WEIGHT * sem
 
-    candidates = [n for n in _tool_text_norm if n != "find_tool"]  # don't suggest self
+    candidates = [n for n in _tool_text_norm if n not in _META_TOOLS]
     ranked = sorted(((_score(n), n) for n in candidates), reverse=True)
     return [name for score, name in ranked[:k] if score > 0.0]
 
 
-# Seuil du pré-check anti-doublon : un score > 0 signifie « au moins UN token
-# commun » — bien trop faible pour BLOQUER une génération (« compute the n-th
-# fibonacci » matcherait un outil contenant juste « compute »). 0.5 ≈ la
-# moitié des tokens significatifs présents, ou convergence lexical+sémantique.
+# Seuil du pré-check anti-doublon (recouvrement lexical simple). Rôle :
+# PRÉCISION, pas rappel — il ne bloque que sur recouvrement franc (≥ la
+# moitié des tokens significatifs). Le RAPPEL des vrais gaps est porté par
+# le chemin modèle : ``report_missing_capability`` consigne SANS veto du
+# pré-check (leçon 19/07 : un juge lexical ne re-conteste pas un jugement
+# de pertinence du modèle — « drive_export_file » matchait « fichier+pdf+
+# docx » et bloquait le gap PDF→DOCX fondateur). Une pondération IDF a été
+# essayée puis retirée : les tokens rares NON matchés du côté requête
+# (« existant ») plombent la couverture des vrais doublons — sans gain,
+# le rappel n'étant plus son travail.
 _PRECHECK_MIN_SCORE = 0.5
 
 
 async def capability_has_existing_tool(capability: str) -> str | None:
     """Pré-check anti-doublon (C4-2) : meilleur outil existant, ou None.
 
-    Utilisé AVANT toute génération d'outil (auto-déclencheur et endpoint
-    admin) : si le catalogue couvre déjà la capacité, c'est un trou de
-    binding (leçon Drive/Sheets #37/#56), pas une capacité absente — générer
-    fabriquerait un doublon. Exige un recouvrement SIGNIFICATIF
-    (``_PRECHECK_MIN_SCORE``) — suggérer est permissif, bloquer ne l'est
-    pas. Best-effort : erreur → None (la collision de nom du
-    registration_gate reste le filet aval).
+    Consommateurs : endpoint admin ``/tool-creator/run`` (bloquant, avec
+    ``force``), auto-génération sur no-match (redondant par construction),
+    et ``report_missing_capability`` (INFORMATIF seulement — caveat).
+    Best-effort : erreur → None (la collision de nom du registration_gate
+    reste le filet aval).
     """
     capability = (capability or "").strip()
     if not capability:
@@ -308,10 +328,9 @@ async def capability_has_existing_tool(capability: str) -> str | None:
         if not q_tokens:
             return None
         best_score, best_name = 0.0, None
-        for name in _tool_text_norm:
-            if name == "find_tool":
+        for name, text in _tool_text_norm.items():
+            if name in _META_TOOLS:
                 continue
-            text = _tool_text_norm.get(name, "")
             lex = sum(1 for t in q_tokens if t in text) / len(q_tokens)
             if lex > best_score:
                 best_score, best_name = lex, name
