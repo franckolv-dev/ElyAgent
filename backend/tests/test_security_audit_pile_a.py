@@ -80,9 +80,12 @@ async def _db():
 async def _make_user(uid: str) -> None:
     from app.database import async_session
     from app.models.user import User
+    # uid complet, PAS de troncature : uid[:8] == "vault-XX" ne gardait que
+    # 2 hex de l'uuid (256 valeurs) or username/email sont UNIQUE et la DB
+    # locale persiste entre les runs → collisions aléatoires (flake 19/07).
     async with async_session() as db:
-        db.add(User(id=uid, username=f"u_{uid[:8]}",
-                    email=f"{uid[:8]}@t.local", hashed_password="x"))
+        db.add(User(id=uid, username=f"u_{uid}",
+                    email=f"{uid}@t.local", hashed_password="x"))
         await db.commit()
 
 
