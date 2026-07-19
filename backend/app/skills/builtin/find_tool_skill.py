@@ -142,45 +142,54 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
         logger.warning("find_tool: catalog build failed: %s", exc)
         return "La recherche d'outil a échoué temporairement — procède autrement ou réessaie."
 
-    # Query: lexical tokens (always) + semantic vector (best-effort).
-    q_tokens = [t for t in _norm(capability).split() if len(t) >= 3]
-    qv: list[float] | None = None
-    if _tool_vectors:
-        try:
-            from app.services.memory import get_memory_infra
-
-            qv = await get_memory_infra().embed(capability)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("find_tool: query embed unavailable, lexical-only (%s)", exc)
-
-    def _score(name: str) -> float:
-        text = _tool_text_norm.get(name, "")
-        lex = (sum(1 for t in q_tokens if t in text) / len(q_tokens)) if q_tokens else 0.0
-        sem = _cosine(qv, _tool_vectors[name]) if (qv and name in _tool_vectors) else 0.0
-        return lex + _SEM_WEIGHT * sem
-
     k = max(1, min(int(top_k or 5), 10))
-    candidates = [n for n in _tool_text_norm if n != "find_tool"]  # don't suggest self
-    ranked = sorted(((_score(n), n) for n in candidates), reverse=True)
-    top = [name for score, name in ranked[:k] if score > 0.0]
+    top = await _rank_capability(capability, k)
     if not top:
         # Nothing matched the FULL catalog → genuine capability gap (not a
-        # binding gap). Record the tool_absent_acknowledged signal: a
-        # FailureCase the auto-dev pipeline (V3) / a human can act on. Phase 1
-        # records only; generation is deliberate (manual /tool-creator/run for
-        # composable gaps now, auto once V3 enables new I/O tools).
+        # binding gap). Record the tool_absent_acknowledged signal, then
+        # (C4-2) kick the auto-generation in the background — the candidate
+        # will await HUMAN validation before ever being bindable.
+        _case_id = None
+        _gap_user = ""
         try:
             from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
             from app.services.learning.failure_capture import record_tool_absent
             from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
 
-            await record_tool_absent(
-                user_id=LEARNED_TOOL_USER_ID.get(),
+            _gap_user = LEARNED_TOOL_USER_ID.get() or ""
+            _case_id = await record_tool_absent(
+                user_id=_gap_user,
                 capability=capability,
                 conversation_id=ORCHESTRATE_CONVERSATION_ID.get() or None,
             )
         except Exception as exc:  # noqa: BLE001 — recording must never break the turn
             logger.debug("find_tool: gap recording skipped: %s", exc)
+        _auto_gen = False
+        if _case_id:
+            try:
+                from app.config import get_settings
+                from app.services.background_tasks import spawn
+                from app.services.learning.auto_tool_generation import (
+                    maybe_generate_for_gap,
+                )
+
+                _auto_gen = bool(get_settings().auto_tool_generation_enabled)
+                if _auto_gen:
+                    spawn(
+                        maybe_generate_for_gap(_case_id, capability, _gap_user),
+                        label="auto-tool-generation",
+                    )
+            except Exception as exc:  # noqa: BLE001 — le déclencheur non plus
+                logger.debug("find_tool: auto-generation skipped: %s", exc)
+                _auto_gen = False
+        if _auto_gen:
+            return (
+                f"Aucun outil existant ne correspond à « {capability} ». "
+                "Capacité réellement absente — consignée dans "
+                "les « Capacités manquantes », et la génération d'un outil "
+                "candidat démarre automatiquement : il sera soumis à "
+                "validation humaine avant d'être utilisable."
+            )
         return (
             f"Aucun outil existant ne correspond à « {capability} ». "
             "Capacité réellement absente — consignée dans "
@@ -200,6 +209,75 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     lines = [f"Outils disponibles pour « {capability} » (utilise-les directement maintenant) :"]
     lines += [f"  • {name} — {_tool_first_sentence.get(name, '')}" for name in top]
     return "\n".join(lines)
+
+
+async def _rank_capability(capability: str, k: int) -> list[str]:
+    """Classement lexical+sémantique du catalogue COMPLET pour une capacité.
+
+    Partagé entre ``find_tool`` (l'outil) et le pré-check anti-doublon C4-2
+    (``capability_has_existing_tool``) — même leçon #56 : le lexical porte le
+    résultat, le sémantique enrichit en best-effort.
+    """
+    await _ensure_catalog()
+    q_tokens = [t for t in _norm(capability).split() if len(t) >= 3]
+    qv: list[float] | None = None
+    if _tool_vectors:
+        try:
+            from app.services.memory import get_memory_infra
+
+            qv = await get_memory_infra().embed(capability)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("find_tool: query embed unavailable, lexical-only (%s)", exc)
+
+    def _score(name: str) -> float:
+        text = _tool_text_norm.get(name, "")
+        lex = (sum(1 for t in q_tokens if t in text) / len(q_tokens)) if q_tokens else 0.0
+        sem = _cosine(qv, _tool_vectors[name]) if (qv and name in _tool_vectors) else 0.0
+        return lex + _SEM_WEIGHT * sem
+
+    candidates = [n for n in _tool_text_norm if n != "find_tool"]  # don't suggest self
+    ranked = sorted(((_score(n), n) for n in candidates), reverse=True)
+    return [name for score, name in ranked[:k] if score > 0.0]
+
+
+# Seuil du pré-check anti-doublon : un score > 0 signifie « au moins UN token
+# commun » — bien trop faible pour BLOQUER une génération (« compute the n-th
+# fibonacci » matcherait un outil contenant juste « compute »). 0.5 ≈ la
+# moitié des tokens significatifs présents, ou convergence lexical+sémantique.
+_PRECHECK_MIN_SCORE = 0.5
+
+
+async def capability_has_existing_tool(capability: str) -> str | None:
+    """Pré-check anti-doublon (C4-2) : meilleur outil existant, ou None.
+
+    Utilisé AVANT toute génération d'outil (auto-déclencheur et endpoint
+    admin) : si le catalogue couvre déjà la capacité, c'est un trou de
+    binding (leçon Drive/Sheets #37/#56), pas une capacité absente — générer
+    fabriquerait un doublon. Exige un recouvrement SIGNIFICATIF
+    (``_PRECHECK_MIN_SCORE``) — suggérer est permissif, bloquer ne l'est
+    pas. Best-effort : erreur → None (la collision de nom du
+    registration_gate reste le filet aval).
+    """
+    capability = (capability or "").strip()
+    if not capability:
+        return None
+    try:
+        await _ensure_catalog()
+        q_tokens = [t for t in _norm(capability).split() if len(t) >= 3]
+        if not q_tokens:
+            return None
+        best_score, best_name = 0.0, None
+        for name in _tool_text_norm:
+            if name == "find_tool":
+                continue
+            text = _tool_text_norm.get(name, "")
+            lex = sum(1 for t in q_tokens if t in text) / len(q_tokens)
+            if lex > best_score:
+                best_score, best_name = lex, name
+        return best_name if best_score >= _PRECHECK_MIN_SCORE else None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("capability_has_existing_tool failed: %s", exc)
+        return None
 
 
 get_skill_registry().register(Skill(

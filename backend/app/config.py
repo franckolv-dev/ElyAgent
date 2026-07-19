@@ -86,6 +86,13 @@ class Settings(BaseSettings):
     llm_deadline_mission_act_s: float = 180.0
     llm_deadline_router_s: float = 10.0
 
+    # C4-2 — auto-génération d'outils sur capacité manquante consignée.
+    # ON par défaut (arbitrage 19/07) : la sortie est TOUJOURS une candidate —
+    # la validation humaine reste le verrou avant tout binding. Kill-switch :
+    # passer à false. Une tentative max par gap et par boot (garde in-process),
+    # pré-check sémantique anti-doublon avant de dépenser du tier-S.
+    auto_tool_generation_enabled: bool = True
+
     # Auth
     jwt_secret_key: str = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
     jwt_algorithm: str = "HS256"
