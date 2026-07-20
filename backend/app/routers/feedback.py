@@ -79,4 +79,23 @@ async def submit_feedback(
             payload.model_used, payload.routing_score,
         )
 
+    # C4-5 — un 👎 rejoint le funnel d'apprentissage : FailureCase
+    # (famille user_feedback) que le cron skill_autocreate ramasse
+    # (≥ 3 cas d'un pattern → playbook candidate). Best-effort : le
+    # signal ne doit JAMAIS dégrader la surface utilisateur.
+    if payload.rating == -1:
+        try:
+            from app.services.learning.failure_capture import (
+                capture_from_user_feedback,
+            )
+            await capture_from_user_feedback(
+                user_id=str(current_user.id),
+                user_message=payload.user_message,
+                conversation_id=payload.conversation_id,
+                model_used=payload.model_used,
+                feedback_id=fb.id,
+            )
+        except Exception as exc:  # noqa: BLE001 — capture best-effort
+            logger.debug("feedback capture skipped (%s)", exc)
+
     return {"status": "ok", "id": fb.id}

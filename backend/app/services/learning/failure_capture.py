@@ -49,6 +49,7 @@ SIGNAL_HITL_REFUSAL = "hitl_refusals"
 SIGNAL_HALLUCINATION = "hallucination_blocks"
 SIGNAL_MISSION_CRITIQUE = "mission_critiques"
 SIGNAL_TOOL_ABSENT = "tool_absent"  # find_tool searched the catalog and found nothing
+SIGNAL_USER_FEEDBACK = "user_feedback"  # C4-5 — explicit 👎 on an assistant response
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -147,6 +148,71 @@ async def record_tool_absent(
             return row.id
     except Exception as exc:
         logger.debug("record_tool_absent failed (swallowed): %s", exc)
+        return None
+
+
+async def capture_from_user_feedback(
+    *,
+    user_id: str,
+    user_message: str,
+    conversation_id: str | None = None,
+    model_used: str | None = None,
+    feedback_id: str | None = None,
+) -> int | None:
+    """C4-5 — a thumbs-down becomes a first-class learning signal.
+
+    Before this, 👎 rows were written to the ``feedback`` table and read
+    by dashboards only — nobody ACTED on them. Each rating=-1 now lands a
+    ``FailureCase`` (family ``user_feedback``) that the skill_autocreate
+    cron picks up naturally (its scan has no family filter): ≥ 3 cases
+    clustering on a pattern → candidate playbook.
+
+    ``signal_id`` is synthetic (0) like ``record_tool_absent`` — the
+    upstream Feedback row has a String UUID id, which doesn't fit the
+    Integer column; the real id travels in the payload instead.
+
+    Deduped on the truncated user_message fingerprint while unprocessed
+    (two 👎 on the same ask = one case). Best-effort, never raises.
+    Returns the FailureCase.id (new or existing unprocessed), or None.
+    """
+    user_message = (user_message or "").strip()
+    if not user_id or not user_message:
+        return None
+    try:
+        from sqlalchemy import select
+
+        from app.models.failure_case import FailureCase
+
+        fp = _fingerprint(SIGNAL_USER_FEEDBACK, user_message[:120])
+        payload = {
+            "signal_kind": "user_feedback_negative",
+            "user_message": _truncate(user_message),
+            "model_used": _truncate(model_used),
+            "feedback_id": feedback_id or "",
+        }
+        async with async_session() as db:
+            existing = (await db.execute(
+                select(FailureCase.id).where(
+                    FailureCase.signal_table == SIGNAL_USER_FEEDBACK,
+                    FailureCase.pattern_hash == fp,
+                    FailureCase.processed_at.is_(None),
+                ).limit(1)
+            )).scalar_one_or_none()
+            if existing is not None:
+                return existing
+            row = FailureCase(
+                user_id=user_id,
+                signal_table=SIGNAL_USER_FEEDBACK,
+                signal_id=0,  # synthetic — Feedback.id is a String UUID
+                conversation_id=conversation_id,
+                replay_payload=_dump_payload(payload),
+                pattern_hash=fp,
+            )
+            db.add(row)
+            await db.commit()
+            return row.id
+    except Exception as exc:
+        logger.debug("capture_from_user_feedback failed (swallowed): %s", exc)
         return None
 
 
