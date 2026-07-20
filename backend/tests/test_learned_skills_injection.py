@@ -61,7 +61,12 @@ async def _seed_active_skill(
     description: str = "auto-generated playbook for tests",
     content: str = "# Body\nbody content",
     use_count: int = 0,
+    promoted_at: datetime | None = None,
+    content_format: str | None = None,
 ) -> str:
+    kwargs = {}
+    if content_format is not None:
+        kwargs["content_format"] = content_format
     async with async_session() as db:
         s = LearnedSkill(
             user_id=user_id,
@@ -74,6 +79,8 @@ async def _seed_active_skill(
             iteration_count=1,
             from_failure_case_ids="[]",
             use_count=use_count,
+            promoted_at=promoted_at,
+            **kwargs,
         )
         db.add(s)
         await db.commit()
@@ -470,3 +477,313 @@ async def test_memory_snapshot_no_block_when_user_has_no_active_skills(
         use_compact=False,
     )
     assert "<learned_skills>" not in snapshot
+
+
+# ────────────────────────────────────────────────────────────────────────
+# C4-3 — fenêtre de grâce : un skill fraîchement promu (use_count=0)
+# ne doit JAMAIS être coupé du prompt par le tri use_count (cold-start
+# vécu en prod le 19/07 : levenshtein_distance promu → dernier au tri →
+# hors top-20 → invisible pour le modèle).
+# ────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_grace_window_includes_fresh_promoted_zero_use_skill(_seeded_user):
+    """4 vétérans à fort usage + 1 frais promu, cap 4 : sans la grâce le
+    frais (use_count=0) serait coupé. Avec elle, il est inclus ET en tête
+    (saillance — c'est le skill que l'utilisateur vient de valider)."""
+    for i in range(4):
+        await _seed_active_skill(_seeded_user, f"veteran-{i}", use_count=100 + i)
+    await _seed_active_skill(
+        _seeded_user, "fresh-promoted", use_count=0,
+        promoted_at=datetime.now(timezone.utc),
+    )
+    out = await get_active_skills_for_user(_seeded_user, limit=4)
+    names = [s.name for s in out]
+    assert len(out) == 4
+    assert "fresh-promoted" in names
+    assert names[0] == "fresh-promoted"
+
+
+@pytest.mark.asyncio
+async def test_grace_window_expired_returns_to_usage_order(_seeded_user):
+    """Grâce expirée (promu il y a 30 jours, jamais utilisé) → le tri
+    use_count reprend ses droits, le skill retombe hors du cap."""
+    for i in range(4):
+        await _seed_active_skill(_seeded_user, f"veteran-{i}", use_count=100 + i)
+    await _seed_active_skill(
+        _seeded_user, "old-promoted", use_count=0,
+        promoted_at=datetime.now(timezone.utc) - timedelta(days=30),
+    )
+    out = await get_active_skills_for_user(_seeded_user, limit=4)
+    names = [s.name for s in out]
+    assert "old-promoted" not in names
+
+
+@pytest.mark.asyncio
+async def test_promoted_at_null_keeps_legacy_selection(_seeded_user):
+    """Rows historiques (promoted_at NULL — seeds bundled, promotions
+    antérieures à la migration sans backfill) → aucune grâce, sélection
+    100 % legacy par use_count."""
+    for i in range(5):
+        await _seed_active_skill(_seeded_user, f"legacy-{i}", use_count=i)
+    out = await get_active_skills_for_user(_seeded_user, limit=3)
+    assert [s.name for s in out] == ["legacy-4", "legacy-3", "legacy-2"]
+
+
+# ────────────────────────────────────────────────────────────────────────
+# C4-3 — pertinence vs requête : quand le cap force un choix, un skill
+# qui matche la demande courante bat un skill populaire hors-sujet.
+# ────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def _no_semantic(monkeypatch):
+    """Neutralise le cosine (déterminisme + pas de chargement FastEmbed
+    en CI) — le lexical est testé seul, le sémantique reste best-effort."""
+    from app.services.learning import active_skills as mod
+
+    async def _empty(query, skills):
+        return {}
+
+    monkeypatch.setattr(mod, "_semantic_scores", _empty)
+
+
+@pytest.mark.asyncio
+async def test_query_relevance_rescues_matching_skill_on_overflow(
+    _seeded_user, _no_semantic,
+):
+    for i in range(4):
+        await _seed_active_skill(
+            _seeded_user, f"popular-{i}",
+            description="tri de la boîte mail et rangement agenda",
+            use_count=50,
+        )
+    await _seed_active_skill(
+        _seeded_user, "levenshtein-tool",
+        description="calcule la distance de Levenshtein entre deux chaînes",
+        use_count=0,
+    )
+    out = await get_active_skills_for_user(
+        _seeded_user, limit=4,
+        query="calcule la distance de levenshtein entre bonjour et bonsoir",
+    )
+    assert "levenshtein-tool" in [s.name for s in out]
+
+
+@pytest.mark.asyncio
+async def test_query_without_match_keeps_usage_order(_seeded_user, _no_semantic):
+    """Requête sans rapport avec aucun skill → zéro score partout → la
+    sélection retombe exactement sur le tri legacy par use_count."""
+    for i in range(5):
+        await _seed_active_skill(
+            _seeded_user, f"skill-{i}",
+            description="rangement hebdomadaire du bureau",
+            use_count=i,
+        )
+    out = await get_active_skills_for_user(
+        _seeded_user, limit=3, query="xyzzy plugh grault",
+    )
+    assert [s.name for s in out] == ["skill-4", "skill-3", "skill-2"]
+
+
+def test_lexical_relevance_scoring_unit():
+    """Score lexical pur : tokens normalisés (minuscules + accents
+    strippés), recouvrement requête→texte."""
+    from app.services.learning.active_skills import _lexical_score
+
+    assert _lexical_score(
+        "distance de Levenshtein",
+        "levenshtein-tool : calcule la distance de levenshtein",
+    ) > 0.5
+    assert _lexical_score("météo de demain", "distance de levenshtein") == 0.0
+    # Accent-insensible dans les DEUX sens (leçon FR cross-lingual)
+    assert _lexical_score("créé", "outil cree pour les tests") > 0.0
+    assert _lexical_score("", "n'importe quoi") == 0.0
+
+
+# ────────────────────────────────────────────────────────────────────────
+# C4-3 — la promotion pose promoted_at (les 2 chemins : admin + auto)
+# ────────────────────────────────────────────────────────────────────────
+
+
+async def _seed_candidate(user_id: str, name: str, content_format: str = "markdown_playbook") -> str:
+    async with async_session() as db:
+        s = LearnedSkill(
+            user_id=user_id,
+            name=name,
+            description="candidate for promotion tests",
+            content="# body",
+            frontmatter_json="{}",
+            status=SkillStatus.CANDIDATE,
+            source=SkillSource.AUTO_GENERATED,
+            iteration_count=1,
+            from_failure_case_ids="[]",
+            content_format=content_format,
+        )
+        db.add(s)
+        await db.commit()
+        await db.refresh(s)
+        return s.id
+
+
+@pytest.mark.asyncio
+async def test_admin_transition_to_active_stamps_promoted_at(_seeded_user):
+    from app.routers.learning_skills import _transition_status
+
+    skill_id = await _seed_candidate(_seeded_user, "admin-promote-me")
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+        await _transition_status(db, skill, SkillStatus.ACTIVE, admin_id="adm")
+        await db.commit()
+
+    async with async_session() as db:
+        row = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+    assert row.status == SkillStatus.ACTIVE
+    assert row.promoted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_admin_transition_away_from_active_keeps_promoted_at(_seeded_user):
+    """Archiver ne réécrit PAS promoted_at — seule une (re)promotion
+    la pose."""
+    from app.routers.learning_skills import _transition_status
+
+    stamp = datetime.now(timezone.utc) - timedelta(days=3)
+    skill_id = await _seed_active_skill(
+        _seeded_user, "archive-me", promoted_at=stamp,
+    )
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+        await _transition_status(db, skill, SkillStatus.ARCHIVED, admin_id="adm")
+        await db.commit()
+
+    async with async_session() as db:
+        row = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+    got = row.promoted_at
+    if got is not None and got.tzinfo is None:
+        got = got.replace(tzinfo=timezone.utc)
+    assert got is not None
+    assert abs((got - stamp).total_seconds()) < 2
+
+
+@pytest.mark.asyncio
+async def test_auto_promotion_stamps_promoted_at(_seeded_user):
+    from app.services.learning.skill_promotion import promote_candidate_to_active
+
+    skill_id = await _seed_candidate(_seeded_user, "auto-promote-me")
+    ok = await promote_candidate_to_active(skill_id, reason="test")
+    assert ok is True
+
+    async with async_session() as db:
+        row = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+    assert row.status == SkillStatus.ACTIVE
+    assert row.promoted_at is not None
+
+
+# ────────────────────────────────────────────────────────────────────────
+# C4-3 — le bloc distingue playbooks (skill_view) et OUTILS bindés
+# (appel direct) : « lis-le via skill_view » était une consigne trompeuse
+# pour un python_tool — le modèle doit l'APPELER, pas le lire.
+# ────────────────────────────────────────────────────────────────────────
+
+
+def test_format_block_python_tool_section():
+    pb = SimpleNamespace(name="mail-triage", description="procédure mails",
+                         content_format="markdown_playbook")
+    pt = SimpleNamespace(name="levenshtein_distance", description="distance",
+                         content_format="python_tool")
+    out = format_active_skills_block([pb, pt])
+    assert "skill_view" in out
+    assert "DIRECTEMENT" in out
+    assert "mail-triage" in out
+    assert "levenshtein_distance" in out
+    # L'outil ne doit PAS être listé dans la section skill_view
+    playbook_part = out.split("DIRECTEMENT")[0]
+    assert "levenshtein_distance" not in playbook_part
+
+
+def test_format_block_only_python_tools_skips_playbook_header():
+    pt = SimpleNamespace(name="only-tool", description="d",
+                         content_format="python_tool")
+    out = format_active_skills_block([pt])
+    # Pas de section playbook (sa consigne « lis-le EN ENTIER via
+    # skill_view » serait trompeuse pour un outil bindé). La mention
+    # NÉGATIVE de skill_view dans l'en-tête outils, elle, est voulue.
+    assert "playbook" not in out
+    assert "lis-le EN ENTIER" not in out
+    assert "DIRECTEMENT" in out
+    assert out.startswith("<learned_skills>")
+    assert out.rstrip().endswith("</learned_skills>")
+
+
+def test_format_block_marks_fresh_skills_as_new():
+    fresh = SimpleNamespace(
+        name="fresh-tool", description="d", content_format="python_tool",
+        promoted_at=datetime.now(timezone.utc),
+    )
+    old = SimpleNamespace(
+        name="old-tool", description="d", content_format="python_tool",
+        promoted_at=datetime.now(timezone.utc) - timedelta(days=30),
+    )
+    out = format_active_skills_block([fresh, old])
+    fresh_line = [l for l in out.split("\n") if "fresh-tool" in l][0]
+    old_line = [l for l in out.split("\n") if "old-tool" in l][0]
+    assert "(nouveau)" in fresh_line
+    assert "(nouveau)" not in old_line
+
+
+# ────────────────────────────────────────────────────────────────────────
+# C4-3 — intégration snapshot : à cap plein, le frais promu est visible
+# dans le bloc construit par build_memory_snapshot (câblage complet).
+# ────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_memory_snapshot_surfaces_fresh_promoted_over_cap(
+    _seeded_user, monkeypatch,
+):
+    for i in range(MAX_SKILLS_IN_PROMPT):
+        await _seed_active_skill(_seeded_user, f"vet-{i:02d}", use_count=10 + i)
+    await _seed_active_skill(
+        _seeded_user, "fresh-over-cap", use_count=0,
+        promoted_at=datetime.now(timezone.utc),
+    )
+
+    class _StubMemory:
+        async def get_relevant_constraints(self, q, u): return []
+        async def get_relevant_memories(self, q, u): return []
+        async def get_relevant_interactions(self, q, u, limit=3): return []
+        async def get_user_preferences(self, u): return []
+
+    async def _fake_user_context(uid): return ""
+    monkeypatch.setattr(
+        "app.services.memory_service.get_user_context",
+        _fake_user_context,
+    )
+    from app.services.learning import active_skills as mod
+
+    async def _empty(query, skills):
+        return {}
+
+    monkeypatch.setattr(mod, "_semantic_scores", _empty)
+
+    from app.agent.builders.memory_snapshot import build_memory_snapshot
+    snapshot, _ = await build_memory_snapshot(
+        messages=[],
+        user_id=_seeded_user,
+        user_query="n'importe quelle demande",
+        memory=_StubMemory(),
+        use_compact=False,
+    )
+    assert "fresh-over-cap" in snapshot

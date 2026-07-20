@@ -135,12 +135,15 @@ async def build_memory_snapshot(
     # Same frozen_memory cache treatment as the rest, empty when the
     # user has no active playbook → no prompt pollution for first-time
     # or unpromoted users. Best-effort — DB outage returns "".
+    # C4-3 : the conversation-opening query drives the relevance re-rank
+    # when the active set overflows the injection cap (the snapshot is
+    # frozen per conversation, so this runs once per conversation).
     try:
         from app.services.learning.active_skills import (
             format_active_skills_block,
             get_active_skills_for_user,
         )
-        _active_skills = await get_active_skills_for_user(user_id)
+        _active_skills = await get_active_skills_for_user(user_id, query=user_query)
         _skills_block = format_active_skills_block(_active_skills)
     except Exception:
         _skills_block = ""

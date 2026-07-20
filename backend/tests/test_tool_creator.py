@@ -22,6 +22,7 @@ import pytest_asyncio
 from sqlalchemy import delete, select
 
 from app.database import async_session, init_db
+from app.models.failure_case import FailureCase
 from app.models.learned_skill import LearnedSkill, SkillContentFormat, SkillStatus
 from app.services.learning import tool_creator
 
@@ -63,6 +64,9 @@ async def _user():
         await db.commit()
     yield uid
     async with async_session() as db:
+        # FK-safe teardown : enfants (failure_cases référence learned_skills
+        # ET users) avant parents.
+        await db.execute(delete(FailureCase).where(FailureCase.user_id == uid))
         await db.execute(delete(LearnedSkill).where(LearnedSkill.user_id == uid))
         await db.execute(delete(User).where(User.id == uid))
         await db.commit()
@@ -173,3 +177,99 @@ async def test_requires_user_id():
         task_description="x", user_id="", smoke_kwargs={"x": 1}
     )
     assert result["status"] == "error"
+
+
+# ────────────────────────────────────────────────────────────────────────
+# C4-3.4 — une génération réussie MARQUE ses failure_cases processed
+# (micro-backlog vécu : gaps #101/#102 restés « ouverts » dans Capacités
+# manquantes après génération — from_failure_case_ids était stocké sur le
+# skill mais personne ne refermait le gap).
+# ────────────────────────────────────────────────────────────────────────
+
+
+async def _seed_failure_case(uid: str, **overrides) -> int:
+    fields = dict(
+        user_id=uid,
+        signal_table="tool_absent",
+        signal_id=0,
+        replay_payload="{}",
+    )
+    fields.update(overrides)
+    async with async_session() as db:
+        fc = FailureCase(**fields)
+        db.add(fc)
+        await db.commit()
+        await db.refresh(fc)
+        return fc.id
+
+
+@pytest.mark.asyncio
+async def test_created_marks_failure_cases_processed(_user, monkeypatch):
+    case_id = await _seed_failure_case(_user)
+    _patch_generator(monkeypatch, [(VALID, _GEN_OK)])
+    result = await tool_creator.generate_and_persist_tool(
+        task_description="double a number",
+        user_id=_user,
+        smoke_kwargs={"x": 21},
+        existing_names=set(),
+        from_failure_case_ids=[case_id],
+    )
+    assert result["status"] == "created"
+
+    async with async_session() as db:
+        fc = (await db.execute(
+            select(FailureCase).where(FailureCase.id == case_id)
+        )).scalar_one()
+    assert fc.processed_at is not None
+    assert fc.learned_skill_id == result["learned_skill_id"]
+
+
+@pytest.mark.asyncio
+async def test_validation_failed_leaves_cases_open(_user, monkeypatch):
+    """Échec de génération = résultat honnête : le gap RESTE visible dans
+    « Capacités manquantes » (c'est le dossier du cran 3)."""
+    case_id = await _seed_failure_case(_user)
+    _patch_generator(monkeypatch, [(VALID, _GEN_OK)])
+    result = await tool_creator.generate_and_persist_tool(
+        task_description="double a number",
+        user_id=_user,
+        smoke_kwargs={"x": 21},
+        existing_names={"double_it"},  # collision → validation_failed
+        max_iterations=1,
+        from_failure_case_ids=[case_id],
+    )
+    assert result["status"] == "validation_failed"
+
+    async with async_session() as db:
+        fc = (await db.execute(
+            select(FailureCase).where(FailureCase.id == case_id)
+        )).scalar_one()
+    assert fc.processed_at is None
+    assert fc.learned_skill_id is None
+
+
+@pytest.mark.asyncio
+async def test_already_processed_case_not_overwritten(_user, monkeypatch):
+    """Un gap déjà refermé par un autre skill n'est pas ré-attribué."""
+    from datetime import datetime, timezone
+
+    prior = datetime.now(timezone.utc)
+    case_id = await _seed_failure_case(
+        _user, processed_at=prior, learned_skill_id=None,
+    )
+    _patch_generator(monkeypatch, [(VALID, _GEN_OK)])
+    result = await tool_creator.generate_and_persist_tool(
+        task_description="double a number",
+        user_id=_user,
+        smoke_kwargs={"x": 21},
+        existing_names=set(),
+        from_failure_case_ids=[case_id],
+    )
+    assert result["status"] == "created"
+
+    async with async_session() as db:
+        fc = (await db.execute(
+            select(FailureCase).where(FailureCase.id == case_id)
+        )).scalar_one()
+    # learned_skill_id n'a PAS été posé — la row était déjà processed
+    assert fc.learned_skill_id is None

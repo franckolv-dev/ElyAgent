@@ -74,6 +74,9 @@ async def promote_candidate_to_active(skill_id: str, *, reason: str = "") -> boo
                 return False
             skill.status = SkillStatus.ACTIVE
             skill.updated_at = datetime.now(timezone.utc)
+            # C4-3 — start the injection grace window (a fresh promotion
+            # has use_count=0 and must not be cut by the top-N sort).
+            skill.promoted_at = skill.updated_at
             await db.commit()
             logger.info(
                 "skill_auto_promoted: id=%s name=%s reason=%s",

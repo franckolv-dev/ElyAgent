@@ -125,6 +125,11 @@ async def orchestrate(
     context with the full tool_result), you write ONE Python script
     that orchestrates everything locally and prints the final summary.
 
+    Do NOT use this tool when a single DEDICATED tool already covers the
+    request — including your learned tools from the <learned_skills>
+    block (they are bound like any other tool). Call that tool directly:
+    one precise call beats a sandboxed script re-implementing it.
+
     Available functions inside the sandbox — USE THESE NAMES EXACTLY,
     any other name will crash the sandbox (the stub module is dynamically
     generated from this exact list at every run):
