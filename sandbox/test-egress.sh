@@ -37,7 +37,7 @@ assert_eq() {
     echo "  ✓ $name"
     PASS=$((PASS + 1))
   else
-    echo "  ✗ $name (got=${got!r:-<empty>} want=${want})"
+    echo "  ✗ $name (got=${got:-<empty>} want=${want})"
     FAIL=$((FAIL + 1))
   fi
 }
