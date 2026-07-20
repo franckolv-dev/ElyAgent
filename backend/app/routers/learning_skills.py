@@ -428,6 +428,10 @@ async def _transition_status(
         )
     skill.status = new_status
     skill.updated_at = datetime.now(timezone.utc)
+    if new_status == SkillStatus.ACTIVE:
+        # C4-3 — every path INTO active (promote, stale/graduated
+        # reactivation) restarts the injection grace window.
+        skill.promoted_at = skill.updated_at
     return skill
 
 

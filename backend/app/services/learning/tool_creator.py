@@ -31,9 +31,13 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import update
+
 from app.database import async_session
+from app.models.failure_case import FailureCase
 from app.models.learned_skill import (
     LearnedSkill,
     SkillContentFormat,
@@ -73,6 +77,45 @@ async def _vault_labels_best_effort(user_id: str) -> list[str]:
     except Exception as exc:  # noqa: BLE001
         logger.debug("tool_creator: vault labels unavailable (%s)", exc)
         return []
+
+
+async def _mark_failure_cases_processed(
+    case_ids: list[int] | None,
+    skill_id: str,
+) -> None:
+    """C4-3.4 — close the loop: a successful generation stamps its source
+    failure_cases ``processed_at`` + ``learned_skill_id`` (they otherwise
+    linger « open » in Capacités manquantes forever — gaps #101/#102).
+
+    Separate best-effort transaction AFTER the candidate commit: a marking
+    failure must never lose the generated skill (worst case the gap stays
+    open, which is the pre-C4-3 status quo). Never raises.
+    """
+    if not case_ids or not skill_id:
+        return
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                update(FailureCase)
+                .where(
+                    FailureCase.id.in_(case_ids),
+                    FailureCase.processed_at.is_(None),
+                )
+                .values(
+                    processed_at=datetime.now(timezone.utc),
+                    learned_skill_id=skill_id,
+                )
+            )
+            await db.commit()
+        logger.info(
+            "tool_creator: marked %d failure_case(s) processed → skill %s",
+            result.rowcount, skill_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — le marquage est best-effort
+        logger.warning(
+            "tool_creator: failed to mark failure_cases %s processed (%s)",
+            case_ids, exc,
+        )
 
 
 async def generate_and_persist_tool(
@@ -223,6 +266,7 @@ async def generate_and_persist_tool(
             "tool_creator: created candidate python_tool %s (%s) in %d iteration(s)",
             skill_id, report.tool_name, i,
         )
+        await _mark_failure_cases_processed(from_failure_case_ids, skill_id)
         return {
             "status": "created",
             "tool_name": report.tool_name,

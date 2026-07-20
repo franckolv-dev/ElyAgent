@@ -251,6 +251,15 @@ class LearnedSkill(Base):
     # Cumulative usage counter (cheap analytics for the UI).
     use_count: Mapped[int] = mapped_column(Integer, default=0)
 
+    # C4-3 — when this skill last became ACTIVE (admin promote endpoint,
+    # STALE/GRADUATED reactivation, or the autonomous playbook promotion).
+    # Drives the injection grace window: a freshly promoted skill has
+    # use_count=0 and would otherwise be the first one cut by the top-N
+    # usage sort (cold-start seen live 2026-07-19). NULL = promoted before
+    # the column existed (migration backfills active rows) or seeded
+    # directly active (bundled playbooks — no grace by design).
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
