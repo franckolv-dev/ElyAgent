@@ -18,14 +18,17 @@
 """PDF reading skill."""
 from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
-from app.agent.tools.pdf_tool import pdf_read, pdf_info
+from app.agent.tools.pdf_tool import pdf_read, pdf_info, pdf_to_docx
 
 get_skill_registry().register(Skill(
     name="pdf",
     display_name="Lecture PDF",
-    description="Lire, extraire le texte et les métadonnées de fichiers PDF (chemin local ou URL)",
+    description=(
+        "Lire, extraire le texte et les métadonnées de fichiers PDF "
+        "(chemin local ou URL), et les convertir en Word .docx"
+    ),
     icon="📄",
     scopes=[],
     domains=[Domain.CREATIVE],
-    tools=[pdf_read, pdf_info],
+    tools=[pdf_read, pdf_info, pdf_to_docx],
 ))

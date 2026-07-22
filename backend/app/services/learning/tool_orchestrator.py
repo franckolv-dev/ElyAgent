@@ -40,7 +40,7 @@ from typing import Literal
 
 from app.services.learning.code_guard import GuardProfile, check_tool_source
 from app.services.learning.registration_gate import check_registration_safety
-from app.services.learning.smoke_sandbox import smoke_run
+from app.services.learning.smoke_sandbox import SmokeReport, smoke_run
 from app.services.learning.static_checks import run_mypy, run_ruff
 from app.services.learning.v3_declarations import (
     check_declarations_wellformed,
@@ -102,8 +102,9 @@ STAGE_ORDER_IO = ("ast", "declarations", "deps", "ruff", "mypy", "smoke", "regis
 
 def _composes_tools(source: str) -> bool:
     """True if ``source`` calls ``call_tool(...)`` — i.e. it composes other
-    ELY tools (vs a pure-computation tool). Used to skip the smoke stage,
-    which can't reach the real tools in the sandbox."""
+    ELY tools (vs a pure-computation tool). Selects the NARROW smoke stage:
+    the sandbox can't reach the real tools, so it validates the call_tool
+    type contract rather than the composition's semantics."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -113,6 +114,56 @@ def _composes_tools(source: str) -> bool:
         and isinstance(node.func, ast.Name)
         and node.func.id == "call_tool"
         for node in ast.walk(tree)
+    )
+
+
+# Exceptions qui signent le mésusage du retour de call_tool : le tool a
+# traité une CHAÎNE comme un dict / une liste / du JSON.
+#   AttributeError → .get(), .keys(), .items() sur une str
+#   TypeError      → res["clé"] (indices str), itération de dicts…
+#   KeyError       → res["clé"] après un json.loads imaginaire
+#   IndexError     → res[3] hors de la chaîne stub
+#   JSONDecodeError→ json.loads(prose)  (sous-classe de ValueError)
+_CONTRACT_EXCEPTIONS = (
+    "AttributeError",
+    "TypeError",
+    "KeyError",
+    "IndexError",
+    "JSONDecodeError",
+)
+
+
+# TypeError de SIGNATURE : le bac à sable a appelé la fonction sans (ou avec
+# de mauvais) ``smoke_kwargs``. C'est un défaut d'échantillon d'entrée, pas un
+# mésusage du retour de call_tool — ne jamais recaler le tool là-dessus.
+_SIGNATURE_TYPEERROR_MARKERS = (
+    "required positional argument",
+    "required keyword-only argument",
+    "unexpected keyword argument",
+    "positional arguments but",
+    "takes no arguments",
+)
+
+
+def _contract_breach(smoke: SmokeReport) -> str | None:
+    """Message d'échec si ``smoke`` révèle un mésusage du contrat de type,
+    ``None`` sinon (y compris pour un échec sémantique, hors de portée ici).
+    """
+    if smoke.outcome != "raised":
+        return None
+    detail = smoke.detail or ""
+    exc_type = detail.split(":", 1)[0].strip()
+    if exc_type not in _CONTRACT_EXCEPTIONS:
+        return None
+    if exc_type == "TypeError" and any(
+        marker in detail for marker in _SIGNATURE_TYPEERROR_MARKERS
+    ):
+        return None
+    return (
+        f"contrat call_tool violé — {detail.strip()}. "
+        "call_tool renvoie une chaîne lisible (str), jamais un dict/une "
+        "liste/du JSON : analyse le texte (re, in, splitlines) au lieu de "
+        ".get() / [0] / json.loads()."
     )
 
 
@@ -189,15 +240,38 @@ def validate_tool_source(
     if not mypy.ok:
         return _finish("mypy")
 
-    # [4] smoke (dynamic) — optional when no sample input is available, and
-    # SKIPPED for composition tools: the sandbox has no access to the real
-    # ELY tools call_tool dispatches to, so a stubbed run can't validate the
-    # composition logic. Composition tools are exercised live (the 4 static
-    # stages + registration + HITL review + the runtime path cover them).
+    # [4] smoke (dynamic) — optional when no sample input is available.
+    #
+    # Composition tools get a NARROWER smoke (incident 22/07). The sandbox
+    # still can't reach the real ELY tools, so it cannot validate composition
+    # SEMANTICS — but the stubbed `call_tool` returns a realistic str, which
+    # is enough to validate the TYPE CONTRACT. Skipping smoke entirely (the
+    # previous behaviour) let `convert_pdf_to_docx` reach production with
+    # `files[0].get("id")` on a string: promoted, then 5 crashes in a row.
+    #
+    # Only contract violations fail the stage. A composition tool that
+    # raises for a semantic reason against a stub (a real ID it can't find,
+    # an assumption the fake listing doesn't satisfy) is NOT a defect we can
+    # judge here, so it passes with a note.
     if _composes_tools(source):
-        stages.append(
-            StageResult("smoke", True, "skipped: composition tool (validated live, not in sandbox)")
-        )
+        if run_smoke:
+            smoke = smoke_run(source, kwargs=smoke_kwargs or {})
+            breach = _contract_breach(smoke)
+            stages.append(
+                StageResult(
+                    "smoke",
+                    breach is None,
+                    breach
+                    or f"composition contract ok ({smoke.outcome}); "
+                    "semantics validated live, not in sandbox",
+                )
+            )
+            if breach is not None:
+                return _finish("smoke")
+        else:
+            stages.append(
+                StageResult("smoke", True, "skipped: no sample input for composition tool")
+            )
     elif run_smoke:
         smoke = smoke_run(source, kwargs=smoke_kwargs or {})
         stages.append(

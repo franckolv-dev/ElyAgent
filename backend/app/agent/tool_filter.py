@@ -107,8 +107,10 @@ _KW_FILTERS: list[tuple[re.Pattern, tuple[str, ...]]] = [
     (re.compile(r"\b(images?|photos?|pictures?|screenshots?|captur|photographie|generate.*image|génère.*image)\b"),
      ("image_", "vision_", "browser_screenshot", "os_screenshot", "trainer_screenshot",
       "pdf_analyze_with_vision", "generate_image")),
-    # PDF
-    (re.compile(r"\b(pdf|fichier pdf)\b"),
+    # PDF — inclut la conversion vers Word : « convertis-le en docx » ne
+    # contient pas toujours le mot « pdf » (le PDF est en pièce jointe), et
+    # sans ces mots-clés pdf_to_docx n'était tout simplement pas bindé.
+    (re.compile(r"\b(pdf|fichier pdf|docx?|word)\b"),
      ("pdf_",)),
     # YouTube
     (re.compile(r"\b(youtube|vidéos?|videos?|chaînes?)\b"),
