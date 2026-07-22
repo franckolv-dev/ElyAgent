@@ -44,6 +44,7 @@ from app.models.user_state import UserState
 # Sprint 4b Phase 1 — auto-amélioration par création de skills (Hermes-style)
 from app.models.failure_case import FailureCase
 from app.models.learned_skill import LearnedSkill, SkillStatus, SkillSource
+from app.models.anticipation import AnticipationSuggestion, SuggestionStatus
 # Sprint 4b V3 J6.c.1 — per-call audit for io python_tool dispatches.
 from app.models.io_tool_dispatch import IoToolDispatch
 # Models that were registered with Base.metadata only by side-effect of being
@@ -84,4 +85,6 @@ __all__ = [
     "Note", "ScheduledTask", "SkillPreference", "SystemConfig",
     "UsageLog", "UserMemoryLog", "UserProfile", "VaultConfig", "VaultEntry",
     "WatchTask",
+    # C5 — anticipation (mode suggestion)
+    "AnticipationSuggestion", "SuggestionStatus",
 ]
