@@ -272,216 +272,64 @@ async def test_record_usage_with_no_user_returns_none(_seeded_user):
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# get_tier_s_llm — provider switching
+# get_tier_s_llm — interaction avec le plafond budgétaire
+#
+# La sélection du provider elle-même (chaîne, repli, instances nommées) est
+# couverte par test_tier_s_routing_config.py depuis que tier S lit la config
+# de routage admin. Ne reste ici que ce qui touche au budget, parce que ça
+# demande la vraie base : la dépense se lit dans usage_logs.
 # ─────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_get_tier_s_llm_force_fallback_skips_first(monkeypatch):
-    """`force_fallback=True` must skip the FIRST item in the chain,
-    even when budget allows it. Default chain is "anthropic,deepseek"
-    so force_fallback picks deepseek."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.delenv("LLM_TIER_S_CHAIN", raising=False)
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_opus",
-        lambda: object(),  # would be selected if not for force_fallback
-    )
-    fb_marker = object()
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek",
-        lambda: fb_marker,
-    )
-    llm, pick = await get_tier_s_llm(force_fallback=True)
-    assert pick == "deepseek"
-    assert llm is fb_marker
+async def test_over_budget_skips_the_first_chain_item(monkeypatch, _seeded_user):
+    """Au-delà du plafond, la voie DÉGRADE vers l'élément suivant.
 
-
-@pytest.mark.asyncio
-async def test_get_tier_s_llm_picks_first_chain_item_under_budget(monkeypatch, _seeded_user):
-    """Default chain → first item (anthropic) gets picked when budget allows."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.delenv("LLM_TIER_S_CHAIN", raising=False)
-    pr_marker = object()
-    fb_marker = object()
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_opus", lambda: pr_marker,
-    )
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek", lambda: fb_marker,
-    )
-    llm, pick = await get_tier_s_llm()
-    assert pick == "anthropic"
-    assert llm is pr_marker
-
-
-@pytest.mark.asyncio
-async def test_get_tier_s_llm_skips_first_when_over_budget(monkeypatch, _seeded_user):
-    """Over-budget skips item 0, picks item 1 (the next-in-chain)."""
+    Elle ne s'arrête pas : une génération d'outil doit rester possible sur
+    un modèle moins cher plutôt que d'échouer.
+    """
     monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "1.00")
-    monkeypatch.delenv("LLM_TIER_S_CHAIN", raising=False)
     async with async_session() as db:
         db.add(UsageLog(
             user_id=_seeded_user, model="claude-opus-4-5", provider="anthropic",
             cost_usd=5.00, skill_used="tier_s.skill_creator",
         ))
         await db.commit()
-    pr_marker = object()
-    fb_marker = object()
+
     monkeypatch.setattr(
-        "app.services.learning.tier_s._build_opus", lambda: pr_marker,
+        "app.services.llm_provider.get_tier_config",
+        lambda: {"skill": {"providers": ["cher", "pas_cher"], "fallback_enabled": True}},
     )
+    cheap = object()
     monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek", lambda: fb_marker,
+        "app.services.llm_provider.build_llm_for_provider",
+        lambda pid, tier=None: {"cher": object(), "pas_cher": cheap}.get(pid),
     )
+
     llm, pick = await get_tier_s_llm()
-    assert pick == "deepseek"
-    assert llm is fb_marker
+
+    assert pick == "pas_cher"
+    assert llm is cheap
 
 
 @pytest.mark.asyncio
-async def test_get_tier_s_llm_returns_none_when_no_providers(monkeypatch):
+async def test_under_budget_keeps_the_first_chain_item(monkeypatch, _seeded_user):
     monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.delenv("LLM_TIER_S_CHAIN", raising=False)
     monkeypatch.setattr(
-        "app.services.learning.tier_s._build_opus", lambda: None,
+        "app.services.llm_provider.get_tier_config",
+        lambda: {"skill": {"providers": ["premier", "second"], "fallback_enabled": True}},
     )
+    first = object()
     monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek", lambda: None,
+        "app.services.llm_provider.build_llm_for_provider",
+        lambda pid, tier=None: first if pid == "premier" else object(),
     )
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_mistral_large", lambda: None,
-    )
+
     llm, pick = await get_tier_s_llm()
-    assert pick == "none"
-    assert llm is None
 
+    assert pick == "premier"
+    assert llm is first
 
-@pytest.mark.asyncio
-async def test_get_tier_s_llm_falls_through_chain_when_first_builds_none(
-    monkeypatch, _seeded_user,
-):
-    """When budget allows but the first provider's build returns None
-    (e.g. no API key), we should silently fall through to the next
-    item in the chain."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.delenv("LLM_TIER_S_CHAIN", raising=False)
-    fb_marker = object()
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_opus", lambda: None,
-    )
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek", lambda: fb_marker,
-    )
-    llm, pick = await get_tier_s_llm()
-    assert pick == "deepseek"
-    assert llm is fb_marker
-
-
-# ── Backlog #19 — LLM_TIER_S_CHAIN configurable ────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_chain_env_picks_mistral_first_for_sovereignty(monkeypatch):
-    """LLM_TIER_S_CHAIN=mistral,deepseek → Mistral picked first."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.setenv("LLM_TIER_S_CHAIN", "mistral,deepseek")
-    mistral_marker = object()
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_mistral_large",
-        lambda: mistral_marker,
-    )
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek",
-        lambda: object(),
-    )
-    llm, pick = await get_tier_s_llm()
-    assert pick == "mistral"
-    assert llm is mistral_marker
-
-
-@pytest.mark.asyncio
-async def test_chain_aliases_collapsed_to_canonical(monkeypatch):
-    """`opus` / `claude` are aliases of `anthropic` — same builder,
-    canonical name returned."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.setenv("LLM_TIER_S_CHAIN", "opus")  # alias of anthropic
-    marker = object()
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_opus", lambda: marker,
-    )
-    llm, pick = await get_tier_s_llm()
-    assert pick == "anthropic"  # canonical, not the alias
-    assert llm is marker
-
-
-@pytest.mark.asyncio
-async def test_chain_unknown_provider_warns_and_skips(monkeypatch):
-    """Unknown provider name in LLM_TIER_S_CHAIN is dropped + logged,
-    not raised."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.setenv("LLM_TIER_S_CHAIN", "nonexistent,deepseek")
-    marker = object()
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek", lambda: marker,
-    )
-    llm, pick = await get_tier_s_llm()
-    assert pick == "deepseek"
-
-
-@pytest.mark.asyncio
-async def test_chain_empty_returns_none(monkeypatch):
-    """LLM_TIER_S_CHAIN= (empty) or all-unknown → no provider attempted."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.setenv("LLM_TIER_S_CHAIN", " ,,")
-    llm, pick = await get_tier_s_llm()
-    assert pick == "none"
-    assert llm is None
-
-
-@pytest.mark.asyncio
-async def test_chain_single_item_does_not_skip_on_force_fallback(monkeypatch):
-    """If the chain has ONE provider, `force_fallback=True` doesn't
-    yield 'none' — single-item chain has no alternative so we still
-    try that single provider (otherwise deepseek-only setups would
-    always fail under force_fallback)."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.setenv("LLM_TIER_S_CHAIN", "deepseek")
-    marker = object()
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek", lambda: marker,
-    )
-    llm, pick = await get_tier_s_llm(force_fallback=True)
-    assert pick == "deepseek"
-    assert llm is marker
-
-
-@pytest.mark.asyncio
-async def test_chain_dedups_repeated_aliases(monkeypatch):
-    """LLM_TIER_S_CHAIN=opus,claude,anthropic must collapse to a single
-    'anthropic' entry — no triple-attempt of the same provider."""
-    monkeypatch.setenv("LLM_TIER_S_MONTHLY_BUDGET_USD", "100")
-    monkeypatch.setenv("LLM_TIER_S_CHAIN", "opus,claude,anthropic,deepseek")
-    call_count = {"opus": 0, "deepseek": 0}
-
-    def _opus_build():
-        call_count["opus"] += 1
-        return None  # let it fall through
-
-    def _ds_build():
-        call_count["deepseek"] += 1
-        return object()
-
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_opus", _opus_build,
-    )
-    monkeypatch.setattr(
-        "app.services.learning.tier_s._build_deepseek", _ds_build,
-    )
-    llm, pick = await get_tier_s_llm()
-    assert pick == "deepseek"
-    assert call_count["opus"] == 1  # NOT 3 — dedup'd
-    assert call_count["deepseek"] == 1
 
 
 def test_mistral_large_cost_in_rate_table():

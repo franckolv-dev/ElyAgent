@@ -8,54 +8,51 @@
 # @license    Elastic License 2.0
 #            https://www.elastic.co/licensing/elastic-license
 # =============================================================================
-"""Tier S — dedicated LLM lane for skill creation + iteration.
+"""Tier S — la voie LLM qui écrit les outils et les compétences d'Ely.
 
-Distinct from the user-facing tiers A/B/C/IMG/MAINTENANCE. Used by the
-skill_creator + skill_eval + skill_iteration services. Carries its own
-monthly budget cap because the providers in the chain (Opus 4.5,
-Mistral Large 3) are expensive: 5 iterations × ~10k tokens each can
-add up to 1-2€ per skill candidate, and we don't want this hitting
-the same routing caches as conversational tier C.
+Utilisée par ``skill_creator``, ``skill_eval``, ``skill_iteration`` et
+``tool_generator``. Elle garde son propre plafond mensuel, parce qu'une
+itération de génération de code peut coûter cher et qu'on ne veut pas la
+voir se mélanger aux caches de routage du tier C conversationnel.
 
-Provider chain (configurable, Backlog #19 promoted 2026-05-29)
---------------------------------------------------------------
-Set `LLM_TIER_S_CHAIN` env var to a comma-separated list of provider
-names, tried in order, first available wins:
+Configuration — un niveau de routage comme les autres (22/07/2026)
+------------------------------------------------------------------
+La chaîne se règle dans **Paramètres → Routage**, niveau « S », exactement
+comme les niveaux A/B/C/IMG/SYS : elle est lue depuis
+``tier_routing_config`` via ``llm_provider.get_tier_config()``. Chaque
+élément est soit un nom de provider, soit un UUID d'instance nommée — un
+modèle local y est donc éligible au même titre qu'un provider cloud.
 
-  LLM_TIER_S_CHAIN=mistral,anthropic,deepseek   # EU-first, perf, fallback
-  LLM_TIER_S_CHAIN=anthropic                      # perf-only
-  LLM_TIER_S_CHAIN=deepseek                       # cost-only
-  LLM_TIER_S_CHAIN=mistral,deepseek               # full sovereignty + cost
+Pourquoi ce changement : jusqu'à cette date, tier S était la SEULE voie à
+ne pas lire cette config. Sa chaîne (``anthropic,deepseek``) et son modèle
+(``claude-opus-4-5``) étaient codés en dur, surchargeables uniquement par
+des variables d'environnement non documentées, et invisibles dans
+l'interface. Conséquence constatée en production : 62 appels facturés sur
+Opus 4.5 alors que l'administrateur avait configuré Haiku, sans aucune
+surface pour s'en apercevoir. ``LLM_TIER_S_CHAIN`` n'est plus lu ; s'il
+subsiste dans l'environnement, un avertissement est journalisé une fois.
 
-Default chain (backward compat with the pre-backlog-19 hardcoded shape) :
-  LLM_TIER_S_CHAIN=anthropic,deepseek
+Un modèle local est un candidat sérieux ici : les prompts de génération
+font ~1,7k tokens en entrée et il n'y a pas de boucle agentique — le
+prompt-processing qui disqualifie le local sur les tiers B/C ne s'applique
+pas à cette voie.
 
-Per-provider rationale
-----------------------
-- **anthropic** (Claude Opus 4.5) — best for iterative code/playbook
-  generation, prompt-caching enabled, but $$$.
-- **mistral** (Mistral Large 3) — EU sovereignty (Paris-hosted), strong
-  on French content (the playbooks Opus tends to anglicise), 7-12×
-  cheaper than Opus per million tokens. The default option for users
-  who want strict EU-only.
-- **deepseek** (DeepSeek v4-pro reasoner) — extremely cheap fallback,
-  good code generation, OpenAI-compatible API.
+Reste piloté par l'environnement (orthogonal au routage) :
+``LLM_TIER_S_MONTHLY_BUDGET_USD`` (défaut 50 $). Au-delà du plafond, le
+PREMIER élément de la chaîne est sauté au profit du suivant — la voie
+dégrade au lieu de s'arrêter.
 
-The provider name returned by `get_tier_s_llm` is the SHORT NAME (one
-of "anthropic", "mistral", "deepseek", "none"). Callers pass it
-verbatim as the `provider` field of `record_tier_s_usage`.
-
-Spending is recorded in the existing `usage_logs` table with
-`skill_used = "tier_s.<purpose>"` so the budget query reuses the same
-audit surface as user-facing LLM calls. Reset of the monthly budget
-is implicit (we sum over the current calendar month).
+La dépense est enregistrée dans ``usage_logs`` avec
+``skill_used = "tier_s.<purpose>"``, sur la même surface d'audit que les
+appels utilisateur. La remise à zéro du budget est implicite (somme sur le
+mois calendaire courant).
 """
 from __future__ import annotations
 
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -64,16 +61,7 @@ from app.database import async_session
 logger = logging.getLogger(__name__)
 
 
-# ── Defaults (overridable by env) ───────────────────────────────────────────
-
-_DEFAULT_OPUS_MODEL = "claude-opus-4-5"
-_DEFAULT_MISTRAL_MODEL = "mistral-large-latest"
-_DEFAULT_DEEPSEEK_MODEL = "deepseek-reasoner"
-
-# Default chain — backward compat with pre-backlog-19 (Opus → DeepSeek).
-# Override via `LLM_TIER_S_CHAIN=mistral,anthropic,deepseek` for full
-# EU-first sovereignty.
-_DEFAULT_CHAIN = "anthropic,deepseek"
+# ── Plafond mensuel (variable d'env, orthogonal au routage) ────────────────
 
 DEFAULT_MONTHLY_BUDGET_USD = 50.0
 
@@ -214,183 +202,72 @@ async def record_tier_s_usage(
         return None
 
 
-# ── Provider builders ───────────────────────────────────────────────────────
-# One builder per provider name. Returns the LangChain ChatModel
-# instance, or None if the provider can't be built (missing API key,
-# import failure, etc.). Builders are pure — they don't touch DB or
-# spend tracking.
-
-
-def _build_opus() -> Any | None:
-    """Claude Opus 4.5 via langchain-anthropic, prompt-caching enabled."""
-    try:
-        from langchain_anthropic import ChatAnthropic
-        from app.config import get_settings
-        from app.services.llm_provider import get_runtime_key
-
-        api_key = get_runtime_key("anthropic") or get_settings().anthropic_api_key
-        if not api_key:
-            return None
-
-        model = os.getenv("LLM_TIER_S_OPUS_MODEL", _DEFAULT_OPUS_MODEL)
-        # Backwards compat: old env name also accepted.
-        if model == _DEFAULT_OPUS_MODEL:
-            model = os.getenv("LLM_TIER_S_PRIMARY_MODEL", model)
-        max_tokens = int(os.getenv("LLM_TIER_S_MAX_TOKENS", "8192"))
-
-        return ChatAnthropic(
-            model=model,
-            api_key=api_key,
-            max_tokens=max_tokens,
-            temperature=0.2,
-            model_kwargs={
-                "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"},
-            },
-        )
-    except Exception as exc:
-        logger.warning("tier_s: failed to build Opus (%s)", exc)
-        return None
-
-
-def _build_mistral_large() -> Any | None:
-    """Mistral Large 3 via langchain-mistralai — EU sovereignty,
-    7-12× cheaper than Opus. Default choice for users who want strict
-    EU-only processing of their learning signals."""
-    try:
-        from langchain_mistralai import ChatMistralAI
-        from app.config import get_settings
-        from app.services.llm_provider import get_runtime_key
-
-        api_key = get_runtime_key("mistral") or get_settings().mistral_api_key
-        if not api_key:
-            return None
-
-        model = os.getenv("LLM_TIER_S_MISTRAL_MODEL", _DEFAULT_MISTRAL_MODEL)
-        max_tokens = int(os.getenv("LLM_TIER_S_MAX_TOKENS", "8192"))
-
-        return ChatMistralAI(
-            model=model,
-            api_key=api_key,
-            max_tokens=max_tokens,
-            temperature=0.2,
-        )
-    except Exception as exc:
-        logger.warning("tier_s: failed to build Mistral Large (%s)", exc)
-        return None
-
-
-def _build_deepseek() -> Any | None:
-    """DeepSeek v4-pro reasoner via OpenAI-compatible endpoint — cheap,
-    solid on code, good fallback when budget tightens or other
-    providers are down."""
-    try:
-        from langchain_openai import ChatOpenAI
-        from app.config import get_settings
-        from app.services.llm_provider import (
-            _deepseek_extra_body,
-            get_runtime_key,
-        )
-
-        settings = get_settings()
-        api_key = get_runtime_key("deepseek") or settings.deepseek_api_key
-        if not api_key:
-            return None
-
-        model = os.getenv("LLM_TIER_S_DEEPSEEK_MODEL", _DEFAULT_DEEPSEEK_MODEL)
-        # Backwards compat: old env name also accepted.
-        if model == _DEFAULT_DEEPSEEK_MODEL:
-            model = os.getenv("LLM_TIER_S_FALLBACK_MODEL", model)
-        max_tokens = int(os.getenv("LLM_TIER_S_MAX_TOKENS", "8192"))
-        base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-
-        return ChatOpenAI(
-            model=model,
-            api_key=api_key,
-            base_url=base_url,
-            max_tokens=max_tokens,
-            temperature=0.2,
-            **_deepseek_extra_body(model),
-        )
-    except Exception as exc:
-        logger.warning("tier_s: failed to build DeepSeek (%s)", exc)
-        return None
-
-
-# Backwards-compat alias retained so Phase 2 tests/imports still work.
-# Internal callers use the new `_build_opus` directly.
-def _build_primary() -> Any | None:
-    return _build_opus()
-
-
-def _build_fallback() -> Any | None:
-    return _build_deepseek()
-
-
-# Canonical name returned to callers — collapses aliases so analytics
-# (UsageLog.provider) don't fork. Users can type "opus" / "claude" /
-# "anthropic" interchangeably in `LLM_TIER_S_CHAIN`.
-_PROVIDER_CANONICAL: dict[str, str] = {
-    "anthropic": "anthropic",
-    "opus":      "anthropic",
-    "claude":    "anthropic",
-    "mistral":   "mistral",
-    "deepseek":  "deepseek",
-}
-
-# Canonical name → builder-attribute-name on THIS module. Looked up
-# late-bound via `getattr(sys.modules[__name__], attr)` in `_dispatch`
-# so tests can monkeypatch the `_build_*` attributes and the chain
-# picks up the new function. A static dict that captured the function
-# objects at module-load would freeze the original bindings forever.
-_BUILDER_ATTRS: dict[str, str] = {
-    "anthropic": "_build_opus",
-    "mistral":   "_build_mistral_large",
-    "deepseek":  "_build_deepseek",
-}
-
-
-def _dispatch_build(canonical_name: str) -> Any | None:
-    """Late-bound provider build — re-reads the module attribute each
-    time so monkeypatch in tests actually swaps the implementation."""
-    import sys
-    attr = _BUILDER_ATTRS.get(canonical_name)
-    if attr is None:
-        return None
-    builder = getattr(sys.modules[__name__], attr, None)
-    if builder is None:
-        return None
-    try:
-        return builder()
-    except Exception as exc:
-        logger.warning("tier_s: builder %s raised (%s)", attr, exc)
-        return None
-
-
-def _parse_chain() -> list[str]:
-    """Read `LLM_TIER_S_CHAIN` env and normalise to a list of canonical
-    provider names. Unknown names are dropped with a warning."""
-    raw = os.getenv("LLM_TIER_S_CHAIN", _DEFAULT_CHAIN)
-    out: list[str] = []
-    seen: set[str] = set()
-    for token in raw.split(","):
-        name = token.strip().lower()
-        if not name:
-            continue
-        canonical = _PROVIDER_CANONICAL.get(name)
-        if canonical is None:
-            logger.warning("tier_s: unknown provider %r in LLM_TIER_S_CHAIN — skipping", name)
-            continue
-        if canonical in seen:
-            continue
-        seen.add(canonical)
-        out.append(canonical)
-    return out
-
-
 # Type alias for callers — the pick is now the canonical provider name
 # (or "none"). Phase 2 callers checked `pick == "none"` only — that
 # contract is preserved.
 TierSPick = str
+
+
+_SKILL_TIER = "skill"
+_DEPRECATED_CHAIN_ENV = "LLM_TIER_S_CHAIN"
+_env_chain_warned = False
+
+
+def _skill_tier_chain() -> tuple[list[str], bool]:
+    """Chaîne du niveau « skill » telle que configurée par l'admin.
+
+    SOURCE DE VÉRITÉ UNIQUE : la config de routage (onglet Routage →
+    ``tier_routing_config``), la même que les niveaux A/B/C/IMG/SYS. Les
+    éléments sont soit des noms de provider, soit des UUID d'instances
+    nommées — un modèle local y est donc éligible comme n'importe quel
+    provider cloud.
+
+    ``LLM_TIER_S_CHAIN`` n'est plus lu (incident du 22/07/2026 : une chaîne
+    hors UI facturait Opus 4.5 à l'insu de l'admin). S'il traîne encore dans
+    l'environnement, on le signale une fois — silencieusement l'ignorer
+    recréerait exactement l'écart entre « ce qui est affiché » et « ce qui
+    tourne » que ce chantier corrige.
+    """
+    global _env_chain_warned
+    if not _env_chain_warned and os.getenv(_DEPRECATED_CHAIN_ENV):
+        _env_chain_warned = True
+        logger.warning(
+            "tier_s: %s est DÉPRÉCIÉ et IGNORÉ — le niveau S se configure "
+            "désormais dans Paramètres → Routage. Retire la ligne du .env "
+            "pour éviter toute confusion.",
+            _DEPRECATED_CHAIN_ENV,
+        )
+
+    from app.services.llm_provider import DEFAULT_TIER_CONFIG, get_tier_config
+
+    default = DEFAULT_TIER_CONFIG[_SKILL_TIER]
+    try:
+        entry = get_tier_config().get(_SKILL_TIER)
+    except Exception as exc:  # noqa: BLE001 — jamais casser la génération
+        logger.warning("tier_s: lecture de la config de niveau échouée (%s)", exc)
+        entry = None
+    # Une config sauvegardée avant ce chantier n'a pas la clé `skill`.
+    if not entry:
+        entry = default
+    return list(entry.get("providers") or []), bool(entry.get("fallback_enabled", True))
+
+
+def _build_chain_item(provider_id: str) -> Any | None:
+    """Construit un élément de chaîne — nom de provider OU UUID d'instance.
+
+    Délègue à ``build_llm_for_provider``, le même point d'entrée que les
+    autres niveaux : tier S hérite ainsi automatiquement des instances
+    nommées, du déchiffrement des clés et de la gestion des providers.
+    ``ComplexityTier.COMPLEX`` donne les hyperparamètres adaptés à de la
+    génération de code (température basse, 8192 tokens de sortie).
+    """
+    try:
+        from app.services.llm_provider import ComplexityTier, build_llm_for_provider
+
+        return build_llm_for_provider(provider_id, ComplexityTier.COMPLEX)
+    except Exception as exc:  # noqa: BLE001 — un provider cassé n'arrête pas la chaîne
+        logger.warning("tier_s: construction de %r impossible (%s)", provider_id, exc)
+        return None
 
 
 async def get_tier_s_llm(*, force_fallback: bool = False) -> tuple[Any | None, TierSPick]:
@@ -410,7 +287,7 @@ async def get_tier_s_llm(*, force_fallback: bool = False) -> tuple[Any | None, T
     Mistral as the "primary" gets degraded to DeepSeek when budget
     runs out — not to nothing.
     """
-    chain = _parse_chain()
+    chain, fallback_enabled = _skill_tier_chain()
     if not chain:
         logger.warning("tier_s: empty provider chain — nothing to attempt")
         return None, "none"
@@ -424,8 +301,15 @@ async def get_tier_s_llm(*, force_fallback: bool = False) -> tuple[Any | None, T
             # the budget is exhausted for the primary. Single-item
             # chain has no alternative, so we don't skip.
             continue
-        llm = _dispatch_build(name)
+        llm = _build_chain_item(name)
         if llm is not None:
             return llm, name
+        if not fallback_enabled:
+            # L'admin a explicitement coupé le repli sur ce niveau : on ne
+            # tente PAS l'élément suivant, même s'il est constructible.
+            logger.info(
+                "tier_s: %s unavailable and fallback disabled — stopping", name
+            )
+            return None, "none"
     logger.info("tier_s: every provider in chain %s is unavailable", chain)
     return None, "none"

@@ -754,6 +754,21 @@ TIER_META = [
         ),
     },
     {
+        "id": "skill",
+        "label": "Niveau S — Auto-développement",
+        "badge": "S",
+        "color": "violet",
+        "description": (
+            "Écriture des outils et des compétences qu'Ely se crée elle-même : "
+            "génération de code Python, évaluation et itération. Les prompts y "
+            "sont courts (~1,7k tokens) et sans boucle agentique, donc un modèle "
+            "local spécialisé en code est ici un choix viable, contrairement aux "
+            "niveaux B et C. Un plafond mensuel distinct s'applique "
+            "(LLM_TIER_S_MONTHLY_BUDGET_USD, 50 $ par défaut) : une fois atteint, "
+            "le premier modèle de la chaîne est sauté au profit du suivant."
+        ),
+    },
+    {
         "id": "maintenance",
         "label": "Niveau SYS — Maintenance",
         "badge": "SYS",
