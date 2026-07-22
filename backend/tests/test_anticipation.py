@@ -170,6 +170,30 @@ async def test_scan_user_ignores_low_frequency(_user):
     assert await scan_user(_user, now=now) == []
 
 
+@pytest.mark.asyncio
+async def test_scan_user_excludes_scheduler_conversations(_user):
+    """Angle mort attrapé au 1er test réel (22/07, 8 fausses suggestions) :
+    le scheduler persiste CHAQUE run comme une conversation « [Planifié] … »
+    avec le prompt en message user → le détecteur voyait les tâches DÉJÀ
+    planifiées comme des routines à planifier (ouroboros). Ces conversations
+    synthétiques sont exclues du scan."""
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    async with async_session() as db:
+        conv = Conversation(user_id=_user, title="[Planifié] daily brief")
+        db.add(conv)
+        await db.flush()
+        conv_id = str(conv.id)
+        for d in (1, 2, 3, 4):
+            m = Message(conversation_id=conv_id, role="user",
+                        content="prépare et envoie le daily briefing complet")
+            db.add(m)
+            await db.flush()
+            m.created_at = (now - timedelta(days=d)).replace(tzinfo=None)
+        await db.commit()
+
+    assert await scan_user(_user, now=now) == []
+
+
 # ────────────────────────────────────────────────────────────────────────
 # Cycle : insertion, anti-spam, refus définitif, kill-switch, ntfy
 # ────────────────────────────────────────────────────────────────────────
