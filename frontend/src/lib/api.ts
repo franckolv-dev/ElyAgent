@@ -552,6 +552,27 @@ export const api = {
       method: "POST",
     }) as Promise<MeLearnedSkill>,
 
+  // ── Anticipation suggestions (C5) ───────────────────────────────────────
+  /** The caller's anticipation suggestions ("you ask X regularly — want a
+   *  scheduled task?"). Pass status="proposed" for the actionable ones. */
+  mySuggestionsList: (status?: string) =>
+    fetchAPI(
+      `/api/me/suggestions${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ) as Promise<{ suggestions: AnticipationSuggestion[] }>,
+
+  /** Definitive refusal — the pattern is never proposed again. */
+  mySuggestionDismiss: (id: number) =>
+    fetchAPI(`/api/me/suggestions/${id}/dismiss`, {
+      method: "POST",
+    }) as Promise<AnticipationSuggestion>,
+
+  /** Mark accepted — called AFTER the user created the scheduled task via
+   *  the prefilled modal (Ely never creates the task itself). */
+  mySuggestionAccept: (id: number) =>
+    fetchAPI(`/api/me/suggestions/${id}/accept`, {
+      method: "POST",
+    }) as Promise<AnticipationSuggestion>,
+
   // ── Admin: learned-skill candidate review (Sprint 4b Phase 4.a) ─────────
   /** List learned skills awaiting HITL review. Defaults to `candidate`
    *  (the promotion queue); pass another status to audit what's live,
@@ -877,6 +898,26 @@ export interface MeLearnedSkill {
   last_used_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Anticipation suggestions (C5)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** One anticipation suggestion — mirrors `_to_dict` in
+ *  `backend/app/routers/suggestions.py`. */
+export interface AnticipationSuggestion {
+  id: number;
+  /** `proposed` | `accepted` | `dismissed`. */
+  status: string;
+  /** The recurring user message (most recent occurrence) — prefills the
+   *  scheduled-task prompt. */
+  suggested_prompt: string;
+  /** Descriptive cadence: `daily@09:00` | `weekly:mon@09:00` — convert
+   *  with `cadenceToCron` before feeding the scheduler. */
+  suggested_cadence: string;
+  evidence: { at: string; content: string }[];
+  created_at: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
