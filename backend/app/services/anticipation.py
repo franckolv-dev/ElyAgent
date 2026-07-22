@@ -55,6 +55,21 @@ HOUR_TOLERANCE = 2.0   # heures — dispersion max pour une cadence « daily »
 _MAX_EVIDENCE = 5      # occurrences échantillonnées dans evidence_json
 _WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
+# Conversations SYNTHÉTIQUES exclues du scan — le scheduler persiste chaque
+# run comme une conversation « [Planifié] … » avec le prompt en message
+# user : sans cette exclusion, le détecteur voit les tâches DÉJÀ planifiées
+# comme des routines à proposer (ouroboros — 8 fausses suggestions au
+# premier cycle réel, 22/07).
+_SYNTHETIC_TITLE_PREFIXES = ("[Planifié]",)
+
+
+def _not_synthetic_conversation():
+    """Clause SQL : conversations humaines seulement."""
+    from sqlalchemy import and_, not_
+    return and_(*[
+        not_(Conversation.title.startswith(p)) for p in _SYNTHETIC_TITLE_PREFIXES
+    ])
+
 
 def _is_disabled() -> bool:
     return os.getenv("ANTICIPATION_DISABLED", "").lower() in ("1", "true", "yes")
@@ -168,6 +183,7 @@ async def scan_user(
                     Conversation.user_id == user_id,
                     Message.role == "user",
                     Message.created_at >= cutoff,
+                    _not_synthetic_conversation(),
                 )
                 .order_by(Message.created_at.asc())
             )).all()
@@ -252,7 +268,11 @@ async def run_anticipation_cycle(now: datetime | None = None) -> dict[str, Any]:
                 u for u in (await db.execute(
                     select(Conversation.user_id)
                     .join(Message, Message.conversation_id == Conversation.id)
-                    .where(Message.role == "user", Message.created_at >= cutoff)
+                    .where(
+                        Message.role == "user",
+                        Message.created_at >= cutoff,
+                        _not_synthetic_conversation(),
+                    )
                     .distinct()
                 )).scalars().all()
                 if u
