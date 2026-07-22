@@ -174,8 +174,13 @@ async def record_hallucination_block(
     tier_llm: str | None = None,
     mission_id: str | None = None,
     prompt_version: str | None = None,
+    tool_trace: list[dict] | None = None,
 ) -> int | None:
-    """Persist a completion_guard rewrite — design note §2.2."""
+    """Persist a completion_guard rewrite — design note §2.2.
+
+    C4-4 : ``tool_trace`` (ToolMessages enregistrés du tour) transite vers
+    la capture failure_case — c'est la matière du replay shadow.
+    """
     if not user_id or not conversation_id:
         return None
     if prompt_version is None:
@@ -216,6 +221,7 @@ async def record_hallucination_block(
                 tier_llm=tier_llm,
                 mission_id=mission_id,
                 prompt_version=prompt_version,
+                tool_trace=tool_trace,
             )
         except Exception as exc:
             logger.debug("hallucination_block failure_case capture skipped (swallowed): %s", exc)

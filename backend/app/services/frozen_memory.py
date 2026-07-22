@@ -122,6 +122,26 @@ async def get_or_build(
     return snapshot
 
 
+def preseed(conversation_id: str, snapshot: str) -> None:
+    """Force the snapshot for ``conversation_id`` BEFORE any build (C4-4).
+
+    Used by the shadow replay engine: both A/B runs get a hand-built
+    snapshot (same base ± the forced <learned_skills> block), so the only
+    prompt difference between the runs is the skill under test — no Qdrant
+    drift, full determinism. ``get_or_build`` then hits the cache and the
+    real builder never runs for that synthetic conversation.
+    """
+    if not conversation_id:
+        return
+    _snapshots[conversation_id] = {
+        "snapshot": snapshot if isinstance(snapshot, str) else str(snapshot or ""),
+        "user_id": "replay-shadow",
+        "built_at": time.time(),
+    }
+    logger.debug("frozen_memory: PRESEED conv=%s (%d chars)",
+                 conversation_id, len(snapshot or ""))
+
+
 def invalidate(conversation_id: str) -> None:
     """Drop the snapshot for ``conversation_id``."""
     if conversation_id in _snapshots:

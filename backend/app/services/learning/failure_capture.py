@@ -51,6 +51,48 @@ SIGNAL_MISSION_CRITIQUE = "mission_critiques"
 SIGNAL_TOOL_ABSENT = "tool_absent"  # find_tool searched the catalog and found nothing
 SIGNAL_USER_FEEDBACK = "user_feedback"  # C4-5 — explicit 👎 on an assistant response
 
+# C4-4 — caps of the recorded tool trace (shadow replay re-serves these).
+# Wider than MAX_FIELD_CHARS on purpose: a truncated tool result would make
+# the replayed LLM see a DIFFERENT context than the original turn. The DB
+# `messages` table only persists user/assistant/system rows (verified), so
+# the trace captured at signal time is the ONLY source for shadow replay.
+# Contents are stored exactly as the original LLM saw them (anonymized
+# placeholders) — the replay LLM sees the same, and no cleartext PII is
+# ever re-sent to the cloud.
+TOOL_TRACE_CHARS: int = 3000
+MAX_TOOL_TRACE_ENTRIES: int = 6
+
+
+def tool_trace_from_messages(messages) -> list[dict]:
+    """Extract the ordered ToolMessage trace of a turn: [{tool, content}].
+
+    Best-effort and tolerant (dict/object shapes, garbage skipped) — same
+    spirit as ``facade_detection.tools_called_from_messages`` but keeps
+    the CONTENTS, which the shadow replay (C4-4) re-serves. Capped at
+    MAX_TOOL_TRACE_ENTRIES entries × TOOL_TRACE_CHARS chars.
+    """
+    trace: list[dict] = []
+    for m in (messages or []):
+        try:
+            is_tool_msg = (
+                getattr(m, "type", None) == "tool"
+                or m.__class__.__name__ == "ToolMessage"
+            )
+            if not is_tool_msg:
+                continue
+            name = getattr(m, "name", None)
+            if not name:
+                continue
+            content = getattr(m, "content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            trace.append({"tool": str(name), "content": content[:TOOL_TRACE_CHARS]})
+            if len(trace) >= MAX_TOOL_TRACE_ENTRIES:
+                break
+        except Exception:  # noqa: BLE001 — un message pourri ne casse pas la capture
+            continue
+    return trace
+
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -290,6 +332,7 @@ async def capture_from_hallucination_block(
     tier_llm: str | None = None,
     mission_id: str | None = None,
     prompt_version: str | None = None,
+    tool_trace: list[dict] | None = None,
 ) -> int | None:
     """Build a FailureCase from a completion_guard rewrite signal.
 
@@ -297,6 +340,11 @@ async def capture_from_hallucination_block(
     action without actually calling the corresponding tool. Replay
     payload captures the original (rewritten) response + the tools
     that WERE invoked vs the destructive tools that SHOULD have been.
+
+    C4-4 : ``tool_trace`` ([{tool, content}], already capped by
+    ``tool_trace_from_messages``) is the recorded ToolMessage sequence of
+    the turn — the shadow replay re-serves it instead of re-executing
+    anything.
 
     Returns the new FailureCase.id, or None on error.
     """
@@ -314,6 +362,7 @@ async def capture_from_hallucination_block(
             "reason": reason,
             "original_response": _truncate(original_response),
             "tier_llm": tier_llm,
+            "tool_trace": list(tool_trace or [])[:MAX_TOOL_TRACE_ENTRIES],
         }
         # Clustering key: same model + same "destructive verb claimed but no
         # tool" pattern → same skill candidate

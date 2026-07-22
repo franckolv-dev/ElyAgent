@@ -102,6 +102,45 @@ def _parse_tag_arg(raw: str | None) -> set[str] | None:
     return {t.strip() for t in raw.split(",") if t.strip()}
 
 
+async def _run_case_replay(case_id: int, skill_id: str | None) -> int:
+    """C4-4 — replay shadow A/B d'un failure_case (déclenchement humain).
+
+    Charge le cas réel, rejoue le tour SANS puis AVEC le skill lié
+    (passerelle en mode shadow — aucun outil réel), imprime le rapport.
+    Exit 0 si le run s'est déroulé (quel que soit le verdict), 1 sinon.
+    """
+    from app.services.learning.replay_engine import run_ab
+
+    print(f"▶ Replay shadow A/B — failure_case #{case_id}"
+          + (f" (skill forcé : {skill_id})" if skill_id else ""))
+    report = await run_ab(case_id, skill_id=skill_id)
+    status = report.get("status")
+    if status != "ok":
+        print(f"✗ replay impossible : {status}"
+              + (f" — {report.get('hint')}" if report.get("hint") else ""))
+        return 1
+
+    def _fmt(run: dict[str, Any]) -> str:
+        text = (run.get("final_text") or "").strip().replace("\n", " ")
+        if len(text) > 300:
+            text = text[:297] + "…"
+        misses = run.get("shadow_misses") or []
+        miss_note = f"  [outils non enregistrés tentés : {', '.join(misses)}]" if misses else ""
+        return f"    blocked={run.get('blocked')}  «{text}»{miss_note}"
+
+    print(f"  famille : {report['family']}  |  skill : {report['skill_id']}")
+    print("  A (sans skill) :")
+    print(_fmt(report["before"]))
+    print("  B (avec skill) :")
+    print(_fmt(report["after"]))
+    print(f"  VERDICT : {report['verdict'].upper()}")
+    ev = report.get("skill_eval") or {}
+    if ev.get("status") == "evaluated":
+        print(f"  2ᵉ avis skill_eval : score={ev.get('score')} verdict={ev.get('verdict')}")
+    print("  (rapport écrit dans LearnedSkill.validation_report_json.replay_ab)")
+    return 0
+
+
 async def _run_one(module_name: str) -> dict[str, Any]:
     full = f"bench.scenarios.canonical.{module_name}"
     started = time.monotonic()
@@ -234,9 +273,29 @@ async def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="List discovered scenarios + their tags, then exit.",
     )
+    parser.add_argument(
+        "--case", "-c",
+        type=int,
+        default=None,
+        metavar="FAILURE_CASE_ID",
+        help="C4-4 — replay shadow A/B d'un failure_case réel : rejoue le "
+             "tour sans puis avec le skill lié (aucun outil réel exécuté, "
+             "les résultats enregistrés sont re-servis), imprime le rapport "
+             "avant/après, puis sort. Ignore --tag.",
+    )
+    parser.add_argument(
+        "--skill",
+        default=None,
+        metavar="SKILL_ID",
+        help="Avec --case : force le LearnedSkill à tester (défaut : le "
+             "learned_skill_id du failure_case).",
+    )
     args = parser.parse_args(argv or [])
 
     _ensure_backend_importable()
+
+    if args.case is not None:
+        return await _run_case_replay(args.case, args.skill)
 
     scenarios = _discover()
     if not scenarios:
