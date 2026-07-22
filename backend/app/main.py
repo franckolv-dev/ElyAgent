@@ -464,6 +464,21 @@ async def lifespan(app: FastAPI):
         id="learned_skills_curator",
     )
 
+    # C5 — anticipation V1 (cadrage validé 22/07) : détecte les demandes
+    # récurrentes (heuristique pure, 28 j glissants) et PROPOSE une tâche
+    # planifiée (ntfy + /api/me/suggestions). Jamais d'exécution — Ely
+    # propose, l'humain crée. Mardi 03:00 UTC (le curator a lundi).
+    # Kill-switch : ANTICIPATION_DISABLED=true.
+    from app.services.anticipation import run_anticipation_cycle as _ant_run
+    _memory_scheduler.add_job(
+        _ant_run,
+        trigger="cron",
+        day_of_week="tue",
+        hour=3,
+        minute=0,
+        id="anticipation_cycle",
+    )
+
     # Métadonnées modèles — refresh hebdo best-effort depuis models.dev. Le
     # snapshot bundlé fait foi (offline) ; ceci augmente l'overlay pour les
     # modèles cloud inconnus. TTL-gated (1 semaine), non bloquant, no-op si
@@ -699,6 +714,9 @@ app.include_router(_sovereignty_prefs_router.router)
 # Tier-aware licence enforcement (Phase 1) — router carries its own /api/licence prefix.
 from app.routers import licence as _licence_router
 app.include_router(_licence_router.router)
+# C5 — suggestions d'anticipation (self-prefixed /api/me/suggestions).
+from app.routers import suggestions as _suggestions_router
+app.include_router(_suggestions_router.router)
 
 # ── Static files — ELY Desktop binaries ─────────────────────────────────────
 import os as _os
