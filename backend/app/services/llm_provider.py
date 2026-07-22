@@ -190,6 +190,12 @@ DEFAULT_TIER_CONFIG: dict[str, dict] = {
     "complex":     {"providers": ["zhipu", "anthropic", "gemini"],  "fallback_enabled": True},
     "image":       {"providers": ["gemini", "zhipu"],               "fallback_enabled": True},
     "maintenance": {"providers": ["ollama"],                        "fallback_enabled": False},
+    # Tier S — génération d'outils et de compétences (services/learning/*).
+    # Ajouté le 22/07/2026 : cette voie avait sa PROPRE chaîne codée en dur
+    # (anthropic → Opus 4.5) qui ignorait cette config et n'apparaissait nulle
+    # part dans l'UI. Défaut volontairement NON-anthropic, pour ne pas
+    # réintroduire une facturation que l'admin n'a pas choisie.
+    "skill":       {"providers": ["deepseek"],                      "fallback_enabled": True},
 }
 
 _tier_config: dict[str, dict] = {}   # empty = use DEFAULT_TIER_CONFIG

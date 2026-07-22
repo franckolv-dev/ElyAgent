@@ -617,6 +617,7 @@
       "medium": "Niveau B — Standard",
       "complex": "Niveau C — Complexe",
       "image": "Niveau IMG — Vision",
+      "skill": "Niveau S — Auto-développement",
       "maintenance": "Niveau SYS — Maintenance"
     },
     "tierDescriptions": {
@@ -624,6 +625,7 @@
       "medium": "Conversations standards, utilisation des outils (agenda, e-mail, recherche), raisonnement modéré. Représente la majorité des échanges. Score de complexité 30-70.",
       "complex": "Analyses approfondies, génération de code, workflows multi-étapes, documents longs. Nécessite un modèle performant avec une grande fenêtre de contexte. Score de complexité > 70.",
       "image": "Analyse d'images, reconnaissance visuelle, description de photos ou captures d'écran jointes à un message. Nécessite un modèle multimodal.",
+      "skill": "Écriture des outils et des compétences qu'Ely se crée elle-même : génération de code Python, évaluation et itération. Les prompts y sont courts (~1,7k tokens) et sans boucle agentique, donc un modèle local spécialisé en code est ici un choix viable, contrairement aux niveaux B et C. Un plafond mensuel distinct s'applique (50 $ par défaut) : une fois atteint, le premier modèle de la chaîne est sauté au profit du suivant.",
       "maintenance": "Tâches de fond : extraction de faits pour la mémoire utilisateur, maintenance des profils, exécution des tâches planifiées. Recommandé : Ollama local (zéro coût, disponible 24/7, sans quota)."
     },
     "googleScopeGmail": "Lecture et envoi d'emails",

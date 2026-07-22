@@ -617,6 +617,7 @@
       "medium": "Tier B — Standard",
       "complex": "Tier C — Complex",
       "image": "Tier IMG — Vision",
+      "skill": "Tier S — Self-development",
       "maintenance": "Tier SYS — Maintenance"
     },
     "tierDescriptions": {
@@ -624,6 +625,7 @@
       "medium": "Standard conversations, tool usage (calendar, email, search), moderate reasoning. Represents the majority of exchanges. Complexity score 30-70.",
       "complex": "In-depth analysis, code generation, multi-step workflows, long documents. Requires a performant model with a large context window. Complexity score > 70.",
       "image": "Image analysis, visual recognition, description of photos or screenshots attached to a message. Requires a multimodal model.",
+      "skill": "Writing the tools and skills Ely creates for itself: Python code generation, evaluation and iteration. Prompts here are short (~1.7k tokens) with no agentic loop, so a local code-specialised model is a viable choice — unlike tiers B and C. A separate monthly cap applies ($50 by default): once reached, the first model in the chain is skipped in favour of the next.",
       "maintenance": "Background tasks: fact extraction for user memory, profile maintenance, scheduled task execution. Recommended: local Ollama (zero cost, 24/7 available, no quota)."
     },
     "googleScopeGmail": "Read and send emails",
