@@ -87,6 +87,7 @@ def _hallucination_signal_kwargs(
     conversation_id: str | None,
     model_used: str | None,
     original_content: str,
+    tool_trace: list[dict] | None = None,
 ) -> dict:
     """Map a blocking ``GuardVerdict`` to ``record_hallucination_block`` kwargs.
 
@@ -94,7 +95,8 @@ def _hallucination_signal_kwargs(
     stays locked to the web caller's historical contract
     (``model_used_out or "unknown"``, ``original_response`` = the suspect text).
     ``record_hallucination_block`` no-ops on empty ids, so ``None`` collapses to
-    ``""`` safely.
+    ``""`` safely. C4-4 : ``tool_trace`` (recorded ToolMessages of the turn)
+    rides along for the shadow replay.
     """
     return {
         "user_id": user_id or "",
@@ -105,6 +107,7 @@ def _hallucination_signal_kwargs(
         "destructive_tools_invoked": list(verdict.destructive_tools_invoked),
         "reason": verdict.reason,
         "original_response": original_content,
+        "tool_trace": list(tool_trace or []),
     }
 
 
@@ -116,6 +119,7 @@ def _spawn_hallucination_signal(
     model_used: str | None,
     verdict: GuardVerdict,
     original_content: str,
+    tool_trace: list[dict] | None = None,
 ) -> None:
     """Fire-and-forget the ``record_hallucination_block`` learning signal.
 
@@ -134,6 +138,7 @@ def _spawn_hallucination_signal(
             conversation_id=conversation_id,
             model_used=model_used,
             original_content=original_content,
+            tool_trace=tool_trace,
         )
         spawn(
             record_hallucination_block(**kwargs),
@@ -157,6 +162,7 @@ def verify_outcome(
     model_used: str | None = None,
     record_signal: bool = True,
     destructive_tools: frozenset[str] = DESTRUCTIVE_TOOLS,
+    tool_trace: list[dict] | None = None,
 ) -> VerifiedOutcome:
     """Verify one final assistant response before it is delivered.
 
@@ -217,6 +223,7 @@ def verify_outcome(
             model_used=model_used,
             verdict=verdict,
             original_content=content,
+            tool_trace=tool_trace,
         )
 
     safe = build_warning_replacement(content, verdict, locale=locale)
@@ -253,6 +260,7 @@ def verify_outcome_from_result(
     should call :func:`verify_outcome` directly instead.
     """
     from app.services.learning.facade_detection import tools_called_from_messages
+    from app.services.learning.failure_capture import tool_trace_from_messages
 
     messages = invoke_result.get("messages") if isinstance(invoke_result, dict) else None
     tools_invoked = tools_called_from_messages(messages)
@@ -267,4 +275,7 @@ def verify_outcome_from_result(
         model_used=model_used,
         record_signal=record_signal,
         destructive_tools=destructive_tools,
+        # C4-4 : la trace des ToolMessages du tour part avec le signal —
+        # c'est elle que le replay shadow re-servira.
+        tool_trace=tool_trace_from_messages(messages),
     )

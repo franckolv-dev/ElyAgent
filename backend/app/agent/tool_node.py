@@ -93,6 +93,17 @@ async def tool_node(state: AgentState) -> dict:
     except Exception as _corr_exc:  # noqa: BLE001
         logger.debug("correlation id set skipped: %s", _corr_exc)
 
+    # ── C4-4 : session replay shadow pour cette conversation ? ──────────
+    # Les conv_id de replay sont synthétiques (« replay-shadow-… ») — une
+    # vraie conversation ne matche jamais. Best-effort : sans le module,
+    # comportement inchangé.
+    _shadow = None
+    try:
+        from app.services.learning.replay_engine import get_shadow_session
+        _shadow = get_shadow_session(_conv_id)
+    except Exception as _sh_exc:  # noqa: BLE001
+        logger.debug("shadow session lookup skipped: %s", _sh_exc)
+
     # ── Délégation à la passerelle unique (C3a) ─────────────────────────
     from app.services.tool_gateway import GatewayContext, execute_tool_call
     ctx = GatewayContext(
@@ -102,6 +113,7 @@ async def tool_node(state: AgentState) -> dict:
         criticality_filter=sf,
         hitl=hitl,
         memory=memory,
+        shadow_results=_shadow,
     )
     for tool_call in last_message.tool_calls:
         results.append(await execute_tool_call(ctx, tool_call, tool_map))

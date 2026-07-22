@@ -193,6 +193,9 @@ def test_signal_kwargs_map_verdict_fields():
         "destructive_tools_invoked": [],
         "reason": "completion_claim_without_destructive_tool_call",
         "original_response": _LYING,
+        # C4-4 — la trace des ToolMessages du tour fait partie du contrat
+        # du signal (matière du replay shadow) ; absente → liste vide.
+        "tool_trace": [],
     }
 
 

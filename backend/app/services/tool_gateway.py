@@ -107,6 +107,13 @@ class GatewayContext:
     anonymize_results: bool = True
     pre_execute: Any = None
     post_execute: Any = None
+    # C4-4 — replay shadow STRICT : quand non-None, la passerelle ne fait
+    # QU'UNE chose : re-servir les ToolMessages enregistrés du tour
+    # d'origine (duck-typed : .serve(tool_name) -> str|None, .misses).
+    # Court-circuit TOTAL en tête d'execute_tool_call — aucun outil réel,
+    # aucun HITL, aucune injection de credentials, aucun journal n'est
+    # atteignable en shadow, par construction (fail-closed).
+    shadow_results: Any = None
 
 
 # Envois de mail « à soi-même » : risque quasi nul (on ne fuit pas ses
@@ -338,6 +345,34 @@ async def execute_tool_call(
     """
     if meta is not None:
         meta.setdefault("success", False)  # seuls exécution OK / cache passent à True
+
+    # ── C4-4 : mode REPLAY SHADOW — court-circuit total (fail-closed) ────
+    # On re-sert le résultat ENREGISTRÉ du tour d'origine ; un outil sans
+    # résultat enregistré reçoit une notice explicite et n'est JAMAIS
+    # exécuté. Placé avant toute autre logique : ni PII, ni vault, ni
+    # HITL, ni credentials, ni journal ne tournent en shadow.
+    if ctx.shadow_results is not None:
+        _sh_name = tool_call.get("name", "")
+        _sh_id = tool_call.get("id", "")
+        _served: str | None = None
+        try:
+            _served = ctx.shadow_results.serve(_sh_name)
+        except Exception as _sh_exc:  # noqa: BLE001 — session shadow défaillante = miss
+            logger.debug("shadow serve failed for %s: %s", _sh_name, _sh_exc)
+        if _served is None:
+            _served_content = (
+                f"[replay : outil non enregistré — `{_sh_name}` n'a pas de "
+                "résultat capturé dans le tour d'origine ; exécution réelle "
+                "interdite en mode shadow. Réponds avec ce que tu as.]"
+            )
+        else:
+            _served_content = _served
+            if meta is not None:
+                meta["success"] = True
+        if meta is not None:
+            meta["shadow"] = True
+        return _tool_result(_served_content, _sh_id)
+
     user_id = ctx.user_id
     _conv_id = ctx.conversation_id
     _vault_sf = ctx.pii_filter
