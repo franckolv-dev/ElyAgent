@@ -66,19 +66,50 @@ The tool you write is COMPOSITION + PURE COMPUTATION only:
 
 Composing other tools
 ---------------------
-To call another ELY tool, import the helper and make your function ASYNC:
+⚠️ READ THIS FIRST — the #1 cause of broken generated tools:
+
+    **`call_tool` RETURNS A HUMAN-READABLE `str`. NOT a dict. NOT a list.**
+
+Every ELY tool is written for an LLM to read, so it returns prose:
+
+    "3 fichier(s):\\n\\n• rapport.pdf (application/pdf)\\n  ID: 1AbC…"
+    "Aucun fichier trouvé."
+    "Erreur Drive: quota exceeded"
+
+So this code is WRONG and crashes at runtime with
+``'str' object has no attribute 'get'`` — the validator will NOT catch it,
+only the user will, in production:
+
+    files = await call_tool("drive_list_files", {"query": q})
+    if len(files) == 0: ...        # ✗ len() of a string — always > 0
+    file_id = files[0].get("id")   # ✗ files[0] is a CHARACTER
+
+Treat every result as text you must READ:
 
     from app.services.learning.learned_tool_dispatch import call_tool
 
     @tool
-    async def my_tool(query: str) -> int:
+    async def my_tool(query: str) -> str:
         \"\"\"…\"\"\"
-        emails = await call_tool("gmail_list_emails", {"query": query})
-        return len(emails)
+        listing = await call_tool("drive_list_files", {"query": query})
+        if "Aucun fichier" in listing or listing.startswith("Erreur"):
+            return f"Rien trouvé pour {query!r}."
+        match = re.search(r"ID\\s*:\\s*(\\S+)", listing)   # parse the text
+        if not match:
+            return f"Impossible d'extraire un ID de : {listing[:200]}"
+        return await call_tool("drive_copy_file", {"file_id": match.group(1)})
 
 Rules:
   - `call_tool(name, args)` is the ONLY way to reach another tool. NEVER
     import a tool function directly, and never invent a tool name.
+  - The return value is a `str`. ALWAYS. Parse it with `re` / `in` /
+    `splitlines()`. NEVER call `.get()`, `.keys()`, `[0]["x"]` or
+    `json.loads()` on it, and never trust `len()` as an item count.
+  - A tool result is also how ERRORS come back — they are strings too, not
+    exceptions. Check for "Erreur", "Aucun", "non connecté" before using a
+    result, and return a clear message instead of crashing.
+  - Prefer NOT composing at all when a single tool already does the job.
+    A chain of 3 text-parsing calls is 3 chances to break.
   - Compose ONLY tools from the AVAILABLE TOOLS list — it already excludes
     destructive / sensitive tools (delete, send, share, ssh…), which CANNOT
     be composed and will raise at runtime.

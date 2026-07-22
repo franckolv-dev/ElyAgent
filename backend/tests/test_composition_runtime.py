@@ -140,17 +140,24 @@ def test_code_guard_allows_call_tool_import():
     assert report.ok, report.summary()
 
 
-# ── orchestrator skips smoke for composition tools ───────────────────────────
+# ── orchestrator runs a NARROW smoke for composition tools ───────────────────
 
 
-def test_validation_skips_smoke_for_composition():
+def test_validation_runs_contract_smoke_for_composition():
+    """Le smoke n'est plus sauté : il valide le contrat de type de call_tool.
+
+    Changement du 22/07 — le saut pur et simple avait laissé passer en prod
+    un tool qui faisait ``.get()`` sur une chaîne (cf.
+    test_composition_smoke_contract.py). La sémantique, elle, reste hors de
+    portée du bac à sable : seul le contrat est jugé ici.
+    """
     from app.services.learning.tool_orchestrator import validate_tool_source
 
     report = validate_tool_source(COMPO, existing_names=set(), run_smoke=True)
     assert report.ok, report.to_json()
     smoke = next((s for s in report.stages if s.stage == "smoke"), None)
     assert smoke is not None and smoke.ok
-    assert "skipped" in smoke.detail and "composition" in smoke.detail
+    assert "contract ok" in smoke.detail
 
 
 # ── end-to-end: compile a composition tool and dispatch through it ───────────

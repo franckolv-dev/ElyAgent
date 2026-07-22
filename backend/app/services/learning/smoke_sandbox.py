@@ -156,11 +156,19 @@ sys.modules["langchain_core.tools"] = _stub(
     {"tool": _identity, "InjectedToolArg": object, "StructuredTool": object},
 )
 async def _async_stub(*args, **kwargs):
-    # Composition tools do `await call_tool(...)`; the sandbox has no real
-    # registry, so this returns a benign placeholder. (The validation
-    # orchestrator SKIPS smoke for composition tools anyway — this just keeps
-    # a direct smoke_run from ImportError/NameError on the call_tool import.)
-    return {}
+    # Composition tools do `await call_tool(...)`. The sandbox has no real
+    # registry, so it cannot reproduce a tool's SEMANTICS — but it can and
+    # must reproduce its TYPE CONTRACT: every ELY tool returns a
+    # human-readable str, never a dict/list. Returning {} here (the old
+    # behaviour) actively hid the most common generated-tool bug —
+    # `result[0].get("id")` — which then crashed in production.
+    # The shape mimics drive_list_files: a listing with an "ID :" line.
+    return (
+        "1 fichier(s):\n\n"
+        "• exemple.pdf (application/pdf)\n"
+        "  Modifie: 2026-07-22T10:00:00Z | Taille: 12 Ko\n"
+        "  ID : 1AbCdEfGhIjKlMnOpQrStUvWxYz"
+    )
 
 
 sys.modules["app"] = types.ModuleType("app")
