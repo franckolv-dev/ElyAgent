@@ -17,9 +17,20 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import {
-  Clock, Loader2, AlertCircle, Trash2, Play, Power, RefreshCw, X,
+  Clock, Loader2, AlertCircle, Trash2, Play, Power, RefreshCw, X, Lightbulb,
 } from "lucide-react";
-import { schedulerApi, describeCron, type ScheduledTask } from "@/lib/scheduler";
+import {
+  schedulerApi, describeCron, cadenceToCron, type ScheduledTask,
+} from "@/lib/scheduler";
+import { api, type AnticipationSuggestion } from "@/lib/api";
+
+/** C5 — prefill carried from a suggestion into the create modal. */
+interface CreatePrefill {
+  suggestionId: number | null;
+  name: string;
+  prompt: string;
+  cron: string;
+}
 
 export default function ScheduledTasksPage() {
   const t = useTranslations("scheduled");
@@ -29,6 +40,11 @@ export default function ScheduledTasksPage() {
   const [toast, setToast]     = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId]   = useState<string | null>(null);
+  // C5 — anticipation suggestions (proposed only) + create modal state.
+  const [suggestions, setSuggestions] = useState<AnticipationSuggestion[]>([]);
+  const [prefill, setPrefill] = useState<CreatePrefill | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [suggestionBusy, setSuggestionBusy] = useState<number | null>(null);
 
   const flash = (kind: "ok" | "err", msg: string) => {
     setToast({ kind, msg });
@@ -47,6 +63,64 @@ export default function ScheduledTasksPage() {
   }, [t]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // C5 — load actionable suggestions once (weekly detector → no polling).
+  const fetchSuggestions = useCallback(async () => {
+    try {
+      const out = await api.mySuggestionsList("proposed");
+      setSuggestions(out.suggestions);
+    } catch {
+      // Best-effort : le bandeau est optionnel, jamais bloquant.
+      setSuggestions([]);
+    }
+  }, []);
+  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
+
+  const onSuggestionDismiss = async (s: AnticipationSuggestion) => {
+    setSuggestionBusy(s.id);
+    try {
+      await api.mySuggestionDismiss(s.id);
+      await fetchSuggestions();
+      flash("ok", t("suggestionDismissed"));
+    } catch (e) {
+      flash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setSuggestionBusy(null);
+    }
+  };
+
+  const openCreateFromSuggestion = (s: AnticipationSuggestion) => {
+    setPrefill({
+      suggestionId: s.id,
+      name: s.suggested_prompt.slice(0, 60),
+      prompt: s.suggested_prompt,
+      cron: cadenceToCron(s.suggested_cadence) ?? "",
+    });
+  };
+
+  const onCreate = async () => {
+    if (!prefill || !prefill.name.trim() || !prefill.prompt.trim() || !prefill.cron.trim()) return;
+    setCreating(true);
+    try {
+      await schedulerApi.create({
+        name: prefill.name.trim(),
+        prompt: prefill.prompt.trim(),
+        cron_expression: prefill.cron.trim(),
+      });
+      // La tâche est créée PAR L'UTILISATEUR — on marque la suggestion
+      // acceptée seulement après ce succès (best-effort).
+      if (prefill.suggestionId !== null) {
+        try { await api.mySuggestionAccept(prefill.suggestionId); } catch { /* non bloquant */ }
+      }
+      setPrefill(null);
+      await Promise.all([fetchAll(), fetchSuggestions()]);
+      flash("ok", t("toastCreated"));
+    } catch (e) {
+      flash("err", e instanceof Error ? e.message : t("createError"));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   // Polling : rafraîchit toutes les 5 s tant qu'au moins une tâche est « en
   // cours », pour que l'utilisateur voie running → réussi/échec en direct.
@@ -116,6 +190,49 @@ export default function ScheduledTasksPage() {
             </div>
 
             <p className="text-xs text-text-muted max-w-3xl">{t("intro")}</p>
+
+            {/* C5 — bandeau suggestions d'anticipation (proposed only) */}
+            {suggestions.length > 0 && (
+              <div className="bg-cyber-cyan/5 border border-cyber-cyan/20 rounded-lg px-4 py-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Lightbulb className="w-4 h-4 text-cyber-cyan" />
+                  <span className="text-sm font-medium text-text-primary">{t("suggestionsTitle")}</span>
+                </div>
+                <p className="text-[11px] text-text-muted">{t("suggestionsIntro")}</p>
+                <div className="space-y-2">
+                  {suggestions.map((s) => (
+                    <div key={s.id} className="flex items-start justify-between gap-3 bg-bg-secondary border border-border-dim rounded px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-text-primary line-clamp-2">« {s.suggested_prompt} »</p>
+                        <p className="text-[10px] text-text-muted mt-0.5">
+                          <span className="text-cyber-cyan font-mono">
+                            {describeCron(cadenceToCron(s.suggested_cadence) ?? s.suggested_cadence)}
+                          </span>
+                          {" · "}{t("suggestionOccurrences", { count: s.evidence.length })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => openCreateFromSuggestion(s)}
+                          disabled={suggestionBusy === s.id}
+                          className="text-[11px] px-2 py-1 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 disabled:opacity-40"
+                        >
+                          {t("suggestionCreate")}
+                        </button>
+                        <button
+                          onClick={() => onSuggestionDismiss(s)}
+                          disabled={suggestionBusy === s.id}
+                          className="text-[11px] px-2 py-1 rounded border border-border-dim text-text-muted hover:text-text-secondary disabled:opacity-40 inline-flex items-center gap-1"
+                        >
+                          {suggestionBusy === s.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                          {t("suggestionDismiss")}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded px-3 py-2">
@@ -244,6 +361,72 @@ export default function ScheduledTasksPage() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* C5 — modal de création pré-remplie (l'utilisateur crée, jamais Ely) */}
+            {prefill && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                role="dialog" aria-modal="true"
+                onKeyDown={(e) => { if (e.key === "Escape") setPrefill(null); }}
+              >
+                <div className="bg-bg-secondary border border-border-dim rounded-lg p-5 w-full max-w-lg mx-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-medium text-text-primary">{t("createModalTitle")}</h2>
+                    <button onClick={() => setPrefill(null)} className="text-text-muted hover:text-text-secondary" aria-label={t("cancel")}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-text-muted">{t("createModalIntro")}</p>
+                  <label className="block text-[11px] text-text-muted">
+                    {t("createName")}
+                    <input
+                      value={prefill.name}
+                      onChange={(e) => setPrefill({ ...prefill, name: e.target.value })}
+                      className="mt-1 w-full bg-bg-primary border border-border-dim rounded px-2 py-1.5 text-xs text-text-primary"
+                    />
+                  </label>
+                  <label className="block text-[11px] text-text-muted">
+                    {t("createPrompt")}
+                    <textarea
+                      value={prefill.prompt}
+                      onChange={(e) => setPrefill({ ...prefill, prompt: e.target.value })}
+                      rows={3}
+                      className="mt-1 w-full bg-bg-primary border border-border-dim rounded px-2 py-1.5 text-xs text-text-primary resize-y"
+                    />
+                  </label>
+                  <label className="block text-[11px] text-text-muted">
+                    {t("createCron")}
+                    <input
+                      value={prefill.cron}
+                      onChange={(e) => setPrefill({ ...prefill, cron: e.target.value })}
+                      className="mt-1 w-full bg-bg-primary border border-border-dim rounded px-2 py-1.5 text-xs font-mono text-text-primary"
+                      placeholder="0 9 * * 1"
+                    />
+                    <span className="block mt-1 text-[10px] text-text-muted">
+                      {describeCron(prefill.cron) !== prefill.cron
+                        ? <span className="text-cyber-cyan">{describeCron(prefill.cron)}</span>
+                        : t("createCronHint")}
+                    </span>
+                  </label>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      onClick={() => setPrefill(null)}
+                      className="text-[11px] px-3 py-1.5 rounded border border-border-dim text-text-muted hover:text-text-secondary"
+                    >
+                      {t("cancel")}
+                    </button>
+                    <button
+                      onClick={onCreate}
+                      disabled={creating || !prefill.name.trim() || !prefill.prompt.trim() || !prefill.cron.trim()}
+                      className="text-[11px] px-3 py-1.5 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 disabled:opacity-40 inline-flex items-center gap-1.5"
+                    >
+                      {creating && <Loader2 className="w-3 h-3 animate-spin" />}
+                      {creating ? t("createBusy") : t("createSubmit")}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
