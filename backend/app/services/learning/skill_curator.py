@@ -47,15 +47,17 @@ Lifecycle rules (configurable via env)
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
+from app.models.failure_case import FailureCase
 from app.models.learned_skill import LearnedSkill, SkillSource, SkillStatus
 
 logger = logging.getLogger(__name__)
@@ -155,6 +157,98 @@ async def _load_eligible_skills(db: AsyncSession) -> list[LearnedSkill]:
     return list(result.scalars().all())
 
 
+def _naive_utc(dt: datetime) -> datetime:
+    """SQLite compare en naïf — normaliser aware → naïf UTC."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+async def measure_post_promotion_effect(now: datetime | None = None) -> dict[str, Any]:
+    """C4-4b — « effet mesuré » : le pattern revient-il APRÈS la promotion ?
+
+    Pour chaque skill ACTIF promu (``promoted_at`` non NULL, colonne C4-3),
+    on retrouve les ``pattern_hash`` de ses failure_cases source (liés par
+    ``learned_skill_id`` OU listés dans ``from_failure_case_ids``) et on
+    compte les NOUVELLES occurrences de ces patterns postérieures à la
+    promotion. Résultat posé sur ``validation_report_json.post_promotion``
+    (pas de colonne — reco cadrage validée) :
+
+        {"recurrences": N, "pattern_hashes": H,
+         "since": promoted_at, "measured_at": now}
+
+    ``recurrences == 0`` → le pattern ne s'est pas reproduit depuis que le
+    skill est actif (effet positif, ou pas assez de trafic — le rapport
+    laisse l'interprétation à l'humain). ``> 0`` → candidat replay
+    ``--case`` / révision. Idempotent (ré-écrit la clé à chaque passe
+    hebdo), jamais raise, skills sans cas source ignorés.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    out = {"measured": 0, "with_recurrences": 0}
+    try:
+        async with async_session() as db:
+            skills = list((await db.execute(
+                select(LearnedSkill).where(
+                    LearnedSkill.status == SkillStatus.ACTIVE,
+                    LearnedSkill.promoted_at.is_not(None),
+                )
+            )).scalars().all())
+
+            for skill in skills:
+                try:
+                    case_ids = [int(i) for i in json.loads(skill.from_failure_case_ids or "[]")]
+                except Exception:  # noqa: BLE001
+                    case_ids = []
+                link = [FailureCase.learned_skill_id == skill.id]
+                if case_ids:
+                    link.append(FailureCase.id.in_(case_ids))
+                hashes = [
+                    h for h in (await db.execute(
+                        select(FailureCase.pattern_hash).where(
+                            or_(*link),
+                            FailureCase.pattern_hash.is_not(None),
+                        ).distinct()
+                    )).scalars().all()
+                    if h
+                ]
+                if not hashes:
+                    continue
+
+                promoted_naive = _naive_utc(skill.promoted_at)
+                recurrences = (await db.execute(
+                    select(func.count()).select_from(FailureCase).where(
+                        FailureCase.pattern_hash.in_(hashes),
+                        FailureCase.created_at > promoted_naive,
+                    )
+                )).scalar_one()
+
+                try:
+                    vr = json.loads(skill.validation_report_json or "{}")
+                except Exception:  # noqa: BLE001
+                    vr = {}
+                vr["post_promotion"] = {
+                    "recurrences": int(recurrences),
+                    "pattern_hashes": len(hashes),
+                    "since": promoted_naive.isoformat(),
+                    "measured_at": now.isoformat(),
+                }
+                skill.validation_report_json = json.dumps(vr, ensure_ascii=False)
+                out["measured"] += 1
+                if recurrences:
+                    out["with_recurrences"] += 1
+                    logger.info(
+                        "skill_curator: pattern RECURRING post-promotion — "
+                        "skill=%s (%s) recurrences=%d (candidat replay --case)",
+                        skill.id, skill.name, recurrences,
+                    )
+            if out["measured"]:
+                await db.commit()
+    except Exception as exc:  # noqa: BLE001 — mesure best-effort
+        logger.warning("measure_post_promotion_effect failed (%s)", exc)
+    return out
+
+
 async def run_curator_cycle(
     now: datetime | None = None,
     *,
@@ -243,5 +337,9 @@ async def run_curator_cycle(
                 await db.commit()
     except Exception as exc:
         logger.warning("skill_curator: cycle failed (%s) — counts stay at 0", exc)
+
+    # C4-4b — la passe hebdo mesure aussi l'effet post-promotion (session
+    # séparée, best-effort : un échec de mesure ne casse pas le GC).
+    summary["effect"] = await measure_post_promotion_effect(now=now)
 
     return summary
