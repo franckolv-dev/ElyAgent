@@ -51,6 +51,9 @@ async def _seeded_user():
                 hashed_password="x",
             ))
             await db.commit()
+        # FK-safe : failure_cases (référence learned_skills) avant les skills.
+        from app.models.failure_case import FailureCase
+        await db.execute(delete(FailureCase).where(FailureCase.user_id == "cu1"))
         await db.execute(delete(LearnedSkill).where(LearnedSkill.user_id == "cu1"))
         await db.commit()
     yield "cu1"
@@ -391,3 +394,122 @@ async def test_curator_active_to_stale_anchors_on_created_when_never_used(_seede
             select(LearnedSkill).where(LearnedSkill.id == skill_id)
         )).scalar_one()
     assert skill.status == SkillStatus.ACTIVE
+
+
+# ────────────────────────────────────────────────────────────────────────
+# C4-4b — métrique post-promotion : la récurrence du pattern_hash APRÈS
+# promoted_at dit si le skill a éteint le pattern (« effet mesuré »).
+# ────────────────────────────────────────────────────────────────────────
+
+
+async def _seed_case_with_hash(uid: str, pattern_hash: str,
+                               created_at: datetime,
+                               learned_skill_id: str | None = None) -> int:
+    from app.models.failure_case import FailureCase
+    async with async_session() as db:
+        fc = FailureCase(
+            user_id=uid,
+            signal_table="hallucination_blocks",
+            signal_id=0,
+            replay_payload="{}",
+            pattern_hash=pattern_hash,
+            learned_skill_id=learned_skill_id,
+        )
+        db.add(fc)
+        await db.flush()
+        fc.created_at = created_at
+        await db.commit()
+        return fc.id
+
+
+async def _seed_promoted_skill(uid: str, promoted_at: datetime) -> str:
+    skill_id = await _seed_skill(uid, status=SkillStatus.ACTIVE)
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+        skill.promoted_at = promoted_at
+        await db.commit()
+    return skill_id
+
+
+@pytest.mark.asyncio
+async def test_post_promotion_metric_counts_recurrences(_seeded_user):
+    import json as _json
+
+    from app.services.learning.skill_curator import measure_post_promotion_effect
+
+    now = datetime.now(timezone.utc)
+    promoted = now - timedelta(days=10)
+    skill_id = await _seed_promoted_skill(_seeded_user, promoted)
+    # 1 cas SOURCE (avant promotion, lié au skill) porteur du pattern
+    await _seed_case_with_hash(_seeded_user, "hashA",
+                               promoted - timedelta(days=2),
+                               learned_skill_id=skill_id)
+    # 3 récurrences APRÈS la promotion (même pattern, non liées)
+    for d in (1, 3, 5):
+        await _seed_case_with_hash(_seeded_user, "hashA",
+                                   promoted + timedelta(days=d))
+    # 1 cas d'un AUTRE pattern après promotion → pas compté
+    await _seed_case_with_hash(_seeded_user, "hashZ",
+                               promoted + timedelta(days=4))
+
+    out = await measure_post_promotion_effect(now=now)
+    assert out["measured"] >= 1
+
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+    pp = _json.loads(skill.validation_report_json or "{}")["post_promotion"]
+    assert pp["recurrences"] == 3
+    assert pp["pattern_hashes"] == 1
+    assert pp["measured_at"]
+
+
+@pytest.mark.asyncio
+async def test_post_promotion_metric_zero_when_pattern_extinct(_seeded_user):
+    import json as _json
+
+    from app.services.learning.skill_curator import measure_post_promotion_effect
+
+    now = datetime.now(timezone.utc)
+    promoted = now - timedelta(days=10)
+    skill_id = await _seed_promoted_skill(_seeded_user, promoted)
+    # Cas source AVANT promotion seulement → le pattern s'est éteint
+    await _seed_case_with_hash(_seeded_user, "hashB",
+                               promoted - timedelta(days=1),
+                               learned_skill_id=skill_id)
+
+    await measure_post_promotion_effect(now=now)
+
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+    pp = _json.loads(skill.validation_report_json or "{}")["post_promotion"]
+    assert pp["recurrences"] == 0
+
+
+@pytest.mark.asyncio
+async def test_post_promotion_metric_skips_skill_without_cases(_seeded_user):
+    from app.services.learning.skill_curator import measure_post_promotion_effect
+
+    now = datetime.now(timezone.utc)
+    skill_id = await _seed_promoted_skill(_seeded_user, now - timedelta(days=5))
+
+    out = await measure_post_promotion_effect(now=now)
+    async with async_session() as db:
+        skill = (await db.execute(
+            select(LearnedSkill).where(LearnedSkill.id == skill_id)
+        )).scalar_one()
+    import json as _json
+    assert "post_promotion" not in _json.loads(skill.validation_report_json or "{}")
+    assert isinstance(out["measured"], int)
+
+
+@pytest.mark.asyncio
+async def test_curator_cycle_reports_effect_measurement(_seeded_user):
+    """run_curator_cycle embarque la mesure (câblage cron hebdo)."""
+    out = await run_curator_cycle(now=datetime.now(timezone.utc))
+    assert "effect" in out
