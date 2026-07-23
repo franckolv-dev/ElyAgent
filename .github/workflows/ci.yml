@@ -28,7 +28,12 @@ jobs:
         run: uv sync --group dev
 
       - name: Lint
-        run: uvx ruff check backend/
+        # Pinné sur la version du lock (pyproject `ruff>=0.6.0` + uv.lock) :
+        # `uvx ruff` nu prend la DERNIÈRE release — la sortie de ruff 0.16.0
+        # (23/07/2026, nouvelles règles par défaut) a cassé le check requis
+        # de TOUTES les PRs d'un coup (2027 erreurs, aucune liée aux diffs).
+        # Monter de version = geste volontaire : bump ce pin + corriger.
+        run: uvx ruff@0.15.15 check backend/
         working-directory: .
 
       - name: Run tests
