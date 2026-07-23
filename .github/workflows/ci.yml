@@ -33,6 +33,9 @@ jobs:
         # (23/07/2026, nouvelles règles par défaut) a cassé le check requis
         # de TOUTES les PRs d'un coup (2027 erreurs, aucune liée aux diffs).
         # Monter de version = geste volontaire : bump ce pin + corriger.
+        # Depuis que backend/pyproject.toml déclare un `select` explicite, un
+        # bump ne peut plus faire apparaître de règles non demandées : seul le
+        # comportement des règles choisies peut bouger.
         run: uvx ruff@0.15.15 check backend/
         working-directory: .
 
