@@ -95,8 +95,27 @@ def _ruff_exe() -> str | None:
     return shutil.which("ruff")
 
 
-def run_ruff(source: str, *, select: tuple[str, ...] = ("E", "F")) -> StaticCheckReport:
-    """Lint ``source`` with ruff, isolated from the project config."""
+# Longueur de ligne du PROJET (backend/pyproject.toml, [tool.ruff]). Le code
+# généré est tenu à la même règle que le code écrit à la main — ni plus, ni
+# moins — parce qu'il finit dans le même dépôt s'il gradue.
+PROJECT_LINE_LENGTH = 120
+
+
+def run_ruff(
+    source: str,
+    *,
+    select: tuple[str, ...] = ("E", "F"),
+    line_length: int = PROJECT_LINE_LENGTH,
+) -> StaticCheckReport:
+    """Lint ``source`` with ruff, isolated from the project config.
+
+    ``--isolated`` protège des surprises de config, mais faisait aussi hériter
+    la longueur de ligne PAR DÉFAUT de ruff (88) — plus stricte que le projet
+    (120). Un outil qui gradue devient un fichier du dépôt, donc soumis à la
+    règle du dépôt : le valider plus sévèrement recalait du code parfaitement
+    livrable (mesuré le 23/07/2026 : un échec pour 89 caractères). On passe
+    donc explicitement la limite du projet.
+    """
     exe = _ruff_exe()
     if exe is None:
         return StaticCheckReport(
@@ -111,6 +130,8 @@ def run_ruff(source: str, *, select: tuple[str, ...] = ("E", "F")) -> StaticChec
         "--isolated",
         "--select",
         ",".join(select),
+        "--line-length",
+        str(line_length),
         "--output-format",
         "json",
         "--stdin-filename",

@@ -17,17 +17,16 @@ existing tools + pure-compute stdlib, typed signature, docstring,
 allow-listed imports) so the generated code passes the chain on the
 first or second try.
 
-Model selection is **fully driven by the environment**, not hardcoded.
-The generator calls ``get_tier_s_llm()`` which reads ``LLM_TIER_S_CHAIN``:
+Model selection is **driven by the admin routing config**, not hardcoded
+and not by the environment. ``get_tier_s_llm()`` reads the ``skill`` tier of
+``tier_routing_config`` — Paramètres → Routage, niveau « S » — exactly like
+tiers A/B/C. Chain items are provider names OR named-instance UUIDs, so a
+LOCAL model is selectable here (short prompts, no agentic loop). The old
+``LLM_TIER_S_CHAIN`` env var is no longer read (see tier_s.py for why).
 
-    LLM_TIER_S_CHAIN=deepseek            # cheap (~30x cheaper than Opus)
-    LLM_TIER_S_CHAIN=mistral             # EU sovereignty
-    LLM_TIER_S_CHAIN=anthropic,deepseek  # Opus primary, DeepSeek fallback (default)
-
-plus per-provider model overrides (LLM_TIER_S_DEEPSEEK_MODEL=deepseek-chat,
-LLM_TIER_S_MAX_TOKENS, LLM_TIER_S_MONTHLY_BUDGET_USD). Usage is recorded
-under purpose ``tool_generator`` so V2 generation cost is tracked
-separately from V1 playbook creation.
+Only the monthly cap stays environmental (``LLM_TIER_S_MONTHLY_BUDGET_USD``).
+Usage is recorded under purpose ``tool_generator`` so V2 generation cost is
+tracked separately from V1 playbook creation.
 """
 from __future__ import annotations
 
@@ -164,6 +163,15 @@ Hard requirements (the validator checks every one)
 - To call another tool: `async def` + `await call_tool("name", {...})` —
   never call a tool function by its name directly.
 - Keep it small and single-purpose.
+
+LINT — ruff runs on your output with `--select E,F`. These two rules reject
+more generated tools than any logic error, so read them twice:
+  - **No line may exceed 120 characters** (E501). Wrap long strings and long
+    call signatures across several lines. Count before you emit.
+  - **Import ONLY what you actually use** (F401). Every import in the
+    template above is optional — if your tool doesn't call `call_tool`, do
+    NOT import it; if it doesn't use `Annotated`, do NOT import it. An unused
+    import is a hard failure, not a warning.
 """
 
 
@@ -408,7 +416,7 @@ async def generate_tool_source(
     allowed_egress: list[str] | None = None,
     available_secret_labels: list[str] | None = None,
 ) -> tuple[str | None, dict[str, Any]]:
-    """Ask the tier-S LLM (model per ``LLM_TIER_S_CHAIN``) to write a tool.
+    """Ask the tier-S LLM (niveau « S » du Routage admin) to write a tool.
 
     Returns ``(source, info)``. ``source`` is the parsed Python module or
     None on failure. ``info`` carries the picked provider, token/cost
@@ -425,7 +433,10 @@ async def generate_tool_source(
     llm, pick = await get_tier_s_llm()
     if llm is None or pick == "none":
         info["status"] = "no_provider"
-        info["error"] = "No tier-S provider configured (set LLM_TIER_S_CHAIN + API key)."
+        info["error"] = (
+            "Aucun modèle configuré pour le niveau S. Ajoute-en un dans "
+            "Paramètres → Routage, niveau « S — Auto-développement »."
+        )
         return None, info
     info["provider_pick"] = pick
 

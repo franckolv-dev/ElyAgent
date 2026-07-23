@@ -21,7 +21,8 @@ Ties the generator (``tool_generator``) and the validation chain
 
 It NEVER auto-activates anything: the output is always a ``candidate``
 awaiting HITL admin promotion (which, plus the live bind, is J7). The
-tier-S model is whatever ``LLM_TIER_S_CHAIN`` selects (see tool_generator).
+tier-S model is whatever the ``skill`` tier of the admin routing config
+selects (Paramètres → Routage, niveau « S » — see tool_generator).
 
 ``smoke_kwargs`` is an optional sample input for stage 4; when absent the
 smoke stage is skipped (we can't call the function without arguments).
