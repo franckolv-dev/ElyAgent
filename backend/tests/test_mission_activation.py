@@ -74,6 +74,45 @@ async def _pending_mission(uid: str, monkeypatch) -> str:
     return m.id
 
 
+# ── 0. C6 — l'arrêt d'urgence révoque le mandat ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_abort_revokes_autonomy_state(_uid, monkeypatch):
+    """Micro-backlog C6 (vu au test réel du 19/07) : après un arrêt
+    d'urgence, autonomy_state restait 'active' — badge « Autonomie
+    active » sur une mission avortée. L'abort doit révoquer le mandat."""
+    from app.routers.missions import activate_mission_mandate
+    from app.services import mission_service
+
+    mid = await _pending_mission(_uid, monkeypatch)
+    await activate_mission_mandate(mid, current_user=_U(_uid))
+    m = await mission_service.get_mission(mid)
+    assert m.autonomy_state == "active"
+
+    out = await mission_service.abort_mission(mid, reason="test kill switch")
+    assert out.status == "aborted"
+    assert out.autonomy_state == "revoked"
+    # Persisté, pas seulement sur l'objet retourné
+    m2 = await mission_service.get_mission(mid)
+    assert m2.autonomy_state == "revoked"
+    # Et le gate d'enforcement ne voit plus de mandat actif
+    assert await mission_service.load_active_mandate(mid) is None
+
+
+@pytest.mark.asyncio
+async def test_abort_without_mandate_leaves_autonomy_none(_uid, monkeypatch):
+    from app.config import get_settings
+    from app.services import mission_service
+
+    monkeypatch.setattr(get_settings(), "autonomous_missions_enabled", True)
+    m = await mission_service.create_mission(user_id=_uid, title="M", goal="goal")
+    assert m.autonomy_state is None
+    out = await mission_service.abort_mission(m.id, reason="test")
+    assert out.status == "aborted"
+    assert out.autonomy_state is None
+
+
 # ── 1. POST /missions/{id}/activate ─────────────────────────────────────────
 
 

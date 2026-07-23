@@ -251,10 +251,24 @@ async def fail_mission(mission_id: str, reason: str) -> Mission:
 
 async def abort_mission(mission_id: str, reason: str = "User-requested abort") -> Mission:
     """any-non-terminal → aborted (kill switch)."""
-    return await _transition(
+    m = await _transition(
         mission_id, from_={"draft", "planning", "running", "paused"}, to="aborted",
         completed_at=_utcnow(), failure_reason=reason,
     )
+    # C6 — l'arrêt d'urgence RÉVOQUE aussi le mandat : sans ça,
+    # autonomy_state restait « active » et le badge « Autonomie active »
+    # survivait à l'abort (vu au test réel encadré du 19/07). Best-effort :
+    # la révocation cosmétique ne doit jamais faire échouer le kill switch.
+    if m.autonomy_state:
+        try:
+            await set_autonomy_state(mission_id, "revoked")
+            m.autonomy_state = "revoked"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "abort_mission(%s) : révocation du mandat échouée (%s)",
+                mission_id, exc,
+            )
+    return m
 
 
 # ── Read helpers ────────────────────────────────────────────────────────────
