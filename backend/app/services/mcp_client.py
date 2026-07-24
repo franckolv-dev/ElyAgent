@@ -816,7 +816,16 @@ def _wrap_call(local_name: str, raw_schema: dict, caller) -> "callable":
     (tous blocs, binaires hors-contexte, _meta jamais transmis, taille bornée)."""
     async def _call(**kwargs) -> str:
         from app.services.mcp_results import normalize_call_result
-        from app.services.mcp_schema import MCPArgumentInvalid, validate_arguments
+        from app.services.mcp_schema import (
+            MCPArgumentInvalid,
+            strip_unset_optionals,
+            validate_arguments,
+        )
+        # Incident 24/07 : les optionnels non fournis arrivent à None (le
+        # modèle Pydantic les déclare Optional=None, LangChain les matérialise
+        # tous) — « non fourni » n'est PAS « null », ni pour la validation ni
+        # pour le serveur, qui doit appliquer ses propres défauts.
+        kwargs = strip_unset_optionals(raw_schema, kwargs)
         try:
             validate_arguments(raw_schema, kwargs)
         except MCPArgumentInvalid as exc:

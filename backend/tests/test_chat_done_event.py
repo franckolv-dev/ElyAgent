@@ -56,7 +56,11 @@ def test_chat_router_emits_done_after_message_event() -> None:
     sent, an explicit `{"type": "done"}` must follow on the same WS."""
     src = (_REPO / "app" / "routers" / "chat.py").read_text(encoding="utf-8")
     # The order matters : "done" must appear AFTER the payload-send line.
-    payload_send = 'await websocket.send_text(_dumps(payload))'
+    # 2026-07-25 — the turn now sends through the best-effort `_ws_send`
+    # helper (a dead client must not kill a long-running turn, incident of
+    # 24/07). The contract pinned here — assistant message THEN done — is
+    # unchanged; only the send channel is named differently.
+    payload_send = 'await _ws_send(_dumps(payload))'
     done_send = '_dumps({"type": "done"})'
     assert payload_send in src
     assert done_send in src

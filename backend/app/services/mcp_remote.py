@@ -76,8 +76,11 @@ async def remote_call_tool(srv, user_id: str, remote_tool: str, args: dict,
     normalise. La politique egress/ACL/outbound est appliquée par l'appelant."""
     from app.services.mcp_credentials import resolve_user_headers
     from app.services.mcp_results import normalize_call_result
-    from app.services.mcp_schema import validate_arguments
+    from app.services.mcp_schema import strip_unset_optionals, validate_arguments
 
+    # Même garde que le chemin in-process (incident 24/07) : un optionnel
+    # laissé à None est « non fourni », pas « null ».
+    args = strip_unset_optionals(input_schema, args)
     validate_arguments(input_schema, args)
     headers = await resolve_user_headers(user_id, srv)
     async with _session(srv.url, srv.transport, headers,

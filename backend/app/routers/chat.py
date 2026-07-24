@@ -98,6 +98,33 @@ def get_agent():
     return _agent_graph
 
 
+async def _notify_turn_done_offline(
+    user_id: str, conversation_id: str | None, ai_content: str,
+) -> None:
+    """Push « c'est prêt » quand le tour s'est terminé sans client connecté.
+
+    Incident 24/07 : une traduction de 2 h 52 a abouti alors que l'onglet était
+    fermé depuis longtemps — la réponse était en base, mais rien ne le disait.
+    Best-effort intégral (pas de NTFY_URL → no-op silencieux) ; le corps ne
+    contient qu'un extrait court, jamais la conversation entière.
+    """
+    try:
+        extract = " ".join((ai_content or "").split())[:180]
+        from app.services.learning.candidate_notify import _push
+        await _push(
+            "Ely - ta demande est terminee",
+            (f"{extract}…\n\n" if extract else "")
+            + "Rouvre Ely pour voir la réponse complète.",
+            tags="white_check_mark",
+        )
+        logger.info(
+            "chat: push hors-ligne envoyé (user=%s conv=%s)",
+            user_id[:8] if user_id else "?", (conversation_id or "?")[:8],
+        )
+    except Exception as exc:  # noqa: BLE001 — la notification ne casse rien
+        logger.debug("chat: push hors-ligne ignoré (%s)", exc)
+
+
 async def _assert_owns_conversation(db, conversation_id: str, user_id: str) -> bool:
     """True iff the conversation exists AND belongs to ``user_id``.
 
@@ -172,6 +199,31 @@ async def websocket_chat(websocket: WebSocket):
     _google_creds_ts: float = _time.monotonic()
     _CREDS_TTL = 300.0  # seconds
 
+    # ── Client parti ≠ stop demandé (incident 24/07) ─────────────────────────
+    # Une tâche longue (traduction d'un PDF de 395 pages : 2 h 52) survit
+    # rarement à l'onglet de l'utilisateur. Jusqu'ici, la disparition du client
+    # levait le MÊME drapeau qu'un clic « stop » : le tour était tué à la
+    # première occasion — le travail réussi partait à la poubelle et Ely
+    # ignorait son propre succès. Désormais le tour CONTINUE côté serveur
+    # (il reste borné par recursion_limit + les échéances LLM), la réponse
+    # finale est persistée, et l'utilisateur est notifié par push.
+    client_gone = asyncio.Event()
+
+    async def _ws_send(text: str) -> bool:
+        """Envoi best-effort. False = personne au bout du fil (on continue)."""
+        if client_gone.is_set():
+            return False
+        try:
+            await websocket.send_text(text)
+            return True
+        except (RuntimeError, WebSocketDisconnect) as _send_exc:
+            client_gone.set()
+            logger.info(
+                "chat: client parti pendant le tour — livraison différée "
+                "(user=%s): %s", user_id, _send_exc,
+            )
+            return False
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -179,7 +231,7 @@ async def websocket_chat(websocket: WebSocket):
                 msg = _loads(data)
             except json.JSONDecodeError:
                 logger.warning("Malformed JSON from user %s (ignored): %.200s", user_id, data)
-                await websocket.send_text(_dumps({
+                await _ws_send(_dumps({
                     "type": "error",
                     "content": "Message invalide — JSON mal formé.",
                 }))
@@ -193,7 +245,7 @@ async def websocket_chat(websocket: WebSocket):
             # agent is still running (red square locked). Send a `"done"`
             # event so the frontend can force-reset its loading state.
             if msg.get("type") == "stop":
-                await websocket.send_text(_dumps({"type": "done"}))
+                await _ws_send(_dumps({"type": "done"}))
                 continue
 
             user_content = msg.get("content", "")
@@ -335,7 +387,7 @@ async def websocket_chat(websocket: WebSocket):
                 # Echo back to the user as an assistant message (no DB persist
                 # needed — slash commands don't need to live in history)
                 from datetime import datetime as _dt2, timezone as _tz2
-                await websocket.send_text(_dumps({
+                await _ws_send(_dumps({
                     "type": "message",
                     "role": "assistant",
                     "content": _reply,
@@ -427,7 +479,7 @@ async def websocket_chat(websocket: WebSocket):
                 logger.debug("sovereignty ContextVar set skipped: %s", _sov_exc)
 
             agent = get_agent()
-            await websocket.send_text(_dumps({
+            await _ws_send(_dumps({
                 "type": "start",
                 "conversation_id": conversation_id,
             }))
@@ -452,17 +504,21 @@ async def websocket_chat(websocket: WebSocket):
             stop_event = asyncio.Event()
 
             async def _watch_for_stop() -> None:
-                while not stop_event.is_set():
+                while not stop_event.is_set() and not client_gone.is_set():
                     try:
                         raw = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
                         inner = _loads(raw)
                         if inner.get("type") == "stop":
-                            stop_event.set()
+                            stop_event.set()   # geste DÉLIBÉRÉ : on arrête tout
                             return
                     except asyncio.TimeoutError:
                         pass
                     except Exception:
-                        stop_event.set()
+                        # Le client a disparu (onglet fermé, veille, réseau) —
+                        # ce n'est PAS un ordre d'arrêt. On note la déconnexion
+                        # et on laisse le tour finir son travail (incident
+                        # 24/07 : 2 h 52 de traduction réussie jetées ici).
+                        client_gone.set()
                         return
 
             # A-6b — budget LLM quotidien par user (opt-in,
@@ -471,7 +527,7 @@ async def websocket_chat(websocket: WebSocket):
             from app.services.budget_guard import check_user_budget
             _budget_refusal = await check_user_budget(user_id)
             if _budget_refusal:
-                await websocket.send_text(_dumps({
+                await _ws_send(_dumps({
                     "type": "error",
                     "content": _budget_refusal,
                 }))
@@ -527,7 +583,7 @@ async def websocket_chat(websocket: WebSocket):
                             # d'envoi on traite la socket comme morte.
                             try:
                                 await asyncio.wait_for(
-                                    websocket.send_text(_dumps({
+                                    _ws_send(_dumps({
                                         "type": "token",
                                         "content": token,
                                     })),
@@ -552,7 +608,7 @@ async def websocket_chat(websocket: WebSocket):
                         # finale (il restera affiché en live jusqu'au tool_start
                         # côté frontend, qui le purge aussi).
                         _answer_content = ""
-                        await websocket.send_text(_dumps({
+                        await _ws_send(_dumps({
                             "type": "tool_start",
                             "tool": tool_name,
                         }))
@@ -602,7 +658,7 @@ async def websocket_chat(websocket: WebSocket):
                     _msg: dict = {"type": "tool_end", "tool": tool_name}
                     if _image_payload:
                         _msg["image"] = _image_payload
-                    await websocket.send_text(_dumps(_msg))
+                    await _ws_send(_dumps(_msg))
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
                     model_used_out = output.get("model_used", "") or model_used_out
@@ -652,7 +708,7 @@ async def websocket_chat(websocket: WebSocket):
                 from app.services.fallback_manager import drain_events as _fb_drain
                 if conversation_id:
                     for _ev in _fb_drain(conversation_id):
-                        await websocket.send_text(_dumps(_ev))
+                        await _ws_send(_dumps(_ev))
             except Exception as _fb_exc:
                 logger.debug("fallback.drain_events skipped: %s", _fb_exc)
 
@@ -668,10 +724,10 @@ async def websocket_chat(websocket: WebSocket):
                 # below logged as ERROR + traceback. Nobody is listening —
                 # guard the pair so ERROR logs stay meaningful.
                 try:
-                    await websocket.send_text(_dumps({"type": "stopped"}))
+                    await _ws_send(_dumps({"type": "stopped"}))
                     # Always emit `"done"` to flip isLoading=false on the frontend
                     # (paired with "stopped" so the UI handles either reliably).
-                    await websocket.send_text(_dumps({"type": "done"}))
+                    await _ws_send(_dumps({"type": "done"}))
                 except (RuntimeError, WebSocketDisconnect) as _stop_send_exc:
                     logger.debug(
                         "stopped/done events skipped — socket already closed "
@@ -777,7 +833,7 @@ async def websocket_chat(websocket: WebSocket):
                     # next to the assistant message (and so a future analytics
                     # event collector can count occurrences per model/tier).
                     try:
-                        await websocket.send_text(_dumps({
+                        await _ws_send(_dumps({
                             "type": "hallucination_blocked",
                             "reason": _verified.verdict.reason,
                             "matched_patterns": _verified.verdict.matched_patterns,
@@ -842,13 +898,23 @@ async def websocket_chat(websocket: WebSocket):
             # the LLM forgot to trigger a delivery tool.
             if _extracted_attachments:
                 payload["attachments"] = _extracted_attachments
-            await websocket.send_text(_dumps(payload))
+            _delivered = await _ws_send(_dumps(payload))
             # Explicit turn-end signal so the frontend can flip `isLoading=false`
             # synchronously (the React state batched on the `"message"` event
             # could otherwise still be truthy when the next keystroke fires —
             # causing Enter to be interpreted as "stop", not "send"). Pairs
             # with the frontend handler in chat/page.tsx.
-            await websocket.send_text(_dumps({"type": "done"}))
+            await _ws_send(_dumps({"type": "done"}))
+
+            # Personne au bout du fil (onglet fermé pendant une tâche longue) :
+            # la réponse est en base, mais l'utilisateur ne le sait pas. Un push
+            # le lui dit — c'est la différence entre « Ely a planté » et « c'est
+            # prêt, reviens voir » (incident 24/07). Best-effort, jamais bloquant.
+            if not _delivered:
+                spawn(
+                    _notify_turn_done_offline(user_id, conversation_id, ai_content),
+                    label="chat-offline-notify",
+                )
 
             # ── Log usage for analytics ─────────────────────────────────────────
             if model_used_out:
@@ -903,7 +969,7 @@ async def websocket_chat(websocket: WebSocket):
             "WebSocket error for user %s: %s", user_id, str(e), exc_info=True
         )
         try:
-            await websocket.send_text(_dumps({
+            await _ws_send(_dumps({
                 "type": "error",
                 "content": "Une erreur interne s'est produite. Veuillez réessayer.",
             }))
