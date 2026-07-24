@@ -254,7 +254,7 @@ async def run_tool_creator(
     """Sprint 4b V2 — trigger one python_tool generate→validate→persist loop.
 
     The V2 analogue of `/skill-creator/run` (which produces V1 Markdown
-    playbooks). Admin-only. Calls the tier-S LLM (`LLM_TIER_S_CHAIN`) to
+    playbooks). Admin-only. Calls the tier-S LLM (niveau « S » du Routage) to
     write a PURE python_tool, runs the 5-stage validation pipeline
     (ast → ruff → mypy → smoke → registration), and on success persists a
     `candidate` LearnedSkill (`content_format=python_tool`) for review on the
