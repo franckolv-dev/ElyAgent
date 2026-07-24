@@ -95,6 +95,23 @@ extend-exclude = ["tests", ".venv", "alembic"]
 [tool.ruff.lint]
 # Pragmatic config — mostly-cosmetic warnings silenced to match this codebase
 # long-standing style. CI enforces only the critical correctness checks.
+#
+# `select` is EXPLICIT on purpose. It writes down what used to be ruff's
+# *default* rule set (E4/E7/E9 + F), which this project relied on without
+# ever saying so. Ruff 0.16.0 widened that default (YTT, ASYNC, BLE, B, UP,
+# I…) and the same command went from green to 2027 findings on unchanged
+# code (23/07/2026, cf. #234). The pin in ci.yml stopped the bleeding; this
+# line removes the cause — a linter's defaults are someone else's decision,
+# and they change without notice.
+#
+# Verified faithful: on ruff 0.15.15, with `ignore` neutralised on both
+# sides, the old default and this `select` report the exact same codes
+# (E402 E701 E712 E741 F401 F541 F811 F821 F841 — i.e. precisely the
+# `ignore` list below, which is why CI was green). No coverage lost.
+#
+# Same reasoning as the in-process validation pipeline, which already runs
+# `ruff --isolated --select E,F` (app/services/learning/static_checks.py).
+select = ["E4", "E7", "E9", "F"]
 ignore = [
     "E402",  # imports not at top (lazy imports in agent node closures)
     "E701",  # multiple statements on one line (one-liner factories)
