@@ -21,7 +21,6 @@ from app.services.memory._infra import MemoryInfra, get_memory_infra
 from app.services.memory.constraint_store import ConstraintStore
 from app.services.memory.episodic_store import EpisodicStore
 from app.services.memory.semantic_user_store import SemanticUserStore
-from app.services.memory.procedural_store import ProceduralStore
 from app.services.memory.error_store import ErrorStore
 from app.services.memory.recall_service import (
     MemoryRecallService,
@@ -51,8 +50,6 @@ def get_semantic_user_store() -> SemanticUserStore:
 
 
 @lru_cache(maxsize=1)
-def get_procedural_store() -> ProceduralStore:
-    return ProceduralStore(get_memory_infra())
 
 
 @lru_cache(maxsize=1)
@@ -66,7 +63,6 @@ __all__ = [
     "ConstraintStore",
     "EpisodicStore",
     "SemanticUserStore",
-    "ProceduralStore",
     "ErrorStore",
     "MemoryRecallService",
     "get_memory_recall_service",
@@ -75,6 +71,5 @@ __all__ = [
     "get_constraint_store",
     "get_episodic_store",
     "get_semantic_user_store",
-    "get_procedural_store",
     "get_error_store",
 ]

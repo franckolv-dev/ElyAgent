@@ -27,11 +27,31 @@ from functools import lru_cache
 from app.services.memory._infra import get_memory_infra
 from app.services.memory.constraint_store import ConstraintStore
 from app.services.memory.episodic_store import EpisodicStore
-from app.services.memory.procedural_store import ProceduralStore
 from app.services.memory.semantic_user_store import SemanticUserStore
 from app.services.memory.types import MemoryHit, MemoryType
 
 logger = logging.getLogger(__name__)
+
+
+class UnreadableMemoryType(RuntimeError):
+    """Ce type de mémoire n'a aucune lecture implémentée.
+
+    Distinct d'un « aucun résultat » : la nuance compte pour le modèle. Une
+    liste vide se lit « je n'ai rien en mémoire là-dessus » — une affirmation
+    sur le monde. Cette exception dit « cette mémoire n'est pas consultable »
+    — une affirmation sur l'outil. Confondre les deux, c'est fabriquer une
+    façade, ce que la boucle d'auto-diagnostic cherche justement à détecter.
+    """
+
+    def __init__(self, memory_type: MemoryType) -> None:
+        self.memory_type = memory_type
+        super().__init__(f"memory type {memory_type.value!r} is not readable")
+
+
+# PROCEDURAL : le magasin était un stub sans aucune voie d'écriture (retiré
+# en V0-5). ERROR : écriture seule — les erreurs partent en failure_cases,
+# rien ne les relit.
+_UNREADABLE_TYPES = frozenset({MemoryType.PROCEDURAL, MemoryType.ERROR})
 
 
 class MemoryRecallService:
@@ -42,7 +62,6 @@ class MemoryRecallService:
         self.constraints = ConstraintStore(infra)
         self.episodic = EpisodicStore(infra)
         self.semantic = SemanticUserStore(infra)
-        self.procedural = ProceduralStore(infra)
 
     async def recall(
         self,
@@ -64,6 +83,14 @@ class MemoryRecallService:
             return []
 
         mt = MemoryType.parse(memory_type)
+        # V0-5 — deux types n'ont AUCUNE lecture derrière eux :
+        #   PROCEDURAL : le magasin était un stub sans voie d'écriture ;
+        #   ERROR      : écriture seule (les erreurs vont en failure_cases).
+        # Levé AVANT le try : rendre [] ferait lire au modèle « aucune
+        # procédure connue » / « je n'ai jamais échoué là-dessus » — une
+        # affirmation fausse présentée comme un fait.
+        if mt in _UNREADABLE_TYPES:
+            raise UnreadableMemoryType(mt)
         try:
             if mt == MemoryType.AUTO:
                 return await self._recall_auto(query, user_id, limit)
@@ -71,13 +98,8 @@ class MemoryRecallService:
                 return await self._recall_episodic(query, user_id, limit)
             if mt == MemoryType.SEMANTIC_USER:
                 return await self._recall_semantic_user(query, user_id, limit)
-            if mt == MemoryType.PROCEDURAL:
-                return await self._recall_procedural(query, user_id, limit)
             if mt == MemoryType.CONSTRAINT:
                 return await self._recall_constraint(query, user_id, limit)
-            if mt == MemoryType.ERROR:
-                # V1: write-only. Sprint 3.7 fills this in.
-                return []
         except Exception as exc:
             logger.warning(
                 "MemoryRecallService.recall(%s) failed: %s — returning []",
@@ -134,25 +156,6 @@ class MemoryRecallService:
             ))
         return out[:limit]
 
-    async def _recall_procedural(
-        self, query: str, user_id: str, limit: int
-    ) -> list[MemoryHit]:
-        rows = await self.procedural.get_relevant(query, user_id, limit)
-        return [
-            MemoryHit(
-                type=MemoryType.PROCEDURAL,
-                content=str(r.get("intent", "")),
-                score=1.0,
-                metadata={
-                    "slug": r.get("slug"),
-                    "tool_calls": r.get("tool_calls"),
-                    "success_count": r.get("success_count"),
-                },
-                created_at=str(r.get("created_at")) if r.get("created_at") else None,
-            )
-            for r in rows
-        ]
-
     async def _recall_constraint(
         self, query: str, user_id: str, limit: int
     ) -> list[MemoryHit]:
@@ -183,7 +186,6 @@ class MemoryRecallService:
         results = await asyncio.gather(
             self._recall_episodic(query, user_id, limit),
             self._recall_semantic_user(query, user_id, limit),
-            self._recall_procedural(query, user_id, limit),
             self._recall_constraint(query, user_id, limit),
             return_exceptions=True,
         )

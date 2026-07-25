@@ -37,13 +37,11 @@ from app.services.memory import (
     get_constraint_store,
     get_episodic_store,
     get_memory_recall_service,
-    get_procedural_store,
     get_semantic_user_store,
 )
 from app.services.memory._infra import get_memory_infra
 from app.services.memory.constraint_store import ConstraintStore
 from app.services.memory.episodic_store import EpisodicStore
-from app.services.memory.procedural_store import ProceduralStore
 from app.services.memory.semantic_user_store import SemanticUserStore
 
 
@@ -62,7 +60,6 @@ def _clear_memory_singletons():
     get_constraint_store.cache_clear()
     get_episodic_store.cache_clear()
     get_semantic_user_store.cache_clear()
-    get_procedural_store.cache_clear()
     get_memory_infra.cache_clear()
     yield
 
@@ -205,8 +202,9 @@ async def test_full_chain_maintenance_extract_then_recall_returns_same_fact(monk
 @pytest.mark.asyncio
 async def test_auto_fanout_survives_qdrant_outage_on_one_store(monkeypatch) -> None:
     """If ConstraintStore.get_relevant raises (e.g. Qdrant collection
-    missing), SEMANTIC_USER + EPISODIC + PROCEDURAL must still return
-    results. Pins the gather(return_exceptions=True) contract."""
+    missing), SEMANTIC_USER + EPISODIC must still return results. Pins the
+    gather(return_exceptions=True) contract. (La branche procédurale a été
+    retirée en V0-5 : c'était un stub sans voie d'écriture.)"""
     svc = get_memory_recall_service()
 
     async def boom(*args, **kwargs):
@@ -221,19 +219,15 @@ async def test_auto_fanout_survives_qdrant_outage_on_one_store(monkeypatch) -> N
     async def fake_episodic(query, user_id, limit):
         return [{"content": "Q&A", "user_message": "x", "assistant_message": "y"}]
 
-    async def fake_proc(query, user_id, limit):
-        return []
-
     monkeypatch.setattr(svc.constraints, "get_relevant", boom)
     monkeypatch.setattr(svc.semantic, "get_relevant_facts", fake_facts)
     monkeypatch.setattr(svc.semantic, "get_preferences", fake_prefs)
     monkeypatch.setattr(svc.episodic, "get_relevant", fake_episodic)
-    monkeypatch.setattr(svc.procedural, "get_relevant", fake_proc)
 
     hits = await svc.recall(MemoryType.AUTO, "anything", user_id="u1", limit=20)
 
     # SEMANTIC_USER (2 facts) + EPISODIC (1) — constraint branch failed
-    # silently, but the other 3 came through.
+    # silently, les autres sont passées.
     types = {h.type for h in hits}
     assert MemoryType.SEMANTIC_USER in types
     assert MemoryType.EPISODIC in types
@@ -303,17 +297,22 @@ async def test_memory_search_legacy_and_memory_recall_unified_agree(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_error_type_recall_returns_empty_with_friendly_tool_message(monkeypatch) -> None:
-    """V1 contract : ERROR is captured (write path lands in Sprint 3.7
-    via ErrorStore) but `memory_recall(ERROR)` returns []. The
-    user-facing tool surfaces a polite explanation rather than an
-    empty string the LLM has to interpret as a missing tool."""
+async def test_error_type_recall_is_explicitly_unreadable(monkeypatch) -> None:
+    """CONTRAT MODIFIÉ EN V0-5. Avant : `recall(ERROR)` rendait `[]`, et le
+    modèle lisait « aucun souvenir » — donc « je n'ai jamais échoué là-dessus ».
+    Maintenant : le service lève `UnreadableMemoryType`, et l'outil dit
+    explicitement que cette mémoire ne se lit pas. Les erreurs sont toujours
+    capturées (failure_cases) ; c'est la LECTURE qui n'existe pas, et le modèle
+    ne doit pas confondre les deux."""
+    from app.services.memory.recall_service import UnreadableMemoryType
+
     svc = get_memory_recall_service()
-    hits = await svc.recall(MemoryType.ERROR, "doctolib", user_id="u1", limit=5)
-    assert hits == []
+    with pytest.raises(UnreadableMemoryType):
+        await svc.recall(MemoryType.ERROR, "doctolib", user_id="u1", limit=5)
 
     from app.agent.tools.memory_recall_tool import memory_recall
     out = await memory_recall.ainvoke({
         "query": "doctolib", "user_id": "u1", "memory_type": "error",
     })
-    assert "n'est pas encore consultable" in out
+    assert "pas consultable" in out
+    assert "ne conclus pas" in out.lower()

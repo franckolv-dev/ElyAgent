@@ -27,7 +27,10 @@ from typing import Annotated
 
 from langchain_core.tools import InjectedToolArg, tool
 
-from app.services.memory.recall_service import get_memory_recall_service
+from app.services.memory.recall_service import (
+    UnreadableMemoryType,
+    get_memory_recall_service,
+)
 from app.services.memory.types import MemoryType
 from app.skills.base import Domain
 from app.skills.decorator import register
@@ -35,8 +38,14 @@ from app.skills.decorator import register
 logger = logging.getLogger(__name__)
 
 
+# V0-5 — `procedural` et `error` ne sont PLUS annoncés : aucun des deux n'a
+# de lecture derrière lui (magasin procédural = stub retiré ; erreurs =
+# écriture seule). Les annoncer poussait le modèle à les interroger, et à lire
+# la réponse vide comme « aucune procédure connue » / « je n'ai jamais échoué
+# là-dessus ». MemoryType.parse les accepte encore (données existantes) — la
+# réponse dit alors franchement que la mémoire n'est pas consultable.
 _VALID_TYPES_TEXT = (
-    "episodic | semantic_user | procedural | error | constraint | auto"
+    "episodic | semantic_user | constraint | auto"
 )
 
 
@@ -46,7 +55,7 @@ _VALID_TYPES_TEXT = (
     skill_display_name="Mémoire unifiée multi-typée",
     skill_description=(
         "Recall typé sur la mémoire cognitive d'ELY (épisodique, sémantique-user, "
-        "procédurale, erreurs, contraintes). API unique remplaçant à terme les "
+        "contraintes). API unique remplaçant à terme les "
         "anciens tools memory_search / memory_recent / notes_search / etc."
     ),
     skill_icon="🧠",
@@ -74,21 +83,20 @@ async def memory_recall(
     - **semantic_user**  : stable facts about the user (preferences, who
                           they are, projects, vocabulary).
                           "Does the user have a doctor?"
-    - **procedural**     : reusable how-to recipes (sequences of tool calls
-                          known to solve a class of mission). V1: stub —
-                          will start returning results once Jalon 6 lands.
-    - **error**          : past failures, for "I already tried that".
-                          V1: write-only — recall returns []. Sprint 3.7
-                          will surface them.
     - **constraint**     : user-imposed security rules
                           ("never delete without asking").
     - **auto**           : fan out across all of the above in parallel and
                           merge results by score.
 
+    Deux types existent en base mais ne sont PAS consultables : ``procedural``
+    (jamais eu de magasin) et ``error`` (écriture seule). Les demander rend un
+    message explicite, pas une liste vide — la nuance évite de conclure « rien
+    en mémoire » alors que la bonne conclusion est « pas de lecture ».
+
     Args:
         query: free-text describing what you want to remember.
-        memory_type: one of (``episodic | semantic_user | procedural |
-                     error | constraint | auto``). Default ``auto``.
+        memory_type: one of (``episodic | semantic_user | constraint |
+                     auto``). Default ``auto``.
         limit: how many hits to return. Clamped to [1, 10].
 
     Returns:
@@ -117,6 +125,16 @@ async def memory_recall(
             user_id=user_id,
             limit=safe_limit,
         )
+    except UnreadableMemoryType:
+        # V0-5 — dire « ça ne se lit pas », jamais « il n'y a rien ». La
+        # seconde formulation est une affirmation sur le monde que rien ne
+        # justifie.
+        return (
+            f"Ce type de mémoire ({mt.value}) n'est pas consultable : rien ne "
+            "le relit dans cette version. Ne conclus pas qu'il n'y a rien à "
+            "s'en souvenir — je n'ai simplement aucun moyen de le savoir. "
+            "Essaie episodic, semantic_user, constraint ou auto."
+        )
     except Exception as exc:
         logger.warning("memory_recall failed: %s", exc, exc_info=True)
         return (
@@ -125,11 +143,6 @@ async def memory_recall(
         )
 
     if not hits:
-        if mt == MemoryType.ERROR:
-            return (
-                "La mémoire des erreurs n'est pas encore consultable dans cette "
-                "version — elle est capturée pour le sprint d'auto-amélioration."
-            )
         return (
             f"Aucun souvenir trouvé pour « {query} » (type={mt.value}). "
             "Cela peut signifier qu'on n'en a jamais parlé, ou que la "

@@ -39,7 +39,6 @@ from functools import lru_cache
 from app.services.memory import (
     ConstraintStore,
     EpisodicStore,
-    ProceduralStore,
     SemanticUserStore,
     get_memory_infra,
 )
@@ -65,7 +64,6 @@ class MemoryManager:
         self.constraints = ConstraintStore(infra)
         self.episodic = EpisodicStore(infra)
         self.semantic = SemanticUserStore(infra)
-        self.procedural = ProceduralStore(infra)
 
     # ── Init ────────────────────────────────────────────────────────────
 
