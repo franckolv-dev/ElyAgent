@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Optional
@@ -149,6 +150,12 @@ async def _execute_task(task_id: str) -> None:
         from app.services.conversation_filters import get_filter as _get_conv_filter
         _pii_sf = _get_conv_filter(conv_id)
         agent = build_simple_agent_graph()
+        # V2-1 (vague 2) — les tâches planifiées sont la population LA PLUS
+        # NOMBREUSE en base (815 conversations) et n'enregistraient aucun
+        # usage. Elles ne relèvent d'aucune des deux architectures débattues :
+        # `automated_task=True` force le graphe PLAT. Les confondre avec le
+        # mono-agent fausserait le banc.
+        _turn_started_at = time.monotonic()
         invoke_result = await agent.ainvoke(
             {
                 "messages": [HumanMessage(content=_pii_sf.anonymize(task.prompt))],
@@ -167,6 +174,17 @@ async def _execute_task(task_id: str) -> None:
         # crashed at 17:30 with "raised as a result of Query-invoked
         # autoflush"). The list shape happens when an agent emits text+
         # image+text triples (e.g. weather card with icon).
+        from app.services.background_tasks import spawn as _spawn
+        from app.services.usage_instrumentation import record_turn_usage
+        _spawn(record_turn_usage(
+            user_id=task.user_id,
+            conversation_id=conv_id,
+            channel="scheduled",
+            result=invoke_result,
+            started_at=_turn_started_at,
+            automated_task=True,
+        ), label="usage:scheduled")
+
         ai_content_raw = invoke_result["messages"][-1].content
         if isinstance(ai_content_raw, list):
             ai_content = " ".join(
