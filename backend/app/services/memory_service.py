@@ -312,6 +312,107 @@ def _rank_profile_rows(rows: list) -> list:
     return sorted(rows, key=_score, reverse=True)
 
 
+# C2-b — budget du rappel contextuel. Volontairement petit : ce bloc est
+# recalculé à CHAQUE tour, donc il invalide d'autant le cache de prompt du
+# fournisseur. Le profil permanent (800 car.) reste le gros du contexte.
+_CONTEXTUAL_RECALL_BUDGET = 500
+
+# Mots trop courants pour discriminer quoi que ce soit dans une question.
+_RECALL_STOPWORDS: frozenset[str] = frozenset({
+    "les", "des", "mes", "mon", "ma", "est", "que", "qui", "quoi", "quel",
+    "quelle", "pour", "dans", "avec", "sur", "une", ", ", "tu", "je", "il",
+    "elle", "ce", "cette", "ces", "sont", "ai", "as", "peux", "fait", "faire",
+    "deja", "déjà", "bien", "plus", "moins", "tout", "tous", "toute",
+})
+
+
+def _recall_tokens(text: str) -> set[str]:
+    """Tokens signifiants d'un texte, pour le rapprochement lexical."""
+    import re
+    raw = re.findall(r"[\w\u00c0-\u024f]+", (text or "").lower())
+    return {t for t in raw if len(t) >= 4 and t not in _RECALL_STOPWORDS}
+
+
+async def get_query_relevant_profile(
+    user_id: str, query: str, budget: int = _CONTEXTUAL_RECALL_BUDGET
+) -> str:
+    """Faits du profil pertinents POUR CETTE DEMANDE, ou chaîne vide.
+
+    C'est la strate « rappel à la demande » du chantier C2 — et elle comble
+    une promesse que le code faisait sans la tenir. ``_PROFILE_NOISY_KEYS``
+    annonce que ces clés « can still be retrieved via the semantic RAG path
+    when relevant » : **aucun code ne le fait**. `user_profiles` n'est lu que
+    par l'injection plafonnée et un rapport admin ; le magasin sémantique
+    interroge Qdrant, et sa réconciliation avec SQL n'a jamais été écrite.
+    Une clé bruyante était donc inatteignable — une suppression déguisée.
+
+    Ici, elles redeviennent atteignables **quand la question les appelle** :
+    « j'ai un rendez-vous bientôt ? » ramène ``upcoming_events``, « où vont
+    mes factures ? » ramène ``email_facture_process``.
+
+    Deux principes :
+
+    - **Ne jamais remplir pour remplir.** Sans correspondance, on rend une
+      chaîne vide : le prompt système a un plafond de 15 000 caractères, et
+      un bloc au hasard coûte de l'attention sans rien apporter.
+    - **Ne pas répéter le profil permanent.** Les clés du noyau y sont déjà ;
+      les redire ici gaspillerait le budget.
+
+    ⚠️ **Ce bloc ne doit PAS entrer dans le snapshot mémoire gelé**
+    (``frozen_memory``), qui est mis en cache par conversation : il ne
+    servirait que la première question du fil. Sa place est la zone volatile
+    du prompt, avec la date.
+
+    Best-effort : ne lève jamais.
+    """
+    q_tokens = _recall_tokens(query)
+    if not user_id or not q_tokens:
+        return ""
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(UserProfile)
+                .where(UserProfile.user_id == user_id)
+                .where(
+                    (UserProfile.expires_at == None)  # noqa: E711
+                    | (UserProfile.expires_at > datetime.now(timezone.utc))
+                )
+                .limit(_PROFILE_CANDIDATE_WINDOW)
+            )
+            rows: list[UserProfile] = list(result.scalars().all())
+
+        scored: list[tuple[float, str]] = []
+        for row in rows:
+            if row.key in _PROFILE_CORE_KEYS:
+                continue  # déjà dans le profil permanent
+            haystack = _recall_tokens(f"{row.key} {row.value}")
+            if not haystack:
+                continue
+            overlap = q_tokens & haystack
+            if not overlap:
+                continue
+            scored.append((len(overlap) / len(q_tokens), f"{row.key}: {str(row.value)[:110]}"))
+
+        if not scored:
+            return ""
+
+        scored.sort(key=lambda p: p[0], reverse=True)
+        header = "Ce que tu sais déjà, en lien avec cette demande:"
+        parts = [header]
+        current = len(header)
+        for _score, entry in scored:
+            new_len = current + 3 + len(entry)
+            if new_len > budget:
+                break
+            parts.append(entry)
+            current = new_len
+        return " | ".join(parts) if len(parts) > 1 else ""
+
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("get_query_relevant_profile failed: %s", exc)
+        return ""
+
+
 async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) -> str:
     """Return a compact user profile string for injection into system prompts.
 
