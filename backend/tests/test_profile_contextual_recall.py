@@ -209,3 +209,29 @@ def test_the_recall_is_wired_in_the_volatile_zone():
     )
     # Et il est bien calculé AVANT d etre assemble.
     assert src.index("_recall_block = await") < src.index("_volatile_segment =") + 1
+
+
+@pytest.mark.asyncio
+async def test_the_contextual_block_does_not_repeat_the_same_fact():
+    """Constaté sur la production après la première mise en service : la
+    question « où vont mes factures ? » remplissait les trois places du bloc
+    avec `gmail_preferences`, `email_preferences` et `email_cleanup_preference`
+    — trois formulations du MÊME fait. Le budget est de 500 caractères : il
+    n'a pas de place pour les redondances de la consolidation."""
+    from app.services.memory_service import get_query_relevant_profile
+
+    uid = await _user_with_profile([
+        ("gmail_preferences", "Supprimer promotions, conserver factures"),
+        ("email_preferences", "Supprimer promotions, conserver factures"),
+        ("email_cleanup_preference", "Supprimer promotions, conserver factures"),
+        ("facture_destination", "Pièces jointes vers Drive dossier Factures"),
+    ])
+
+    block = await get_query_relevant_profile(uid, "où vont mes factures ?")
+
+    assert block.count("Supprimer promotions") == 1, (
+        "le même fait occupe plusieurs places du bloc contextuel"
+    )
+    assert "Drive dossier Factures" in block, (
+        "la place libérée doit servir à un fait DIFFÉRENT"
+    )
