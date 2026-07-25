@@ -235,3 +235,39 @@ async def test_the_contextual_block_does_not_repeat_the_same_fact():
     assert "Drive dossier Factures" in block, (
         "la place libérée doit servir à un fait DIFFÉRENT"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_closest_production_paraphrases_collapse():
+    """LES VRAIES CHAÎNES de la production. Mesuré : ces trois clés ne
+    partagent que 4 mots (jaccard 0,44) — seule la paire la plus proche
+    (séquence 0,91) est fusionnable sans risque. Descendre le seuil assez bas
+    pour les fusionner toutes les trois écraserait des faits réellement
+    différents qui partagent du vocabulaire.
+
+    Ce lot prend donc le gain SÛR : une place libérée sur trois. **Le vrai
+    correctif est en amont** — c'est la consolidation nocturne qui ne devrait
+    pas créer `gmail_preferences`, `email_preferences` ET
+    `email_cleanup_preference` pour la même règle. Corriger le lecteur, ici,
+    soigne un symptôme."""
+    from app.services.memory_service import get_query_relevant_profile
+
+    uid = await _user_with_profile([
+        ("gmail_preferences",
+         "Supprimer promotions/spams, conserver pièces jointes, étiqueter factures"),
+        ("email_preferences",
+         "Supprimer spams/newsletters, Conserver factures"),
+        ("email_cleanup_preference",
+         "Supprimer promotions/newsletters, conserver factures"),
+        ("facture_destination",
+         "Pièces jointes déposées dans le Drive, dossier Factures"),
+    ])
+
+    block = await get_query_relevant_profile(uid, "où vont mes factures déjà ?")
+
+    assert block.count("Supprimer") == 2, (
+        f"la paire la plus proche (séquence 0,91) doit fusionner : {block}"
+    )
+    assert "dossier Factures" in block, (
+        "la place libérée doit servir à la destination réelle des factures"
+    )
