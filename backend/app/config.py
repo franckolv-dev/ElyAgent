@@ -48,6 +48,22 @@ class Settings(BaseSettings):
     # foreach, pas augmenter ce plafond sans fin.
     scheduler_recursion_limit: int = 60
 
+    # V0-1 (audit Opus 5 §4.6) — « une tâche "chaque matin à 6 h" peut ne
+    # jamais tourner sans qu'aucune trace ne l'indique ».
+    #
+    # Grâce de retard APScheduler. Le défaut de la bibliothèque est de
+    # **1 seconde** : un hoquet de boucle d'événements, un démarrage un peu
+    # long, et l'occurrence est déclarée « missed » puis silencieusement
+    # abandonnée. Une heure de grâce laisse passer les aléas sans jamais
+    # rejouer une occurrence dont l'intérêt a expiré.
+    scheduler_misfire_grace_seconds: int = 3600
+
+    # Horizon de rattrapage au redémarrage. Le conteneur redémarre à 9 h,
+    # l'occurrence de 6 h est rattrapée (une seule fois — coalesce). Au-delà
+    # de cet âge, on ne réveille rien : au retour de vacances, personne ne
+    # veut recevoir le briefing de mardi dernier.
+    scheduler_catchup_max_age_hours: int = 24
+
     # Public demo mode (set on the agent-ely.fr instance, false everywhere else).
     # When true:
     #   - non-admin users can NOT use system_get_logs (cross-tenant leak risk)
