@@ -271,7 +271,12 @@ async def run_tool_creator(
     if not body.force:
         from app.skills.builtin.find_tool_skill import capability_has_existing_tool
 
-        _existing = await capability_has_existing_tool(body.task_description)
+        # V0-4 : inclut les outils déjà fabriqués pour cet utilisateur, quel
+        # que soit leur statut (une candidate non promue n'est bindée nulle
+        # part, donc invisible au catalogue). `force=true` outrepasse.
+        _existing = await capability_has_existing_tool(
+            body.task_description, user_id=body.user_id
+        )
         if _existing:
             return {
                 "status": "exists",

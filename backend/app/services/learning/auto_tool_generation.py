@@ -82,7 +82,11 @@ async def maybe_generate_for_gap(
                 capability_has_existing_tool,
             )
 
-            existing = await capability_has_existing_tool(capability)
+            # V0-4 : `user_id` étend le pré-check aux outils DÉJÀ FABRIQUÉS
+            # pour cet utilisateur (candidates non promues, archivés,
+            # rejetés) — la source invisible qui produisait 5 générations du
+            # même outil en 32 minutes (audit §3.2).
+            existing = await capability_has_existing_tool(capability, user_id=user_id)
             if existing:
                 logger.info(
                     "auto_tool_gen: gap #%s « %.60s » couvert par l'outil "
