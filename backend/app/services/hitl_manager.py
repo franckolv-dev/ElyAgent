@@ -64,6 +64,89 @@ TIMEOUT_SECONDS = 1800
 _firebase_init_lock = asyncio.Lock()
 
 
+# ====================================================================== #
+# V0-2 — persistance (audit Opus 5 §4.6)                                 #
+#                                                                        #
+# Tout l'état HITL vivait dans un dict en mémoire. Un redémarrage         #
+# pendant une mission de nuit perdait les demandes en attente, et la     #
+# décision prise ensuite depuis le téléphone tombait dans le vide.       #
+#                                                                        #
+# Périmètre honnête : la coroutine qui attendait est morte avec le       #
+# processus, et rien ici ne la ressuscite (ce serait de la reprise       #
+# d'exécution). Ce que la table garantit : la demande reste visible, et  #
+# la décision humaine est ENREGISTRÉE au lieu d'être perdue.             #
+#                                                                        #
+# Best-effort : une base indisponible ne doit jamais empêcher une        #
+# validation de se dérouler en mémoire — on trace et on continue.        #
+# ====================================================================== #
+
+async def persist_request(action_id: str, user_id: str, description: str) -> None:
+    """Écrit la demande « en attente » en base, à sa création."""
+    try:
+        from app.database import async_session
+        from app.models.hitl_request import HitlRequest
+        async with async_session() as db:
+            db.add(HitlRequest(
+                action_id=action_id, user_id=user_id,
+                description=description, status="pending",
+            ))
+            await db.commit()
+    except Exception as exc:
+        logger.warning("HITL %s: persistance de la demande échouée: %s", action_id, exc)
+
+
+async def persist_decision(action_id: str, decision: str, reason: str | None) -> bool:
+    """Reporte l'issue sur la ligne persistée.
+
+    Rend ``True`` si une demande **encore en attente** a bien été tranchée.
+    Rend ``False`` si l'action est inconnue ou déjà tranchée : c'est ce qui
+    interdit la double validation, et ce qui distingue « décision arrivée
+    après un redémarrage » (légitime) de « action fantôme » (à refuser).
+    """
+    try:
+        from sqlalchemy import update
+        from app.database import async_session
+        from app.models.hitl_request import HitlRequest
+        async with async_session() as db:
+            result = await db.execute(
+                update(HitlRequest)
+                .where(
+                    HitlRequest.action_id == action_id,
+                    HitlRequest.status == "pending",
+                )
+                .values(
+                    status=decision,
+                    reason=reason,
+                    resolved_at=datetime.now(timezone.utc),
+                )
+            )
+            await db.commit()
+            return bool(result.rowcount)
+    except Exception as exc:
+        logger.warning("HITL %s: persistance de la décision échouée: %s", action_id, exc)
+        return False
+
+
+async def get_recorded_decision(action_id: str) -> tuple[str, str | None] | None:
+    """Décision enregistrée pour cette action, ou ``None`` si encore en
+    attente / inconnue. Permet à une exécution reprise de consulter un choix
+    fait pendant que le processus était arrêté."""
+    try:
+        from sqlalchemy import select as _select
+        from app.database import async_session
+        from app.models.hitl_request import HitlRequest
+        async with async_session() as db:
+            row = (await db.execute(
+                _select(HitlRequest).where(HitlRequest.action_id == action_id)
+            )).scalar_one_or_none()
+        if row is None or row.status == "pending":
+            return None
+        return row.status, row.reason
+    except Exception as exc:
+        logger.warning("HITL %s: lecture de la décision échouée: %s", action_id, exc)
+        return None
+
+
 @dataclass
 class _PendingAction:
     action_id: str
@@ -105,6 +188,9 @@ class HITLManager:
         action_id = uuid.uuid4().hex[:8]
         pending = _PendingAction(action_id=action_id, description=description, user_id=user_id)
         self._pending[action_id] = pending
+        # V0-2 : trace durable AVANT la notification — si le backend tombe
+        # entre l'envoi et la réponse, la demande existe encore au retour.
+        await persist_request(action_id, user_id, description)
 
         # ── Resolve the user's preferred channel (April 2026 fix #18) ──
         # Before this fix, ALL channels were notified in parallel — users
@@ -159,6 +245,9 @@ class HITLManager:
         finally:
             # Always clean up, even if the event loop is cancelled
             self._pending.pop(action_id, None)
+            # No-op quand resolve() a déjà tranché (l'UPDATE ne vise que les
+            # lignes « pending ») ; c'est le chemin du TIMEOUT qui écrit ici.
+            await persist_decision(action_id, pending.decision, pending.reason)
 
         await self._notify_frontend(
             user_id, action_id, description, "hitl_resolved",
@@ -168,16 +257,63 @@ class HITLManager:
         return pending.decision, pending.reason
 
     async def resolve(self, action_id: str, decision: str, reason: str | None = None) -> bool:
-        """Called by the webhook router when Android sends a response."""
-        pending = self._pending.get(action_id)
-        if not pending:
-            return False
-        pending.decision = decision
-        pending.reason = reason
-        pending.event.set()
-        return True
+        """Enregistre la décision humaine. Appelée par le routeur de validation
+        et par les boutons Telegram / Discord / Slack.
 
-    def list_pending(self, user_id: str) -> list[dict]:
+        V0-2 — deux chemins, un seul verdict :
+
+        - **processus vivant** : on réveille la coroutine en attente, ET on
+          reporte l'issue en base ;
+        - **après un redémarrage** : plus rien en mémoire. La décision est
+          quand même enregistrée — c'est tout l'objet du lot. Avant, elle
+          était silencieusement perdue (``False`` → 404 côté routeur).
+
+        Rend ``False`` seulement si l'action est inconnue **ou déjà tranchée**
+        (pas de double validation, pas d'acceptation fantôme).
+        """
+        pending = self._pending.get(action_id)
+        if pending is not None:
+            persisted = await persist_decision(action_id, decision, reason)
+            if not persisted and await get_recorded_decision(action_id) is not None:
+                return False  # déjà tranchée par un autre canal
+            pending.decision = decision
+            pending.reason = reason
+            pending.event.set()
+            return True
+
+        # Mémoire vide : soit le backend a redémarré, soit l'action n'a
+        # jamais existé. Seule la base peut faire la différence.
+        return await persist_decision(action_id, decision, reason)
+
+    async def get_pending_owner(self, action_id: str) -> str | None:
+        """Propriétaire d'une demande ENCORE en attente, ou ``None``.
+
+        Le routeur de validation en a besoin pour son contrôle
+        d'appartenance : avant V0-2 il lisait ``_pending`` en direct et
+        rendait donc 404 après un redémarrage, sans même appeler
+        ``resolve()``. La vérification de propriété reste entière — elle
+        s'appuie simplement sur une source qui survit au processus.
+        """
+        pending = self._pending.get(action_id)
+        if pending is not None:
+            return pending.user_id
+        try:
+            from sqlalchemy import select as _select
+            from app.database import async_session
+            from app.models.hitl_request import HitlRequest
+            async with async_session() as db:
+                row = (await db.execute(
+                    _select(HitlRequest).where(
+                        HitlRequest.action_id == action_id,
+                        HitlRequest.status == "pending",
+                    )
+                )).scalar_one_or_none()
+            return row.user_id if row is not None else None
+        except Exception as exc:
+            logger.warning("HITL %s: lecture du propriétaire échouée: %s", action_id, exc)
+            return None
+
+    async def list_pending(self, user_id: str) -> list[dict]:
         """Return all pending HITL actions for a given user.
 
         Used by the web UI bell component to display unresolved approval
@@ -186,7 +322,38 @@ class HITLManager:
 
         Expired or resolved actions are filtered out — only actually
         actionable items are returned.
+
+        V0-2 : lue depuis la base, donc la cloche survit à un redémarrage.
+        Repli sur la mémoire si la base est indisponible.
         """
+        try:
+            from sqlalchemy import select as _select
+            from app.database import async_session
+            from app.models.hitl_request import HitlRequest
+            floor = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+                seconds=_timeout_seconds()
+            )
+            async with async_session() as db:
+                rows = (await db.execute(
+                    _select(HitlRequest)
+                    .where(
+                        HitlRequest.user_id == user_id,
+                        HitlRequest.status == "pending",
+                        HitlRequest.created_at >= floor,
+                    )
+                    .order_by(HitlRequest.created_at.desc())
+                )).scalars().all()
+            return [
+                {
+                    "action_id": r.action_id,
+                    "description": r.description,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            logger.warning("HITL: lecture des demandes en attente échouée: %s", exc)
+
         out: list[dict] = []
         for p in self._pending.values():
             if p.user_id != user_id:

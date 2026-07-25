@@ -23,6 +23,7 @@ from app.models.mission import Mission, MissionPlan, MissionStep
 from app.models.google_account import GoogleAccount
 from app.models.watched_folder import WatchedFolder
 from app.models.hitl_preference import HitlPreference
+from app.models.hitl_request import HitlRequest
 from app.models.user_vocabulary import UserVocabulary
 from app.models.learned_routing_keyword import LearnedRoutingKeyword
 from app.models.licence import Licence

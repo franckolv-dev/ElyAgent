@@ -49,7 +49,7 @@ async def list_pending(
     at the moment the request was created (e.g. they are browsing
     Missions or Settings instead of Chat).
     """
-    items = get_hitl_manager().list_pending(current_user.id)
+    items = await get_hitl_manager().list_pending(current_user.id)
     return [HitlPendingOut(**i) for i in items]
 
 
