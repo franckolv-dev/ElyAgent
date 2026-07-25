@@ -381,7 +381,7 @@ async def get_query_relevant_profile(
             )
             rows: list[UserProfile] = list(result.scalars().all())
 
-        scored: list[tuple[float, str]] = []
+        scored: list[tuple[float, str, str]] = []
         for row in rows:
             if row.key in _PROFILE_CORE_KEYS:
                 continue  # déjà dans le profil permanent
@@ -391,7 +391,11 @@ async def get_query_relevant_profile(
             overlap = q_tokens & haystack
             if not overlap:
                 continue
-            scored.append((len(overlap) / len(q_tokens), f"{row.key}: {str(row.value)[:110]}"))
+            scored.append((
+                len(overlap) / len(q_tokens),
+                f"{row.key}: {str(row.value)[:110]}",
+                str(row.value).strip().lower()[:120],
+            ))
 
         if not scored:
             return ""
@@ -400,7 +404,17 @@ async def get_query_relevant_profile(
         header = "Ce que tu sais déjà, en lien avec cette demande:"
         parts = [header]
         current = len(header)
-        for _score, entry in scored:
+        seen_values: set[str] = set()
+        for _score, entry, fingerprint in scored:
+            # Même dédup que le profil permanent (C2-a). Constaté en prod :
+            # « où vont mes factures ? » remplissait les trois places avec
+            # gmail_preferences, email_preferences et
+            # email_cleanup_preference — trois formulations du même fait. Le
+            # budget est de 500 caractères, il n'a pas de place pour les
+            # redondances laissées par la consolidation.
+            if fingerprint in seen_values:
+                continue
+            seen_values.add(fingerprint)
             new_len = current + 3 + len(entry)
             if new_len > budget:
                 break
