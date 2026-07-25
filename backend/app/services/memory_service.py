@@ -236,6 +236,12 @@ _PROFILE_CORE_KEYS: frozenset[str] = frozenset({
     "main_project", "email_provider", "timezone_reminder",
     # Onboarding-sourced keys — always injected so agent knows them from turn 1
     "location", "profession", "routines", "strict_rules",
+    # C2-a — identité stable que le classement ne doit jamais évincer.
+    # L'adresse de l'utilisateur est nécessaire au « mail à soi-même »
+    # (_SELF_MAIL_TOOLS), et le fuseau à toute planification. Sans ces clés
+    # au noyau, la pondération par récence les faisait sortir au profit de
+    # faits plus frais mais moins utiles (constaté sur le profil réel).
+    "primary_email", "user_email", "timezone",
 })
 
 # Keys we deliberately SKIP in the compact injection — they're too
@@ -251,6 +257,59 @@ _PROFILE_NOISY_KEYS: frozenset[str] = frozenset({
     "notification_methods", "location_interest",
     "shopping_routine", "secondary_project",
 })
+
+
+# C2-a — fenêtre de candidats. Le `.limit(20)` historique écartait 218 des
+# 238 clés d'un profil réel AVANT tout autre critère : c'était lui, et non le
+# plafond de 800 caractères, qui décidait de ce qu'Ely sait de son
+# utilisateur. La table fait quelques centaines de lignes par personne ;
+# élargir la fenêtre ne coûte rien de sensible et ne touche pas au prompt.
+_PROFILE_CANDIDATE_WINDOW = 200
+
+# Demi-vie de la récence, en jours. Un fait revu il y a une semaine pèse
+# ~0,8 fois un fait revu aujourd'hui ; un fait vieux d'un an, ~0,1.
+_PROFILE_RECENCY_HALFLIFE_DAYS = 45.0
+
+
+def _rank_profile_rows(rows: list) -> list:
+    """Trie les entrées de profil par UTILITÉ, pas par répétition.
+
+    Le tri SQL historique était ``confidence × source_count`` — c'est-à-dire
+    *combien de fois le fait a été redit*. Mesuré sur la production le 25/07,
+    ça donnait ceci pour un profil de 238 clés :
+
+        rang  19  mobile_provider ......... « Free Mobile »   → injecté
+        rang  74  personal_contacts ....... les proches       → jamais
+        rang  92  custom_preferences ...... l'ordre d'appel   → jamais
+        rang 110  email_facture_process ... le circuit        → jamais
+        rang 150  medical_preferences ..... les motifs de RDV → jamais
+
+    Un fait trivial mais souvent redit écrasait un fait décisif dit une fois.
+    On garde donc la fréquence comme signal — elle dit quelque chose — mais on
+    la pondère par la **récence** : ce qui a été revu récemment a plus de
+    chances d'être encore vrai, et d'être utile maintenant.
+
+    Le tri ne décide pas seul : les clés du noyau (identité) passent devant
+    quoi qu'il arrive, et les clés bruyantes sont filtrées, en aval.
+    """
+    now = datetime.now(timezone.utc)
+
+    def _score(row) -> float:
+        base = float(getattr(row, "confidence", 1.0) or 1.0) * float(
+            getattr(row, "source_count", 1) or 1
+        )
+        last_seen = getattr(row, "last_seen", None)
+        if last_seen is None:
+            return base * 0.5  # jamais revu : on ne le privilégie pas
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        age_days = max(0.0, (now - last_seen).total_seconds() / 86400.0)
+        recency = 0.5 ** (age_days / _PROFILE_RECENCY_HALFLIFE_DAYS)
+        # Racine de la fréquence : redire dix fois vaut mieux qu'une, mais pas
+        # dix fois mieux — sans quoi la trivialité répétée regagne la partie.
+        return (base ** 0.5) * (0.3 + 0.7 * recency)
+
+    return sorted(rows, key=_score, reverse=True)
 
 
 async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) -> str:
@@ -275,6 +334,18 @@ async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) 
     try:
         async with async_session() as db:
             # Fetch top entries ordered by confidence × source_count descending
+            # C2-a — la fenêtre de candidats n'est PLUS le verrou.
+            #
+            # Mesuré en prod le 25/07 : 238 clés stockées, `.limit(20)`, donc
+            # 218 écartées AVANT tout autre critère. Et le tri
+            # `confidence × source_count` classe par *répétition*, pas par
+            # utilité : « mobile_provider: Free Mobile » (rang 19) atteignait
+            # le modèle, « upcoming_events: RDV médical » (rang 186) jamais.
+            #
+            # On élargit la fenêtre et on reclasse en Python (§ _rank_profile_
+            # rows). Le coût est une requête plus large sur une table de
+            # quelques centaines de lignes ; le PROMPT, lui, ne bouge pas —
+            # le plafond de 800 caractères plus bas est inchangé.
             result = await db.execute(
                 select(UserProfile)
                 .where(UserProfile.user_id == user_id)
@@ -285,7 +356,7 @@ async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) 
                 .order_by(
                     (UserProfile.confidence * UserProfile.source_count).desc()
                 )
-                .limit(limit)
+                .limit(max(limit, _PROFILE_CANDIDATE_WINDOW))
             )
             rows: list[UserProfile] = list(result.scalars().all())
 
@@ -306,9 +377,17 @@ async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) 
         #    when contextually relevant, not in every prompt.
         core: list[str] = []
         extra: list[str] = []
-        for row in rows:
+        seen_values: set[str] = set()
+        for row in _rank_profile_rows(rows):
             if row.key in _PROFILE_NOISY_KEYS:
                 continue
+            # Mesuré en prod : `user_email`, `primary_email`, `personal_email`
+            # et `primary_contact_email` portent la MÊME valeur. Le budget est
+            # trop court pour la dire quatre fois.
+            fingerprint = str(row.value).strip().lower()[:120]
+            if fingerprint in seen_values:
+                continue
+            seen_values.add(fingerprint)
             value_truncated = str(row.value)[:80]
             entry = f"{row.key}: {value_truncated}"
             if row.key in _PROFILE_CORE_KEYS:
