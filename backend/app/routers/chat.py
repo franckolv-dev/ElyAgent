@@ -1058,8 +1058,10 @@ async def _maybe_generate_title(
             f"Utilisateur : {user_text[:500]}\n"
             f"Ely : {assistant_text[:500]}"
         )
-        resp = await llm.ainvoke([HumanMessage(content=prompt)])
-        raw = resp.content if isinstance(resp.content, str) else str(resp.content)
+        # OPTIM — générer un titre de 3 à 7 mots ne demande aucun
+        # raisonnement (voir services/background_llm.py).
+        from app.services.background_llm import ainvoke_background
+        raw = await ainvoke_background(llm, [HumanMessage(content=prompt)])
         title = _clean_title(raw)
         if not title:
             return
@@ -1151,10 +1153,14 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         )
 
         # Run all 3 LLM calls concurrently to minimise latency
-        summary_resp, facts_resp, prefs_resp = await asyncio.gather(
-            llm.ainvoke([{"role": "user", "content": summary_prompt}]),
-            llm.ainvoke([{"role": "user", "content": facts_prompt}]),
-            llm.ainvoke([{"role": "user", "content": prefs_prompt}]),
+        # OPTIM — résumer et extraire ne demandent aucun raisonnement.
+        # Ces 3 appels tournent à CHAQUE fin de conversation ; mesurés à
+        # 1 672 tokens de sortie en moyenne sur qwen3.5-9b.
+        from app.services.background_llm import ainvoke_background_with_usage
+        (_, summary_resp), (_, facts_resp), (_, prefs_resp) = await asyncio.gather(
+            ainvoke_background_with_usage(llm, [{"role": "user", "content": summary_prompt}]),
+            ainvoke_background_with_usage(llm, [{"role": "user", "content": facts_prompt}]),
+            ainvoke_background_with_usage(llm, [{"role": "user", "content": prefs_prompt}]),
         )
 
         # A-6b — ces 3 appels n'étaient pas comptés dans UsageLog : la
