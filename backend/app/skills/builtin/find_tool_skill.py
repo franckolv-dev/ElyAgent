@@ -315,7 +315,57 @@ async def _rank_capability(capability: str, k: int) -> list[str]:
 _PRECHECK_MIN_SCORE = 0.5
 
 
-async def capability_has_existing_tool(capability: str) -> str | None:
+def _best_lexical_match(q_tokens: list[str], candidates: dict[str, str]) -> tuple[float, str | None]:
+    """Meilleur score lexical (part des tokens de la capacité présents dans le
+    texte du candidat) et son nom."""
+    best_score, best_name = 0.0, None
+    for name, text in candidates.items():
+        lex = sum(1 for t in q_tokens if t in text) / len(q_tokens)
+        if lex > best_score:
+            best_score, best_name = lex, name
+    return best_score, best_name
+
+
+async def _learned_tool_for_capability(q_tokens: list[str], user_id: str) -> str | None:
+    """Outil DÉJÀ FABRIQUÉ par la fabrique pour cet utilisateur, tous statuts
+    confondus, ou None.
+
+    C'est le trou mesuré en production (audit §3.2). ``_ensure_catalog()`` ne
+    connaît que les outils **bindés** ; or un outil fraîchement généré est une
+    *candidate* non promue, bindée nulle part. Résultat relevé le 25/07 :
+    cinq ``convert_pdf_to_docx`` pour le même utilisateur en 32 minutes, plus
+    trois ``pdf_replace_text`` et trois ``pdf_to_docx``.
+
+    On regarde donc TOUS les statuts — candidate (en attente de promotion),
+    archived et rejected (tentatives passées : les revoir à l'identique ne
+    donnerait pas un meilleur résultat), active, stale, graduated.
+
+    Cloisonné par utilisateur : les outils appris sont personnels, et l'outil
+    d'un tiers ne doit pas priver quelqu'un du sien.
+    """
+    from sqlalchemy import select
+
+    from app.database import async_session
+    from app.models.learned_skill import LearnedSkill
+
+    async with async_session() as db:
+        rows = (await db.execute(
+            select(LearnedSkill.name, LearnedSkill.description).where(
+                LearnedSkill.user_id == user_id,
+                LearnedSkill.content_format == "python_tool",
+            )
+        )).all()
+    if not rows:
+        return None
+
+    texts = {name: _norm(f"{name} {desc or ''}") for name, desc in rows}
+    score, name = _best_lexical_match(q_tokens, texts)
+    return name if score >= _PRECHECK_MIN_SCORE else None
+
+
+async def capability_has_existing_tool(
+    capability: str, user_id: str | None = None
+) -> str | None:
     """Pré-check anti-doublon (C4-2) : meilleur outil existant, ou None.
 
     Consommateurs : endpoint admin ``/tool-creator/run`` (bloquant, avec
@@ -323,6 +373,16 @@ async def capability_has_existing_tool(capability: str) -> str | None:
     et ``report_missing_capability`` (INFORMATIF seulement — caveat).
     Best-effort : erreur → None (la collision de nom du registration_gate
     reste le filet aval).
+
+    V0-4 — deux sources au lieu d'une :
+
+    1. le catalogue des outils **bindés** (comportement historique) ;
+    2. les outils **déjà fabriqués** pour ``user_id``, tous statuts confondus
+       — c'est la source qui manquait, et c'est elle qui produisait les
+       doublons mesurés en production.
+
+    ``user_id`` omis → source 1 seulement : la signature reste
+    rétrocompatible pour tout appelant qui n'a pas d'utilisateur sous la main.
     """
     capability = (capability or "").strip()
     if not capability:
@@ -332,14 +392,23 @@ async def capability_has_existing_tool(capability: str) -> str | None:
         q_tokens = [t for t in _norm(capability).split() if len(t) >= 3]
         if not q_tokens:
             return None
-        best_score, best_name = 0.0, None
-        for name, text in _tool_text_norm.items():
-            if name in _META_TOOLS:
-                continue
-            lex = sum(1 for t in q_tokens if t in text) / len(q_tokens)
-            if lex > best_score:
-                best_score, best_name = lex, name
-        return best_name if best_score >= _PRECHECK_MIN_SCORE else None
+        catalog = {
+            name: text for name, text in _tool_text_norm.items()
+            if name not in _META_TOOLS
+        }
+        best_score, best_name = _best_lexical_match(q_tokens, catalog)
+        if best_score >= _PRECHECK_MIN_SCORE:
+            return best_name
+        if user_id:
+            already_built = await _learned_tool_for_capability(q_tokens, user_id)
+            if already_built:
+                logger.info(
+                    "pré-check anti-doublon : « %.60s » est déjà couverte par "
+                    "l'outil fabriqué %r (non bindé) — pas de re-génération",
+                    capability, already_built,
+                )
+                return already_built
+        return None
     except Exception as exc:  # noqa: BLE001
         logger.debug("capability_has_existing_tool failed: %s", exc)
         return None

@@ -29,9 +29,18 @@ async def _user():
         await db.commit()
     yield uid
     from app.models.failure_case import FailureCase
+    from app.models.learned_skill import LearnedSkill
+    from app.services.background_tasks import drain
+
+    # Le flux « gap consigné » spawne du travail de fond (pré-check +
+    # génération d'outil). Sans attendre sa fin, il ré-insère une ligne
+    # enfant ENTRE le DELETE des enfants et le DELETE du user → violation de
+    # clé étrangère au teardown (reproduit sous SQLite `:memory:`).
+    await drain()
 
     async with async_session() as db:
         await db.execute(delete(FailureCase).where(FailureCase.user_id == uid))
+        await db.execute(delete(LearnedSkill).where(LearnedSkill.user_id == uid))
         await db.execute(delete(User).where(User.id == uid))
         await db.commit()
 

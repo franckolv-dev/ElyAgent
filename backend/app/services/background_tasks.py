@@ -84,3 +84,23 @@ def spawn(
 def pending_count() -> int:
     """Number of in-flight background tasks (observability helper)."""
     return len(_BG_TASKS)
+
+
+async def drain(timeout: float = 5.0) -> int:
+    """Attend la fin des tâches de fond en vol. Rend le nombre de terminées.
+
+    ``pending_count()`` savait compter, il manquait de quoi attendre. Deux
+    usages : un arrêt propre (ne pas couper une écriture en cours), et la fin
+    de course dans les tests — une fixture qui supprime son utilisateur juste
+    après un flux qui a spawné du travail peut voir ce travail ré-insérer une
+    ligne enfant entre le DELETE des enfants et le DELETE du user.
+
+    Ne propage jamais l'échec d'une tâche : ``spawn`` le journalise déjà, et
+    un drain qui lève transformerait un arrêt propre en arrêt brutal. Au-delà
+    de ``timeout``, on rend la main — un drain ne bloque jamais indéfiniment.
+    """
+    tasks = [t for t in _BG_TASKS if not t.done()]
+    if not tasks:
+        return 0
+    done, _pending = await asyncio.wait(tasks, timeout=timeout)
+    return len(done)
