@@ -17,7 +17,6 @@
 | `notes_update` / `delete`  | `SEMANTIC_USER`  | (V2) SQLite `notes` table — édition directe | —                                       | — |
 | (interne) `store_interaction` | `EPISODIC`    | `EpisodicStore.store`          | Qdrant `interactions`                            | λ=0.05 |
 | (Sprint 3.7) `error_log`   | `ERROR`          | `ErrorStore.store`             | SQL `error_log` (rétention 90j)                  | n/a |
-| (Sprint 2.5 Jalon 6) procédural | `PROCEDURAL`| `ProceduralStore.store` (V2)   | SQL `procedures` + Qdrant `procedures`           | aucun |
 
 ## Patterns interdits
 
@@ -84,12 +83,19 @@ pendant la transition V1, le legacy disparaîtra en V2 ou V3.
 
 ## Comment ajouter un nouveau tool d'écriture
 
-1. Choisir le **MemoryType** (cf. design note §2 : 5 types disponibles).
+1. Choisir le **MemoryType** (cf. design note §2).
+
+> ⚠️ **V0-5** — deux types ne sont pas *lisibles* : `PROCEDURAL` (son magasin
+> était un stub sans aucune voie d'écriture, retiré) et `ERROR` (écriture
+> seule : les erreurs partent en `failure_cases`, rien ne les relit).
+> `memory_recall` ne les propose plus et, si on les demande, répond « pas
+> consultable » au lieu de rendre une liste vide — un vide se lit « rien en
+> mémoire », ce qui est une affirmation sur le monde que rien ne justifie.
+
 2. Récupérer le store typé via le bon accessor :
    - `get_semantic_user_store()`
    - `get_constraint_store()`
    - `get_episodic_store()`
-   - `get_procedural_store()`
    - `get_error_store()`
 3. Coller le bloc de commentaire ci-dessus, au-dessus de l'appel `store_*`.
 4. Ajouter une ligne dans la table en haut de ce fichier.

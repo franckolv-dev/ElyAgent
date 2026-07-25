@@ -101,11 +101,15 @@ async def test_recall_empty_query_returns_empty_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_recall_error_type_returns_empty_in_v1() -> None:
-    """ERROR is write-only in V1 — read path is Sprint 3.7."""
+async def test_recall_error_type_raises_unreadable() -> None:
+    """CONTRAT MODIFIÉ EN V0-5 : écriture seule ne veut pas dire « vide ».
+    Rendre `[]` faisait lire au modèle « rien en mémoire » là où la vérité est
+    « pas de lecture implémentée »."""
+    from app.services.memory.recall_service import UnreadableMemoryType
+
     svc = MemoryRecallService()
-    result = await svc.recall(MemoryType.ERROR, "anything", user_id="u1", limit=5)
-    assert result == []
+    with pytest.raises(UnreadableMemoryType):
+        await svc.recall(MemoryType.ERROR, "anything", user_id="u1", limit=5)
 
 
 @pytest.mark.asyncio
@@ -168,25 +172,21 @@ async def test_recall_auto_fans_out_to_all_stores_and_merges(monkeypatch) -> Non
     async def fake_prefs(user_id, limit):
         return ["pref"]
 
-    async def fake_procedural(query, user_id, limit):
-        return [{"intent": "do thing", "slug": "do-thing"}]
-
     async def fake_constraint(query, user_id, limit):
         return ["never X"]
 
     monkeypatch.setattr(svc.episodic, "get_relevant", fake_episodic)
     monkeypatch.setattr(svc.semantic, "get_relevant_facts", fake_facts)
     monkeypatch.setattr(svc.semantic, "get_preferences", fake_prefs)
-    monkeypatch.setattr(svc.procedural, "get_relevant", fake_procedural)
     monkeypatch.setattr(svc.constraints, "get_relevant", fake_constraint)
 
     hits = await svc.recall(MemoryType.AUTO, "anything", user_id="u1", limit=20)
     types_returned = {h.type for h in hits}
-    # All 4 readable types fan out; ERROR is skipped.
+    # V0-5 : 3 types lisibles. PROCEDURAL a quitté le fan-out (magasin stub
+    # retiré) et ERROR n'y a jamais été (écriture seule).
     assert types_returned == {
         MemoryType.EPISODIC,
         MemoryType.SEMANTIC_USER,
-        MemoryType.PROCEDURAL,
         MemoryType.CONSTRAINT,
     }
 
@@ -204,7 +204,6 @@ async def test_recall_auto_respects_limit_after_merge(monkeypatch) -> None:
     monkeypatch.setattr(svc.semantic, "get_relevant_facts", fake_many_facts)
     monkeypatch.setattr(svc.semantic, "get_preferences", fake_empty)
     monkeypatch.setattr(svc.episodic, "get_relevant", fake_empty)
-    monkeypatch.setattr(svc.procedural, "get_relevant", fake_empty)
     monkeypatch.setattr(svc.constraints, "get_relevant", fake_empty)
 
     hits = await svc.recall(MemoryType.AUTO, "fact", user_id="u1", limit=3)
@@ -231,7 +230,6 @@ async def test_recall_auto_survives_one_store_failing(monkeypatch) -> None:
     monkeypatch.setattr(svc.semantic, "get_relevant_facts", fake_facts)
     monkeypatch.setattr(svc.semantic, "get_preferences", fake_prefs)
     monkeypatch.setattr(svc.episodic, "get_relevant", boom)
-    monkeypatch.setattr(svc.procedural, "get_relevant", fake_empty)
     monkeypatch.setattr(svc.constraints, "get_relevant", fake_empty)
 
     hits = await svc.recall(MemoryType.AUTO, "x", user_id="u1", limit=5)

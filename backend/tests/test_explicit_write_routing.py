@@ -171,13 +171,11 @@ def test_typed_store_accessors_are_singletons() -> None:
         get_constraint_store,
         get_episodic_store,
         get_semantic_user_store,
-        get_procedural_store,
         get_error_store,
     )
     assert get_constraint_store() is get_constraint_store()
     assert get_episodic_store() is get_episodic_store()
     assert get_semantic_user_store() is get_semantic_user_store()
-    assert get_procedural_store() is get_procedural_store()
     assert get_error_store() is get_error_store()
 
 
