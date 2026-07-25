@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Final
 
@@ -46,11 +47,21 @@ _ALLOWED_DIRS: Final[tuple[str, ...]] = (
     "/tmp/ely-attachments",
     "/data/attachments",
     "/app/data/attachments",
+    # Sorties bureautiques d'Ely (pdf_to_docx écrit ici). Sans ce répertoire,
+    # le fichier est produit puis reste inatteignable — constat d'audit 25/07.
+    # Dérivé du tempdir SYSTÈME comme le producteur : "/tmp" en conteneur
+    # Linux, "/var/folders/…" sur macOS — un chemin en dur casserait hors
+    # Docker (et les tests avec).
+    str(Path(tempfile.gettempdir()) / "ely-docx"),
 )
 
 _ALLOWED_EXTS: Final[frozenset[str]] = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
     ".pdf", ".txt", ".md", ".csv", ".json",
+    # Bureautique : ce qu'Ely sait produire (docx) et ce qu'un utilisateur
+    # s'attend à pouvoir ouvrir. La liste reste une liste BLANCHE — aucun
+    # exécutable, aucun script.
+    ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".epub",
 })
 
 
