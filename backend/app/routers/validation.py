@@ -75,14 +75,22 @@ async def _resolve(
     channel: str = "web",
 ) -> dict:
     hitl = get_hitl_manager()
-    pending = hitl._pending.get(action_id)
-    if not pending:
+    # V0-2 : le propriétaire vient de la mémoire OU de la base — sinon un
+    # redémarrage transformait toute validation en attente en 404, alors que
+    # la demande était encore parfaitement légitime.
+    owner_id = await hitl.get_pending_owner(action_id)
+    if not owner_id:
         raise HTTPException(status_code=404, detail="Action not found or already resolved")
     # Verify the action belongs to the requesting user (when authenticated).
     # When called via the signed-token path (current_user is None), the
     # token itself already binds the caller to the action_id.
-    if current_user is not None and pending.user_id != current_user.id:
+    if current_user is not None and owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to resolve this action")
+    # Détail en mémoire, best-effort : absent après un redémarrage, et les
+    # champs `tool_name`/`summary` lus plus bas n'ont jamais existé sur
+    # _PendingAction (getattr → None). Conservé tel quel : le journal d'audit
+    # garde exactement la forme qu'il avait.
+    pending = hitl._pending.get(action_id)
     resolved = await hitl.resolve(action_id, decision, reason)
     if not resolved:
         raise HTTPException(status_code=404, detail="Action not found or already resolved")
@@ -91,7 +99,7 @@ async def _resolve(
     try:
         from app.services.analytics_service import log_usage
         asyncio.create_task(log_usage(
-            user_id=current_user.id if current_user else pending.user_id,
+            user_id=current_user.id if current_user else owner_id,
             model="",
             provider="hitl",
             input_tokens=0,
@@ -112,7 +120,7 @@ async def _resolve(
         from app.models.audit import AuditLog as _AuditLog
         async with _async_session() as _db:
             _db.add(_AuditLog(
-                user_id=current_user.id if current_user else pending.user_id,
+                user_id=current_user.id if current_user else owner_id,
                 action=f"hitl_{decision}",  # hitl_allow / hitl_deny / hitl_ban
                 tool_used=getattr(pending, "tool_name", None),
                 command=(getattr(pending, "summary", None) or "")[:500],
@@ -232,9 +240,14 @@ async def ban_action(
 
     hitl = get_hitl_manager()
     pending = hitl._pending.get(action_id)
+    # V0-2 : propriétaire résolu en mémoire OU en base, pour que le contrôle
+    # d'appartenance et l'attribution de la contrainte survivent au
+    # redémarrage (sinon, sur le chemin ntfy, la contrainte permanente
+    # s'écrivait au nom de l'utilisateur vide).
+    owner_id = await hitl.get_pending_owner(action_id)
     # Verify ownership when authenticated via JWT (token path already bound
     # caller to action_id via HMAC, no extra check needed).
-    if not t and pending and current_user and pending.user_id != current_user.id:
+    if not t and owner_id and current_user and owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to resolve this action")
 
     # H1 (audit sécurité 13/06) — IDOR fermé : la description ET le
@@ -243,10 +256,7 @@ async def ban_action(
     # `user_id`/`description` étaient acceptés du corps → un utilisateur
     # authentifié pouvait écrire une contrainte permanente au nom d'un autre.
     actual_desc = pending.description if pending else action_id
-    actual_user = (
-        pending.user_id if pending
-        else (current_user.id if current_user else "")
-    )
+    actual_user = owner_id or (current_user.id if current_user else "")
 
     rule = f"INTERDICTION PERMANENTE: {actual_desc}"
     if reason:
