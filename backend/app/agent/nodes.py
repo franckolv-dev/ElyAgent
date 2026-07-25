@@ -226,6 +226,23 @@ def create_agent_node():
             fetch_user_language,
         )
         date_str, _date_segment = compute_date_segment()
+
+        # C2-b — rappel contextuel du profil. Les clés classées « bruyantes »
+        # (upcoming_events, gmail_preferences…) sont absentes du profil
+        # permanent, et le commentaire de _PROFILE_NOISY_KEYS promettait
+        # qu'elles resteraient récupérables « via the semantic RAG path » —
+        # promesse qu'AUCUN code ne tient (user_profiles n'est lu que par
+        # l'injection plafonnée et un rapport admin). Elles redeviennent ici
+        # atteignables quand la question les appelle.
+        #
+        # Placé dans la ZONE VOLATILE, avec la date, et JAMAIS dans le
+        # snapshot mémoire — celui-ci est gelé par conversation, le bloc n'y
+        # servirait que la première question du fil.
+        from app.services.memory_service import get_query_relevant_profile
+        _recall_block = await get_query_relevant_profile(user_id, user_query)
+        _volatile_segment = (
+            f"\n\n{_recall_block}\n" if _recall_block else ""
+        ) + _date_segment
         _user_language, _lang_directive, _lang_reminder = await fetch_user_language(user_id)
         logger.info(
             "[general] lang=%s user=%s",
@@ -336,7 +353,7 @@ def create_agent_node():
                 )
                 # Final assembly: cacheable + dynamic date + lang reminder.
                 # Email block + lang reminder are appended further down.
-                system = cacheable_system + _date_segment
+                system = cacheable_system + _volatile_segment
 
         # ── Sandwich tail: language reminder ──────────────────────────────
         # Front-load (primacy) was already applied INSIDE the cacheable
@@ -483,7 +500,7 @@ def create_agent_node():
                 _fb_cacheable = _spc.get_or_build(_conv_id_fb, _fb_build_cacheable)
                 system = (
                     _fb_cacheable
-                    + _date_segment
+                    + _volatile_segment
                     + _lang_reminder
                 )
 
