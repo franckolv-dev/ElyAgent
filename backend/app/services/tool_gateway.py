@@ -107,6 +107,11 @@ class GatewayContext:
     anonymize_results: bool = True
     pre_execute: Any = None
     post_execute: Any = None
+    # Surface INTERACTIVE (un humain attend devant son écran) : un outil qui
+    # dépasse le budget bascule en tâche de fond au lieu de monopoliser le
+    # tour (incident 24/07). Les missions et le scheduler laissent False —
+    # ils ont le droit d'attendre et portent leurs propres budgets.
+    interactive: bool = False
     # C4-4 — replay shadow STRICT : quand non-None, la passerelle ne fait
     # QU'UNE chose : re-servir les ToolMessages enregistrés du tour
     # d'origine (duck-typed : .serve(tool_name) -> str|None, .misses).
@@ -620,7 +625,18 @@ async def execute_tool_call(
         try:
             import time as _tt
             _ts = _tt.monotonic()
-            result = await tool.ainvoke(args)
+            # Garde-fou « outil long » : au-delà du budget d'une surface
+            # interactive, l'exécution CONTINUE en tâche de fond et le modèle
+            # reçoit un accusé au lieu du résultat (incident 24/07). Point
+            # unique : tous les outils passent ici, natifs comme MCP.
+            from app.services.long_running_tools import invoke_with_handoff
+            result, _handoff_notice = await invoke_with_handoff(
+                ctx, tool_name, tool, args,
+            )
+            if _handoff_notice is not None:
+                if meta is not None:
+                    meta["handoff"] = True
+                return _tool_result(_handoff_notice, tc_id)
             _tlabel = f"{ctx.label}.tool" if ctx.label else "tool"
             logger.warning("⏱ TIMING[%s:%s] %.2fs", _tlabel, tool_name, _tt.monotonic() - _ts)
             # Résultat qui RESSEMBLE à une erreur → logue aussi les args
