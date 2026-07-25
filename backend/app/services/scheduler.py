@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -47,8 +47,28 @@ _scheduler: AsyncIOScheduler | None = None
 def get_scheduler() -> AsyncIOScheduler:
     global _scheduler
     if _scheduler is None:
-        _scheduler = AsyncIOScheduler(timezone="Europe/Paris")
+        # V0-1 — garde-fous EXPLICITES (audit Opus 5 §4.6). Les défauts
+        # d'APScheduler sont hostiles à une tâche quotidienne :
+        #   - misfire_grace_time = 1 s → la moindre latence perd l'occurrence
+        #   - coalesce            → une seule exécution après un retard
+        #   - max_instances = 1   → une tâche lente ne se superpose pas
+        # Ils sont posés en job_defaults pour couvrir AUSSI les jobs
+        # enregistrés ailleurs (crons de maintenance dans main.py).
+        _scheduler = AsyncIOScheduler(
+            timezone="Europe/Paris",
+            job_defaults=_job_defaults(),
+        )
     return _scheduler
+
+
+def _job_defaults() -> dict:
+    """Garde-fous appliqués à tout job — voir ``get_scheduler``."""
+    from app.config import get_settings as _gs
+    return {
+        "misfire_grace_time": _gs().scheduler_misfire_grace_seconds,
+        "coalesce": True,
+        "max_instances": 1,
+    }
 
 
 async def _execute_task(task_id: str) -> None:
@@ -511,6 +531,80 @@ def _is_oneshot(expression: str | None) -> bool:
     return bool(expression) and expression.strip().lower().startswith(_ONCE_PREFIX)
 
 
+# Borne dure du balayage d'occurrences — un cron « toutes les minutes » sur
+# un horizon de 24 h en produit 1 440. La borne protège d'une expression
+# pathologique, elle n'est pas censée être atteinte.
+_CATCHUP_SCAN_LIMIT = 5000
+
+
+def _as_aware(value: datetime | None) -> datetime | None:
+    """Les colonnes ``DateTime`` du modèle sont naïves et portent de l'UTC
+    (écrites depuis ``datetime.now(timezone.utc)``). On rend l'instant
+    explicite plutôt que de laisser la comparaison exploser."""
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def compute_catchup_run(
+    cron_expression: str,
+    last_run_at: datetime | None,
+    *,
+    now: datetime | None = None,
+    created_at: datetime | None = None,
+    max_age: timedelta | None = None,
+) -> datetime | None:
+    """Occurrence manquée à rattraper, ou ``None``.
+
+    Répond à une seule question : *depuis la dernière exécution connue, une
+    occurrence était-elle due, et est-elle encore assez fraîche pour valoir
+    le coup ?* S'il y en a plusieurs, on ne rend que **la plus récente** —
+    c'est le `coalesce` appliqué au redémarrage : trois jours d'arrêt
+    produisent un briefing, pas trois.
+
+    Le plancher est ``last_run_at``, ou ``created_at`` pour une tâche jamais
+    exécutée (on ne rattrape pas ce qui précède la création de la tâche).
+
+    ⚠️ Pourquoi ce calcul explicite plutôt qu'un jobstore APScheduler
+    persistant : ``BaseScheduler._real_add_job`` recalcule ``next_run_time``
+    depuis l'instant présent dès que le job n'en porte pas, puis
+    ``update_job`` écrase la ligne persistée. Comme
+    ``load_and_schedule_tasks`` ré-enregistre chaque tâche à chaque boot avec
+    ``replace_existing=True``, le ``next_run_time`` passé — celui qui porte
+    justement le retard — serait effacé à tous les démarrages. La seule
+    source de vérité fiable est ``ScheduledTask.last_run_at``, déjà en base.
+    """
+    trigger = _parse_cron(cron_expression)
+    if trigger is None:
+        return None
+
+    tz = ZoneInfo("Europe/Paris")
+    now = _as_aware(now) or datetime.now(tz)
+    if max_age is None:
+        from app.config import get_settings as _gs
+        max_age = timedelta(hours=_gs().scheduler_catchup_max_age_hours)
+
+    floor = _as_aware(last_run_at) or _as_aware(created_at)
+    horizon = now - max_age
+    # Plancher EXCLUSIF : l'occurrence qui tombe pile à l'heure de la dernière
+    # exécution est précisément celle qui a déjà tourné.
+    cursor = max(floor + timedelta(seconds=1), horizon) if floor is not None else horizon
+
+    latest: datetime | None = None
+    for _ in range(_CATCHUP_SCAN_LIMIT):
+        try:
+            nxt = trigger.get_next_fire_time(None, cursor)
+        except Exception as exc:  # trigger exotique — ne jamais bloquer le boot
+            logger.warning("Catch-up scan aborted for '%s': %s", cron_expression, exc)
+            return None
+        if nxt is None or nxt > now:
+            break
+        latest = nxt
+        cursor = nxt + timedelta(seconds=1)
+
+    return latest.astimezone(tz) if latest is not None else None
+
+
 def _parse_cron(expression: str) -> CronTrigger | DateTrigger | None:
     """Parse a schedule expression into an APScheduler trigger.
 
@@ -574,6 +668,40 @@ async def _delete_oneshot(task_id: str) -> None:
         logger.warning("One-shot cleanup failed for %s: %s", task_id, exc)
 
 
+def _schedule_catchup(scheduler: AsyncIOScheduler, task: ScheduledTask) -> bool:
+    """Programme le rattrapage immédiat d'une occurrence manquée, s'il y en a.
+
+    Renvoie ``True`` si un rattrapage a été programmé. Le job part dans
+    quelques secondes (pas immédiatement) pour ne pas alourdir le démarrage,
+    et il est **tracé** : le reproche de l'audit n'est pas seulement que
+    l'occurrence saute, c'est qu'elle saute *en silence*.
+    """
+    missed = compute_catchup_run(
+        task.cron_expression, task.last_run_at, created_at=task.created_at
+    )
+    if missed is None:
+        return False
+    scheduler.add_job(
+        _execute_task,
+        trigger=DateTrigger(
+            run_date=datetime.now(ZoneInfo("Europe/Paris")) + timedelta(seconds=10),
+            timezone="Europe/Paris",
+        ),
+        args=[task.id],
+        id=f"catchup_{task.id}",
+        replace_existing=True,
+        name=f"[rattrapage] {task.name}",
+    )
+    logger.warning(
+        "Rattrapage programmé pour '%s' — occurrence du %s manquée "
+        "(dernière exécution : %s)",
+        task.name,
+        missed.isoformat(timespec="minutes"),
+        task.last_run_at.isoformat(timespec="minutes") if task.last_run_at else "jamais",
+    )
+    return True
+
+
 async def load_and_schedule_tasks() -> None:
     """Load all enabled tasks from DB and register them with APScheduler."""
     scheduler = get_scheduler()
@@ -584,6 +712,7 @@ async def load_and_schedule_tasks() -> None:
         )
         tasks = result.scalars().all()
 
+    catchups = 0
     for task in tasks:
         trigger = _parse_cron(task.cron_expression)
         if trigger:
@@ -596,6 +725,14 @@ async def load_and_schedule_tasks() -> None:
                 name=task.name,
             )
             logger.info("Scheduled task '%s' (%s)", task.name, task.cron_expression)
+            if _schedule_catchup(scheduler, task):
+                catchups += 1
+
+    if catchups:
+        logger.warning(
+            "Scheduler: %d occurrence(s) manquée(s) rattrapée(s) au démarrage",
+            catchups,
+        )
 
     if not scheduler.running:
         scheduler.start()
