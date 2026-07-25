@@ -373,12 +373,18 @@ async def websocket_voice(websocket: WebSocket):
             _run_sem = get_user_run_semaphore(user_id)
             await _run_sem.acquire()
             watcher_task = asyncio.create_task(_watch_for_stop())
+            # V1 temps 1 — le profil court-circuite le routeur et donne le
+            # runtime unique : outils appris, <learned_skills>, vecteur d etat
+            # et preferences arrivent enfin sur la voix.
+            from app.agent.toolset_profiles import resolve_conversation_profile
+            _profile = await resolve_conversation_profile(conversation_id, user_text)
             try:
                 async for event in agent.astream_events(
                     {
                         "messages": history_msgs,
                         "user_id": user_id,
                         "conversation_id": conversation_id,
+                        "toolset_profile": _profile,
                     },
                     version="v2",
                     config={"recursion_limit": CHAT_RECURSION_LIMIT},

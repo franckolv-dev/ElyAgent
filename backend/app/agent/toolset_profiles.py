@@ -384,3 +384,43 @@ def auto_detect_profile(first_user_message: str) -> str:
     when more profiles arrive.
     """
     return DEFAULT_PROFILE
+
+
+async def resolve_conversation_profile(
+    conversation_id: str, user_message: str = ""
+) -> str:
+    """Profil d'outils de cette conversation — auto-détecté et persisté au
+    premier tour, réutilisé ensuite.
+
+    V1 temps 1 : extrait de `routers/chat.py`, où il vivait en ligne. Les
+    canaux et la voix en ont besoin **à l'identique** — c'est ce champ qui
+    court-circuite le routeur (`supervisor.py`) et donne le runtime unique,
+    celui que le banc A/B a mesuré comme plus rapide ET plus juste.
+
+    Le profil est figé au premier tour pour que le catalogue d'outils reste
+    stable aux yeux du modèle d'une question à l'autre.
+
+    Best-effort : sur erreur ou conversation inconnue, rend la chaîne vide —
+    le tour repart alors sur le chemin historique plutôt que d'échouer.
+    """
+    if not conversation_id:
+        return ""
+    try:
+        from app.database import async_session
+        from app.models.conversation import Conversation
+
+        async with async_session() as db:
+            conv = await db.get(Conversation, conversation_id)
+            if conv is None:
+                return ""
+            if not conv.toolset_profile:
+                conv.toolset_profile = auto_detect_profile(user_message or "")
+                await db.commit()
+                logger.info(
+                    "[toolset_profile] auto-detected '%s' for conv=%s",
+                    conv.toolset_profile, conversation_id,
+                )
+            return conv.toolset_profile or DEFAULT_PROFILE
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("toolset_profile resolve failed: %s", exc)
+        return ""
