@@ -106,6 +106,12 @@ async def tool_node(state: AgentState) -> dict:
 
     # ── Délégation à la passerelle unique (C3a) ─────────────────────────
     from app.services.tool_gateway import GatewayContext, execute_tool_call
+    # Le scheduler emprunte CE MÊME nœud (graphe simple + automated_task) :
+    # c'est ce drapeau — pas une surface en dur — qui distingue « un humain
+    # attend » de « ça tourne sans personne ». Un tour de chat est interactif,
+    # une tâche planifiée ne l'est pas et a le droit d'attendre.
+    _interactive = not bool(state.get("automated_task"))
+
     ctx = GatewayContext(
         user_id=user_id,
         conversation_id=_conv_id,
@@ -114,6 +120,7 @@ async def tool_node(state: AgentState) -> dict:
         hitl=hitl,
         memory=memory,
         shadow_results=_shadow,
+        interactive=_interactive,
     )
     for tool_call in last_message.tool_calls:
         results.append(await execute_tool_call(ctx, tool_call, tool_map))

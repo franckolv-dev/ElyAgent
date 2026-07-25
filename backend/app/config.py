@@ -93,6 +93,16 @@ class Settings(BaseSettings):
     # pré-check sémantique anti-doublon avant de dépenser du tier-S.
     auto_tool_generation_enabled: bool = True
 
+    # Garde-fou « outil long » (incident 24/07 : 2 h 52 de traduction PDF dans
+    # un tour de chat, résultat perdu). Sur une surface INTERACTIVE, un outil
+    # qui dépasse le budget ci-dessous n'est pas tué : il CONTINUE en tâche de
+    # fond, le modèle reçoit un accusé, et le résultat est livré à l'arrivée
+    # (message dans la conversation + notification + reprise du raisonnement).
+    # Missions et tâches planifiées ne basculent jamais — elles sont faites
+    # pour les travaux longs.
+    long_tool_handoff_enabled: bool = True
+    long_tool_soft_deadline_s: float = 90.0
+
     # Auth
     jwt_secret_key: str = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
     jwt_algorithm: str = "HS256"
