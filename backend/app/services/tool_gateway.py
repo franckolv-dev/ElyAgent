@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -208,6 +209,12 @@ async def _inject_google_credentials(user_id: str, args: dict) -> None:
     args["user_google_credentials_json"] = _creds
 
 
+def _truthy_env(name: str) -> bool:
+    """Lecture d'un flag d'environnement sans dépendre du module qui vient
+    justement de tomber (utilisée par le fail-closed du canary io)."""
+    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 async def _decide_hitl(ctx: GatewayContext, tool_name: str, args: dict,
                        display_args: dict) -> bool:
     """Pipeline de DÉCISION HITL de la passerelle (extrait en C3b-2) :
@@ -249,7 +256,28 @@ async def _decide_hitl(ctx: GatewayContext, tool_name: str, args: dict,
             )
             needs_hitl = await io_canary_requires_hitl(user_id, tool_name)
         except Exception as _canary_exc:
-            logger.debug("io canary check skipped: %s", _canary_exc)
+            # V0-3 — FAIL-CLOSED (audit Opus 5 §4.6). Avant, l'exception
+            # partait en `debug` et `needs_hitl` restait False : un outil
+            # auto-généré à egress réel s'exécutait sans validation, et la
+            # garde disparaissait sans que rien ne le signale.
+            #
+            # Le refermement reste SCOPÉ : quand le profil io est éteint,
+            # le canary ne garde rien (io_canary_requires_hitl rend False
+            # d'emblée) — exiger un HITL sur chaque outil parce que ce
+            # module ne s'importe plus serait une régression bien pire que
+            # le trou qu'on bouche. Le flag est relu ici sans passer par le
+            # module en panne.
+            _io_on = _truthy_env("LEARNED_PYTHON_TOOLS_IO_ENABLED") and not _truthy_env(
+                "LEARNED_PYTHON_TOOLS_DISABLED"
+            )
+            if _io_on:
+                needs_hitl = True
+                logger.warning(
+                    "io canary indisponible pour %s (%s) — HITL exigé (fail-closed)",
+                    tool_name, _canary_exc,
+                )
+            else:
+                logger.debug("io canary check skipped: %s", _canary_exc)
     # Client MCP universel (J4) — gating spécifique :
     #  - un outil MCP d'instance (mcp__slug__tool, dans le registre) confirme
     #    selon son risque/permission (ACL fine) ;
@@ -261,7 +289,15 @@ async def _decide_hitl(ctx: GatewayContext, tool_name: str, args: dict,
             if await _mcp_needs_hitl(user_id, tool_name):
                 needs_hitl = True
         except Exception as _mcp_exc:
-            logger.debug("MCP HITL check skipped: %s", _mcp_exc)
+            # V0-3 — FAIL-CLOSED (audit Opus 5 §4.6). Une ACL illisible
+            # laissait passer l'outil d'un serveur MCP tiers sans
+            # confirmation. Le refermement est naturellement scopé : on est
+            # déjà dans la branche `tool_name.startswith("mcp__")`.
+            needs_hitl = True
+            logger.warning(
+                "ACL MCP indisponible pour %s (%s) — HITL exigé (fail-closed)",
+                tool_name, _mcp_exc,
+            )
     elif tool_name in _MCP_SELF_GATING_TOOLS:
         needs_hitl = False
     # Task-scoped approval (2026-06-03) — checked FIRST so it bypasses
