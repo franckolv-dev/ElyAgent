@@ -154,11 +154,15 @@ async def extract_and_store_facts(
         # config={"callbacks": []} isolates this call from any active LangGraph
         # callback context (propagated via contextvars through ensure_future).
         # Without this, Ollama's tokens would leak into the active chat stream.
-        response = await llm.ainvoke(
-            [{"role": "user", "content": prompt}],
-            config={"callbacks": []},
+        # OPTIM — corvée de fond : pas de raisonnement. Mesuré en prod,
+        # ce chemin générait 2 101 tokens de sortie par appel sur
+        # qwen3.5-9b (151 avec un modèle sans raisonnement), 3 814 fois.
+        # L'isolation du stream et le retrait du bloc <think> sont dans le
+        # helper. Voir services/background_llm.py.
+        from app.services.background_llm import ainvoke_background_with_usage
+        raw, response = await ainvoke_background_with_usage(
+            llm, [{"role": "user", "content": prompt}],
         )
-        raw = getattr(response, "content", "") or ""
 
         # A-6b — chemin background compté dans UsageLog (best-effort)
         try:
@@ -400,11 +404,12 @@ async def consolidate_user_memory(user_id: str) -> int:
             raw_facts=raw_facts_text,
             existing_profile=existing_profile_text,
         )
-        response = await llm.ainvoke(
-            [{"role": "user", "content": prompt}],
-            config={"callbacks": []},
+        # OPTIM — 6 675 tokens de sortie par consolidation mesurés en prod,
+        # le pire ratio de toutes les tâches de fond. Voir background_llm.py.
+        from app.services.background_llm import ainvoke_background_with_usage
+        raw, response = await ainvoke_background_with_usage(
+            llm, [{"role": "user", "content": prompt}],
         )
-        raw = getattr(response, "content", "") or ""
 
         # A-6b — consolidation nocturne comptée dans UsageLog (best-effort)
         try:

@@ -304,11 +304,11 @@ class MaintenanceAgentRapid:
         # config={"callbacks": []} isolates this call from any active
         # LangGraph callback context so Ministral's tokens don't leak
         # into the user-visible chat stream.
-        response = await llm.ainvoke(
-            [{"role": "user", "content": prompt}],
-            config={"callbacks": []},
-        )
-        raw = getattr(response, "content", "") or ""
+        # OPTIM — corvée de fond : pas de raisonnement (voir
+        # services/background_llm.py). Le helper porte aussi l'isolation du
+        # stream et le retrait d'un éventuel bloc <think> avant le parse.
+        from app.services.background_llm import ainvoke_background
+        raw = await ainvoke_background(llm, [{"role": "user", "content": prompt}])
         raw = _strip_json_fences(raw)
         try:
             data = json.loads(raw)

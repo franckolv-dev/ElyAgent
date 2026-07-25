@@ -37,8 +37,15 @@ def test_clean_title():
 class _FakeLLM:
     def __init__(self, content):
         self._c = content
+        self.received_config = None
 
-    async def ainvoke(self, _msgs):
+    async def ainvoke(self, _msgs, config=None):
+        # `config` fait partie de l'interface réelle de BaseChatModel : le
+        # double l'ignorait, ce qui le faisait diverger du vrai contrat.
+        # La génération de titre tourne PENDANT un tour de chat actif et
+        # passe désormais par background_llm, qui isole les callbacks pour
+        # que ses tokens ne fuient pas dans le stream de l'utilisateur.
+        self.received_config = config
         return SimpleNamespace(content=self._c)
 
 
