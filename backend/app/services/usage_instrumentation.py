@@ -140,6 +140,15 @@ def split_model_used(model_used: str | None) -> tuple[str, str]:
     return ("ollama" if kind == "slm" else "unknown"), rest
 
 
+def _last_context_breakdown() -> str | None:
+    """Ventilation du contexte du tour, posée par le nœud agent (P2)."""
+    try:
+        from app.services.context_breakdown import LAST_CONTEXT_BREAKDOWN
+        return LAST_CONTEXT_BREAKDOWN.get()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 async def record_turn_usage(
     *,
     user_id: str,
@@ -183,6 +192,7 @@ async def record_turn_usage(
                 automated_task=automated_task,
                 domain=usage["domain"],
             ),
+            context_breakdown=_last_context_breakdown(),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("record_turn_usage (%s) échoué : %s", channel, exc)
