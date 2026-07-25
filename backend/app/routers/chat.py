@@ -913,6 +913,7 @@ async def websocket_chat(websocket: WebSocket):
             if model_used_out:
                 try:
                     from app.services.analytics_service import log_usage
+                    from app.services.context_breakdown import LAST_CONTEXT_BREAKDOWN
                     from app.services.usage_instrumentation import architecture_label
                     # model_used_out is "llm:<provider>/<model>+tools?" or "slm:<model>"
                     # describe_llm() in nodes.py now resolves the real provider name
@@ -958,6 +959,9 @@ async def websocket_chat(websocket: WebSocket):
                         architecture=architecture_label(
                             toolset_profile=_toolset_profile or None,
                         ),
+                        # P2 — posée par le nœud agent au moment où la requête
+                        # est complète (ContextVar par tâche asyncio).
+                        context_breakdown=LAST_CONTEXT_BREAKDOWN.get(),
                     ))
                 except Exception:
                     pass  # analytics non-critical

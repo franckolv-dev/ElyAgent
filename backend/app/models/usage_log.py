@@ -56,3 +56,11 @@ class UsageLog(Base):
     latency_ms = Column(Integer, nullable=True)    # durée du tour, bout en bout
     # "mono" | "sub_agent:<domaine>" | "flat" | "mission" | "unknown"
     architecture = Column(String(32), nullable=True, index=True)
+
+    # P2 — d'où viennent les tokens de ce tour (port Hermes v0.19). JSON plat
+    # et compact : {"system_prompt":…,"tool_definitions":…,"conversation":…,
+    # "total":…,"pct":…}. Mesuré en prod, certains tours pèsent 230 000 tokens
+    # d'entrée sans qu'on sache lequel de ces postes les porte. NULL quand la
+    # ventilation n'a rien à dire — une colonne vide vaut mieux qu'un JSON
+    # vide qui donnerait l'illusion d'une mesure.
+    context_breakdown = Column(Text, nullable=True)

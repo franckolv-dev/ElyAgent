@@ -890,6 +890,33 @@ def create_agent_node():
                 [{"role": "system", "content": system}]
                 + _fitted
             )
+            # P2 — ventilation du contexte (port de Hermes v0.19). C'est ICI
+            # que la requête est enfin complète : prompt assemblé, outils
+            # bindés, messages ajustés. Mesuré en prod, certains tours pèsent
+            # 230 000 tokens d'entrée sans qu'on sache d'où ils viennent ;
+            # cette décomposition répond à la question sur du trafic réel.
+            # Instrument passif : n'échoue jamais, ne change aucun envoi.
+            try:
+                from app.services.context_breakdown import (
+                    LAST_CONTEXT_BREAKDOWN, compact_breakdown,
+                    compute_context_breakdown,
+                )
+                from app.services.usage_instrumentation import (
+                    split_model_used as _split_model_used,
+                )
+                LAST_CONTEXT_BREAKDOWN.set(compact_breakdown(
+                    compute_context_breakdown(
+                        system_prompt=system,
+                        tools=_filtered_tools if _bind_tools_flag else [],
+                        messages=_fitted,
+                        # `model_used` est toujours défini ici ; on réutilise
+                        # le parseur de usage_instrumentation plutôt que d'en
+                        # écrire un second qui dériverait.
+                        model=_split_model_used(model_used)[1],
+                    )
+                ))
+            except Exception as _cb_exc:  # noqa: BLE001
+                logger.debug("context_breakdown ignoré: %s", _cb_exc)
             try:
                 _infer_t = _t.monotonic()
                 from app.services.qwen_no_think import (
