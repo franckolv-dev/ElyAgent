@@ -333,6 +333,32 @@ def _recall_tokens(text: str) -> set[str]:
     return {t for t in raw if len(t) >= 4 and t not in _RECALL_STOPWORDS}
 
 
+# Seuil de quasi-doublon. 0,72 sépare les trois paraphrases mesurées en
+# production (elles se ressemblent à ~0,75-0,85) des faits réellement
+# distincts. Trop haut, les redondances repassent ; trop bas, on perd des
+# faits différents qui partagent du vocabulaire.
+_RECALL_SIMILARITY_THRESHOLD = 0.72
+
+
+def _too_similar(candidate: str, kept: str) -> bool:
+    """Deux valeurs disent-elles la même chose ?
+
+    Combine deux signaux, parce qu'aucun ne suffit seul : le recouvrement de
+    vocabulaire (robuste aux réordonnancements) et la similarité de séquence
+    (robuste aux petites variantes de formulation).
+    """
+    import difflib
+
+    a, b = _recall_tokens(candidate), _recall_tokens(kept)
+    if a and b:
+        jaccard = len(a & b) / len(a | b)
+        if jaccard >= _RECALL_SIMILARITY_THRESHOLD:
+            return True
+    return difflib.SequenceMatcher(None, candidate, kept).ratio() >= (
+        _RECALL_SIMILARITY_THRESHOLD + 0.08
+    )
+
+
 async def get_query_relevant_profile(
     user_id: str, query: str, budget: int = _CONTEXTUAL_RECALL_BUDGET
 ) -> str:
@@ -404,17 +430,21 @@ async def get_query_relevant_profile(
         header = "Ce que tu sais déjà, en lien avec cette demande:"
         parts = [header]
         current = len(header)
-        seen_values: set[str] = set()
+        kept_fingerprints: list[str] = []
         for _score, entry, fingerprint in scored:
-            # Même dédup que le profil permanent (C2-a). Constaté en prod :
-            # « où vont mes factures ? » remplissait les trois places avec
-            # gmail_preferences, email_preferences et
-            # email_cleanup_preference — trois formulations du même fait. Le
-            # budget est de 500 caractères, il n'a pas de place pour les
-            # redondances laissées par la consolidation.
-            if fingerprint in seen_values:
+            # Constaté en prod : « où vont mes factures ? » remplissait les
+            # trois places avec gmail_preferences, email_preferences et
+            # email_cleanup_preference :
+            #   « Supprimer promotions/spams, conserver pièces jointes… »
+            #   « Supprimer spams/newsletters, Conserver factures »
+            #   « Supprimer promotions/newsletters, conserver factures »
+            # Le même fait, dit trois fois avec des mots différents. Une
+            # égalité stricte ne les voit pas — d'où le rapprochement par
+            # SIMILARITÉ. Le coût est négligeable : on ne compare que les
+            # quelques candidats déjà retenus pour cette question.
+            if any(_too_similar(fingerprint, kept) for kept in kept_fingerprints):
                 continue
-            seen_values.add(fingerprint)
+            kept_fingerprints.append(fingerprint)
             new_len = current + 3 + len(entry)
             if new_len > budget:
                 break
