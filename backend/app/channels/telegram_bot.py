@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections import OrderedDict
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -325,6 +326,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             logger.debug("sovereignty ContextVar set skipped: %s", _sov_exc)
 
         # Invoke agent
+        # V2-1 — départ du chrono AVANT l'invocation : c'est le temps
+        # que l'utilisateur attend réellement (vague 2).
+        _turn_started_at = time.monotonic()
         agent = _get_agent()
         invoke_result = await agent.ainvoke({
             "messages": history_msgs,
@@ -359,6 +363,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         async with async_session() as db:
             db.add(Message(conversation_id=conversation_id, role="assistant", content=ai_content))
             await db.commit()
+
+        # V2-1 (vague 2) — ce canal n'enregistrait AUCUNE ligne d'usage :
+        # l'architecture a sous-agents etait donc invisible dans les
+        # chiffres, et la question mono/sous-agents non mesurable.
+        # latency_ms + architecture (sub_agent:<domaine>) sont posees ici.
+        from app.services.usage_instrumentation import record_turn_usage
+        spawn(record_turn_usage(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            channel="telegram",
+            result=invoke_result,
+            started_at=_turn_started_at,
+        ), label="usage:telegram")
 
         # Store interaction in vector memory
         memory = get_memory_manager()

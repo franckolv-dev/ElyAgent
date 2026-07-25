@@ -33,6 +33,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+
+from app.services.background_tasks import spawn
 import re
 import uuid
 
@@ -242,6 +245,9 @@ async def _process_message(
     history_msgs.append(HumanMessage(content=sf.anonymize(text)))
 
     # Invoke agent
+    # V2-1 — départ du chrono AVANT l'invocation : c'est le temps
+    # que l'utilisateur attend réellement (vague 2).
+    _turn_started_at = time.monotonic()
     agent = _get_agent()
     invoke_result = await agent.ainvoke({
         "messages": history_msgs,
@@ -278,6 +284,19 @@ async def _process_message(
             content=ai_content,
         ))
         await db.commit()
+
+    # V2-1 (vague 2) — ce canal n'enregistrait AUCUNE ligne d'usage :
+    # l'architecture a sous-agents etait donc invisible dans les
+    # chiffres, et la question mono/sous-agents non mesurable.
+    # latency_ms + architecture (sub_agent:<domaine>) sont posees ici.
+    from app.services.usage_instrumentation import record_turn_usage
+    spawn(record_turn_usage(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        channel="discord",
+        result=invoke_result,
+        started_at=_turn_started_at,
+    ), label="usage:discord")
 
     # Store interaction in vector memory
     memory = get_memory_manager()

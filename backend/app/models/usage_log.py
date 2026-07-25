@@ -45,3 +45,14 @@ class UsageLog(Base):
     # HITL
     hitl_decision = Column(String, nullable=True)  # "allow", "deny", "ban", None
     hitl_action = Column(Text, nullable=True)      # what action was validated
+
+    # V2-1 — pilotabilité (vague 2). Sans ces deux colonnes, la question
+    # « mono-agent ou sous-agents ? » n'est pas mesurable : 8 938 lignes
+    # d'usage ne disaient ni combien de temps le tour a pris, ni quelle
+    # architecture l'a servi.
+    #
+    # NULL et non 0 quand la mesure est absente : une latence nulle serait
+    # une mesure, l'absence de mesure n'en est pas une.
+    latency_ms = Column(Integer, nullable=True)    # durée du tour, bout en bout
+    # "mono" | "sub_agent:<domaine>" | "flat" | "mission" | "unknown"
+    architecture = Column(String(32), nullable=True, index=True)

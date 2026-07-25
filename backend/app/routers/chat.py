@@ -19,6 +19,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 import uuid
 from pathlib import Path
 
@@ -497,6 +498,10 @@ async def websocket_chat(websocket: WebSocket):
             input_tokens_total: int = 0
             output_tokens_total: int = 0
             tools_called: list[str] = []   # track tool invocations for analytics
+            # V2-1 — latence de bout en bout du tour (vague 2). Prise ICI,
+            # avant l'invocation du graphe : c'est le temps que l'utilisateur
+            # attend réellement, pas celui d'un appel LLM isolé.
+            _turn_started_at = time.monotonic()
 
             # ── Stop-signal watcher ──────────────────────────────────────────────
             # Run a parallel task that listens for {"type":"stop"} from the client
@@ -920,6 +925,7 @@ async def websocket_chat(websocket: WebSocket):
             if model_used_out:
                 try:
                     from app.services.analytics_service import log_usage
+                    from app.services.usage_instrumentation import architecture_label
                     # model_used_out is "llm:<provider>/<model>+tools?" or "slm:<model>"
                     # describe_llm() in nodes.py now resolves the real provider name
                     # (lm_studio, qwen_api, anthropic, …) so this split works for all
@@ -958,6 +964,12 @@ async def websocket_chat(websocket: WebSocket):
                         conversation_id=str(conversation_id) if conversation_id else None,
                         skill_used=_skill,
                         channel="web",
+                        latency_ms=int((time.monotonic() - _turn_started_at) * 1000),
+                        # Le chat web passe un toolset_profile → le routeur est
+                        # court-circuité (supervisor.py) → mono-agent.
+                        architecture=architecture_label(
+                            toolset_profile=_toolset_profile or None,
+                        ),
                     ))
                 except Exception:
                     pass  # analytics non-critical

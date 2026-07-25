@@ -293,8 +293,17 @@ async def log_usage(
     channel: str = "web",
     hitl_decision: str | None = None,
     hitl_action: str | None = None,
+    latency_ms: int | None = None,
+    architecture: str | None = None,
 ) -> None:
-    """Record a usage log entry. Called after each agent invocation."""
+    """Record a usage log entry. Called after each agent invocation.
+
+    V2-1 — ``latency_ms`` et ``architecture`` rendent la vague 2 mesurable :
+    sans eux, ni le critère n° 1 (latence) ni l'attribution mono-agent /
+    sous-agents / graphe plat n'existaient dans les chiffres. Tous deux
+    restent optionnels : les appelants historiques passent NULL, ce qui se
+    lit « non mesuré » et non « mesuré à zéro ».
+    """
     cost = estimate_cost(model, input_tokens, output_tokens)
     entry = UsageLog(
         user_id=user_id,
@@ -309,6 +318,8 @@ async def log_usage(
         channel=channel,
         hitl_decision=hitl_decision,
         hitl_action=hitl_action,
+        latency_ms=latency_ms,
+        architecture=architecture,
     )
     try:
         async with async_session() as db:
