@@ -189,3 +189,28 @@ def extract_email_block_addendum(sanitized_messages: list, *, window: int = 12) 
     except Exception as _ext_exc:
         logger.debug("email extraction skipped: %s", _ext_exc)
         return ""
+
+
+async def build_personal_vocabulary_block(user_id: str) -> str:
+    """Bloc de vocabulaire personnel (onboarding), ou chaîne vide.
+
+    V1 temps 1 — PORTAGE. Ce bloc n'était injecté que par
+    ``sub_agents/factory.py`` et ``missions/nodes.py`` : le chemin mono ne
+    l'a jamais eu. Or la vague 1 fait passer les canaux sur ce chemin — sans
+    ce portage, tout utilisateur ayant fait l'onboarding perdrait son
+    vocabulaire personnel en silence.
+
+    Rendu vide pour qui n'a pas fait l'onboarding : le prompt système a un
+    plafond de 15 000 caractères, on n'y met pas de bruit.
+
+    Best-effort : ne lève jamais — un vocabulaire indisponible ne doit pas
+    coûter un tour.
+    """
+    if not user_id:
+        return ""
+    try:
+        from app.services.onboarding import get_vocabulary_for_prompt
+        return await get_vocabulary_for_prompt(user_id) or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Vocabulary injection failed: %s", exc)
+        return ""

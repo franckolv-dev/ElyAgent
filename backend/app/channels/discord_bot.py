@@ -249,10 +249,16 @@ async def _process_message(
     # que l'utilisateur attend réellement (vague 2).
     _turn_started_at = time.monotonic()
     agent = _get_agent()
+    # V1 temps 1 — le profil court-circuite le routeur et donne le
+    # runtime unique : outils appris, <learned_skills>, vecteur
+    # d etat et preferences arrivent enfin sur ce canal.
+    from app.agent.toolset_profiles import resolve_conversation_profile
+    _profile = await resolve_conversation_profile(conversation_id, user_content)
     invoke_result = await agent.ainvoke({
         "messages": history_msgs,
         "user_id": user_id,
         "conversation_id": conversation_id,
+        "toolset_profile": _profile,
     })
 
     # content_to_text AVANT deanonymize : sur tier codex (Responses API),

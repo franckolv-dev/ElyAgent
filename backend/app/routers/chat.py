@@ -417,25 +417,13 @@ async def websocket_chat(websocket: WebSocket):
             # If the conversation has no profile yet (NULL), auto-detect from
             # the current user message and persist. Subsequent turns reuse
             # the same profile — the catalog stays stable for the model.
-            _toolset_profile: str = ""
-            try:
-                from app.agent.toolset_profiles import (
-                    auto_detect_profile, DEFAULT_PROFILE,
-                )
-                async with async_session() as _pdb:
-                    _conv = await _pdb.get(Conversation, conversation_id)
-                    if _conv:
-                        if not _conv.toolset_profile:
-                            _conv.toolset_profile = auto_detect_profile(user_content or "")
-                            await _pdb.commit()
-                            logger.info(
-                                "[toolset_profile] auto-detected '%s' for conv=%s",
-                                _conv.toolset_profile, conversation_id,
-                            )
-                        _toolset_profile = _conv.toolset_profile or DEFAULT_PROFILE
-            except Exception as _tsp_exc:
-                logger.warning("toolset_profile resolve failed: %s", _tsp_exc)
-                _toolset_profile = ""  # legacy keyword filter path
+            # V1 temps 1 — résolution EXTRAITE dans toolset_profiles pour
+            # que les canaux et la voix utilisent exactement la même. Trois
+            # copies auraient dérivé.
+            from app.agent.toolset_profiles import resolve_conversation_profile
+            _toolset_profile: str = await resolve_conversation_profile(
+                str(conversation_id), user_content or ""
+            )
 
             # Anonymize input through per-conversation filter
             sf = _filters.setdefault(conversation_id, SecurityFilter())

@@ -220,6 +220,7 @@ def create_agent_node():
         # builders extracted to app/agent/builders/system_prompt.py.
         from app.agent.builders.system_prompt import (
             LLM_INTROSPECTION_NOTE,
+            build_personal_vocabulary_block,
             compute_date_segment,
             extract_email_block_addendum,
             fetch_user_language,
@@ -361,6 +362,15 @@ def create_agent_node():
 
         # Email / placeholder addendum — refactor Phase 4.2 (builders.system_prompt).
         system += extract_email_block_addendum(_sanitized)
+
+        # V1 temps 1 — vocabulaire personnel (onboarding). N'était injecté
+        # que par sub_agents/factory.py : en faisant passer les canaux sur ce
+        # chemin, on le leur aurait retiré en silence. Placé AVANT la date
+        # (stable par utilisateur, donc cache-friendly), comme côté
+        # spécialistes.
+        _vocab_block = await build_personal_vocabulary_block(state.get("user_id", ""))
+        if _vocab_block:
+            system += f"\n\n{_vocab_block}\n"
 
         # Garde-fou EXÉCUTION AUTOMATIQUE (tâches planifiées, missions) : il
         # n'y a PAS d'humain pour répondre maintenant. Sans ça, un prompt qui
