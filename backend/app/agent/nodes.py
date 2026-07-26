@@ -889,10 +889,19 @@ def create_agent_node():
             except Exception:
                 model_used = f"llm:tier-{_tier_key}{'+tools' if _bind_tools_flag else ''}"
 
+            # Le VRAI modèle, pas l'étiquette du tier : `_tier_key` vaut
+            # « medium » / « complex », que la table de fenêtres ne connaît
+            # pas — elle retombait donc sur 8 192 tokens pour tout le monde,
+            # alors que DeepSeek v4 en offre 64 000. Le modèle est déjà résolu
+            # juste au-dessus par describe_llm ; on réutilise le même parseur
+            # que la ventilation plutôt que d'en écrire un second.
+            from app.services.usage_instrumentation import (
+                split_model_used as _split_mu,
+            )
             _fitted = fit_messages_to_context(
                 messages=_sanitized,
                 system_prompt=system,
-                model=_tier_key,
+                model=_split_mu(model_used)[1] or _tier_key,
                 reserve_for_response=1024,
                 # Ancrage du mandat — cf. le commentaire du chemin SLM.
                 preserve_first=bool(state.get("automated_task")),

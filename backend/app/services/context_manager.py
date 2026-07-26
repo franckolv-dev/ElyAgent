@@ -85,6 +85,28 @@ _CONTEXT_WINDOWS: dict[str, int] = {
     "claude-haiku-4-5": 200_000,
     "gemini-2.5-flash": 1_048_576,
     "gpt-4o": 128_000,
+    # ── Modèles réellement configurés dans `llm_instances` (26/07/2026) ──
+    #
+    # Aucun d'eux ne figurait ici : Ely tronquait donc TOUT comme si la fenêtre
+    # faisait 8 192 tokens, jetant 75 à 95 % du contexte qu'elle avait le droit
+    # de garder (23 débordements en 31 appels d'outils sur un run mesuré).
+    #
+    # Les valeurs sont volontairement INFÉRIEURES aux fenêtres annoncées :
+    # sous-estimer coûte un peu de contexte, surestimer fait rejeter la requête
+    # entière par le fournisseur. Les clés sont des préfixes (cf. la recherche
+    # par `startswith` dans get_context_window).
+    "deepseek-v4": 64_000,
+    "deepseek-chat": 64_000,
+    "mistral-small": 32_768,
+    "mistral-medium": 128_000,
+    "mistral-large": 128_000,
+    "gpt-5": 128_000,
+    # Locaux (LM Studio). ⚠️ Ces valeurs supposent que le modèle est CHARGÉ
+    # dans LM Studio avec sa fenêtre native. Si tu le charges avec un contexte
+    # réduit, abaisse la valeur ici — sinon le serveur local tronquera
+    # silencieusement à sa façon, sans que le budget d'Ely le sache.
+    "qwen/": 32_768,
+    "lmstudio-community/": 32_768,
     # Catch-all — conservative so we never over-fill an unknown model.
     "_default": 8_192,
 }
