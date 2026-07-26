@@ -215,12 +215,30 @@ def _summarise_dropped(messages: Sequence[BaseMessage | dict]) -> str:
 # Public API                                                           #
 # ------------------------------------------------------------------ #
 
+def _contains_text(messages: list[BaseMessage | dict], needle: str) -> bool:
+    """True si *needle* figure déjà dans l'un des messages.
+
+    Sert à ne pas réinjecter le mandat quand la troncature ne l'a pas touché —
+    un doublon coûterait des tokens et donnerait deux ordres identiques que le
+    modèle pourrait lire comme deux demandes distinctes.
+    """
+    for msg in messages:
+        content = (
+            msg.get("content") if isinstance(msg, dict)
+            else getattr(msg, "content", "")
+        )
+        if needle in str(content or ""):
+            return True
+    return False
+
+
 def fit_messages_to_context(
     messages: list[BaseMessage | dict],
     system_prompt: str,
     model: str | None = None,
     max_tokens: int | None = None,
     reserve_for_response: int = 1024,
+    preserve_first: bool = False,
 ) -> list[BaseMessage | dict]:
     """Trim *messages* so they fit within the model's context window.
 
@@ -412,5 +430,45 @@ def fit_messages_to_context(
             logger.debug(
                 "Summary (%d tokens) doesn't fit — skipping.", summary_cost,
             )
+
+    # ───────────────────────────────────────────────────────────────────
+    # Ancrage du mandat (26/07/2026)
+    #
+    # Une tâche planifiée reçoit sa consigne comme messages[0] (scheduler.py).
+    # Tronquer par l'avant la supprime donc EN PREMIER : l'agent termine son
+    # travail sans savoir ce qu'on lui demandait. Constaté sur la prospection —
+    # 51 appels d'outils, 5 entreprises trouvées, 0 écriture, et un rapport de
+    # « veille » à la place. Aucune réécriture de consigne ne pouvait corriger
+    # ça : le texte disparaissait quoi qu'il dise.
+    #
+    # On le réinjecte en TÊTE. Une consigne au milieu d'une boucle d'outils se
+    # lirait comme un résultat, pas comme un ordre.
+    #
+    # La fusion dans kept[0] plutôt qu'un message séparé respecte la règle
+    # d'alternance de Mistral (cf. le résumé ci-dessus, même technique).
+    # ───────────────────────────────────────────────────────────────────
+    if preserve_first and messages:
+        first = messages[0]
+        first_text = str(
+            first.get("content") if isinstance(first, dict)
+            else getattr(first, "content", "")
+        ) or ""
+        if first_text and not _contains_text(kept, first_text):
+            from langchain_core.messages import HumanMessage as _HM
+            anchor = (
+                "[Consigne de la mission — elle reste valable jusqu'au bout, "
+                "même si la suite de l'échange ne la répète pas]\n"
+                + first_text + "\n\n[Fin de la consigne]\n\n"
+            )
+            if kept and isinstance(kept[0], _HM):
+                kept[0] = kept[0].model_copy(
+                    update={"content": anchor + str(kept[0].content or "")}
+                )
+            elif kept and isinstance(kept[0], dict) and kept[0].get("role") == "user":
+                kept[0] = {**kept[0], "content": anchor + str(kept[0].get("content") or "")}
+            elif kept and isinstance(kept[0], BaseMessage):
+                kept = [_HM(content=anchor)] + kept
+            else:
+                kept = [{"role": "user", "content": anchor}] + kept
 
     return kept
