@@ -433,6 +433,11 @@ def create_agent_node():
                     system_prompt=system,
                     model=settings.slm_model,
                     reserve_for_response=1024,
+                    # Ancrage du mandat : sur une tâche planifiée la consigne
+                    # est messages[0], et la troncature supprime par l'avant.
+                    # Sans ça, l'agent termine sans savoir ce qu'on lui
+                    # demandait (prospection du 26/07 : 51 appels, 0 écriture).
+                    preserve_first=bool(state.get("automated_task")),
                 )
                 response = await asyncio.wait_for(
                     _slm_with_tools.ainvoke(
@@ -889,6 +894,8 @@ def create_agent_node():
                 system_prompt=system,
                 model=_tier_key,
                 reserve_for_response=1024,
+                # Ancrage du mandat — cf. le commentaire du chemin SLM.
+                preserve_first=bool(state.get("automated_task")),
             )
             _invoke_msgs = (
                 [{"role": "system", "content": system}]
