@@ -276,6 +276,9 @@ export default function SettingsPage() {
   // instead of creating a new one. Provider is locked (PATCH backend
   // doesn't support changing it — would require deleting and recreating).
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+  // Neutralise l'auto-remplissage du modèle pour la prochaine ouverture du
+  // modal — voir openEditModal.
+  const skipAutoModelRef = useRef(false);
   const [modalOllamaModels, setModalOllamaModels] = useState<string[]>([]);
   const [modalSaving, setModalSaving]         = useState(false);
 
@@ -791,6 +794,13 @@ export default function SettingsPage() {
     // Ne fetcher que si le modal est réellement ouvert
     if (!showAddModal) return;
 
+    // Ouverture en édition : le modèle enregistré vient d'être posé, ne pas
+    // le remplacer par le défaut du fournisseur.
+    if (skipAutoModelRef.current) {
+      skipAutoModelRef.current = false;
+      return;
+    }
+
     if (modalProvider !== "ollama") {
       // Auto-set default model for cloud providers
       const p = PROVIDERS.find((pp) => pp.id === modalProvider);
@@ -843,6 +853,14 @@ export default function SettingsPage() {
   };
 
   const openEditModal = (inst: LLMInstance) => {
+    // L'effet d'auto-remplissage ci-dessous se déclenche à CHAQUE ouverture du
+    // modal (il dépend de `showAddModal`). En édition, il écrasait le modèle
+    // enregistré par le défaut du fournisseur : Franck voyait revenir
+    // « kimi-k2-0905-preview » alors que sa base contenait bien « kimi-k3 »,
+    // et valider aurait détruit sa valeur. Ce drapeau le neutralise pour la
+    // seule ouverture ; un changement de fournisseur ENSUITE doit continuer de
+    // proposer le modèle par défaut.
+    skipAutoModelRef.current = true;
     setEditingInstanceId(inst.id);
     setModalProvider(inst.provider);
     setModalModel(inst.model);
