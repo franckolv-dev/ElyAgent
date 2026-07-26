@@ -58,6 +58,17 @@ _PRICING: dict[str, tuple[float, float]] = {
     # v4 family — 1M context, tool calling supported, current generation.
     # Pricing as of mai 2026 — DeepSeek runs frequent promo discounts so
     # actual billed cost may be lower (cf. their dashboard).
+    # Coût par token NUL par nature — et il faut le DIRE, sinon
+    # `_PRICING.get(model, (1.0, 3.0))` leur invente un tarif. Le coût des
+    # modèles locaux était donc faux, et faux à la hausse : de quoi décourager
+    # l'usage local qu'on cherche précisément à favoriser.
+    #   • modèles locaux (LM Studio) : aucune facturation à l'appel ;
+    #   • gpt-5.6-terra : consommé via l'abonnement ChatGPT, au forfait.
+    "gpt-5.6-terra": (0.0, 0.0),
+    "qwen/qwen3.5-9b": (0.0, 0.0),
+    "qwen/qwen2.5-coder-14b": (0.0, 0.0),
+    "lmstudio-community/gemma-4-E4B-it-MLX-8bit": (0.0, 0.0),
+    "lmstudio-community/Qwen3-4B-Instruct-2507-MLX-8bit": (0.0, 0.0),
     "deepseek-v4-flash": (0.14, 0.28),
     "deepseek-v4-pro": (0.435, 0.87),
     # Legacy aliases (deprecation announced — kept until DeepSeek removes them)
