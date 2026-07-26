@@ -101,15 +101,20 @@ def _check_model_pricing(model: str) -> Finding | None:
     """Reproduit ``estimate_cost`` : ``_PRICING.get(model, …)``, donc égalité
     STRICTE — un préfixe ne suffit pas ici, contrairement à la fenêtre."""
     from app.services.analytics_service import _PRICING
+    from app.services.context_manager import instance_price
 
-    if model in _PRICING:
+    # Le tarif porté par l'instance compte autant que celui de la table : dès
+    # que l'utilisateur a fait le geste, le contrôle doit se taire. Un
+    # diagnostic qui réclame ce qui est déjà réglé cesse d'être lu.
+    if instance_price(model) is not None or model in _PRICING:
         return None
     return Finding(
         kind="model_pricing",
         subject=model,
         detail=(
             "aucun tarif déclaré — le coût affiché à l'utilisateur est calculé "
-            "sur un tarif générique inventé, donc faux pour ce modèle"
+            "sur un tarif générique inventé, donc faux pour ce modèle. "
+            "Renseigne-le sur l'instance, dans Paramètres → Modèles IA"
         ),
     )
 
