@@ -194,6 +194,10 @@ class Settings(BaseSettings):
     # Tavily Search API (optionnel — meilleure qualité de recherche pour agents IA)
     # Gratuit : 1000 requêtes/mois sur https://tavily.com
     tavily_api_key: str = ""
+    # Alternative à Serper (crédits gratuits mensuels, puis moins chère).
+    # Ajoutée le 26/07 après épuisement du quota Serper — voir la chaîne de
+    # repli dans agent/tools/search_tool.py.
+    searchcans_api_key: str = ""
 
     # GitHub Personal Access Token (optionnel)
     # Used by github_traffic_stats / github_repo_stats tools to read traffic,

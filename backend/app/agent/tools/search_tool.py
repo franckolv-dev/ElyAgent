@@ -90,6 +90,14 @@ async def _search_serper(query: str, count: int, api_key: str) -> list[dict] | N
         return results
     except Exception as exc:
         logger.warning("Serper search failed: %s", exc)
+        # Réponse réelle du 26/07 : {"message":"Not enough credits",...}
+        detail = str(exc)
+        try:
+            detail += " " + resp.text  # noqa: F821 — présent si la réponse a été reçue
+        except Exception:  # noqa: BLE001
+            pass
+        if is_quota_error(detail):
+            mark_quota_exhausted("serper")
         return None
 
 
@@ -178,6 +186,106 @@ async def _search_ddgs(query: str, count: int) -> list[dict] | None:
         return None
 
 
+# ── Backend : SearchCans ──────────────────────────────────────────────────────
+#
+# Alternative moins chère à Serper, avec des crédits gratuits mensuels.
+# Contrat relevé sur leur documentation (26/07) :
+#   POST https://www.searchcans.com/api/v1/search
+#   Authorization: Bearer <clé>
+#   corps  : {"t": "google", "s": <requête>, "country", "language", "p"}
+#   réponse: {"code": 0, "data": {"organic": [{title, link, snippet, …}],
+#                                 "knowledgeGraph": {…}}}
+# La forme est proche de Serper — le mapping ci-dessous en est le miroir.
+
+async def _search_searchcans(query: str, count: int, api_key: str) -> list[dict] | None:
+    """Search via SearchCans. Returns None on failure so the chain continues."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://www.searchcans.com/api/v1/search",
+                headers={"Authorization": f"Bearer {api_key}",
+                         "Content-Type": "application/json"},
+                json={"t": "google", "s": query, "country": "fr",
+                      "language": "fr", "p": 1, "knowledgeGraph": True},
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+
+        data = payload.get("data") or {}
+        results: list[dict] = []
+        kg = data.get("knowledgeGraph") or {}
+        if isinstance(kg, dict) and kg.get("description"):
+            results.append({
+                "title": kg.get("title", ""),
+                "url": kg.get("website", "") or kg.get("link", ""),
+                "content": kg.get("description", ""),
+            })
+        for item in data.get("organic") or []:
+            results.append({
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "content": item.get("snippet", ""),
+            })
+            if len(results) >= count:
+                break
+        return results
+    except Exception as exc:
+        logger.warning("SearchCans search failed: %s", exc)
+        if is_quota_error(str(exc)):
+            mark_quota_exhausted("searchcans")
+        return None
+
+
+# ── Disjoncteur de quota ──────────────────────────────────────────────────────
+#
+# Incident du 26/07 : le compte Serper était à court de crédits. Sans mémoire
+# de cet état, CHAQUE recherche repayait un aller-retour vers un service dont
+# on savait qu'il refuserait — de la latence pure, sur toutes les requêtes.
+# L'oubli est volontairement court : Franck recharge, ça repart tout seul,
+# sans redémarrer le backend.
+
+_QUOTA_COOLDOWN_S = 1800  # 30 minutes
+_quota_exhausted_at: dict[str, float] = {}
+
+_QUOTA_MARKERS: tuple[str, ...] = (
+    "not enough credits", "insufficient credit", "quota exceeded",
+    "quota_exceeded", "out of credits", "rate limit exceeded",
+    "payment required",
+)
+
+
+def is_quota_error(message: str) -> bool:
+    """Le message d'erreur dit-il « plus de crédits / quota dépassé » ?"""
+    low = (message or "").lower()
+    return any(marker in low for marker in _QUOTA_MARKERS)
+
+
+def mark_quota_exhausted(provider: str) -> None:
+    import time as _t
+    _quota_exhausted_at[provider] = _t.monotonic()
+    logger.warning(
+        "Recherche : %s à court de crédits — écarté pendant %d min",
+        provider, _QUOTA_COOLDOWN_S // 60,
+    )
+
+
+def is_quota_exhausted(provider: str) -> bool:
+    import time as _t
+    stamp = _quota_exhausted_at.get(provider)
+    if stamp is None:
+        return False
+    if _t.monotonic() - stamp > _QUOTA_COOLDOWN_S:
+        _quota_exhausted_at.pop(provider, None)
+        return False
+    return True
+
+
+def reset_quota_state() -> None:
+    """Remet le disjoncteur à zéro (tests, ou reprise manuelle)."""
+    _quota_exhausted_at.clear()
+
+
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
 # Suffixe posé sur le nom du fournisseur quand un moteur PRINCIPAL a échoué et
@@ -206,10 +314,21 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
 
     _primary_failed = False
 
-    if serper_key:
+    if serper_key and not is_quota_exhausted("serper"):
         results = await _search_serper(query, count, serper_key)
         if results is not None:
             return results, "Serper/Google"
+        _primary_failed = True
+    elif serper_key:
+        _primary_failed = True  # écarté : crédits épuisés
+
+    searchcans_key: str = getattr(s, "searchcans_api_key", "") or ""
+    if searchcans_key and not is_quota_exhausted("searchcans"):
+        results = await _search_searchcans(query, count, searchcans_key)
+        if results is not None:
+            return results, "SearchCans"
+        _primary_failed = True
+    elif searchcans_key:
         _primary_failed = True
 
     if gse_key and gse_cx:
