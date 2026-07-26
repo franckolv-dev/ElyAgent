@@ -180,6 +180,20 @@ async def _search_ddgs(query: str, count: int) -> list[dict] | None:
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
+# Suffixe posé sur le nom du fournisseur quand un moteur PRINCIPAL a échoué et
+# qu'on est retombé sur le repli. Incident du 26/07 : le compte Serper était à
+# court de crédits (« Not enough credits »), la chaîne est passée en silence
+# sur DuckDuckGo — qui rend des pages d'accueil — et Ely a présenté ça comme
+# un résultat de recherche normal, puis en a conclu que « les moteurs ne
+# trouvent rien ». Le repli doit se voir.
+_DEGRADED_SUFFIX = " (repli — moteur principal indisponible)"
+
+
+def is_degraded(source: str) -> bool:
+    """Le résultat vient-il d'un repli plutôt que du moteur principal ?"""
+    src = (source or "").lower()
+    return _DEGRADED_SUFFIX.strip().lower() in src or src.startswith("duckduckgo")
+
 async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, str]:
     """Try backends in priority order. Returns (results, source_name)."""
     from app.config import get_settings
@@ -190,10 +204,13 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
     gse_cx: str     = getattr(s, "google_search_cx", "") or ""
     tavily_key: str = getattr(s, "tavily_api_key", "") or ""
 
+    _primary_failed = False
+
     if serper_key:
         results = await _search_serper(query, count, serper_key)
         if results is not None:
             return results, "Serper/Google"
+        _primary_failed = True
 
     if gse_key and gse_cx:
         results = await _search_google_cse(query, count, gse_key, gse_cx)
@@ -206,7 +223,7 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
             return results, "Tavily"
 
     results = await _search_ddgs(query, count)
-    return results, "DuckDuckGo"
+    return results, "DuckDuckGo" + (_DEGRADED_SUFFIX if _primary_failed else "")
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -230,7 +247,22 @@ async def web_search(
     count = max(1, min(int(count), 10))
     results, source = await _dispatch_search(query, count)
     if results is not None:
-        return _fmt_results(results, query, source)
+        formatted = _fmt_results(results, query, source)
+        if is_degraded(source):
+            # Dire au modèle CE QUI se passe, plutôt que de le laisser
+            # conclure que « le web ne contient rien ».
+            formatted += (
+                "\n\n⚠️ Recherche DÉGRADÉE : le moteur principal est "
+                "indisponible (clé absente, quota ou crédits épuisés) et ces "
+                "résultats viennent du repli, qui renvoie souvent des pages "
+                "d'accueil plutôt que des articles. Ne conclus pas que le "
+                "sujet n'existe pas. Pour de l'actualité récente, utilise "
+                "web_search_news ou news_get_headlines ; sinon ouvre une "
+                "source directement avec browser_navigate puis "
+                "browser_tab_read_text, et signale à l'utilisateur que sa "
+                "recherche web est dégradée."
+            )
+        return formatted
     return (
         f"La recherche web a échoué pour « {query} ». "
         "Essaie browser_navigate avec une URL directe (ex: maps.google.fr, pagesjaunes.fr)."

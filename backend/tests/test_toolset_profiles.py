@@ -55,10 +55,18 @@ def test_default_profile_has_reasonable_size():
     Bumped to 84 in 2026-06-16 for drive_upload_local_file (téléverser un
     fichier LOCAL/binaire — ex. une capture PNG — vers Drive ; drive_create_file
     est texte-seul, d'où le trou « impossible d'enregistrer le PNG »).
+    Bumped to 86 in 2026-07-26 for web_search_news + news_get_headlines : ils
+    existaient dans le catalogue mais n'étaient PAS bindés, si bien qu'Ely
+    répondait — honnêtement — « je n'ai aucun outil dédié à l'actualité
+    récente » et se rabattait sur une recherche web générique, elle-même
+    dégradée (incident du 26/07 : compte Serper à court de crédits).
+    Coût MESURÉ de l'ajout : 283 tokens de schémas sur les 18 173 du profil,
+    soit +1,6 %. Ce plafond protège le poids de prompt ; il ne doit pas
+    interdire une capacité manquante pour 1,6 %.
     DeepSeek / Mistral Small / Mistral Large handle 50-80 tools
     comfortably; xLAM-style fragile FC-tunes are no longer in the chain."""
     tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 84, f"default has {len(tools)} tools (target 25-84)"
+    assert 25 <= len(tools) <= 86, f"default has {len(tools)} tools (target 25-86)"
 
 
 def test_default_profile_no_duplicates():
