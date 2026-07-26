@@ -142,9 +142,80 @@ def _tool_catalog() -> set[str]:
         return set()
 
 
+async def _resolved_models() -> dict[str, str]:
+    """Le modèle que CHAQUE TIER produit réellement, tier par tier.
+
+    Différent de ``_configured_models`` : celui-ci lit ce qui est *déclaré*,
+    celui-là ce qui est *utilisé*. Les deux ont divergé le 26/07 — les tiers
+    medium/complex/image résolvaient vers ``gpt-5.5``, absent de
+    ``llm_instances``, parce qu'une entrée référençait le fournisseur par son
+    NOM et empruntait un chemin historique qui code le modèle en dur.
+
+    Instancie des clients LLM (aucun appel réseau). Toute défaillance — clé
+    absente, serveur local éteint — dégrade en silence : un diagnostic ne doit
+    pas empêcher Ely de démarrer.
+    """
+    out: dict[str, str] = {}
+    try:
+        from app.services.llm_provider import (
+            ComplexityTier, describe_llm, get_llm_for_tier,
+            load_llm_settings_from_db,
+        )
+
+        await load_llm_settings_from_db()
+        for tier in ComplexityTier:
+            try:
+                _provider, model = describe_llm(get_llm_for_tier(tier))
+                if model:
+                    out[tier.value] = model
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("tier %s non résolu (%s)", tier, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("sonde du résolveur indisponible (%s)", exc)
+    return out
+
+
+def _check_resolved_model(
+    tier: str, model: str, declared: set[str],
+) -> list[Finding]:
+    """Un modèle réellement utilisé doit être connu des tables ET déclaré.
+
+    Le second point compte autant que le premier : ``gpt-5.5`` avait une
+    fenêtre (par le préfixe « gpt-5 ») mais n'était déclaré par aucune
+    instance. Un modèle que la configuration n'a jamais demandé signale qu'un
+    chemin historique décide à la place de l'utilisateur.
+    """
+    found: list[Finding] = []
+    if not model:
+        return found
+
+    window = _check_model_window(model)
+    price = _check_model_pricing(model)
+    for f in (window, price):
+        if f is not None:
+            found.append(Finding(
+                kind="resolved_model_unknown",
+                subject=model,
+                detail=f"utilisé par le tier « {tier} » — {f.detail}",
+            ))
+
+    if declared and model not in declared:
+        found.append(Finding(
+            kind="resolved_model_unknown",
+            subject=model,
+            detail=(
+                f"utilisé par le tier « {tier} » mais déclaré par AUCUNE "
+                f"instance — un chemin historique impose ce modèle à la place "
+                f"de ce qui est configuré"
+            ),
+        ))
+    return found
+
+
 async def check_config_reality(
     models: list[str] | None = None,
     bound_tools: list[str] | None = None,
+    resolved_models: dict[str, str] | None = None,
 ) -> list[Finding]:
     """Retourne tout ce qui, dans la configuration réelle, tombe dans un repli.
 
@@ -187,6 +258,17 @@ async def check_config_reality(
                     findings.append(found)
     except Exception as exc:  # noqa: BLE001
         logger.debug("contrôle des outils bindés échoué (%s)", exc)
+
+    # Ce que le système UTILISE, et pas seulement ce qu'il déclare. C'est
+    # l'angle mort qui a laissé gpt-5.5 facturé 4 USD/M sur la majorité du
+    # trafic pendant que l'instance voulue, au forfait, coûtait 0.
+    try:
+        used = await _resolved_models() if resolved_models is None else resolved_models
+        declared = {m for m in (names or []) if m}
+        for tier, model in (used or {}).items():
+            findings.extend(_check_resolved_model(tier, model or "", declared))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("contrôle du résolveur échoué (%s)", exc)
 
     return findings
 
