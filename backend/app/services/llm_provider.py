@@ -1135,6 +1135,59 @@ def unregister_instance_cache(instance_id: str) -> None:
     _instance_cache.pop(instance_id, None)
 
 
+def _apply_instance_overrides(instances) -> None:
+    """Applique fenêtre, tarifs et plafond de sortie déclarés sur les instances.
+
+    C'est ici, et seulement ici, que la configuration de l'utilisateur atteint
+    le calcul de contexte et de coût. Ne lève jamais : un rafraîchissement est
+    l'effet de bord d'un enregistrement réussi, il ne doit pas faire échouer la
+    sauvegarde.
+    """
+    try:
+        from app.services.context_manager import set_instance_overrides
+
+        set_instance_overrides(
+            windows={
+                i.model: i.context_window
+                for i in instances if i.model and i.context_window
+            },
+            outputs={
+                i.model: i.max_output_tokens
+                for i in instances if i.model and i.max_output_tokens
+            },
+            prices={
+                i.model: (i.input_price_per_million, i.output_price_per_million)
+                for i in instances
+                if i.model
+                and i.input_price_per_million is not None
+                and i.output_price_per_million is not None
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("valeurs d'instance non appliquées : %s", exc)
+
+
+async def refresh_instance_overrides() -> None:
+    """Relit les instances et réapplique leurs valeurs.
+
+    #272 ne peuplait le registre qu'au DÉMARRAGE : Franck saisissait ses
+    tarifs, la base les gardait, l'écran les réaffichait — et Ely continuait de
+    tronquer à 8 192 tokens en facturant un tarif générique jusqu'au prochain
+    redémarrage. Les endpoints d'écriture appellent donc ceci.
+    """
+    try:
+        from sqlalchemy import select as _select
+
+        from app.database import async_session as _async_session
+        from app.models.llm_instance import LLMInstance
+
+        async with _async_session() as db:
+            instances = (await db.execute(_select(LLMInstance))).scalars().all()
+        _apply_instance_overrides(instances)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("refresh_instance_overrides échoué : %s", exc)
+
+
 async def load_llm_instances_from_db() -> None:
     """Load all LLMInstance rows into the in-memory cache.  Called at startup."""
     try:
@@ -1154,32 +1207,7 @@ async def load_llm_instances_from_db() -> None:
                 inst.id, inst.provider, inst.model, _decrypt_key(inst.api_key)
             )
 
-        # Fenêtre et tarifs déclarés sur les instances : ils priment sur les
-        # tables du code. C'est ici, et seulement ici, que la configuration de
-        # l'utilisateur atteint le calcul de contexte et de coût — l'oublier
-        # ramènerait la dérive que ce lot supprime.
-        try:
-            from app.services.context_manager import set_instance_overrides
-
-            set_instance_overrides(
-                windows={
-                    i.model: i.context_window
-                    for i in instances if i.model and i.context_window
-                },
-                outputs={
-                    i.model: i.max_output_tokens
-                    for i in instances if i.model and i.max_output_tokens
-                },
-                prices={
-                    i.model: (i.input_price_per_million, i.output_price_per_million)
-                    for i in instances
-                    if i.model
-                    and i.input_price_per_million is not None
-                    and i.output_price_per_million is not None
-                },
-            )
-        except Exception as _ov_exc:  # noqa: BLE001
-            logger.warning("valeurs d'instance non appliquées : %s", _ov_exc)
+        _apply_instance_overrides(instances)
 
         logger.info("Loaded %d LLM instances from DB into cache", len(instances))
     except Exception as exc:
