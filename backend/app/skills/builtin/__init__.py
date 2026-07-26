@@ -105,3 +105,15 @@ def register_all() -> None:
             "auto_discover_tools failed (%s) — falling back to legacy registrations only",
             exc,
         )
+
+    # Descriptions courtes destinées au modèle. EN DERNIER : tout le catalogue
+    # doit être enregistré, découverte automatique comprise, sinon une partie
+    # des remplacements ne trouverait pas sa cible. Les docstrings des modules
+    # ne sont pas touchées — seul l'attribut envoyé au modèle change.
+    from app.agent.tool_descriptions import apply_slim_descriptions
+    try:
+        _slim = apply_slim_descriptions()
+        if _slim:
+            logger.info("Descriptions courtes appliquées à %d outil(s)", _slim)
+    except Exception as exc:  # noqa: BLE001 — un budget de tokens ne doit
+        logger.warning("descriptions courtes ignorées (%s)", exc)  # pas bloquer
