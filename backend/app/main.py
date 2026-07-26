@@ -214,6 +214,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         _startup_logger.warning("Scheduler failed to load tasks", exc_info=True)
 
+    # Contrôle de réalité de la configuration (26/07/2026). Confronte ce qui
+    # est RÉELLEMENT configuré — instances LLM, outils bindés — aux tables du
+    # code. Ajouté après avoir découvert que get_context_window() renvoyait
+    # 8 192 tokens pour tous les modèles pendant des mois, sans une erreur.
+    try:
+        from app.services.config_reality import log_config_reality
+        await log_config_reality()
+    except Exception:
+        _startup_logger.debug("Contrôle de réalité ignoré", exc_info=True)
+
     # Start watchdog service
     from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
     try:
