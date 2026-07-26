@@ -498,6 +498,30 @@ async def browser_close(
 
 
 # ------------------------------------------------------------------ #
+# Aiguillage vers la session de l'utilisateur                          #
+# ------------------------------------------------------------------ #
+#
+# Ces outils pilotent un Chromium headless côté serveur : aucun cookie,
+# aucune session. Sur tout site derrière authentification, ils rendent la
+# page de connexion — et le modèle en déduit que le site est inaccessible.
+#
+# L'extension navigateur, elle, pilote le VRAI Chrome de l'utilisateur, déjà
+# connecté (``browser_open_tab`` / ``browser_tab_read_text``). Les deux
+# familles sont bindées et ne diffèrent que d'un mot dans leur nom : sans cet
+# avertissement, le modèle choisit le nom le plus évident, qui est le mauvais.
+
+_NO_SESSION_NOTICE = (
+    "\n\nNOTE: headless, NO login session — sites behind authentication "
+    "(LinkedIn, Doctolib, Gmail…) return the login page. For those use "
+    "browser_open_tab + browser_tab_read_text, which drive the user's own "
+    "signed-in Chrome."
+)
+
+for _sessionless in (browser_navigate, browser_get_text, browser_screenshot):
+    _sessionless.description += _NO_SESSION_NOTICE
+
+
+# ------------------------------------------------------------------ #
 # Skill registration                                                   #
 # ------------------------------------------------------------------ #
 
