@@ -185,6 +185,64 @@ def estimate_messages_tokens(messages: Sequence[BaseMessage | dict]) -> int:
 
 
 # ------------------------------------------------------------------ #
+# Valeurs portées par les INSTANCES                                    #
+# ------------------------------------------------------------------ #
+#
+# La table ci-dessus est un socle : elle couvre les modèles courants. Mais
+# l'utilisateur déclare ses modèles depuis l'interface, et aucune table du code
+# ne peut le savoir — c'est ce qui a fait tronquer Ely à 8 192 tokens pendant
+# des mois, et ce que chaque correction manuelle rattrapait avec un train de
+# retard (la passe de #263 a oublié 5 modèles sur 16).
+#
+# Ces registres sont peuplés par `load_llm_settings_from_db()`, au démarrage et
+# à chaque enregistrement de réglages. Ils priment sur la table.
+
+_INSTANCE_WINDOWS: dict[str, int] = {}
+_INSTANCE_PRICES: dict[str, tuple[float, float]] = {}
+
+
+def set_instance_overrides(
+    windows: dict | None = None,
+    prices: dict | None = None,
+) -> None:
+    """Remplace les valeurs déclarées sur les instances.
+
+    Ne lève jamais : ces valeurs viennent d'un formulaire et arriveront un jour
+    vides, négatives ou en texte. Une entrée invalide est ignorée — la table du
+    code reprend la main, et le contrôle de réalité le signalera.
+    """
+    _INSTANCE_WINDOWS.clear()
+    _INSTANCE_PRICES.clear()
+
+    for model, value in (windows or {}).items():
+        try:
+            window = int(value)
+        except (TypeError, ValueError):
+            continue
+        if model and window > 0:
+            _INSTANCE_WINDOWS[str(model)] = window
+
+    for model, value in (prices or {}).items():
+        try:
+            inp, out = value
+            inp, out = float(inp), float(out)
+        except (TypeError, ValueError):
+            continue
+        if model and inp >= 0 and out >= 0:
+            _INSTANCE_PRICES[str(model)] = (inp, out)
+
+
+def instance_price(model: str) -> tuple[float, float] | None:
+    """Le tarif déclaré sur l'instance, ou None.
+
+    ``None`` et ``(0.0, 0.0)`` sont deux réponses différentes : la seconde dit
+    « gratuit », la première « pas renseigné ». Les confondre ramènerait le
+    tarif générique inventé sur les modèles locaux.
+    """
+    return _INSTANCE_PRICES.get(model or "")
+
+
+# ------------------------------------------------------------------ #
 # Context-window lookup                                                #
 # ------------------------------------------------------------------ #
 
@@ -193,6 +251,11 @@ def get_context_window(model: str) -> int:
 
     Falls back to ``_default`` for unknown models.
     """
+    # 1. Ce que l'utilisateur a déclaré sur l'instance fait foi.
+    declared = _INSTANCE_WINDOWS.get(model)
+    if declared:
+        return declared
+
     if model in _CONTEXT_WINDOWS:
         return _CONTEXT_WINDOWS[model]
 

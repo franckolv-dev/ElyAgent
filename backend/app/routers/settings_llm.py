@@ -322,12 +322,28 @@ class LLMInstanceCreate(BaseModel):
     provider: str
     model: str
     api_key: Optional[str] = None
+    # USD par MILLION de tokens, tels que publiés par le fournisseur. La
+    # conversion en euros est un réglage d'affichage : convertir à la saisie
+    # produirait une valeur vraie un jour, puis vieillissant en silence.
+    input_price_per_million: Optional[float] = None
+    output_price_per_million: Optional[float] = None
+    # Fenêtre réelle du modèle. Sans elle, Ely retombe sur la table du code,
+    # puis sur un défaut prudent de 8 192 tokens.
+    context_window: Optional[int] = None
 
 
 class LLMInstanceUpdate(BaseModel):
     label: Optional[str] = None
     model: Optional[str] = None
     api_key: Optional[str] = None
+    # USD par MILLION de tokens, tels que publiés par le fournisseur. La
+    # conversion en euros est un réglage d'affichage : convertir à la saisie
+    # produirait une valeur vraie un jour, puis vieillissant en silence.
+    input_price_per_million: Optional[float] = None
+    output_price_per_million: Optional[float] = None
+    # Fenêtre réelle du modèle. Sans elle, Ely retombe sur la table du code,
+    # puis sur un défaut prudent de 8 192 tokens.
+    context_window: Optional[int] = None
 
 
 class LLMInstanceResponse(BaseModel):
@@ -337,6 +353,9 @@ class LLMInstanceResponse(BaseModel):
     model: str
     has_key: bool
     created_at: str
+    input_price_per_million: Optional[float] = None
+    output_price_per_million: Optional[float] = None
+    context_window: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +529,9 @@ async def list_llm_instances(
             model=inst.model,
             has_key=bool(inst.api_key),
             created_at=inst.created_at.isoformat(),
+            context_window=inst.context_window,
+            input_price_per_million=inst.input_price_per_million,
+            output_price_per_million=inst.output_price_per_million,
         )
         for inst in instances
     ]
@@ -547,6 +569,9 @@ async def create_llm_instance(
         provider=body.provider,
         model=body.model.strip(),
         api_key=_encrypt_key(_plain_key),
+        context_window=body.context_window,
+        input_price_per_million=body.input_price_per_million,
+        output_price_per_million=body.output_price_per_million,
         created_at=datetime.now(timezone.utc),
     )
     async with async_session() as db:
@@ -565,6 +590,9 @@ async def create_llm_instance(
         model=inst.model,
         has_key=bool(inst.api_key),
         created_at=inst.created_at.isoformat(),
+        context_window=inst.context_window,
+        input_price_per_million=inst.input_price_per_million,
+        output_price_per_million=inst.output_price_per_million,
     )
 
 
@@ -592,6 +620,15 @@ async def update_llm_instance(
         if body.api_key is not None:
             from app.services.secrets_at_rest import encrypt as _encrypt_key
             inst.api_key = _encrypt_key(_validate_api_key(body.api_key))
+        # `None` signifie « champ non transmis » : on ne l'écrase pas. Pour
+        # effacer une valeur, le formulaire envoie explicitement 0 ou -1, que
+        # `set_instance_overrides` ignorera comme invalide.
+        if body.context_window is not None:
+            inst.context_window = body.context_window or None
+        if body.input_price_per_million is not None:
+            inst.input_price_per_million = body.input_price_per_million
+        if body.output_price_per_million is not None:
+            inst.output_price_per_million = body.output_price_per_million
 
         await db.commit()
         await db.refresh(inst)
@@ -608,6 +645,9 @@ async def update_llm_instance(
         model=inst.model,
         has_key=bool(inst.api_key),
         created_at=inst.created_at.isoformat(),
+        context_window=inst.context_window,
+        input_price_per_million=inst.input_price_per_million,
+        output_price_per_million=inst.output_price_per_million,
     )
 
 

@@ -90,7 +90,17 @@ _PRICING: dict[str, tuple[float, float]] = {
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Estimate cost in USD based on token counts and model pricing."""
-    prices = _PRICING.get(model, (1.0, 3.0))  # default: $1/$3 per 1M
+    # 1. Le tarif déclaré sur l'instance fait foi — c'est la personne qui a lu
+    #    la page tarifaire du fournisseur qui l'a saisi. `None` (non renseigné)
+    #    et `(0.0, 0.0)` (gratuit) sont deux réponses distinctes : les
+    #    confondre ramènerait le tarif générique sur les modèles locaux.
+    from app.services.context_manager import instance_price
+
+    declared = instance_price(model)
+    if declared is not None:
+        prices = declared
+    else:
+        prices = _PRICING.get(model, (1.0, 3.0))  # default: $1/$3 per 1M
     return (input_tokens * prices[0] + output_tokens * prices[1]) / 1_000_000
 
 

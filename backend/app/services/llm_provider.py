@@ -1154,6 +1154,29 @@ async def load_llm_instances_from_db() -> None:
                 inst.id, inst.provider, inst.model, _decrypt_key(inst.api_key)
             )
 
+        # Fenêtre et tarifs déclarés sur les instances : ils priment sur les
+        # tables du code. C'est ici, et seulement ici, que la configuration de
+        # l'utilisateur atteint le calcul de contexte et de coût — l'oublier
+        # ramènerait la dérive que ce lot supprime.
+        try:
+            from app.services.context_manager import set_instance_overrides
+
+            set_instance_overrides(
+                windows={
+                    i.model: i.context_window
+                    for i in instances if i.model and i.context_window
+                },
+                prices={
+                    i.model: (i.input_price_per_million, i.output_price_per_million)
+                    for i in instances
+                    if i.model
+                    and i.input_price_per_million is not None
+                    and i.output_price_per_million is not None
+                },
+            )
+        except Exception as _ov_exc:  # noqa: BLE001
+            logger.warning("valeurs d'instance non appliquées : %s", _ov_exc)
+
         logger.info("Loaded %d LLM instances from DB into cache", len(instances))
     except Exception as exc:
         logger.warning("load_llm_instances_from_db failed: %s", exc)
