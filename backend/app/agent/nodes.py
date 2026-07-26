@@ -147,6 +147,10 @@ def create_agent_node():
         nonlocal _slm_with_tools, _slm_version
         # _tier_llm_cache / _tier_cache_version are dicts/lists mutated in-place — no nonlocal needed
         messages = state["messages"]
+        # P2 — posé plus bas quand la requête est complète. Initialisé ici pour
+        # que le `return` reste sûr même si la branche de calcul n'est pas
+        # atteinte (chemin SLM, sortie anticipée, exception).
+        _ctx_breakdown: str | None = None
         user_id = state.get("user_id", "")
         # Hermes Chantier 2 / 4 — conversation id needs to be available BEFORE
         # the system prompt is built (cache key) and before the fallback state
@@ -904,7 +908,7 @@ def create_agent_node():
                 from app.services.usage_instrumentation import (
                     split_model_used as _split_model_used,
                 )
-                LAST_CONTEXT_BREAKDOWN.set(compact_breakdown(
+                _ctx_breakdown = compact_breakdown(
                     compute_context_breakdown(
                         system_prompt=system,
                         tools=_filtered_tools if _bind_tools_flag else [],
@@ -914,7 +918,12 @@ def create_agent_node():
                         # écrire un second qui dériverait.
                         model=_split_model_used(model_used)[1],
                     )
-                ))
+                )
+                # La ContextVar reste posée pour les appelants qui vivent dans
+                # la MÊME tâche asyncio (missions, canaux). Elle ne suffit pas
+                # au caller du graphe : c'est l'état renvoyé plus bas qui
+                # traverse la frontière de tâche.
+                LAST_CONTEXT_BREAKDOWN.set(_ctx_breakdown)
             except Exception as _cb_exc:  # noqa: BLE001
                 logger.debug("context_breakdown ignoré: %s", _cb_exc)
             try:
@@ -1315,6 +1324,9 @@ def create_agent_node():
             "model_used": model_used,
             "routing_score": routing_score,
             "iteration_count": _next_iter,
+            # Voyage par l'état, comme `model_used` : c'est le seul véhicule
+            # qui franchit la frontière de tâche asyncio de LangGraph.
+            "context_breakdown": _ctx_breakdown or "",
         }
 
     return agent_node

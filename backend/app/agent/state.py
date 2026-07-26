@@ -31,6 +31,12 @@ class AgentState(TypedDict):
     domain: str        # routing field: "research" | "workspace" | "infra" | "general"
     model_used: str    # "slm:<model>" or "llm:<model>" — set by agent_node for feedback
     routing_score: int # IntentRouter score 0-100 — stored for Phase 2 training
+    # P2 — ventilation du contexte, posée par agent_node quand la requête est
+    # complète, lue par le caller qui écrit dans `usage_logs`. Voyage par
+    # l'ÉTAT et non par une ContextVar : LangGraph exécute chaque nœud dans une
+    # tâche asyncio distincte, et une ContextVar ne remonte jamais de l'enfant
+    # vers le parent — c'est ce qui rendait #255 muet (0 ligne ventilée).
+    context_breakdown: str
     # Hermes-style sticky toolset profile (Chantier 1, 2026-05-07).
     # Set once per conversation by the chat router (auto-detect on first
     # message or `/profile <name>` slash command). agent_node reads this
