@@ -36,6 +36,14 @@ from app.agent.tools.browser_extension_tool import (
     browser_tab_fill,
     browser_tab_navigate,
     browser_close_tab,
+    # Sprint 0.7 — inspecteurs Chrome en lecture seule. Définis depuis
+    # longtemps dans browser_extension_tool.py et bindés au profil `default`,
+    # mais JAMAIS enregistrés ici : l'agent ne les voyait pas et affirmait de
+    # bonne foi ne pas pouvoir consulter l'historique. Trouvé par le contrôle
+    # de réalité (#265).
+    browser_history_search,
+    browser_bookmarks_search,
+    browser_downloads_search,
 )
 
 get_skill_registry().register(Skill(
@@ -64,5 +72,8 @@ get_skill_registry().register(Skill(
         browser_tab_fill,
         browser_tab_navigate,
         browser_close_tab,
+        browser_history_search,
+        browser_bookmarks_search,
+        browser_downloads_search,
     ],
 ))

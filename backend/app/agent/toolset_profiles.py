@@ -121,7 +121,6 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # 30-day auto-purge). Created after the agent kept hallucinating
     # « la corbeille a été vidée » without an actual tool to do it.
     # HITL-locked (irreversible — no API recovers a deleted Gmail msg).
-    "gmail_empty_trash",
     # GitHub — read-only stats + traffic + notifications (2026-05-17,
     # added to unblock screencast scenario step « clones du repo ElyAgent »).
     # Token configured via GITHUB_TOKEN env var.

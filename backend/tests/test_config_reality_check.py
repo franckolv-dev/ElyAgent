@@ -118,12 +118,10 @@ async def test_a_bound_tool_that_does_not_exist_is_reported():
 # oublie les trois recherches, `gmail_empty_trash` n'apparaît pas dans
 # `gmail_skill`. Les inscrire ici plutôt que d'exiger zéro fantôme rend le
 # constat visible sans bloquer, ET fait échouer la CI si un CINQUIÈME apparaît.
-_KNOWN_GHOST_TOOLS = {
-    "browser_history_search",
-    "browser_bookmarks_search",
-    "browser_downloads_search",
-    "gmail_empty_trash",
-}
+# Vidé le 26/07 : les trois recherches Chrome ont été enregistrées et
+# `gmail_empty_trash` retiré du profil (il supprime définitivement). Le
+# maintenir vide fait échouer la CI au PREMIER nouveau fantôme.
+_KNOWN_GHOST_TOOLS: set[str] = set()
 
 
 @pytest.mark.asyncio
