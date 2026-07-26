@@ -107,33 +107,3 @@ def test_every_builtin_skill_declares_at_least_one_domain():
 
 # ── Supervisor / sub_agents — runtime sets equal registry-derived sets ──────
 
-def test_sub_agent_resolve_tool_names_matches_registry():
-    """The SubAgentConfig.resolve_tool_names() helper is the new SoT —
-    verify it returns exactly tool_names_by_domain() for every agent that
-    didn't pre-declare an explicit override.
-    """
-    from app.agent.sub_agents.config import ALL_AGENTS
-    from app.skills.base import Domain
-    r = _registry()
-    for cfg in ALL_AGENTS:
-        if cfg.tool_names is not None:
-            # Explicit override (e.g. SYSTEM_AGENT) — skip
-            continue
-        derived = r.tool_names_by_domain(cfg.domain)
-        assert cfg.resolve_tool_names() == derived, (
-            f"agent {cfg.name!r} resolve_tool_names() drifted from "
-            f"registry.tool_names_by_domain({cfg.domain!r})"
-        )
-
-
-def test_supervisor_legacy_skill_constants_resolve_via_registry():
-    """``supervisor._WORKSPACE_SKILLS`` etc. are now lazy attrs that read
-    the registry — they must equal the registry's per-domain set.
-    """
-    from app.agent import supervisor
-    from app.skills.base import Domain
-    r = _registry()
-    assert supervisor._WORKSPACE_SKILLS == r.tool_names_by_domain(Domain.WORKSPACE)
-    assert supervisor._RESEARCH_SKILLS == r.tool_names_by_domain(Domain.RESEARCH)
-    assert supervisor._INFRA_SKILLS == r.tool_names_by_domain(Domain.INFRA)
-    assert supervisor._MEMORY_SKILLS == r.tool_names_by_domain(Domain.UNIVERSAL)

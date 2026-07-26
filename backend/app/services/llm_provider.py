@@ -836,10 +836,6 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
     the globally-configured provider/model is used.  When a sub-agent carries
     its own provider/model, a dedicated instance is created from _runtime keys.
     """
-    from typing import TYPE_CHECKING
-    if TYPE_CHECKING:
-        from app.agent.sub_agents.config import SubAgentConfig  # noqa: F401
-
     if config.llm_provider is None:
         return get_llm()
 

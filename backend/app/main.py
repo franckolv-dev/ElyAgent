@@ -265,18 +265,6 @@ async def lifespan(app: FastAPI):
     except Exception:
         _startup_logger.warning("Community skills failed to load", exc_info=True)
 
-    # Compile and register all sub-agent subgraphs
-    from app.agent.sub_agents.registry import get_sub_agent_registry
-    from app.agent.sub_agents.config import ALL_AGENTS
-    _sub_registry = get_sub_agent_registry()
-    for _agent_config in ALL_AGENTS:
-        _sub_registry.register(_agent_config)
-    import logging as _logging
-    _logging.getLogger(__name__).info(
-        "Sub-agent registry ready: %d agents compiled (%s)",
-        len(_sub_registry),
-        ", ".join(_sub_registry.list_names()),
-    )
 
     # Schedule vault auto-lock (every 5 minutes — locks idle vaults after AUTO_LOCK_MINUTES)
     from app.services.vault_service import get_vault_service
