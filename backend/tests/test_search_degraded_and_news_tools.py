@@ -81,7 +81,7 @@ async def test_a_credit_exhausted_provider_is_reported_not_hidden(monkeypatch):
 
     monkeypatch.setattr(st, "_search_serper", _serper_ko)
     monkeypatch.setattr(st, "_search_ddgs", _ddg_ok)
-    monkeypatch.setattr(st, "_search_google_cse", None, raising=False)
+    monkeypatch.setattr(st, "_search_searchcans", lambda *a, **k: None, raising=False)
 
     class _S:
         serper_api_key = "une-cle"
@@ -89,7 +89,13 @@ async def test_a_credit_exhausted_provider_is_reported_not_hidden(monkeypatch):
         google_search_cx = ""
         tavily_api_key = ""
 
-    monkeypatch.setattr(st, "get_settings", lambda: _S(), raising=False)
+    # `_dispatch_search` importe get_settings LOCALEMENT : patcher l attribut
+    # du module n a aucun effet. Ce test passait donc pour une raison
+    # differente de celle qu il annonçait (la cle Serper est absente en test,
+    # donc la branche n etait meme pas prise). On patche la source.
+    import app.config as cfg
+    monkeypatch.setattr(cfg, "get_settings", lambda: _S())
+    st.reset_quota_state()
 
     results, provider = await st._dispatch_search("actualités IA", 5)
 
