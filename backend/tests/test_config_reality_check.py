@@ -51,9 +51,13 @@ async def test_a_clean_configuration_reports_nothing():
     « Unknown model » que personne n'a jamais vu passer."""
     from app.services.config_reality import check_config_reality
 
-    # `bound_tools=[]` isole le contrôle des modèles : le profil réel porte
-    # quatre noms fantômes, épinglés par le test suivant.
-    findings = await check_config_reality(models=["deepseek-v4-pro"], bound_tools=[])
+    # On isole la dimension testée : `bound_tools=[]` écarte le profil réel,
+    # `resolved_models={}` écarte la sonde du résolveur ajoutée par le lot B
+    # (elle a son propre fichier de tests). Un contrôle qui mêle ses sources
+    # rend ses échecs illisibles.
+    findings = await check_config_reality(
+        models=["deepseek-v4-pro"], bound_tools=[], resolved_models={},
+    )
 
     assert findings == [], f"faux positifs : {findings}"
 
