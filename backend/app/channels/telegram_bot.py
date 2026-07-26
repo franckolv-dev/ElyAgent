@@ -45,6 +45,7 @@ from telegram.ext import (
 from sqlalchemy import select
 
 from app.agent.graph import build_agent_graph
+from app.services.background_tasks import spawn
 from app.agent.helpers.message_content import content_to_text
 from app.auth.passwords import verify_password
 from app.database import async_session
@@ -583,7 +584,6 @@ async def receive_telegram_update(data: dict) -> None:
         while len(_SEEN_UPDATE_IDS) > _SEEN_UPDATE_IDS_MAX:
             _SEEN_UPDATE_IDS.popitem(last=False)
 
-    from app.services.background_tasks import spawn
     spawn(_bot_app.process_update(update), label=f"telegram-update-{update_id}")
 
 
