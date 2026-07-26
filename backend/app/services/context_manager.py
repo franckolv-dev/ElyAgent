@@ -107,6 +107,19 @@ _CONTEXT_WINDOWS: dict[str, int] = {
     # silencieusement à sa façon, sans que le budget d'Ely le sache.
     "qwen/": 32_768,
     "lmstudio-community/": 32_768,
+    # Ajoutés après que le contrôle de réalité (#265) a montré que la passe
+    # manuelle de #263 était INCOMPLÈTE : llm_instances déclare 16 modèles,
+    # je n'en avais traité que 10 (sortie de console tronquée). Ces cinq-là
+    # restaient donc tronqués à 8 192 tokens.
+    #
+    # ⚠️ Valeurs DÉLIBÉRÉMENT PRUDENTES, à relever si tu connais mieux :
+    # kimi-k2.6 et les qwen3.6-* annoncent bien davantage, gemini flash-lite
+    # va jusqu'au million. Sous-estimer coûte un peu de contexte ; surestimer
+    # fait rejeter la requête entière par le fournisseur.
+    "gemini-3.1-flash-lite": 128_000,
+    "kimi-k2": 32_768,
+    "qwen3.6-": 32_768,
+    "qwen3-vl": 32_768,
     # Catch-all — conservative so we never over-fill an unknown model.
     "_default": 8_192,
 }
