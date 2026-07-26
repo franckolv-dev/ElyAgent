@@ -193,6 +193,12 @@ interface LLMInstance {
   model: string;
   has_key: boolean;
   created_at: string;
+  // Portés par l'instance depuis #272 : avant, fenêtre et tarifs vivaient dans
+  // des tables du code qu'on ne pouvait pas éditer — Ely tronquait à 8 192
+  // tokens et facturait un tarif inventé sans que rien ne le signale.
+  context_window?: number | null;
+  input_price_per_million?: number | null;
+  output_price_per_million?: number | null;
 }
 
 interface TierMeta {
@@ -270,6 +276,12 @@ export default function SettingsPage() {
   const [showAddModal, setShowAddModal]       = useState(false);
   const [modalProvider, setModalProvider]     = useState("ollama");
   const [modalModel, setModalModel]           = useState("");
+  // Chaînes et non nombres : un champ vide doit rester « non renseigné » et
+  // non « zéro ». Un modèle local à 0 est gratuit, un modèle sans tarif est
+  // inconnu — les confondre ramènerait le tarif générique inventé.
+  const [modalCtxWindow, setModalCtxWindow]   = useState("");
+  const [modalInPrice, setModalInPrice]       = useState("");
+  const [modalOutPrice, setModalOutPrice]     = useState("");
   const [modalLabel, setModalLabel]           = useState("");
   const [modalApiKey, setModalApiKey]         = useState("");
   // When non-null, the modal is in edit mode and PATCH-es this instance
@@ -865,6 +877,9 @@ export default function SettingsPage() {
     setModalProvider(inst.provider);
     setModalModel(inst.model);
     setModalLabel(inst.label);
+    setModalCtxWindow(inst.context_window != null ? String(inst.context_window) : "");
+    setModalInPrice(inst.input_price_per_million != null ? String(inst.input_price_per_million) : "");
+    setModalOutPrice(inst.output_price_per_million != null ? String(inst.output_price_per_million) : "");
     // API key field stays empty in edit mode — typing here replaces the
     // stored key, leaving it blank keeps the existing one untouched.
     setModalApiKey("");
@@ -874,22 +889,45 @@ export default function SettingsPage() {
   const closeModal = () => {
     setShowAddModal(false);
     setEditingInstanceId(null);
+    setModalCtxWindow("");
+    setModalInPrice("");
+    setModalOutPrice("");
   };
 
   const handleSubmitInstance = async () => {
     if (modalSaving || !modalLabel.trim() || !modalModel.trim()) return;
     setModalSaving(true);
     try {
+      // Champ vide = non renseigné : on n'envoie rien, le backend garde la
+      // valeur existante. `null` explicite serait interprété comme « ne
+      // touche pas » côté API ; pour effacer, on envoie 0.
+      const numOrUndef = (v: string): number | undefined => {
+        const t2 = v.trim();
+        if (!t2) return undefined;
+        const n = Number(t2);
+        return Number.isFinite(n) && n >= 0 ? n : undefined;
+      };
+
       if (editingInstanceId) {
         // ── PATCH (edit existing) ──────────────────────────────────────
         // Provider is intentionally NOT sent — backend doesn't accept it
         // on PATCH. label/model always sent, api_key only if user typed
         // a new one (empty = keep existing key).
-        const body: { label: string; model: string; api_key?: string } = {
+        const body: {
+          label: string; model: string; api_key?: string;
+          context_window?: number; input_price_per_million?: number;
+          output_price_per_million?: number;
+        } = {
           label: modalLabel.trim(),
           model: modalModel.trim(),
         };
         if (modalApiKey.trim()) body.api_key = modalApiKey.trim();
+        const cw = numOrUndef(modalCtxWindow);
+        const ip = numOrUndef(modalInPrice);
+        const op = numOrUndef(modalOutPrice);
+        if (cw !== undefined) body.context_window = cw;
+        if (ip !== undefined) body.input_price_per_million = ip;
+        if (op !== undefined) body.output_price_per_million = op;
 
         const res = await authFetch(
           `${API_URL}/api/settings/llm/instances/${editingInstanceId}`,
@@ -907,12 +945,22 @@ export default function SettingsPage() {
         push("success", t("instanceUpdated"));
       } else {
         // ── POST (create new) ──────────────────────────────────────────
-        const body: { label: string; provider: string; model: string; api_key?: string } = {
+        const body: {
+          label: string; provider: string; model: string; api_key?: string;
+          context_window?: number; input_price_per_million?: number;
+          output_price_per_million?: number;
+        } = {
           label: modalLabel.trim(),
           provider: modalProvider,
           model: modalModel.trim(),
         };
         if (modalApiKey.trim()) body.api_key = modalApiKey.trim();
+        const cwN = numOrUndef(modalCtxWindow);
+        const ipN = numOrUndef(modalInPrice);
+        const opN = numOrUndef(modalOutPrice);
+        if (cwN !== undefined) body.context_window = cwN;
+        if (ipN !== undefined) body.input_price_per_million = ipN;
+        if (opN !== undefined) body.output_price_per_million = opN;
 
         const res = await authFetch(`${API_URL}/api/settings/llm/instances`, {
           method: "POST",
@@ -2753,6 +2801,64 @@ export default function SettingsPage() {
                 </p>
               </div>
             )}
+
+            {/* Step 3 ter: fenêtre et tarifs, portés par l'instance (#272).
+                Avant, ces valeurs vivaient dans des tables du code : ajouter un
+                modèle ici ne les mettait pas à jour, Ely tronquait à 8 192
+                tokens et facturait un tarif générique inventé, en silence. */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-xs text-text-muted uppercase tracking-wider">
+                  Fenêtre de contexte
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={modalCtxWindow}
+                  onChange={(e) => setModalCtxWindow(e.target.value)}
+                  placeholder="ex. 1000000"
+                  className="input"
+                />
+                <p className="text-[10px] text-text-muted">
+                  En tokens. Vide = valeur par défaut du code, puis 8 192.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-text-muted uppercase tracking-wider">
+                  Tarif entrée (USD / M)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.001"
+                  value={modalInPrice}
+                  onChange={(e) => setModalInPrice(e.target.value)}
+                  placeholder="ex. 0.30"
+                  className="input"
+                />
+                <p className="text-[10px] text-text-muted">
+                  En dollars, tel que publié. La conversion en euros est un
+                  réglage d&apos;affichage.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-text-muted uppercase tracking-wider">
+                  Tarif sortie (USD / M)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.001"
+                  value={modalOutPrice}
+                  onChange={(e) => setModalOutPrice(e.target.value)}
+                  placeholder="ex. 2.50"
+                  className="input"
+                />
+                <p className="text-[10px] text-text-muted">
+                  0 pour un modèle local ou consommé au forfait.
+                </p>
+              </div>
+            </div>
 
             {/* Step 4: Label */}
             <div className="space-y-2">
