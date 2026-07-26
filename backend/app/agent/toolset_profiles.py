@@ -221,6 +221,12 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "browser_downloads_search",
     # Web search (DuckDuckGo / SerpAPI fallback path)
     "web_search",
+    # Incident du 26/07 : ces deux outils existaient dans le catalogue mais
+    # n'étaient pas bindés. Ely répondait donc — honnêtement — « je n'ai aucun
+    # outil dédié à l'actualité récente », et se rabattait sur une recherche
+    # web générique dégradée.
+    "web_search_news",
+    "news_get_headlines",
     # Tasks (Google Tasks)
     "tasks_create",
     "tasks_list",
