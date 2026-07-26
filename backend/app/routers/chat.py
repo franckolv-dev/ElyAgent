@@ -483,6 +483,7 @@ async def websocket_chat(websocket: WebSocket):
             _answer_content = ""
             model_used_out: str = ""
             routing_score_out: int | None = None
+            context_breakdown_out: str | None = None
             input_tokens_total: int = 0
             output_tokens_total: int = 0
             tools_called: list[str] = []   # track tool invocations for analytics
@@ -656,6 +657,13 @@ async def websocket_chat(websocket: WebSocket):
                     output = event.get("data", {}).get("output", {})
                     model_used_out = output.get("model_used", "") or model_used_out
                     routing_score_out = output.get("routing_score", routing_score_out)
+                    # P2 — même véhicule que `model_used` : l'état renvoyé par
+                    # le graphe. La ContextVar posée dans le nœud ne remonte
+                    # pas jusqu'ici (tâche asyncio distincte), ce qui laissait
+                    # la colonne à NULL sur 100 % des tours.
+                    context_breakdown_out = (
+                        output.get("context_breakdown") or context_breakdown_out
+                    )
                     # Only use on_chain_end content as a fallback when streaming
                     # produced nothing (non-streaming models like Ollama).
                     # NEVER overwrite content already accumulated via token streaming —
@@ -913,7 +921,6 @@ async def websocket_chat(websocket: WebSocket):
             if model_used_out:
                 try:
                     from app.services.analytics_service import log_usage
-                    from app.services.context_breakdown import LAST_CONTEXT_BREAKDOWN
                     from app.services.usage_instrumentation import architecture_label
                     # model_used_out is "llm:<provider>/<model>+tools?" or "slm:<model>"
                     # describe_llm() in nodes.py now resolves the real provider name
@@ -961,7 +968,7 @@ async def websocket_chat(websocket: WebSocket):
                         ),
                         # P2 — posée par le nœud agent au moment où la requête
                         # est complète (ContextVar par tâche asyncio).
-                        context_breakdown=LAST_CONTEXT_BREAKDOWN.get(),
+                        context_breakdown=context_breakdown_out,
                     ))
                 except Exception:
                     pass  # analytics non-critical
