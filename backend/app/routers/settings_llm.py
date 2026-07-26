@@ -47,6 +47,7 @@ from app.services.llm_provider import (
     set_runtime_llm, set_runtime_key, has_runtime_key,
     get_active_provider, get_active_model,
     set_tier_config, DEFAULT_TIER_CONFIG,
+    refresh_instance_overrides,
     register_instance_cache, unregister_instance_cache,
 )
 
@@ -589,6 +590,9 @@ async def create_llm_instance(
 
     # Update in-memory instance cache so tier routing can use this instance immediately
     register_instance_cache(inst.id, inst.provider, inst.model, _plain_key)
+    # Applique aussitôt fenêtre, tarifs et plafond : sans ça, la base et le
+    # comportement d'Ely divergent jusqu'au prochain redémarrage.
+    await refresh_instance_overrides()
 
     logger.info("LLM instance created by admin %s: id=%s provider=%s model=%s", admin.id, inst.id, inst.provider, inst.model)
     return LLMInstanceResponse(
@@ -647,6 +651,9 @@ async def update_llm_instance(
     # Sync in-memory cache (clé en clair — B-11)
     from app.services.secrets_at_rest import decrypt as _decrypt_key
     register_instance_cache(inst.id, inst.provider, inst.model, _decrypt_key(inst.api_key))
+    # Applique aussitôt fenêtre, tarifs et plafond : sans ça, la base et le
+    # comportement d'Ely divergent jusqu'au prochain redémarrage.
+    await refresh_instance_overrides()
 
     logger.info("LLM instance updated by admin %s: id=%s", admin.id, instance_id)
     return LLMInstanceResponse(
@@ -679,6 +686,9 @@ async def delete_llm_instance(
 
     # Remove from in-memory cache
     unregister_instance_cache(instance_id)
+    # Applique aussitôt fenêtre, tarifs et plafond : sans ça, la base et le
+    # comportement d'Ely divergent jusqu'au prochain redémarrage.
+    await refresh_instance_overrides()
 
     logger.info("LLM instance deleted by admin %s: id=%s", admin.id, instance_id)
 
