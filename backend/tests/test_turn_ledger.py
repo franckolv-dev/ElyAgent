@@ -99,34 +99,6 @@ def test_gateway_records_successful_results():
     )
 
 
-def test_router_clears_ledger_each_turn():
-    src = (_REPO / "app/agent/supervisor.py").read_text(encoding="utf-8")
-    assert "turn_ledger" in src and "clear(" in src, (
-        "router_node doit vider le registre au début de chaque tour — sinon "
-        "le fallback hérite des résultats d'un tour PRÉCÉDENT."
-    )
-
-
-def test_supervisor_fallback_injects_technical_notice():
-    src = (_REPO / "app/agent/supervisor.py").read_text(encoding="utf-8")
-    assert "technical_failure_notice" in src, (
-        "Le fallback « sub-agent failed → general » doit injecter l'avis "
-        "d'échec technique + les résultats acquis (exhibits 18/07)."
-    )
-
-
-def test_factory_uses_unified_exception_classification():
-    src = (_REPO / "app/agent/sub_agents/factory.py").read_text(encoding="utf-8")
-    assert "classify_exception" in src, (
-        "Les sous-agents doivent classer leurs erreurs LLM avec "
-        "classify_exception (mapping unifié chantier4)."
-    )
-    assert '"429", "rate", "quota"' not in src, (
-        "La liste de mots-clés inline divergente doit disparaître — elle "
-        "ignorait timeout/codex/context-length."
-    )
-
-
 def test_missions_log_classified_reason():
     src = (_REPO / "app/agent/missions/nodes.py").read_text(encoding="utf-8")
     assert "classify_exception" in src, (

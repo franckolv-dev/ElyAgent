@@ -113,9 +113,7 @@ def test_settings_defaults():
 
 @pytest.mark.parametrize("rel_path", [
     "app/agent/nodes.py",                # général : primaire + retry + 2 fallbacks
-    "app/agent/sub_agents/factory.py",   # sous-agents : primaire + 2 fallbacks
     "app/agent/missions/nodes.py",       # missions : plan/act/eval
-    "app/agent/supervisor.py",           # routeur passe-2 (échéance courte)
     "app/agent/tools/orchestrate_tool.py",
     "app/agent/force_summary.py",
 ])

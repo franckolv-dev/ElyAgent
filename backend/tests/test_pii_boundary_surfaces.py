@@ -60,58 +60,6 @@ def test_filters_proxy_exposes_get():
 # ── 2. Sous-agents spécialistes ─────────────────────────────────────────────
 
 
-def test_subagent_args_deanonymized_recursively():
-    from app.agent.sub_agents.factory import _deanonymize_args
-    from app.services.conversation_filters import get_filter
-
-    conv = _fresh_conv()
-    sf = get_filter(conv)
-    masked = sf.anonymize(f"écris à {EMAIL}", ner_detection=False)
-    placeholder = masked.split()[-1]
-    assert placeholder.startswith("[") and placeholder.endswith("]")
-
-    args = {"to": placeholder, "meta": {"cc": [placeholder]}, "n": 3}
-    out = _deanonymize_args(sf, args)
-    assert out["to"] == EMAIL
-    assert out["meta"]["cc"][0] == EMAIL
-    assert out["n"] == 3
-
-
-def test_subagent_tool_result_reanonymized():
-    """La PII rapportée par l'outil (corps de mail, contact, événement…) ne
-    doit JAMAIS repartir en clair vers le LLM spécialiste (cloud en B/C)."""
-    from app.agent.sub_agents.factory import _tool_result
-    from app.services.conversation_filters import get_filter
-
-    conv = _fresh_conv()
-    sf = get_filter(conv)
-    msg = _tool_result(f"De: {EMAIL}\nObjet: RDV jeudi", "tc-1", sf=sf)
-    assert EMAIL not in msg["content"]
-    assert "[EMAIL_" in msg["content"]
-    # aller-retour : le placeholder est résoluble par le MÊME filtre
-    assert EMAIL in sf.deanonymize(msg["content"])
-
-
-def test_subagent_tool_result_without_filter_untouched():
-    from app.agent.sub_agents.factory import _tool_result
-
-    msg = _tool_result("hello", "tc-2")
-    assert msg == {"role": "tool", "content": "hello", "tool_call_id": "tc-2"}
-
-
-def test_subagent_dead_seam_removed():
-    """Le sous-agent ne doit plus passer par ``chat._filters`` (couture morte)
-    mais par le registre partagé ``conversation_filters``."""
-    from app.agent.sub_agents import factory
-
-    src = inspect.getsource(factory)
-    assert "from app.routers.chat import _filters" not in src
-    assert "conversation_filters" in src
-
-
-# ── 3. Canaux ───────────────────────────────────────────────────────────────
-
-
 @pytest.mark.parametrize(
     "mod_name", ["telegram_bot", "slack_bot", "discord_bot", "whatsapp"]
 )

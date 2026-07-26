@@ -175,30 +175,20 @@ def test_the_profile_is_resolved_before_the_agent_is_invoked(surface):
 
 # ------------------------------ le routeur est bien court-circuité
 
-@pytest.mark.asyncio
-async def test_a_non_empty_profile_bypasses_the_router():
-    """Le contrat qui rend tout le lot efficace : un `toolset_profile` non
-    vide court-circuite le routage et donne le nœud agent unique."""
-    from app.agent.supervisor import router_node
+def test_there_is_no_router_left_to_bypass():
+    """Au temps 1, ce test vérifiait que le `toolset_profile` court-circuitait
+    bien le routeur. Au temps 2, il n'y a plus de routeur du tout : le
+    contrat est devenu structurel."""
+    from app.agent.graph import build_agent_graph
 
-    out = await router_node({
-        "messages": [], "user_id": "u", "conversation_id": "c",
-        "toolset_profile": "default",
-    })
-
-    assert out.get("domain") == "general", (
-        "le routeur ne se court-circuite plus — les canaux repartiraient "
-        "vers les sous-agents malgré le profil"
-    )
+    assert "router" not in set(build_agent_graph().get_graph().nodes)
 
 
 # -------------------------------- temps 1 est NON DESTRUCTIF
 
-def test_the_supervisor_is_still_present():
-    """Temps 1 aligne, il ne supprime pas. La suppression de
-    `supervisor.py` + `sub_agents/factory.py` est le temps 2, après une
-    semaine de mesure en conditions réelles."""
-    import app.agent.supervisor as sup
-
-    assert hasattr(sup, "build_supervisor_graph")
-    assert Path("app/agent/sub_agents/factory.py").exists()
+def test_the_supervisor_is_gone_since_temps_2():
+    """Ce test assertait l'inverse au temps 1 : le superviseur devait RESTER,
+    parce que l'alignement des surfaces devait être réversible. Le temps 2
+    (26/07) l'a supprimé — voir `test_v1_runtime_unified.py`."""
+    assert not Path("app/agent/supervisor.py").exists()
+    assert not Path("app/agent/sub_agents").exists()

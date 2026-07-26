@@ -91,19 +91,13 @@ def test_prompt_version_consumers_still_import(module_name):
 
 # ------------------------------------------------------ specialist dead code
 
-def test_supervisor_specialist_helpers_are_gone():
-    import app.agent.supervisor as sup
+def test_the_whole_supervisor_is_gone_since_v1_temps_2():
+    """Ce lot (#246) n'avait retiré que `create_specialist_node` et
+    `should_continue_specialist`, en gardant le graphe. V1 temps 2 (26/07) a
+    supprimé le module entier — voir `test_v1_runtime_unified.py`."""
+    from pathlib import Path
 
-    assert not hasattr(sup, "create_specialist_node")
-    assert not hasattr(sup, "should_continue_specialist")
-
-
-def test_supervisor_still_builds_its_graph():
-    """Non-régression : les 5 canaux qui passent par le superviseur ne doivent
-    rien perdre. (V1 tranchera son sort — pas ce lot.)"""
-    from app.agent.supervisor import build_supervisor_graph
-
-    assert build_supervisor_graph() is not None
+    assert not Path("app/agent/supervisor.py").exists()
 
 
 # ----------------------------------------------------------- procedural store

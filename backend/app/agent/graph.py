@@ -69,13 +69,27 @@ def build_simple_agent_graph() -> StateGraph:
 
 
 def build_agent_graph() -> StateGraph:
-    """Multi-agent supervisor graph (production architecture).
+    """Graphe d'agent de production — un seul runtime (V1, 26/07).
 
-    Routes each request to the most appropriate specialist:
-    - research  : web, weather, news, translate, browser
-    - workspace : Gmail, Calendar, Drive, Docs, Sheets, Tasks
-    - infra     : SSH, cron, watchdog, briefing
-    - general   : all tools (complex / cross-domain requests)
+    Historiquement, cette fonction rendait le graphe du SUPERVISEUR : un
+    routeur classait la demande puis la confiait à l'un de 8 spécialistes.
+    Le banc A/B (#248) a mesuré les deux architectures sur 20 demandes
+    réellement formulées par les utilisateurs :
+
+        tier B   p50 1 657 ms (mono) contre 2 713 ms — choix d'outil 85 / 78 %
+        tier A   p50 3 431 ms        contre 13 082 ms — choix d'outil 100 / 62 %
+
+    Le mono-agent gagne sur les quatre critères. Et la prémisse d'origine
+    s'est révélée inversée : le superviseur avait été introduit pour soulager
+    le tier A local, c'est là qu'il coûtait le plus cher — l'appel de routage
+    tourne lui aussi sur le modèle local.
+
+    Depuis le temps 1 (#249), toutes les surfaces passaient déjà un
+    ``toolset_profile`` qui court-circuitait le routeur : les 8 branches de
+    dispatch étaient enregistrées mais jamais entrées. Elles ont été
+    supprimées avec ``supervisor.py`` et ``sub_agents/`` (~2 800 lignes).
+
+    ``delegate`` reste : c'est un OUTIL de sous-tâches parallèles, pas une
+    architecture.
     """
-    from app.agent.supervisor import build_supervisor_graph
-    return build_supervisor_graph()
+    return build_simple_agent_graph()

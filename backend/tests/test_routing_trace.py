@@ -93,21 +93,6 @@ def test_general_node_traces_slm_and_turn():
     )
 
 
-def test_supervisor_traces_domain():
-    src = (_REPO / "app/agent/supervisor.py").read_text(encoding="utf-8")
-    assert "routing_trace" in src and "routing_note(" in src, (
-        "Le dispatch doit tracer le domaine spécialiste retenu."
-    )
-
-
-def test_factory_traces_per_cycle_model_and_fallback():
-    src = (_REPO / "app/agent/sub_agents/factory.py").read_text(encoding="utf-8")
-    assert "routing_trace" in src and src.count("routing_note(") >= 2, (
-        "Le sous-agent doit tracer le modèle résolu PAR CYCLE (leçon #210 : "
-        "le tier changeait en plein tour, invisible) et ses rotations locales."
-    )
-
-
 def test_fallback_manager_traces_switches():
     src = (_REPO / "app/services/fallback_manager.py").read_text(encoding="utf-8")
     assert "routing_trace" in src, (

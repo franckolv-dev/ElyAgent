@@ -461,16 +461,25 @@ async def analyze_reformulations_tick() -> dict:
     if not pairs:
         return {"status": "ok", "pairs_found": 0, "keywords_proposed": 0}
 
-    # Step 2: filter by routing divergence (A→domA, B→domB, domA != domB)
-    from app.agent.supervisor import _quick_route
-    diverging: list[dict] = []
-    for p in pairs:
-        dom_a = _quick_route(p["query_a"], user_id=p["user_id"])
-        dom_b = _quick_route(p["query_b"], user_id=p["user_id"])
-        if dom_b and dom_a != dom_b:
-            p["dom_a"] = dom_a
-            p["dom_b"] = dom_b
-            diverging.append(p)
+    # V1 temps 2 (26/07) — CETTE BOUCLE N'A PLUS DE CONSOMMATEUR.
+    #
+    # Elle apprenait des mots-clés pour la passe rapide du ROUTEUR, afin
+    # d'éviter la passe LLM coûteuse. Le routeur a été supprimé avec
+    # `supervisor.py` : plus rien ne lit `learned_routing_keywords`, et la
+    # table comptait de toute façon 0 ligne en production.
+    #
+    # L'audit posait la règle « rien ne se produit sans consommateur » : on
+    # s'arrête donc ici plutôt que de dépenser des appels LLM pour une
+    # sortie que personne ne lira. La suppression complète du service (587 l.
+    # + page de réglages + table) touche le frontend et fera l'objet d'un
+    # lot séparé.
+    return {
+        "status": "disabled",
+        "reason": "consommateur supprimé avec le routeur (V1 temps 2)",
+        "pairs_found": len(pairs),
+        "keywords_proposed": 0,
+    }
+    diverging: list[dict] = []  # noqa: F841 — conservé pour le lot de suppression
 
     if not diverging:
         _last_processed_ts = max(p["ts_b"] for p in pairs)
