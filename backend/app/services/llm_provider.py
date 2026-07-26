@@ -765,6 +765,7 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
         for inst in _instance_cache.values():
             if inst.get("provider") == provider_name and inst.get("api_key"):
                 return inst["api_key"]
+        warn_legacy_default("gemini", "gemini-2.5-flash")
         return ""
 
     gemini_key = _key("gemini", settings.gemini_api_key) or _instance_key_for("gemini")
@@ -1005,6 +1006,7 @@ def _make_llm_for_provider(
         # Abonnement ChatGPT — pas de clé API (connexion par import des
         # tokens du CLI, voir openai_codex_auth). Modèle par défaut du
         # provider ; pour en choisir un autre, créer une INSTANCE.
+        warn_legacy_default("openai_codex", "gpt-5.5")
         return _make_openai_codex(model="gpt-5.5", temperature=temperature)
 
     if provider_id == "qwen_api":
@@ -1012,6 +1014,7 @@ def _make_llm_for_provider(
         base_url = _runtime.get("qwen_api_base_url") or settings.qwen_api_base_url
         if not key or not base_url:
             return None
+        warn_legacy_default("qwen_api", "qwen-plus-latest")
         return _make_qwen_api(
             model="qwen-plus-latest",  # safe default, can be overridden via instance
             api_key=key,
@@ -1024,6 +1027,7 @@ def _make_llm_for_provider(
         key = _key("zhipu", settings.zhipu_api_key)
         if not key:
             return None
+        warn_legacy_default("zhipu", "glm-4.7")
         return _make_glm(model="glm-4.7", api_key=key,
                          max_tokens=max_tokens, temperature=temperature)
 
@@ -1043,6 +1047,7 @@ def _make_llm_for_provider(
         key = _key("anthropic", settings.anthropic_api_key)
         if not key:
             return None
+        warn_legacy_default("anthropic", "claude-sonnet-4-6")
         return _make_anthropic(model="claude-sonnet-4-6", api_key=key,
                                max_tokens=max_tokens, temperature=temperature)
 
@@ -1051,6 +1056,7 @@ def _make_llm_for_provider(
         if not key:
             return None
         from langchain_mistralai import ChatMistralAI
+        warn_legacy_default("mistral", "mistral-small-latest")
         return ChatMistralAI(
             model="mistral-small-latest",
             api_key=key,
@@ -1156,6 +1162,55 @@ async def load_llm_instances_from_db() -> None:
 def _is_instance_id(value: str) -> bool:
     """Return True if value is a known instance UUID (present in cache)."""
     return value in _instance_cache
+
+
+# ------------------------------------------------------------------ #
+# Chemin historique : résolution par NOM de fournisseur               #
+# ------------------------------------------------------------------ #
+#
+# Un tier peut référencer soit l'UUID d'une instance, soit le NOM d'un
+# fournisseur. Le second cas emprunte une cascade de `if` où chaque
+# fournisseur impose un modèle CODÉ EN DUR.
+#
+# Ce que ça a coûté (26/07/2026) : la config avait "openai_codex" en tête de
+# medium/complex/image → gpt-5.5 imposé, l'instance gpt-5.6-terra jamais
+# atteinte. Et gpt-5.5 n'ayant aucun tarif, `estimate_cost` lui appliquait
+# 4,00 USD/million inventés sur la majorité du trafic, quand le modèle voulu
+# est au forfait et coûte 0. Rien ne l'a signalé : le chemin marchait, il
+# produisait un modèle valide, il était simplement le mauvais.
+#
+# On ne SUPPRIME pas ce chemin (des configs sans instance en dépendent) et on
+# ne SUBSTITUE pas l'instance automatiquement (ambigu dès qu'un fournisseur en
+# a plusieurs — deux DeepSeek, trois LM Studio ici). On le rend BRUYANT.
+
+LEGACY_DEFAULT_MODELS: dict[str, str] = {
+    "openai_codex": "gpt-5.5",
+    "anthropic": "claude-sonnet-4-6",
+    "deepseek": "deepseek-chat",
+    "mistral": "mistral-small-latest",
+    "gemini": "gemini-2.5-flash",
+    "zhipu": "glm-4.7",
+    "qwen_api": "qwen-plus-latest",
+}
+
+# Un avertissement par couple (fournisseur, modèle) : le résolveur est appelé
+# à chaque tour, et un signal répété se noie aussi sûrement qu'un silence.
+_LEGACY_WARNED: set[tuple[str, str]] = set()
+
+
+def warn_legacy_default(provider_id: str, model: str) -> None:
+    """Annonce qu'un modèle est imposé faute d'instance référencée."""
+    if (provider_id, model) in _LEGACY_WARNED:
+        return
+    _LEGACY_WARNED.add((provider_id, model))
+    logger.warning(
+        "[routage] un tier référence le fournisseur « %s » par son NOM : le "
+        "modèle « %s » est imposé en dur, et toute INSTANCE configurée pour ce "
+        "fournisseur est ignorée. Pour choisir le modèle, référence "
+        "l'identifiant de l'instance dans le tier plutôt que le nom du "
+        "fournisseur.",
+        provider_id, model,
+    )
 
 
 def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature: float = 0.7) -> Optional[BaseChatModel]:
