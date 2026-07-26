@@ -117,6 +117,11 @@ _CONTEXT_WINDOWS: dict[str, int] = {
     # va jusqu'au million. Sous-estimer coûte un peu de contexte ; surestimer
     # fait rejeter la requête entière par le fournisseur.
     "gemini-3.1-flash-lite": 128_000,
+    # Moonshot. La documentation officielle annonce 1 M de tokens pour K3 :
+    # la valeur prudente de 32 768 y jetterait 97 % du contexte disponible.
+    # `kimi-k2` reste déclaré pour ne pas casser une instance restée en 2.x
+    # pendant la bascule — elle retomberait sinon sur 8 192.
+    "kimi-k3": 1_000_000,
     "kimi-k2": 32_768,
     "qwen3.6-": 32_768,
     "qwen3-vl": 32_768,
