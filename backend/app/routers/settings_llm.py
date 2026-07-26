@@ -327,6 +327,8 @@ class LLMInstanceCreate(BaseModel):
     # produirait une valeur vraie un jour, puis vieillissant en silence.
     input_price_per_million: Optional[float] = None
     output_price_per_million: Optional[float] = None
+    # Plafond de réponse. Sans lui, coupure silencieuse à 4 096 tokens.
+    max_output_tokens: Optional[int] = None
     # Fenêtre réelle du modèle. Sans elle, Ely retombe sur la table du code,
     # puis sur un défaut prudent de 8 192 tokens.
     context_window: Optional[int] = None
@@ -341,6 +343,8 @@ class LLMInstanceUpdate(BaseModel):
     # produirait une valeur vraie un jour, puis vieillissant en silence.
     input_price_per_million: Optional[float] = None
     output_price_per_million: Optional[float] = None
+    # Plafond de réponse. Sans lui, coupure silencieuse à 4 096 tokens.
+    max_output_tokens: Optional[int] = None
     # Fenêtre réelle du modèle. Sans elle, Ely retombe sur la table du code,
     # puis sur un défaut prudent de 8 192 tokens.
     context_window: Optional[int] = None
@@ -355,6 +359,8 @@ class LLMInstanceResponse(BaseModel):
     created_at: str
     input_price_per_million: Optional[float] = None
     output_price_per_million: Optional[float] = None
+    # Plafond de réponse. Sans lui, coupure silencieuse à 4 096 tokens.
+    max_output_tokens: Optional[int] = None
     context_window: Optional[int] = None
 
 
@@ -530,6 +536,7 @@ async def list_llm_instances(
             has_key=bool(inst.api_key),
             created_at=inst.created_at.isoformat(),
             context_window=inst.context_window,
+            max_output_tokens=inst.max_output_tokens,
             input_price_per_million=inst.input_price_per_million,
             output_price_per_million=inst.output_price_per_million,
         )
@@ -570,6 +577,7 @@ async def create_llm_instance(
         model=body.model.strip(),
         api_key=_encrypt_key(_plain_key),
         context_window=body.context_window,
+        max_output_tokens=body.max_output_tokens,
         input_price_per_million=body.input_price_per_million,
         output_price_per_million=body.output_price_per_million,
         created_at=datetime.now(timezone.utc),
@@ -591,6 +599,7 @@ async def create_llm_instance(
         has_key=bool(inst.api_key),
         created_at=inst.created_at.isoformat(),
         context_window=inst.context_window,
+        max_output_tokens=inst.max_output_tokens,
         input_price_per_million=inst.input_price_per_million,
         output_price_per_million=inst.output_price_per_million,
     )
@@ -625,6 +634,8 @@ async def update_llm_instance(
         # `set_instance_overrides` ignorera comme invalide.
         if body.context_window is not None:
             inst.context_window = body.context_window or None
+        if body.max_output_tokens is not None:
+            inst.max_output_tokens = body.max_output_tokens or None
         if body.input_price_per_million is not None:
             inst.input_price_per_million = body.input_price_per_million
         if body.output_price_per_million is not None:
@@ -646,6 +657,7 @@ async def update_llm_instance(
         has_key=bool(inst.api_key),
         created_at=inst.created_at.isoformat(),
         context_window=inst.context_window,
+        max_output_tokens=inst.max_output_tokens,
         input_price_per_million=inst.input_price_per_million,
         output_price_per_million=inst.output_price_per_million,
     )

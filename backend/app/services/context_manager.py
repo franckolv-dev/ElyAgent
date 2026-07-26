@@ -199,11 +199,20 @@ def estimate_messages_tokens(messages: Sequence[BaseMessage | dict]) -> int:
 
 _INSTANCE_WINDOWS: dict[str, int] = {}
 _INSTANCE_PRICES: dict[str, tuple[float, float]] = {}
+_INSTANCE_OUTPUTS: dict[str, int] = {}
+
+# Réserve historique quand le modèle ne déclare pas son plafond de sortie.
+_DEFAULT_RESERVE = 1024
+# La réponse ne peut pas manger toute la fenêtre : au-delà, l'entrée n'a plus
+# la place d'exister. Cas réel : un modèle local à 32 768 dont on déclarerait
+# 32 000 en sortie.
+_MAX_RESERVE_RATIO = 0.4
 
 
 def set_instance_overrides(
     windows: dict | None = None,
     prices: dict | None = None,
+    outputs: dict | None = None,
 ) -> None:
     """Remplace les valeurs déclarées sur les instances.
 
@@ -213,6 +222,7 @@ def set_instance_overrides(
     """
     _INSTANCE_WINDOWS.clear()
     _INSTANCE_PRICES.clear()
+    _INSTANCE_OUTPUTS.clear()
 
     for model, value in (windows or {}).items():
         try:
@@ -222,6 +232,14 @@ def set_instance_overrides(
         if model and window > 0:
             _INSTANCE_WINDOWS[str(model)] = window
 
+    for model, value in (outputs or {}).items():
+        try:
+            cap = int(value)
+        except (TypeError, ValueError):
+            continue
+        if model and cap > 0:
+            _INSTANCE_OUTPUTS[str(model)] = cap
+
     for model, value in (prices or {}).items():
         try:
             inp, out = value
@@ -230,6 +248,34 @@ def set_instance_overrides(
             continue
         if model and inp >= 0 and out >= 0:
             _INSTANCE_PRICES[str(model)] = (inp, out)
+
+
+def instance_max_output(model: str) -> int | None:
+    """Le plafond de sortie déclaré sur l'instance, ou ``None``.
+
+    ``None`` laisse l'appelant choisir son défaut plutôt que d'inventer un
+    chiffre ici — c'est justement l'invention silencieuse qu'on élimine.
+    """
+    return _INSTANCE_OUTPUTS.get(model or "") or None
+
+
+def reserve_for_model(model: str | None) -> int:
+    """Combien de tokens réserver à la RÉPONSE dans le budget d'entrée.
+
+    Les deux nombres doivent bouger ensemble : autoriser 65 536 tokens en
+    sortie tout en réservant 1 024 revient à ajuster l'entrée comme si la
+    réponse tenait en une phrase. Sur les serveurs locaux, où la sortie est
+    prélevée sur la fenêtre, l'écart fait déborder la requête.
+
+    Plafonné à une fraction de la fenêtre : une réponse ne peut pas occuper
+    toute la place, sinon l'entrée n'existe plus.
+    """
+    declared = instance_max_output(model or "")
+    if not declared:
+        return _DEFAULT_RESERVE
+    window = get_context_window(model or "")
+    ceiling = int(window * _MAX_RESERVE_RATIO)
+    return max(_DEFAULT_RESERVE, min(declared, ceiling))
 
 
 def instance_price(model: str) -> tuple[float, float] | None:
@@ -340,7 +386,7 @@ def fit_messages_to_context(
     system_prompt: str,
     model: str | None = None,
     max_tokens: int | None = None,
-    reserve_for_response: int = 1024,
+    reserve_for_response: int | None = None,
     preserve_first: bool = False,
 ) -> list[BaseMessage | dict]:
     """Trim *messages* so they fit within the model's context window.
@@ -368,6 +414,12 @@ def fit_messages_to_context(
         Possibly shortened message list that fits within the budget.
         The system prompt is **not** part of the returned list.
     """
+    # La place à garder pour la réponse dépend du modèle : sans ça, on tronque
+    # l'entrée en supposant une réponse de 1 024 tokens quand le modèle peut en
+    # produire 65 536.
+    if reserve_for_response is None:
+        reserve_for_response = reserve_for_model(model)
+
     if max_tokens is None:
         if model is None:
             ctx = _CONTEXT_WINDOWS["_default"]

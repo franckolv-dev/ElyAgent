@@ -122,8 +122,11 @@ async def test_a_model_priced_on_its_instance_is_no_longer_reported():
     from app.services.config_reality import check_config_reality
     from app.services.context_manager import set_instance_overrides
 
+    # Les TROIS valeurs, comme dans l'usage réel : fenêtre, tarifs et plafond
+    # de sortie (ce dernier ajouté par le lot E).
     set_instance_overrides(
         windows={"kimi-k3": 1_000_000}, prices={"kimi-k3": (0.6, 2.5)},
+        outputs={"kimi-k3": 65_536},
     )
     try:
         findings = await check_config_reality(
@@ -144,7 +147,9 @@ async def test_a_model_without_any_declaration_is_still_reported():
         models=["un-modele-jamais-declare"], bound_tools=[], resolved_models={},
     )
 
-    assert {f.kind for f in findings} == {"model_window", "model_pricing"}
+    assert {f.kind for f in findings} == {
+        "model_window", "model_pricing", "model_output_cap",
+    }
 
 
 # ------------------------------------------------- robustesse
