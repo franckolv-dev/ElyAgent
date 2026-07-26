@@ -197,6 +197,7 @@ interface LLMInstance {
   // des tables du code qu'on ne pouvait pas éditer — Ely tronquait à 8 192
   // tokens et facturait un tarif inventé sans que rien ne le signale.
   context_window?: number | null;
+  max_output_tokens?: number | null;
   input_price_per_million?: number | null;
   output_price_per_million?: number | null;
 }
@@ -280,6 +281,7 @@ export default function SettingsPage() {
   // non « zéro ». Un modèle local à 0 est gratuit, un modèle sans tarif est
   // inconnu — les confondre ramènerait le tarif générique inventé.
   const [modalCtxWindow, setModalCtxWindow]   = useState("");
+  const [modalMaxOut, setModalMaxOut]         = useState("");
   const [modalInPrice, setModalInPrice]       = useState("");
   const [modalOutPrice, setModalOutPrice]     = useState("");
   const [modalLabel, setModalLabel]           = useState("");
@@ -878,6 +880,7 @@ export default function SettingsPage() {
     setModalModel(inst.model);
     setModalLabel(inst.label);
     setModalCtxWindow(inst.context_window != null ? String(inst.context_window) : "");
+    setModalMaxOut(inst.max_output_tokens != null ? String(inst.max_output_tokens) : "");
     setModalInPrice(inst.input_price_per_million != null ? String(inst.input_price_per_million) : "");
     setModalOutPrice(inst.output_price_per_million != null ? String(inst.output_price_per_million) : "");
     // API key field stays empty in edit mode — typing here replaces the
@@ -890,6 +893,7 @@ export default function SettingsPage() {
     setShowAddModal(false);
     setEditingInstanceId(null);
     setModalCtxWindow("");
+    setModalMaxOut("");
     setModalInPrice("");
     setModalOutPrice("");
   };
@@ -915,8 +919,8 @@ export default function SettingsPage() {
         // a new one (empty = keep existing key).
         const body: {
           label: string; model: string; api_key?: string;
-          context_window?: number; input_price_per_million?: number;
-          output_price_per_million?: number;
+          context_window?: number; max_output_tokens?: number;
+          input_price_per_million?: number; output_price_per_million?: number;
         } = {
           label: modalLabel.trim(),
           model: modalModel.trim(),
@@ -925,7 +929,9 @@ export default function SettingsPage() {
         const cw = numOrUndef(modalCtxWindow);
         const ip = numOrUndef(modalInPrice);
         const op = numOrUndef(modalOutPrice);
+        const mo = numOrUndef(modalMaxOut);
         if (cw !== undefined) body.context_window = cw;
+        if (mo !== undefined) body.max_output_tokens = mo;
         if (ip !== undefined) body.input_price_per_million = ip;
         if (op !== undefined) body.output_price_per_million = op;
 
@@ -947,8 +953,8 @@ export default function SettingsPage() {
         // ── POST (create new) ──────────────────────────────────────────
         const body: {
           label: string; provider: string; model: string; api_key?: string;
-          context_window?: number; input_price_per_million?: number;
-          output_price_per_million?: number;
+          context_window?: number; max_output_tokens?: number;
+          input_price_per_million?: number; output_price_per_million?: number;
         } = {
           label: modalLabel.trim(),
           provider: modalProvider,
@@ -958,7 +964,9 @@ export default function SettingsPage() {
         const cwN = numOrUndef(modalCtxWindow);
         const ipN = numOrUndef(modalInPrice);
         const opN = numOrUndef(modalOutPrice);
+        const moN = numOrUndef(modalMaxOut);
         if (cwN !== undefined) body.context_window = cwN;
+        if (moN !== undefined) body.max_output_tokens = moN;
         if (ipN !== undefined) body.input_price_per_million = ipN;
         if (opN !== undefined) body.output_price_per_million = opN;
 
@@ -2821,6 +2829,24 @@ export default function SettingsPage() {
                 />
                 <p className="text-[10px] text-text-muted">
                   En tokens. Vide = valeur par défaut du code, puis 8 192.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-text-muted uppercase tracking-wider">
+                  Tokens max en sortie
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={modalMaxOut}
+                  onChange={(e) => setModalMaxOut(e.target.value)}
+                  placeholder="ex. 65536"
+                  className="input"
+                />
+                <p className="text-[10px] text-text-muted">
+                  Vide = 4 096, et les réponses longues sont coupées en
+                  silence. Sur un modèle local, cette valeur est prélevée sur
+                  la fenêtre.
                 </p>
               </div>
               <div className="space-y-2">

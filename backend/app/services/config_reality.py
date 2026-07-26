@@ -119,6 +119,24 @@ def _check_model_pricing(model: str) -> Finding | None:
     )
 
 
+def _check_model_output_cap(model: str) -> Finding | None:
+    """Un plafond de sortie non déclaré, c'est une réponse coupée à 4 096
+    tokens sans avertissement — le modèle en autorise souvent seize fois plus."""
+    from app.services.context_manager import instance_max_output
+
+    if instance_max_output(model) is not None:
+        return None
+    return Finding(
+        kind="model_output_cap",
+        subject=model,
+        detail=(
+            "aucun plafond de sortie déclaré — les réponses seront coupées à "
+            "4 096 tokens en silence, quand ce modèle en autorise souvent bien "
+            "davantage. Renseigne-le sur l'instance, dans Paramètres → Modèles IA"
+        ),
+    )
+
+
 def _check_bound_tool(name: str, catalog: set[str]) -> Finding | None:
     """Leçon de #257 : un nom bindé au profil mais absent du catalogue ne lève
     rien. L'agent ne voit jamais l'outil et affirme honnêtement ne pas
@@ -239,7 +257,8 @@ async def check_config_reality(
         names = []
 
     for model in [m for m in (names or []) if m]:
-        for check in (_check_model_window, _check_model_pricing):
+        for check in (_check_model_window, _check_model_pricing,
+                      _check_model_output_cap):
             try:
                 found = check(model)
             except Exception as exc:  # noqa: BLE001

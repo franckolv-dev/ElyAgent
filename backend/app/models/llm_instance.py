@@ -69,6 +69,15 @@ class LLMInstance(Base):
     # Convertir à la saisie donnerait une valeur vraie un jour, puis
     # vieillissant en silence ; la conversion en euros est un réglage
     # d'affichage, pas une donnée stockée.
+    # Plafond de tokens en SORTIE. Valait 4 096 en dur à douze endroits de
+    # llm_provider, quand Gemini 3.6 Flash en autorise 65 536 : une réponse
+    # longue était coupée net, sans erreur et sans avertissement.
+    #
+    # Par modèle et non par constante généreuse : un fournisseur REFUSE une
+    # valeur au-dessus de sa limite, et sur les serveurs locaux ce plafond est
+    # PRÉLEVÉ SUR LA FENÊTRE — 65 536 en sortie sur un modèle à 32 768 ne
+    # laisserait rien pour l'entrée.
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     input_price_per_million: Mapped[float | None] = mapped_column(Float, nullable=True)
     output_price_per_million: Mapped[float | None] = mapped_column(Float, nullable=True)
 

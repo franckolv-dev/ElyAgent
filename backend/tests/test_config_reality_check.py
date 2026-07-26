@@ -55,9 +55,18 @@ async def test_a_clean_configuration_reports_nothing():
     # `resolved_models={}` écarte la sonde du résolveur ajoutée par le lot B
     # (elle a son propre fichier de tests). Un contrôle qui mêle ses sources
     # rend ses échecs illisibles.
-    findings = await check_config_reality(
-        models=["deepseek-v4-pro"], bound_tools=[], resolved_models={},
-    )
+    # `deepseek-v4-pro` est connu des tables de fenêtre et de tarif, mais son
+    # plafond de SORTIE ne peut venir que de l'instance (lot E) : on le
+    # déclare, sinon le contrôle le signale à juste titre.
+    from app.services.context_manager import set_instance_overrides
+
+    set_instance_overrides(outputs={"deepseek-v4-pro": 8_192})
+    try:
+        findings = await check_config_reality(
+            models=["deepseek-v4-pro"], bound_tools=[], resolved_models={},
+        )
+    finally:
+        set_instance_overrides()
 
     assert findings == [], f"faux positifs : {findings}"
 

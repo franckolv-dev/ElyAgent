@@ -663,7 +663,7 @@ def get_llm() -> BaseChatModel:
         return ChatMistralAI(
             model=model,
             api_key=_key("mistral", settings.mistral_api_key),
-            max_tokens=4096,
+            max_tokens=_output_cap(model),
             temperature=0.7,
         )
 
@@ -690,7 +690,7 @@ def get_llm() -> BaseChatModel:
             model=model,
             api_key=_key("deepseek", settings.deepseek_api_key),
             base_url="https://api.deepseek.com/v1",
-            max_tokens=4096,
+            max_tokens=_output_cap(model),
             temperature=0.7,
         )
 
@@ -733,7 +733,7 @@ def get_llm() -> BaseChatModel:
         return ChatGoogleGenerativeAI(
             model=model,
             google_api_key=_key("gemini", settings.gemini_api_key),
-            max_output_tokens=4096,
+            max_output_tokens=_output_cap(model),
             temperature=0.7,
         )
 
@@ -779,7 +779,7 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
                 candidates.append(("gemini/gemini-2.5-flash", ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash",
                     google_api_key=gemini_key,
-                    max_output_tokens=4096,
+                    max_output_tokens=_output_cap(model),
                     temperature=0.7,
                 )))
             except Exception:
@@ -867,7 +867,7 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
         return ChatMistralAI(
             model=model,
             api_key=_key("mistral", settings.mistral_api_key),
-            max_tokens=4096,
+            max_tokens=_output_cap(model),
             temperature=temperature,
         )
 
@@ -894,7 +894,7 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
             model=model,
             api_key=_key("deepseek", settings.deepseek_api_key),
             base_url="https://api.deepseek.com/v1",
-            max_tokens=4096,
+            max_tokens=_output_cap(model),
             temperature=temperature,
         )
 
@@ -911,7 +911,7 @@ def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignor
         return ChatGoogleGenerativeAI(
             model=model,
             google_api_key=_key("gemini", settings.gemini_api_key),
-            max_output_tokens=4096,
+            max_output_tokens=_output_cap(model),
             temperature=temperature,
         )
 
@@ -1166,6 +1166,10 @@ async def load_llm_instances_from_db() -> None:
                     i.model: i.context_window
                     for i in instances if i.model and i.context_window
                 },
+                outputs={
+                    i.model: i.max_output_tokens
+                    for i in instances if i.model and i.max_output_tokens
+                },
                 prices={
                     i.model: (i.input_price_per_million, i.output_price_per_million)
                     for i in instances
@@ -1234,6 +1238,22 @@ def warn_legacy_default(provider_id: str, model: str) -> None:
         "fournisseur.",
         provider_id, model,
     )
+
+
+def _output_cap(model: str, fallback: int = 4096) -> int:
+    """Le plafond de sortie déclaré sur l'instance, sinon le repli historique.
+
+    Valait 4 096 en dur à douze endroits, quand certains modèles en autorisent
+    65 536 : une réponse longue était coupée net, sans erreur. On ne met PAS un
+    plafond large uniforme — un fournisseur refuse une valeur au-dessus de sa
+    limite, et sur les serveurs locaux le plafond est prélevé sur la fenêtre.
+    """
+    try:
+        from app.services.context_manager import instance_max_output
+
+        return instance_max_output(model) or fallback
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        return fallback
 
 
 def _make_llm_for_instance(instance_id: str, max_tokens: int = 4096, temperature: float = 0.7) -> Optional[BaseChatModel]:
