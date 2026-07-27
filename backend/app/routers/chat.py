@@ -484,6 +484,8 @@ async def websocket_chat(websocket: WebSocket):
             model_used_out: str = ""
             routing_score_out: int | None = None
             context_breakdown_out: str | None = None
+            cached_tokens_total: int = 0
+            cache_write_total: int = 0
             input_tokens_total: int = 0
             output_tokens_total: int = 0
             tools_called: list[str] = []   # track tool invocations for analytics
@@ -593,6 +595,16 @@ async def websocket_chat(websocket: WebSocket):
                             um = ai_msg_out.usage_metadata
                             input_tokens_total += um.get("input_tokens", 0)
                             output_tokens_total += um.get("output_tokens", 0)
+                            # Cache de préfixe — la donnée arrive ici et était
+                            # jetée. Deux compteurs : la lecture est un succès,
+                            # l'écriture un coût.
+                            _det = um.get("input_token_details") or {}
+                            if isinstance(_det, dict):
+                                try:
+                                    cached_tokens_total += int(_det.get("cache_read", 0) or 0)
+                                    cache_write_total += int(_det.get("cache_creation", 0) or 0)
+                                except (TypeError, ValueError):
+                                    pass
                 elif event["event"] == "on_tool_start":
                     tool_name = event.get("name", "")
                     if tool_name:
@@ -957,6 +969,8 @@ async def websocket_chat(websocket: WebSocket):
                         provider=_provider,
                         input_tokens=input_tokens_total,
                         output_tokens=output_tokens_total,
+                        cached_input_tokens=cached_tokens_total,
+                        cache_creation_tokens=cache_write_total,
                         conversation_id=str(conversation_id) if conversation_id else None,
                         skill_used=_skill,
                         channel="web",

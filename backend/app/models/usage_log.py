@@ -63,4 +63,17 @@ class UsageLog(Base):
     # d'entrée sans qu'on sache lequel de ces postes les porte. NULL quand la
     # ventilation n'a rien à dire — une colonne vide vaut mieux qu'un JSON
     # vide qui donnerait l'illusion d'une mesure.
+    # ── Cache de préfixe (27/07/2026) ─────────────────────────────────────
+    #
+    # Ely découpe son prompt système exprès pour maximiser le cache de préfixe
+    # (segment stable puis segment dynamique), mais `usage_metadata` remontait
+    # déjà ces compteurs et personne ne les lisait : stratégie soignée, aucun
+    # moyen de savoir si elle mord.
+    #
+    # DEUX compteurs, pas un : `cached_input_tokens` est un SUCCÈS (tokens
+    # relus, facturés au rabais), `cache_creation_tokens` une ÉCRITURE (parfois
+    # facturée plus cher chez Anthropic). Les additionner masquerait un cache
+    # qui écrit sans jamais relire — inutile ET coûteux.
+    cached_input_tokens = Column(Integer, default=0)
+    cache_creation_tokens = Column(Integer, default=0)
     context_breakdown = Column(Text, nullable=True)
