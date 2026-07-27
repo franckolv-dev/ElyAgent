@@ -1663,7 +1663,29 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     else:
         logger.debug("Tier %s: no provider available, using global LLM", tier.value)
 
-    return get_llm()
+    try:
+        return get_llm()
+    except Exception as exc:  # noqa: BLE001
+        # Dernier recours. Écarter un serveur local injoignable doit RÉORDONNER
+        # les préférences, jamais laisser l'appelant sans rien : un Ollama
+        # éteint maintenant peut être démarré dans la minute, alors qu'une
+        # exception remonte jusqu'à l'utilisateur. Régression attrapée par la
+        # CI — sans aucune clé configurée, la chaîne allait désormais jusqu'au
+        # bout et échouait sur un ChatAnthropic sans clé.
+        logger.warning(
+            "Tier %s: aucun fournisseur utilisable (%s) — repli sur le "
+            "serveur local, même injoignable", tier.value, exc,
+        )
+        try:
+            from langchain_ollama import ChatOllama
+
+            return ChatOllama(
+                model=settings.slm_model or "qwen2.5:7b-instruct",
+                base_url=settings.ollama_base_url,
+                temperature=temperature, keep_alive="24h",
+            )
+        except Exception:  # noqa: BLE001
+            raise exc from None
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -126,3 +126,34 @@ def test_lm_studio_gets_the_same_treatment(monkeypatch):
     from app.config import get_settings
 
     assert lp._make_llm_for_provider("lm_studio", get_settings()) is None
+
+
+# ------------------------------------------ ne jamais laisser l'appelant sans rien
+
+def test_the_chain_still_returns_something_when_nothing_is_configured(monkeypatch):
+    """Régression attrapée par la CI, pas par ma machine.
+
+    Localement mon `.env` porte les clés de Franck ; en CI il n'y en a AUCUNE.
+    Écarter un Ollama injoignable faisait donc aller la chaîne jusqu'au bout,
+    puis échouer dans ``get_llm()`` sur un ``ChatAnthropic`` sans clé — une
+    ``ValidationError`` remontée à l'appelant.
+
+    La sonde doit **réordonner les préférences, pas supprimer la dernière
+    option** : un serveur local éteint maintenant peut être démarré dans la
+    minute, alors qu'une exception ne se rattrape pas. Le résolveur rend donc
+    toujours un objet.
+    """
+    import app.services.llm_provider as lp
+    from app.services.llm_provider import ComplexityTier
+
+    lp.reset_local_probe_cache()
+    monkeypatch.setattr(lp, "is_local_server_reachable", lambda *a, **k: False)
+    monkeypatch.setattr(lp, "get_llm", lambda: (_ for _ in ()).throw(
+        RuntimeError("aucune clé configurée")))
+
+    llm = lp.get_llm_for_tier(ComplexityTier.SIMPLE)
+
+    assert llm is not None, (
+        "sans clé ET sans serveur local joignable, le résolveur laisse "
+        "l'appelant sans rien — l'exception remonte jusqu'à l'utilisateur"
+    )
