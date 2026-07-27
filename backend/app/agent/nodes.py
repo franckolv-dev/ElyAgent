@@ -1315,17 +1315,15 @@ def create_agent_node():
             except Exception as _rec_exc:
                 logger.debug("fallback.record_response failed: %s", _rec_exc)
 
-        # Fire-and-forget: extract facts from this exchange for user memory
-        if user_id:
-            from app.services.memory_service import extract_and_store_facts
+        # Fire-and-forget: extract facts from this exchange for user memory.
+        # UNE fois par tour, pas une fois par itération : ce nœud est ré-entré
+        # après chaque lot d'outils (``add_edge("tools", "agent")``), et
+        # extraire à chaque passage produisait 74,5 % de tous les appels de
+        # modèle sur 7 jours pour un contenu quasi identique. Le prédicat vit
+        # dans memory_service, avec le second point d'appel (force_summary).
+        from app.services.memory_service import maybe_spawn_fact_extraction
 
-            async def _safe_memory_extract(uid, msgs):
-                try:
-                    await extract_and_store_facts(uid, "", msgs)
-                except Exception as exc:
-                    logger.debug("Memory extraction failed: %s", exc)
-
-            spawn(_safe_memory_extract(user_id, messages + [response]))
+        maybe_spawn_fact_extraction(user_id, messages, response)
 
         # Hermes Chantier 9 — increment the iteration counter when the
         # response carries tool_calls (i.e. the loop will bounce back here

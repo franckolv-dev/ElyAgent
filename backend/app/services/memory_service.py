@@ -36,6 +36,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.database import async_session
 from app.models.user_memory import UserMemoryLog, UserProfile
+from app.services.background_tasks import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,70 @@ Règles :
 - N'invente pas de faits non présents dans les données brutes
 - Confidence entre 0.0 et 1.0
 """
+
+
+# ---------------------------------------------------------------------------
+# Quand extraire — une fois par TOUR, pas une fois par itération d'outils
+# ---------------------------------------------------------------------------
+#
+# Le graphe boucle : ``add_edge("tools", "agent")``. Le nœud agent est donc
+# ré-entré après chaque lot d'outils. Lancer l'extraction à chaque passage
+# produisait 755 appels de modèle en 7 jours (74,5 % de TOUS les appels,
+# contre 2,7 % pour le chat direct), sur un contenu quasi identique à chaque
+# fois — jusqu'à 14 extractions dans la même minute, 33 % de doublons
+# littéraux dans les faits stockés.
+#
+# Une réponse termine le tour quand elle ne porte PAS de ``tool_calls`` :
+# c'est la seule dont le graphe ne revient pas. Bonus non recherché mais
+# réel : à ce moment-là ``messages`` contient tout l'échange, résultats
+# d'outils compris — l'extraction voit donc PLUS que n'importe quel
+# instantané pris au milieu de la boucle.
+
+
+def should_extract_facts(response) -> bool:
+    """True si ``response`` termine le tour et mérite donc une extraction.
+
+    Args:
+        response: la réponse du modèle (``AIMessage``), ou ``None``.
+
+    Returns:
+        False si la réponse porte des ``tool_calls`` (le graphe va repasser
+        par ``tools`` et revenir ici), False si elle est absente, True sinon.
+    """
+    if response is None:
+        return False
+    return not getattr(response, "tool_calls", None)
+
+
+def maybe_spawn_fact_extraction(user_id: str, messages: list, response) -> bool:
+    """Lance UNE extraction de faits en tâche de fond si le tour se termine.
+
+    Appelé par les deux nœuds qui peuvent clore un tour : ``agent_node`` (cas
+    normal) et ``force_summary_node`` (budget d'itérations épuisé — là,
+    TOUTES les réponses du nœud agent portent des ``tool_calls``, donc sans
+    ce second point d'appel le tour n'aurait aucune extraction du tout).
+
+    Ne lève jamais : c'est une corvée de fond, elle ne doit pas faire tomber
+    le tour de l'utilisateur.
+
+    Returns:
+        True si une extraction a été lancée.
+    """
+    if not user_id or not should_extract_facts(response):
+        return False
+
+    async def _safe_extract() -> None:
+        try:
+            await extract_and_store_facts(user_id, "", list(messages) + [response])
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Memory extraction failed: %s", exc)
+
+    try:
+        spawn(_safe_extract(), label="memory_extraction")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Memory extraction could not be scheduled: %s", exc)
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
