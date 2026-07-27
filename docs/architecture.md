@@ -28,7 +28,7 @@ ELY (Exactly Like You) est un **agent IA personnel souverain**, multi-canal, mul
    │   │   │  Anti-confabulation (system prompt)           │    │   │
    │   │   └────────────────────────────────────────────────┘    │   │
    │   │                                                        │   │
-   │   │   ┌── Agent (LangGraph supervisor) ──────────────┐    │   │
+   │   │   ┌── Agent (LangGraph, mono-agent) ────────────┐    │   │
    │   │   │  router → {research|workspace|infra|general} │    │   │
    │   │   │   → tools → loop, force_summary at iter≥80   │    │   │
    │   │   │  Sticky toolset profile (~41 tools)          │    │   │
@@ -92,29 +92,31 @@ ELY (Exactly Like You) est un **agent IA personnel souverain**, multi-canal, mul
 
 ---
 
-## 4. Agent — LangGraph + Supervisor multi-agent
+## 4. Agent — LangGraph, mono-agent
 
 📁 `backend/app/agent/`
 
-### Topology
+> **Changement du 26/07/2026.** ELY tournait sur un superviseur multi-agent :
+> un routeur classait le message par domaine, puis déléguait à l'un des quatre
+> spécialistes (research · workspace · infra · general), chacun avec son propre
+> jeu d'outils. **Cette architecture a été supprimée** au profit d'un agent
+> unique — sur mesure, pas par principe. Un banc A/B sur 20 requêtes réelles a
+> donné au mono-agent l'avantage sur les quatre critères retenus, dont la
+> latence (tier B : 1 657 ms contre 2 713 ms en médiane) et la justesse du
+> choix d'outil. Le superviseur avait été introduit pour répondre à la
+> lenteur ; la mesure a montré qu'il la causait en partie. `supervisor.py` et
+> `sub_agents/` ont disparu — **−3 670 lignes**.
+
+### Topologie
 
 ```
            ┌─────────────┐
-           │   router    │  classifie le domaine via IntentRouter
+           │    agent    │  prompt assemblé, outils bindés selon le profil
            └──────┬──────┘
-                  │
-       ┌──────────┼──────────┐
-       │          │          │       │
-       ▼          ▼          ▼       ▼
-  ┌────────┐ ┌─────────┐ ┌──────┐ ┌────────┐
-  │research│ │workspace│ │infra │ │general │
-  └───┬────┘ └────┬────┘ └──┬───┘ └───┬────┘
-      │           │         │         │
-      └───────────┴─────────┴─────────┘
                   │
                   ▼
            ┌────────────┐
-           │   tools    │ exécute, avec HITL si critique
+           │   tools    │  exécute, avec HITL si l'action est critique
            └─────┬──────┘
                  │
                  ▼
@@ -124,23 +126,39 @@ ELY (Exactly Like You) est un **agent IA personnel souverain**, multi-canal, mul
               │          │
               │          ▼
               │   ┌────────────────┐
-              │   │ force_summary  │ si iter≥80
+              │   │ force_summary  │  si le budget d'itérations est épuisé
               │   └───────┬────────┘
               │           ▼
               │         END
               │
               ▼
-              loop back to specialist
+        retour à `agent`
 ```
 
-### Spécialistes (`supervisor.py`)
+Trois nœuds : `agent`, `tools`, `force_summary`. Le même graphe sert le chat,
+les tâches planifiées et les missions — `build_agent_graph()` renvoie
+désormais `build_simple_agent_graph()`.
 
-- **research** : `web_search`, `browser_*`, `weather_get`, `news_*`, `translate_text`
-- **workspace** : Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (~50 outils Google)
-- **infra** : SSH, cron, watchdog, briefing
-- **general** : tous les outils (cross-domaine)
+### Ce qui a remplacé les spécialistes
 
-Le routeur (`IntentRouter`) classifie chaque message et envoie vers le bon spécialiste. Si le score d'intent est ambigu, fallback sur `general`.
+Le domaine ne détermine plus *qui* traite la demande, mais *quels outils sont
+bindés* — c'est le rôle du profil d'outils (section suivante). L'agent voit un
+sous-ensemble pertinent plutôt qu'un catalogue entier, et `find_tool` lui
+permet d'aller chercher dans le catalogue complet ce qui lui manque, en cours
+de conversation.
+
+### Contexte : ce qui décide de la troncature
+
+- **La fenêtre vient du MODÈLE**, pas du niveau de routage. Elle est déclarée
+  sur l'instance LLM (Paramètres → Modèles IA) ; à défaut, une table de repli,
+  puis un défaut prudent de 8 192 tokens. Un contrôle au démarrage signale tout
+  modèle configuré dont la fenêtre n'est pas déclarée.
+- **La place réservée à la réponse suit le plafond de sortie déclaré**, borné à
+  40 % de la fenêtre. Réserver 1 024 tokens quand le modèle peut en produire
+  65 536 ferait tenir l'entrée sur une hypothèse fausse.
+- **La consigne d'une tâche automatisée est ancrée en tête** et survit à la
+  troncature : sans ça, un agent qui boucle longtemps finit son travail sans
+  savoir ce qu'on lui avait demandé.
 
 ### Sticky toolset profile (Hermes Chantier 1)
 
@@ -390,8 +408,8 @@ Web UI (conv auto-créée `[Missions] Notifications`) + Telegram DM (si source T
 1. **Canal** authentifie l'utilisateur, route le message vers `/ws/chat` ou équivalent
 2. **PII anonymizer** masque les données sensibles (`[EMAIL_N]`)
 3. **Frozen memory snapshot** construit ou rechargé depuis le cache de session
-4. **Sticky profile** chargé pour la conv (~41 outils bound)
-5. **Router** classifie le domaine → spécialiste correspondant
+4. **Profil d'outils** résolu pour la conversation (85 outils bindés par défaut)
+5. **Fenêtre et plafond de sortie** lus sur l'instance du modèle retenu — ils décident de la troncature
 6. **LLM** primary du tier sélectionné (Simple/Standard/Complex/IMG) inférence
 7. Si **fallback** (timeout, hallucination détectée par H-1, 4xx/5xx) → `fallback_manager` bascule sticky + toast `provider.switched`
 8. Si **tool_call** : tool_node vérifie HITL (`ALWAYS_CRITICAL_TOOLS`), injecte credentials, exécute. HITL multicanal si nécessaire
