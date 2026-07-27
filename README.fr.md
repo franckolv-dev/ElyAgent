@@ -6,14 +6,13 @@
 
 # ELY
 
-### Un agent IA auto-hébergé qui anonymise les données sensibles *avant* tout appel LLM.
+### L'agent IA auto-hébergé qui travaille dans *votre* navigateur, avec *vos* sessions — et qui sait défaire ce qu'il a fait.
 
-Auto-hébergé · RGPD natif · multi-LLM · **auto-amélioration** · 10 canaux · 190+ outils intégrés.
-Tourne sur votre matériel, masque les données sensibles avant tout appel modèle, demande avant chaque action irréversible.
+Auto-hébergé · masque les données personnelles avant tout appel modèle cloud · **actions réversibles** · multi-LLM (local ou cloud, vous choisissez) · 10 canaux · 207 outils intégrés.
 
 [**Site web**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
-[**Licence**](https://agent-ely.fr/pricing.html) ·
+[**Licence**](LICENSE) ·
 [**Discussions**](https://github.com/franckolv-dev/ElyAgent/discussions)
 
 [![Elastic License v2](https://img.shields.io/badge/license-Elastic%20License%20v2-13bbc2?style=flat-square)](LICENSE)
@@ -40,7 +39,11 @@ Les agents IA cloud — ChatGPT, Claude, Gemini, le futur Google Remy, OpenAI Op
 
 Pour la plupart des services cloud, c'est un compromis accepté. **Dès que vous manipulez ce que vous préféreriez ne pas confier à un serveur américain — votre boîte mail, vos finances, les données de votre famille — ça ne l'est plus.**
 
-ELY est un agent IA **personnel** **qui tourne sur votre matériel, masque les données sensibles avant tout appel modèle, demande l'autorisation avant chaque action irréversible, et garde les données dans l'UE par défaut.** C'est un projet perso non-commercial sous Elastic License v2 — et cette licence couvre aussi l'usage professionnel interne, gratuitement.
+ELY est un agent IA **personnel** qui **tourne sur votre matériel, masque les données personnelles avant tout appel modèle cloud, demande l'autorisation avant chaque action irréversible — et sait défaire celles qui ont mal tourné.**
+
+**Où vont vos données, c'est votre décision, pas la nôtre.** ELY route par niveau de complexité et vous assignez un modèle à chacun : tout garder en local, confier les tâches lourdes à un fournisseur cloud, ou panacher. Ce qui quitte votre machine est masqué avant de partir — cette couche de motifs est la vraie frontière de confidentialité, et [ses limites sont documentées](docs/security.md) plutôt que passées sous silence.
+
+C'est un projet perso non-commercial sous Elastic License v2 — et cette licence couvre aussi l'usage professionnel interne, gratuitement.
 
 ---
 
@@ -50,12 +53,12 @@ ELY est un agent IA **personnel** **qui tourne sur votre matériel, masque les d
 <tr>
 <td width="50%" valign="top">
 
-### Souveraineté
-**Votre matériel. Vos données. Votre juridiction.**
+### Votre matériel, votre routage
+**C'est vous qui décidez quel modèle voit quoi.**
 
-- Auto-hébergé sur Mac, serveur, NAS, on-premise ou cloud souverain
-- Routage local-first — les tiers simples/moyens utilisent votre modèle local (Ollama, LM Studio MLX). Mistral privilégié pour le tier C cloud, données conservées dans l'UE.
-- RGPD natif par construction · DPA disponible · modèle d'AIPD fourni
+- Auto-hébergé sur Mac, serveur, NAS, on-premise ou le cloud de votre choix
+- **Un modèle par niveau** — six niveaux de routage (simple · medium · complex · image · maintenance · skill). Mettez les plus légers sur un modèle local et les plus durs sur un fournisseur cloud, ou gardez tout en local. Sans redémarrage.
+- **Configuration par modèle** — déclarez sa vraie fenêtre de contexte, son plafond de réponse et son tarif au million, pour qu'ELY cesse de tronquer au jugé et que le coût affiché soit celui que vous payez
 - Zéro télémétrie · zéro phone-home · aucune dépendance cloud forcée
 - Code source auditable (Elastic License v2)
 
@@ -82,7 +85,7 @@ ELY est un agent IA **personnel** **qui tourne sur votre matériel, masque les d
 - **Google Workspace complet** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (75 outils, lecture/écriture intégrale avec HITL sur chaque action destructive) · multi-comptes (liez plusieurs boîtes Google à un même utilisateur, sélection via un alias `account`) · `drive_upload_local_file` pour enregistrer un fichier local/binaire (PNG/JPG/PDF, ex. une capture) sur Drive
 - 10 canaux — Web · Voix (mot-clé « Éli ») · PWA · iOS natif · Android natif · Telegram · WhatsApp · Slack · Discord · push ntfy
 - Notifications push natives pour les validations HITL (FCM + APNs) — la plupart des concurrents ne proposent qu'un proxy via bot de messagerie
-- 190+ outils sur web automation, système, RAG, coffre, missions, auto-amélioration
+- 207 outils sur web automation, système, RAG, coffre, missions, auto-amélioration
 
 </td>
 <td width="50%" valign="top">
@@ -101,6 +104,35 @@ ELY est un agent IA **personnel** **qui tourne sur votre matériel, masque les d
 
 ---
 
+## Autonomie navigateur — ELY agit dans votre vrai Chrome
+
+> **Si vous n'essayez qu'une chose, commencez par là.**
+
+La plupart des agents naviguent avec un moteur sans session : tout ce qui se trouve derrière une connexion leur renvoie la page de login. ELY est livrée avec une extension Chrome qui lui permet de **lire et d'agir sur les onglets que vous avez déjà ouverts, avec les sessions auxquelles vous êtes déjà connecté**.
+
+C'est cette seule différence qui fait fonctionner *« regarde les disponibilités de mon médecin cette semaine »* : elle ouvre Doctolib dans votre propre Chrome, où vous êtes déjà authentifié, et lit ce que vous liriez.
+
+Ce que ça permet, sans partager le moindre identifiant :
+
+- *« Combien de vues a fait mon dernier post LinkedIn ? »* → elle ouvre linkedin.com (votre session), lit la donnée, referme l'onglet.
+- *« Qu'est-ce qu'il y a dans ma boîte Gmail ? »* → lecture via l'interface web, sans jeton d'API.
+- *« Résume cette page de commande Amazon »* → capture et lecture de la page rendue, même quand un anti-bot bloque l'extraction du DOM.
+
+```
+Vous → ELY → extension Chrome → VOTRE onglet → le site (avec VOS cookies)
+                     ↑
+        le backend d'ELY ne voit jamais vos cookies, n'en stocke aucun
+```
+
+**Installation** (une fois, 2 min) :
+1. `chrome://extensions/` → activer le mode développeur → « Charger l'extension non empaquetée » → choisir [`extension/chrome/`](./extension/chrome/)
+2. Clic droit sur l'icône ⚡ ELY → Options → coller l'URL de votre backend + votre jeton d'accès
+3. C'est prêt — la pastille passe au vert une fois connectée
+
+→ Documentation complète : [`extension/chrome/README.md`](./extension/chrome/README.md)
+
+---
+
 ## Ce qui rend ELY différent : elle s'améliore toute seule
 
 La plupart des agents sont statiques. **ELY observe ses propres échecs et progresse — en toute transparence, avec vous aux commandes.**
@@ -115,7 +147,7 @@ La plupart des agents sont statiques. **ELY observe ses propres échecs et progr
 - **Annuler — ELY peut revenir sur ce qu'elle vient de faire.** Dites *« annule »* (ou cliquez **Annuler** dans `/me/reversible-actions`) et ELY défait sa dernière action — un fichier Drive supprimé, renommé ou déplacé, remis à l'identique — en chat, via l'API ou l'UI, avec vérification que l'annulation a bien pris.
 - **Mémoire cognitive typée.** Cinq types de mémoire (épisodique · sémantique · procédurale · erreur · contrainte) au lieu d'un blob opaque — rappelés par type, entre conversations, 100 % en local.
 - **Client MCP — durci.** Consommez n'importe quel serveur Model Context Protocol (config admin) : identifiants par-utilisateur chiffrés dans votre Vault, garde SSRF / anti-DNS-rebinding, et ACL/HITL par outil — lecture sans friction, écriture confirmée une fois puis mémorisée ; un workflow quarantaine/confiance et la recherche du registre MCP étendent l'outillage sans changement de code. *(Connexion OAuth 2.1/PKCE, sandbox pour les serveurs stdio locaux, et resources/prompts en lecture seule arrivent derrière leurs propres flags, désactivés par défaut.)*
-- **Banc de régression 50 scénarios + CI nocturne.** L'auto-amélioration ne ship en sécurité que parce que chaque sous-système est verrouillé par un banc déterministe, par-dessus 2 900+ tests automatisés.
+- **Banc de régression 50 scénarios + CI nocturne.** L'auto-amélioration ne ship en sécurité que parce que chaque sous-système est verrouillé par un banc déterministe, par-dessus 3 200+ tests automatisés.
 
 > **Le pitch honnête.** La boucle d'auto-développement est réelle et démontrée — capacité manquante → outil candidat en quelques secondes → notification push → **validation humaine** → bindé et utilisé. Ce n'est *pas* une usine à code sans surveillance : les outils générés sont des compositions de calcul pur validées par allow-list AST, lint, typage et smoke sandboxé ; tout ce qui touche fichiers ou réseau reste derrière des flags désactivés par défaut, et le clic humain reste obligatoire pour chaque ligne de code exécutable.
 
@@ -340,7 +372,7 @@ Détection de doublons exacts par MD5 (élagage par taille), doublons visuels pa
 │                                              ┌───────────┼─────────┐ │
 │                                              ▼           ▼         ▼ │
 │                                          LLM local    Outils     Cloud│
-│                                          (Ollama)    (190+)   (PII- │
+│                                          (Ollama)    (207)   (PII- │
 │                                                                masqué)│
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -397,7 +429,7 @@ Un agent multi-canal, multi-utilisateur, hybride local/cloud bâti sur FastAPI +
 - **Client MCP, durci** — consommer n'importe quel serveur MCP avec identifiants par-utilisateur dans le Vault, garde SSRF et ACL/HITL par outil ; workflow quarantaine/confiance + recherche de registre (connexion OAuth, sandbox des serveurs locaux et resources/prompts en lecture seule arrivent derrière des flags désactivés par défaut)
 - **GPT-5.5 via votre abonnement ChatGPT** — l'utiliser comme tier LLM sans clé API (import de tokens + rafraîchissement auto), avec bascule de secours au quota
 - **Serveur MCP** *(juin 2026)* — ELY est exposée **comme** un serveur MCP sur `/api/mcp` (FastMCP Streamable-HTTP), authentifié par clés API personnelles. Pilotez-la depuis Claude Desktop / Cursor : chat en un tour (mode autonome-sûr), lister/créer des tâches planifiées, recherche mémoire.
-- **Banc de régression 50 scénarios** + CI nocturne · 2 900+ tests automatisés
+- **Banc de régression 50 scénarios** + CI nocturne · 3 200+ tests automatisés
 
 **Peut-être ensuite** *(optionnel — projet perso, pas de pression de roadmap)*
 - **Marqueurs de cache de prompt Anthropic** — réduire le coût d'entrée multi-tours sur le tier Anthropic.

@@ -83,7 +83,7 @@ C'est une limitation des navigateurs (pas d'ELY) : `getUserMedia()` (le micro) r
 | Build et installer l'app Android | [ANDROID_INSTALL.md](./ANDROID_INSTALL.md) |
 | Piloter ELY depuis Claude Desktop / Cursor (serveur MCP) + clés API perso (Réglages → Clés API) | [user-guide.md](./user-guide.md) |
 | Doc historique d'install (référence backend détaillée) | [installation.md](./installation.md) |
-| Architecture interne (LangGraph, supervisor, tier routing) | [architecture.md](./architecture.md) |
+| Architecture interne (LangGraph mono-agent, routage par tier) | [architecture.md](./architecture.md) |
 | Liste des fonctionnalités à jour | [../README.md](../README.md) |
 | Politique de sécurité, threat model, signaler une faille | [../SECURITY.md](../SECURITY.md) |
 | Roadmap publique (sprints, ETAs, ce qu'on construit) | [../ROADMAP.md](../ROADMAP.md) |

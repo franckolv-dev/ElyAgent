@@ -415,7 +415,7 @@ Socket Mode avoids the need for a public HTTPS endpoint — Slack opens a WebSoc
 
 Beyond the request/response chat, ELY can be given a **Mission** : a long-running goal that she breaks down into steps, executes one at a time, evaluates after each step, and replans if she gets stuck. The mission survives backend restarts and runs autonomously in the background.
 
-> **Parallel sub-tasks (`delegate`).** For work that splits into independent pieces, ELY can fan out 2–6 sub-tasks to autonomous sub-agents that run concurrently and then returns a single synthesis. The sub-agents run HITL-blocked, so any irreversible action (sending mail, deleting, SSH) is refused inside them — only the top-level agent can ask you for approval.
+> **Parallel sub-tasks (`delegate`).** For work that splits into independent pieces, ELY can fan out 2–6 sub-tasks to concurrent instances of the same agent and then returns a single synthesis. These parallel runs are HITL-blocked, so any irreversible action (sending mail, deleting, SSH) is refused inside them — only the top-level agent can ask you for approval.
 
 ### When to use a mission vs a chat
 

@@ -6,13 +6,13 @@
 
 # ELY
 
-### The sovereign AI agent for people who refuse to leak their data to the cloud.
+### The self-hosted AI agent that works in *your* browser, with *your* sessions — and can undo what it did.
 
-Self-hosted · GDPR-native · multi-LLM · **self-improving** · 10 channels · 190+ built-in tools. Runs on your hardware, masks sensitive data before any model call, asks before every irreversible action.
+Self-hosted · masks personal data before any cloud model call · **reversible actions** · multi-LLM (local or cloud, your call) · 10 channels · 207 built-in tools.
 
 [**Website**](https://agent-ely.fr) ·
 [**Documentation**](./docs/START_HERE.md) ·
-[**Licence**](https://agent-ely.fr/pricing.html) ·
+[**Licence**](LICENSE) ·
 [**Roadmap**](https://agent-ely.fr/roadmap.html) ·
 [**Discussions**](https://github.com/franckolv-dev/ElyAgent/discussions)
 
@@ -47,7 +47,11 @@ Cloud AI agents — ChatGPT, Claude, Gemini, the upcoming Google Remy, OpenAI Op
 
 For most cloud services that's an accepted tradeoff. **If you handle anything you'd rather not hand to a US server — your inbox, your finances, your family's data — it isn't.**
 
-ELY is a personal AI agent **that runs on your own hardware, masks sensitive data before any model call, asks before every irreversible action, and keeps data inside the EU by default.** It's a non-commercial personal project under the Elastic License v2 — and that licence also covers internal professional use, free of charge.
+ELY is a personal AI agent that **runs on your own hardware, masks personal data before any cloud model call, asks before every irreversible action — and can undo the ones that went wrong.**
+
+**Where your data goes is your decision, not ours.** ELY routes by complexity tier and you assign a model to each: keep everything on a local model, send the heavy lifting to a cloud provider, or mix. Whatever leaves your machine is masked first — that regex layer is the actual privacy boundary, and [its limits are documented](docs/security.md) rather than glossed over.
+
+It's a non-commercial personal project under the Elastic License v2 — and that licence also covers internal professional use, free of charge.
 
 ---
 
@@ -57,13 +61,13 @@ ELY is a personal AI agent **that runs on your own hardware, masks sensitive dat
 <tr>
 <td width="50%" valign="top">
 
-### Sovereignty
-**Your hardware. Your data. Your jurisdiction.**
+### Your hardware, your routing
+**You decide which model sees what.**
 
-- Self-hosted on your Mac, server, NAS, on-prem or sovereign cloud
-- Local-first routing — simple/medium tiers run on your local model (Ollama, LM Studio MLX). Mistral preferred for cloud tier C, keeping data inside the EU.
-- GDPR-native by construction · DPA available · DPIA template provided
-- Zero telemetry · zero phone-home · zero forced cloud dependency
+- Self-hosted on your Mac, server, NAS, on-prem or any cloud you pick
+- **Per-tier model assignment** — six routing tiers (simple · medium · complex · image · maintenance · skill). Put the cheap ones on a local model and the hard ones on a cloud provider, or keep everything local. No restart.
+- **Per-model configuration** — declare each model's real context window, its output cap and its price per million tokens, so ELY stops truncating on a guess and the cost you're shown is the cost you pay
+- Zero telemetry · zero phone-home · no forced cloud dependency
 - Source code auditable (Elastic License v2)
 
 </td>
@@ -89,7 +93,7 @@ ELY is a personal AI agent **that runs on your own hardware, masks sensitive dat
 - **Full Google Workspace** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (75 tools, full read/write with HITL on every destructive action)
 - 10 channels — Web · Voice (wake-word "Éli") · PWA · iOS native · Android native · Telegram · WhatsApp · Slack · Discord · ntfy push
 - Native push notifications for HITL approvals (FCM + APNs) — most competitors only proxy via messaging bots
-- 190+ tools across web automation, system, RAG, vault, missions, self-improvement
+- 207 tools across web automation, system, RAG, vault, missions, self-improvement
 
 </td>
 <td width="50%" valign="top">
@@ -108,6 +112,37 @@ ELY is a personal AI agent **that runs on your own hardware, masks sensitive dat
 
 ---
 
+## Browser autonomy — ELY acts in your real Chrome
+
+> **Start here if you only try one thing.**
+
+Most agents browse with a headless engine that carries no cookies — so anything behind a login returns the login page. ELY ships a Chrome extension that lets the agent **read and act on the tabs you already have open, with the sessions you're already signed into.**
+
+That one difference is why *"check my doctor's availability this week"* works: she opens Doctolib in your own Chrome, where you're already authenticated, and reads what you would read.
+
+What this enables, with zero credentials shared:
+
+- *"How many impressions did my last LinkedIn post get?"* → ELY opens linkedin.com (your session, already logged in), reads the data, closes the tab. ~5 seconds.
+- *"What's in my Gmail inbox?"* → reads via the Gmail web UI, no API token needed.
+- *"Summarise this Amazon order page"* → captures + reads the rendered page, even when anti-bot blocks DOM extraction (falls back to Gemini Vision).
+
+```
+You → ELY → Chrome Extension → YOUR Chrome tab → site (with YOUR cookies)
+                  ↑
+             ELY backend never sees your cookies, never stores credentials
+```
+
+**Setup** (one-time, 2 min):
+1. `chrome://extensions/` → enable Developer Mode → Load unpacked → select [`extension/chrome/`](./extension/chrome/)
+2. Right-click the ⚡ ELY icon → Options → paste your ELY backend URL + access token
+3. Done — pop-up turns green when connected
+
+→ Full extension docs: [`extension/chrome/README.md`](./extension/chrome/README.md)
+
+---
+
+---
+
 ## What makes ELY different: it improves itself
 
 Most agents are static. **ELY watches its own failures and gets better — transparently, with you in control.**
@@ -123,7 +158,7 @@ Most agents are static. **ELY watches its own failures and gets better — trans
 - **Cognitive typed memory.** Five memory types (episodic · semantic · procedural · error · constraint) instead of one opaque blob — recalled per-type, across conversations, all local.
 - **MCP client — hardened.** Consume any Model Context Protocol server (admin-configured): per-user credentials encrypted in your Vault, SSRF / DNS-rebinding guard, and per-tool ACL/HITL — reads run friction-free, writes are confirmed once then remembered; a quarantine/trust workflow and MCP-registry search grow ELY's toolset without a code change. *(OAuth 2.1/PKCE sign-in, a sandbox for local stdio servers, and read-only resources/prompts are landing behind their own off-by-default flags.)*
 - **MCP server.** ELY is also exposed *as* an MCP server — connect Claude Desktop, Cursor or any MCP client (authenticated by a personal API key) to chat, schedule tasks and search memory.
-- **50-scenario regression bench + nightly CI.** Self-improvement ships safely because every subsystem is pinned by a deterministic harness, on top of 2,900+ automated tests.
+- **50-scenario regression bench + nightly CI.** Self-improvement ships safely because every subsystem is pinned by a deterministic harness, on top of 3,200+ automated tests.
 
 > **The honest pitch.** The self-development loop is real and demonstrated — capability gap → candidate tool in seconds → push notification → **human validation** → bound and used. It is *not* an unsupervised code factory: generated tools are pure-compute compositions validated through AST allow-list, lint, type-check and sandbox smoke; anything touching files or the network stays behind additional off-by-default flags, and the human click remains mandatory for every line of executable code.
 
@@ -202,35 +237,6 @@ Four scenarios, from 30-min local install (Scenario A) to fully remote deploymen
 
 → **[Troubleshooting →](./docs/TROUBLESHOOTING.md)** if `make up` fails, the first chat errors out, or ports clash with another project.
 
----
-
-## Browser autonomy — ELY acts in your real Chrome
-
-> **The killer feature no cloud agent can replicate.**
-
-ELY ships with a Chrome extension that lets the agent **read and act on the tabs you already have open**, using YOUR authenticated sessions. No headless Playwright with empty cookies — it's your actual browser, with your actual logins.
-
-What this enables, with zero credentials shared:
-
-- *"How many impressions did my last LinkedIn post get?"* → ELY opens linkedin.com (your session, already logged in), reads the data, closes the tab. ~5 seconds.
-- *"What's in my Gmail inbox?"* → reads via the Gmail web UI, no API token needed.
-- *"Summarise this Amazon order page"* → captures + reads the rendered page, even when anti-bot blocks DOM extraction (falls back to Gemini Vision).
-
-```
-You → ELY → Chrome Extension → YOUR Chrome tab → site (with YOUR cookies)
-                  ↑
-             ELY backend never sees your cookies, never stores credentials
-```
-
-**Setup** (one-time, 2 min):
-1. `chrome://extensions/` → enable Developer Mode → Load unpacked → select [`extension/chrome/`](./extension/chrome/)
-2. Right-click the ⚡ ELY icon → Options → paste your ELY backend URL + access token
-3. Done — pop-up turns green when connected
-
-→ Full extension docs: [`extension/chrome/README.md`](./extension/chrome/README.md)
-
----
-
 ## What ELY can do
 
 A real product UI on every surface — not a terminal dressed as a website. ELY treats the UI as a first-class citizen, including for non-technical users.
@@ -250,9 +256,9 @@ A real product UI on every surface — not a terminal dressed as a website. ELY 
 <details>
 <summary><strong>Multi-LLM engine</strong> — your keys, route by complexity tier</summary>
 
-Configure providers in **Settings → AI Models**. Assign each tier (A/B/C/IMG/SYS) to a model. Switch any time, no code, no restart.
+Configure providers in **Settings → AI Models**. Assign each of the six tiers (simple · medium · complex · image · maintenance · skill) to a model, with its real context window, output cap and per-million pricing. Switch any time, no code, no restart.
 
-- **Cloud:** Mistral (preferred, EU) · Anthropic · OpenAI · Gemini · GPT-5.5 / 5.6 (via your ChatGPT subscription, no API key) · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
+- **Cloud:** Mistral · Anthropic · OpenAI · Gemini · GPT-5.5 / 5.6 (via your ChatGPT subscription, no API key) · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
 - **Local:** Ollama · LM Studio (MLX on Apple Silicon)
 - Auto-detected compact prompts so 7B local models actually obey `tool_choice="required"`
 - Auto-fallback if a provider goes down — disable per-tier for pure-local testing
