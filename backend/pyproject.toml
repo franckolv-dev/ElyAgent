@@ -41,6 +41,7 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "pypdf>=6.12.0",  # audit 13/06 (H3) : DoS PDF (CPU/mémoire) < 6.12.0
     "python-docx>=1.1.0",    # .docx extraction
+    "pymupdf>=1.24.0",       # géométrie PDF — reconstruction structurelle PDF→DOCX
     "openpyxl>=3.1.0",       # .xlsx extraction
     "xlrd>=2.0.1",           # .xls extraction (legacy Excel 97-2003)
     "youtube-transcript-api>=0.6.0",

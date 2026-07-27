@@ -103,9 +103,14 @@ async def pdf_to_docx(source: str, output_name: str = "") -> str:
       - Google Drive  → chain ``drive_upload_local_file`` with that path.
       - user's Mac    → chain ``desktop_write_file`` / the desktop tools.
 
-    Text and paragraph order are preserved; visual layout (columns, tables,
-    images) is NOT. For a scanned PDF (no text layer) this returns an explicit
-    error — use ``pdf_analyze_with_vision`` instead.
+    The logical STRUCTURE is reconstructed from the page geometry — flowing
+    paragraphs (not one per visual line), hyphens rejoined, paragraphs merged
+    across page breaks, titles written as named Word styles. A character-level
+    check reports any text lost on the way.
+
+    Visual layout (columns, tables, images) is NOT reproduced. For a scanned
+    PDF (no text layer) this returns an explicit error — use
+    ``pdf_analyze_with_vision`` instead.
 
     Args:
         source: File path (e.g. '/app/uploads/…/manuscrit.pdf') or URL.
@@ -122,11 +127,13 @@ async def pdf_to_docx(source: str, output_name: str = "") -> str:
         return f"Impossible de récupérer le PDF : {exc}"
 
     try:
-        import pypdf  # noqa: F401
+        import fitz  # noqa: F401  (pymupdf — la géométrie du PDF)
     except ImportError:
         return (
-            "Le module pypdf n'est pas installé. "
-            "Ajoute 'pypdf>=4.0.0' dans pyproject.toml."
+            "Le module pymupdf n'est pas installé. Il est indispensable : "
+            "sans la géométrie des pages, la conversion retombe sur un "
+            "paragraphe par ligne visuelle, ce qui rend le document "
+            "inéditable. Ajoute 'pymupdf>=1.24.0' dans pyproject.toml."
         )
     try:
         import docx  # noqa: F401
@@ -139,32 +146,50 @@ async def pdf_to_docx(source: str, output_name: str = "") -> str:
     base = output_name.strip() or Path(_basename_of(source)).stem
     safe_base = _safe_stem(base)
 
+    from app.services.pdf_to_docx import NoTextLayer, convert_pdf_to_docx
+
+    _DOCX_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = _DOCX_OUT_DIR / f"{safe_base}.docx"
+
     try:
-        # Extraction + écriture sont CPU-bound et peuvent durer plusieurs
-        # secondes sur un manuscrit de plusieurs centaines de pages : hors
-        # de la boucle asyncio, sinon tout le backend gèle pendant ce temps.
-        out_path, pages_done, pages_total, empty_pages = await asyncio.to_thread(
-            _write_docx, pdf_bytes, safe_base
-        )
-    except _NoTextLayer as exc:
+        # CPU-bound et potentiellement long sur un manuscrit de plusieurs
+        # centaines de pages : hors de la boucle asyncio, sinon tout le
+        # backend gèle pendant ce temps.
+        report = await asyncio.to_thread(convert_pdf_to_docx, pdf_bytes, out_path)
+    except NoTextLayer as exc:
         return (
-            f"Aucun texte extractible dans ce PDF ({exc.pages} page(s)) — "
-            "c'est très probablement un scan (image) sans couche texte. "
-            "La conversion en Word donnerait un document vide. "
-            "Utilise pdf_analyze_with_vision pour en lire le contenu."
+            f"Aucun texte extractible dans ce PDF ({exc}) — c'est très "
+            "probablement un scan (image) sans couche texte. La conversion en "
+            "Word donnerait un document vide. Utilise pdf_analyze_with_vision "
+            "pour en lire le contenu."
         )
     except Exception as exc:
         return f"Erreur lors de la conversion en .docx : {exc}"
 
     size_kb = os.path.getsize(out_path) // 1024
+    cal = report.calibration
     lines = [
         f"Document Word créé : {out_path}",
-        f"Pages converties : {pages_done}/{pages_total} — {size_kb} Ko",
+        f"{report.pages} page(s) → {report.paragraphs} paragraphes "
+        f"({report.titles} titre(s)) — {size_kb} Ko",
     ]
-    if empty_pages:
+    if cal:
+        # Le calibrage est AFFICHÉ : ce sont les mesures de ce document, et
+        # savoir sur quoi la structure a été reconstruite permet de juger le
+        # résultat au lieu de le croire.
         lines.append(
-            f"Note : {empty_pages} page(s) sans texte extractible (images ?) "
-            "ont été ignorées."
+            f"Calibrage mesuré : interligne {cal.line_pitch:.1f} pt, "
+            f"seuil de paragraphe {cal.para_gap_min:.1f} pt, "
+            f"corps {cal.body_size:.1f} pt"
+        )
+    if report.missing_chars:
+        lines.append(
+            f"⚠ {report.missing_chars} caractère(s) manquant(s) sur "
+            f"{report.chars_pdf} — le document n'est PAS complet."
+        )
+    else:
+        lines.append(
+            f"Intégrité vérifiée : {report.chars_pdf} caractères, aucune perte."
         )
     lines.append(
         "Le fichier est sur le disque du serveur. Pour le déposer sur Drive, "
@@ -215,14 +240,6 @@ async def pdf_info(source: str) -> str:
 _DOCX_OUT_DIR = Path(tempfile.gettempdir()) / "ely-docx"
 
 
-class _NoTextLayer(Exception):
-    """PDF sans aucun texte extractible (scan). Porte le nombre de pages."""
-
-    def __init__(self, pages: int) -> None:
-        super().__init__(f"no text layer ({pages} pages)")
-        self.pages = pages
-
-
 def _basename_of(source: str) -> str:
     """Nom de fichier d'un chemin OU d'une URL (sans query string)."""
     if source.startswith(("http://", "https://")):
@@ -237,47 +254,6 @@ def _safe_stem(name: str) -> str:
     stem = os.path.basename(name).strip().strip(".")
     stem = re.sub(r"[^\w.\- ]+", "_", stem, flags=re.UNICODE).strip()
     return (stem or "document")[:120]
-
-
-def _write_docx(pdf_bytes: bytes, safe_base: str) -> tuple[str, int, int, int]:
-    """Extrait le texte page à page et écrit le .docx. Bloquant (to_thread).
-
-    Retourne ``(chemin, pages_converties, pages_totales, pages_vides)``.
-    Lève :class:`_NoTextLayer` si AUCUNE page ne porte de texte — mieux vaut
-    une erreur explicite qu'un document Word vide livré comme un succès.
-    """
-    import io
-
-    import docx
-    import pypdf
-
-    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-    total = len(reader.pages)
-
-    document = docx.Document()
-    written = 0
-    empty = 0
-    for idx, page in enumerate(reader.pages):
-        text = (page.extract_text() or "").strip()
-        if not text:
-            empty += 1
-            continue
-        if written:
-            document.add_page_break()
-        for line in text.split("\n"):
-            # Une ligne PDF = un paragraphe Word. On garde les lignes vides
-            # hors du document (elles ne portent pas d'information ici).
-            if line.strip():
-                document.add_paragraph(line.strip())
-        written += 1
-
-    if written == 0:
-        raise _NoTextLayer(total)
-
-    _DOCX_OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = _DOCX_OUT_DIR / f"{safe_base}.docx"
-    document.save(str(out_path))
-    return str(out_path), written, total, empty
 
 
 _ALLOWED_DIRS: list[str] = [
