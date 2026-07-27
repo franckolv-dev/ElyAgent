@@ -104,6 +104,45 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     return (input_tokens * prices[0] + output_tokens * prices[1]) / 1_000_000
 
 
+# ------------------------------------------------------------------ #
+# Conversion d'affichage USD → EUR                                     #
+# ------------------------------------------------------------------ #
+#
+# Les tarifs sont STOCKÉS en dollars, tels que les fournisseurs les publient :
+# un prix en dollars se vérifie d'un coup d'œil sur leur page, un taux unique
+# se met à jour en un endroit au lieu de N modèles, et convertir à la saisie
+# donnerait une valeur vraie le jour même puis vieillissant en silence — la
+# classe de défaut que ce chantier supprime.
+#
+# La conversion est donc appliquée À LA LECTURE, et le taux voyage AVEC le
+# montant : un tableau de bord qui affiche des euros sans dire à quel taux
+# redevient une boîte noire. Le coût réel dépend de toute façon du taux
+# appliqué par la banque le jour du prélèvement — mieux vaut un chiffre dont on
+# connaît l'hypothèse qu'un chiffre qui a l'air exact.
+
+_USD_TO_EUR_KEY = "usd_to_eur_rate"
+# Ordre de grandeur mi-2026, à corriger depuis les réglages. Volontairement
+# différent de 1,0 : afficher des dollars en les appelant des euros serait pire
+# que ne rien afficher.
+_USD_TO_EUR_DEFAULT = 0.92
+
+
+async def get_usd_to_eur_rate() -> float:
+    """Le taux de conversion pour l'AFFICHAGE, jamais pour le stockage.
+
+    Ne lève jamais et ne rend jamais une valeur absurde : ce réglage vient d'un
+    formulaire et arrivera un jour vide, négatif ou en texte.
+    """
+    try:
+        from app.services.system_config import get_config
+
+        raw = (await get_config(_USD_TO_EUR_KEY, "") or "").strip()
+        rate = float(raw.replace(",", ".")) if raw else 0.0
+        return rate if rate > 0 else _USD_TO_EUR_DEFAULT
+    except Exception:  # noqa: BLE001 — un taux ne casse pas un tableau de bord
+        return _USD_TO_EUR_DEFAULT
+
+
 async def get_summary(user_id: str, days: int = 30) -> dict[str, Any]:
     """Get aggregated stats for the last N days."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
@@ -127,6 +166,8 @@ async def get_summary(user_id: str, days: int = 30) -> dict[str, Any]:
         "total_requests": row.total_requests or 0,
         "total_tokens": row.total_tokens or 0,
         "total_cost_usd": round(row.total_cost or 0.0, 4),
+        # Le taux accompagne le montant — il n'est jamais appliqué en douce.
+        "usd_to_eur_rate": await get_usd_to_eur_rate(),
         "input_tokens": row.input_tokens or 0,
         "output_tokens": row.output_tokens or 0,
         "period_days": days,
