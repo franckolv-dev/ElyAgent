@@ -90,6 +90,8 @@ def usage_from_result(result: Any) -> dict:
         "input_tokens": 0,
         "output_tokens": 0,
         "has_metadata": False,
+        "cached_input_tokens": 0,
+        "cache_creation_tokens": 0,
         "domain": None,
         "tools_called": [],
     }
@@ -104,6 +106,18 @@ def usage_from_result(result: Any) -> dict:
             out["has_metadata"] = True
             out["input_tokens"] += int(um.get("input_tokens", 0) or 0)
             out["output_tokens"] += int(um.get("output_tokens", 0) or 0)
+            # Cache de préfixe : la donnée était déjà là, on la jetait.
+            # `input_token_details` est le champ standard de LangChain ;
+            # les fournisseurs qui ne le remontent pas laissent zéro, ce qui
+            # doit se lire « non rapporté » et non « échec de cache ».
+            details = um.get("input_token_details") or {}
+            if isinstance(details, dict):
+                for key, slot in (("cache_read", "cached_input_tokens"),
+                                  ("cache_creation", "cache_creation_tokens")):
+                    try:
+                        out[slot] += int(details.get(key, 0) or 0)
+                    except (TypeError, ValueError):
+                        pass
         for msg in result.get("messages") or []:
             for call in getattr(msg, "tool_calls", None) or []:
                 name = call.get("name") if isinstance(call, dict) else getattr(call, "name", None)
@@ -183,6 +197,10 @@ async def record_turn_usage(
             provider=provider,
             input_tokens=usage["input_tokens"],
             output_tokens=usage["output_tokens"],
+            # Cache de préfixe : calculer ne suffit pas, il faut livrer
+            # (leçon de #255, où la ventilation restait dans le nœud).
+            cached_input_tokens=usage.get("cached_input_tokens", 0),
+            cache_creation_tokens=usage.get("cache_creation_tokens", 0),
             conversation_id=conversation_id,
             skill_used=dominant_tool(usage["tools_called"]),
             channel=channel,

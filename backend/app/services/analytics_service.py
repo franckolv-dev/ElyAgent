@@ -316,6 +316,8 @@ async def log_usage(
     hitl_action: str | None = None,
     latency_ms: int | None = None,
     architecture: str | None = None,
+    cached_input_tokens: int = 0,
+    cache_creation_tokens: int = 0,
     context_breakdown: str | None = None,
 ) -> None:
     """Record a usage log entry. Called after each agent invocation.
@@ -342,6 +344,8 @@ async def log_usage(
         hitl_action=hitl_action,
         latency_ms=latency_ms,
         architecture=architecture,
+        cached_input_tokens=cached_input_tokens or 0,
+        cache_creation_tokens=cache_creation_tokens or 0,
         context_breakdown=context_breakdown,
     )
     try:
