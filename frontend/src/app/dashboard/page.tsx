@@ -34,6 +34,10 @@ interface AnalyticsSummary {
   total_requests: number;
   total_tokens: number;
   total_cost_usd: number;
+  // Taux d'AFFICHAGE : les tarifs sont stockés en dollars, tels que les
+  // fournisseurs les publient. Convertir à la saisie donnerait une valeur vraie
+  // un jour puis vieillissant en silence.
+  usd_to_eur_rate?: number;
   input_tokens: number;
   output_tokens: number;
   period_days: number;
@@ -79,6 +83,14 @@ function formatCost(n: number): string {
   if (n < 0.01) return `$${n.toFixed(4)}`;
   if (n < 1) return `$${n.toFixed(3)}`;
   return `$${n.toFixed(2)}`;
+}
+
+/** En euros, la monnaie dans laquelle Franck paie réellement. */
+function formatCostEur(usd: number, rate: number): string {
+  const n = usd * rate;
+  if (n < 0.001) return "0,00 €";
+  if (n < 1) return `${n.toFixed(3).replace(".", ",")} €`;
+  return `${n.toFixed(2).replace(".", ",")} €`;
 }
 
 // ── SVG Bar Chart ─────────────────────────────────────────────────────────────
@@ -271,10 +283,20 @@ export default function DashboardPage() {
                 },
                 {
                   label: t("estimatedCost"),
-                  value: summary ? formatCost(summary.total_cost_usd) : "—",
+                  value: summary
+                    ? formatCostEur(summary.total_cost_usd,
+                                    summary.usd_to_eur_rate ?? 0.92)
+                    : "—",
                   icon: DollarSign,
                   color: "cyber-blue",
-                  sub: "estimation approximative",
+                  // Le taux voyage AVEC le montant : afficher des euros sans
+                  // dire à quel taux redevient une boîte noire. Le coût réel
+                  // dépend de toute façon du taux appliqué par la banque.
+                  sub: summary
+                    ? `${formatCost(summary.total_cost_usd)} · taux `
+                      + `${(summary.usd_to_eur_rate ?? 0.92)
+                            .toFixed(2).replace(".", ",")}`
+                    : "estimation approximative",
                 },
                 {
                   label: t("sshHosts"),
