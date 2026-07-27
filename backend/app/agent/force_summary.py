@@ -110,4 +110,14 @@ async def force_summary_node(state: AgentState) -> dict:
             "automatiquement. Reformule ta demande en plusieurs étapes plus "
             "ciblées, ça aboutira plus rapidement."
         ))
+
+    # Ce nœud clôt le tour au même titre que le nœud agent. Quand on arrive
+    # ici, TOUTES les réponses du nœud agent portaient des ``tool_calls`` —
+    # aucune n'a donc déclenché d'extraction de faits. Sans cet appel, un tour
+    # qui épuise son budget d'itérations n'alimenterait jamais la mémoire.
+    # La réponse produite ici ne porte jamais de ``tool_calls`` (l'appel se
+    # fait sans ``bind_tools``, et le repli est un AIMessage textuel).
+    from app.services.memory_service import maybe_spawn_fact_extraction
+
+    maybe_spawn_fact_extraction(state.get("user_id", ""), messages, response)
     return {"messages": [response]}
