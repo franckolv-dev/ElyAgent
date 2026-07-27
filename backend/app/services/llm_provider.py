@@ -974,6 +974,79 @@ def _make_openai_codex(model: str, temperature: float) -> "BaseChatModel":
     )
 
 
+# ------------------------------------------------------------------ #
+# Disponibilité des serveurs LOCAUX                                    #
+# ------------------------------------------------------------------ #
+#
+# Ollama et LM Studio ne demandent AUCUNE clé : `_make_llm_for_provider` leur
+# rendait donc toujours un objet, et la boucle de repli s'arrêtait dessus —
+# serveur allumé ou non.
+#
+# Mesuré le 27/07 sur un clone vierge suivant le Quick start : les tiers
+# `simple` et `maintenance` pointent sur ["ollama"] par défaut, un nouveau venu
+# avec une seule clé Gemini voyait donc ses messages courts échouer pendant que
+# les longs fonctionnaient. Et `ACTIVE_LLM_PROVIDER`, que le README lui dit de
+# changer, n'alimente que `get_llm()` — jamais atteint puisque la chaîne avait
+# « réussi ». Le réglage qu'on demande de changer n'atteignait pas ce qui
+# décide : le même défaut que gpt-5.5.
+#
+# Un local injoignable est désormais traité comme un fournisseur sans clé.
+
+_LOCAL_PROBE_TIMEOUT_S = 0.35
+# Le résolveur est appelé à chaque tour : sans cache, on paierait un
+# aller-retour réseau par appel. Le cache expire pour qu'un serveur démarré
+# après coup soit vu sans redémarrer Ely.
+_LOCAL_PROBE_TTL_S = 60.0
+_local_probe_cache: dict[str, tuple[float, bool]] = {}
+
+
+def reset_local_probe_cache() -> None:
+    """Vide le cache de disponibilité (tests, ou changement de configuration)."""
+    _local_probe_cache.clear()
+
+
+def _tcp_reachable(host: str, port: int) -> bool:
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=_LOCAL_PROBE_TIMEOUT_S):
+            return True
+    except OSError:
+        return False
+
+
+def is_local_server_reachable(base_url: str | None, _probe=_tcp_reachable) -> bool:
+    """Un serveur écoute-t-il derrière *base_url* ?
+
+    Sonde TCP : elle ne dit pas que le modèle est chargé, seulement que
+    quelqu'un répond — c'est exactement ce qu'il faut pour décider de rester
+    sur ce fournisseur ou de passer au suivant.
+
+    Ne lève jamais : cette valeur vient d'un `.env`. Une URL illisible est
+    considérée comme joignable, pour ne pas priver de local quelqu'un dont la
+    configuration est simplement inhabituelle.
+    """
+    import time
+    from urllib.parse import urlparse
+
+    key = base_url or ""
+    cached = _local_probe_cache.get(key)
+    now = time.monotonic()
+    if cached and now - cached[0] < _LOCAL_PROBE_TTL_S:
+        return cached[1]
+
+    try:
+        parsed = urlparse(key if "://" in key else f"http://{key}")
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        ok = _probe(host, port) if host else True
+    except Exception:  # noqa: BLE001 — un doute ne doit pas priver de local
+        ok = True
+
+    _local_probe_cache[key] = (now, ok)
+    return ok
+
+
 def _make_llm_for_provider(
     provider_id: str,
     settings,
@@ -990,12 +1063,23 @@ def _make_llm_for_provider(
         return _runtime.get(f"key_{prov}") or env_val or None
 
     if provider_id == "ollama":
+        # Pas de clé à vérifier : c'est la disponibilité qui fait office de
+        # « clé ». Sans ça, un Ollama éteint capture la chaîne de repli.
+        if not is_local_server_reachable(settings.ollama_base_url):
+            logger.debug("ollama injoignable (%s) — on passe au suivant",
+                         settings.ollama_base_url)
+            return None
         from langchain_ollama import ChatOllama
         return ChatOllama(model=settings.slm_model or "qwen2.5:7b-instruct",
             base_url=settings.ollama_base_url,
             temperature=temperature, keep_alive="24h")
 
     if provider_id == "lm_studio":
+        # Même raison que pour Ollama : aucune clé, donc rien ne l'écartait.
+        if not is_local_server_reachable(settings.lm_studio_base_url):
+            logger.debug("LM Studio injoignable (%s) — on passe au suivant",
+                         settings.lm_studio_base_url)
+            return None
         # No key needed — use the model currently loaded in LM Studio.
         # The model name must match what LM Studio shows in its "Local Server" tab.
         return _make_lm_studio(model=settings.slm_model or "gemma-4-26B-A4B-it-MLX-4bit",
@@ -1579,7 +1663,29 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     else:
         logger.debug("Tier %s: no provider available, using global LLM", tier.value)
 
-    return get_llm()
+    try:
+        return get_llm()
+    except Exception as exc:  # noqa: BLE001
+        # Dernier recours. Écarter un serveur local injoignable doit RÉORDONNER
+        # les préférences, jamais laisser l'appelant sans rien : un Ollama
+        # éteint maintenant peut être démarré dans la minute, alors qu'une
+        # exception remonte jusqu'à l'utilisateur. Régression attrapée par la
+        # CI — sans aucune clé configurée, la chaîne allait désormais jusqu'au
+        # bout et échouait sur un ChatAnthropic sans clé.
+        logger.warning(
+            "Tier %s: aucun fournisseur utilisable (%s) — repli sur le "
+            "serveur local, même injoignable", tier.value, exc,
+        )
+        try:
+            from langchain_ollama import ChatOllama
+
+            return ChatOllama(
+                model=settings.slm_model or "qwen2.5:7b-instruct",
+                base_url=settings.ollama_base_url,
+                temperature=temperature, keep_alive="24h",
+            )
+        except Exception:  # noqa: BLE001
+            raise exc from None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
