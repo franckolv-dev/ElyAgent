@@ -45,7 +45,7 @@ import logging
 import re
 import statistics
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,9 @@ class Calibration:
     left: float
     body_size: float
     right_edge: float
+    body_font: str
+    page_width: float
+    page_height: float
 
 
 @dataclass
@@ -84,14 +87,41 @@ class ConversionReport:
 
 
 @dataclass
-class _Line:
+class _Span:
+    """Un fragment homogène : même police, même corps, même style.
+
+    C'est CE niveau que la première version lisait pour détecter les titres,
+    puis jetait en écrivant. Les italiques, les changements de corps et les
+    couleurs disparaissaient alors que la donnée était sous la main.
+    """
+
     text: str
+    size: float
+    bold: bool
+    italic: bool
+    color: int
+    font: str
+
+
+@dataclass
+class _Line:
+    spans: list[_Span]
     y: float
     x0: float
     x1: float
-    size: float
-    bold: bool
     page: int
+
+    @property
+    def text(self) -> str:
+        return "".join(sp.text for sp in self.spans)
+
+    @property
+    def size(self) -> float:
+        return max((sp.size for sp in self.spans), default=0.0)
+
+    @property
+    def bold(self) -> bool:
+        return all(sp.bold for sp in self.spans) if self.spans else False
 
 
 @dataclass
@@ -126,6 +156,7 @@ def calibrate(doc) -> Calibration:
     advances: Counter = Counter()
     lefts: Counter = Counter()
     sizes: Counter = Counter()
+    fonts: Counter = Counter()
     rights: list[float] = []
 
     sample = range(min(len(doc), 40))
@@ -142,6 +173,7 @@ def calibrate(doc) -> Calibration:
                 rights.append(bbox[2])
                 for span in line.get("spans", []):
                     sizes[round(span.get("size", 0), 1)] += 1
+                    fonts[str(span.get("font", ""))] += 1
         ys = sorted(set(ys))
         advances.update(round(b - a, 1) for a, b in zip(ys, ys[1:]) if 0 < b - a < 60)
 
@@ -159,13 +191,38 @@ def calibrate(doc) -> Calibration:
     # Bord droit du bloc de justification : au-delà, une ligne est « pleine ».
     right = statistics.median(rights) if rights else 500.0
 
+    font = _word_font_name(fonts.most_common(1)[0][0]) if fonts else ""
+    rect = doc[0].rect if len(doc) else None
+
     return Calibration(
         line_pitch=float(pitch),
         para_gap_min=float(pitch) * _PARA_GAP_RATIO,
         left=left,
         body_size=body,
         right_edge=float(right),
+        body_font=font,
+        page_width=float(rect.width) if rect else 595.0,
+        page_height=float(rect.height) if rect else 842.0,
     )
+
+
+def _word_font_name(pdf_font: str) -> str:
+    """Traduit un nom de police PDF en nom de famille lisible par Word.
+
+    Les PDF portent des noms comme ``ABCDEF+Times-Roman`` ou
+    ``PublicoText-Italic`` : préfixe de sous-ensemble, et variante accolée. Word
+    veut la FAMILLE — il applique ensuite gras et italique par ses propres
+    attributs. Sans ce nettoyage, il ne reconnaît rien et substitue sa police
+    par défaut, ce qui revient au point de départ.
+    """
+    name = str(pdf_font or "")
+    if "+" in name:                     # préfixe de sous-ensemble
+        name = name.split("+", 1)[1]
+    for sep in ("-", ","):
+        if sep in name:
+            name = name.split(sep, 1)[0]
+    return {"Times": "Times New Roman", "TimesNewRomanPSMT": "Times New Roman",
+            "Helvetica": "Helvetica", "Arial": "Arial"}.get(name, name)
 
 
 # ------------------------------------------------------------------ #
@@ -186,38 +243,45 @@ def _page_lines(page, pno: int) -> list[_Line]:
     Trié naïvement par ``y``, un texte dont l'italique crée un bloc décalé de
     1 à 2 points part dans le désordre.
     """
-    frags: list[tuple[float, float, float, str, float, bool]] = []
+    frags: list[tuple[float, float, float, list[_Span]]] = []
     for block in page.get_text("dict")["blocks"]:
         if block.get("type") != 0:
             continue
         for line in block.get("lines", []):
             bbox = line["bbox"]
-            text = "".join(s.get("text", "") for s in line.get("spans", []))
-            if not text.strip():
+            spans = [
+                _Span(
+                    text=sp.get("text", ""),
+                    size=round(float(sp.get("size", 0.0)), 1),
+                    bold=_is_bold(sp),
+                    # Bit 1 des drapeaux PyMuPDF = italique. C'est ce qui
+                    # portait 64 spans du manuscrit et disparaissait.
+                    italic=bool(sp.get("flags", 0) & (1 << 1)),
+                    color=int(sp.get("color", 0) or 0),
+                    font=_word_font_name(sp.get("font", "")),
+                )
+                for sp in line.get("spans", [])
+                if sp.get("text")
+            ]
+            if not any(sp.text.strip() for sp in spans):
                 continue
-            spans = line.get("spans", [])
-            size = max((s.get("size", 0) for s in spans), default=0.0)
-            bold = any(_is_bold(s) for s in spans)
-            centre = (bbox[1] + bbox[3]) / 2
-            frags.append((centre, bbox[0], bbox[2], text, size, bold))
+            frags.append(((bbox[1] + bbox[3]) / 2, bbox[0], bbox[2], spans))
 
     frags.sort(key=lambda f: (f[0], f[1]))
 
     lines: list[_Line] = []
-    for centre, x0, x1, text, size, bold in frags:
+    for centre, x0, x1, spans in frags:
         if lines and abs(centre - lines[-1].y) <= _LINE_TOLERANCE:
             prev = lines[-1]
-            # Même ligne visuelle : on concatène dans l'ordre des x.
+            # Même ligne visuelle : on insère dans l'ordre des x.
             if x0 >= prev.x1:
-                prev.text += text
+                prev.spans.extend(spans)
             else:
-                prev.text = text + prev.text
+                prev.spans[:0] = spans
             prev.x0 = min(prev.x0, x0)
             prev.x1 = max(prev.x1, x1)
-            prev.size = max(prev.size, size)
-            prev.bold = prev.bold or bold
         else:
-            lines.append(_Line(text, centre, x0, x1, size, bold, pno))
+            lines.append(_Line(spans, centre, x0, x1, pno))
     return lines
 
 
@@ -226,26 +290,66 @@ def _page_lines(page, pno: int) -> list[_Line]:
 # ------------------------------------------------------------------ #
 
 def join_lines(texts: list[str]) -> str:
-    """Recolle les lignes d'un paragraphe en traitant les césures.
+    """Recolle des lignes de TEXTE en traitant les césures.
 
-    On supprime le trait d'union si la ligne suivante commence par une
-    minuscule ou une apostrophe. Sinon on le garde : sans cette règle on
-    obtient « éblouis-sement » ou, pire, « portefenêtre ».
+    Conservée pour les appels qui n'ont pas besoin de typographie ; la
+    conversion, elle, passe par :func:`join_spans` pour ne pas perdre les
+    italiques et les changements de corps.
     """
-    out = ""
-    for i, raw in enumerate(texts):
-        cur = raw.rstrip()
-        nxt = texts[i + 1].lstrip() if i + 1 < len(texts) else ""
-        if cur.endswith("-") and nxt:
-            # Minuscule ou apostrophe après : trait d'union typographique, on
-            # le supprime. Sinon c'est un vrai trait d'union du mot — on le
-            # garde, ET sans espace : « porte-Fenêtre » reste un seul mot.
-            out += cur[:-1] if (nxt[0].islower() or nxt[0] in "'’") else cur
+    return "".join(sp.text for sp in join_spans(
+        [[_Span(t, 0.0, False, False, 0, "")] for t in texts]
+    ))
+
+
+def join_spans(per_line: list[list[_Span]]) -> list[_Span]:
+    """Recolle les lignes d'un paragraphe **en conservant la typographie**.
+
+    Césures : on supprime le trait d'union si la ligne suivante commence par
+    une minuscule ou une apostrophe ; sinon on le garde, et SANS espace —
+    « porte-Fenêtre » reste un seul mot.
+    """
+    out: list[_Span] = []
+    for i, spans in enumerate(per_line):
+        spans = [sp for sp in spans if sp.text]
+        if not spans:
             continue
-        out += cur
-        if i + 1 < len(texts):
-            out += " "
-    return re.sub(r"\s+", " ", out).strip()
+        nxt = ""
+        for follow in per_line[i + 1:]:
+            joined = "".join(sp.text for sp in follow).lstrip()
+            if joined:
+                nxt = joined
+                break
+
+        line_text = "".join(sp.text for sp in spans).rstrip()
+        last = spans[-1]
+        if line_text.endswith("-") and nxt:
+            if nxt[0].islower() or nxt[0] in "'’":
+                # Trait d'union typographique : on le retire du dernier span.
+                trimmed = last.text.rstrip()
+                spans[-1] = replace(last, text=trimmed[:-1] if trimmed.endswith("-") else trimmed)
+            out.extend(spans)
+            continue
+
+        spans[-1] = replace(last, text=last.text.rstrip())
+        out.extend(spans)
+        if i + 1 < len(per_line):
+            out.append(_Span(" ", last.size, last.bold, last.italic, last.color, last.font))
+
+    # Fusion des spans voisins de même typographie : un run par changement
+    # réel, pas un run par fragment du PDF.
+    merged: list[_Span] = []
+    for sp in out:
+        if merged and (sp.size, sp.bold, sp.italic, sp.color, sp.font) == (
+            merged[-1].size, merged[-1].bold, merged[-1].italic,
+            merged[-1].color, merged[-1].font,
+        ):
+            merged[-1] = replace(merged[-1], text=merged[-1].text + sp.text)
+        else:
+            merged.append(sp)
+    if merged:
+        merged[0] = replace(merged[0], text=merged[0].text.lstrip())
+        merged[-1] = replace(merged[-1], text=merged[-1].text.rstrip())
+    return [sp for sp in merged if sp.text]
 
 
 # ------------------------------------------------------------------ #
@@ -335,57 +439,92 @@ def _build_blocks(doc, cal: Calibration) -> list[_Block]:
 # 6. Écriture DOCX — styles NOMMÉS, pas de formatage direct            #
 # ------------------------------------------------------------------ #
 
-def _ensure_styles(document) -> None:
-    """Crée les styles nommés, tous basés sur ``Normal``.
+def _ensure_styles(document, cal: Calibration) -> None:
+    """Pose le format de page et les styles nommés, mesurés sur la source.
 
-    ``python-docx`` pousse au formatage direct (``run.bold = True`` partout).
-    C'est ce qui produit ces DOCX impossibles à retoucher : changer le corps du
-    texte demande des milliers de modifications manuelles. Avec un style nommé,
-    c'est UNE modification.
+    Sans ça, ``python-docx`` produit du US Letter en police par défaut : un
+    livre de 396 × 612 ressort en 612 × 792, et le manuscrit ne se ressemble
+    plus dès la première page.
     """
     from docx.enum.style import WD_STYLE_TYPE
-    from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
     from docx.shared import Pt
 
-    styles = document.styles
-    normal = styles["Normal"]
+    # Format de page et marges, repris du PDF.
+    section = document.sections[0]
+    section.page_width = Pt(cal.page_width)
+    section.page_height = Pt(cal.page_height)
+    margin = Pt(max(cal.left, 28.0))
+    section.left_margin = section.right_margin = margin
+    section.top_margin = section.bottom_margin = Pt(max(cal.left * 0.9, 28.0))
 
-    for name, size, bold, level in (("Chapitre", 18, True, 0), ("Partie", 22, True, 0)):
-        if name in [s.name for s in styles]:
+    # Le corps du roman vit dans `Normal` : le changer est UNE modification.
+    normal = document.styles["Normal"]
+    if cal.body_font:
+        normal.font.name = cal.body_font
+    if cal.body_size:
+        normal.font.size = Pt(cal.body_size)
+
+    styles = document.styles
+    existing = {st.name for st in styles}
+    for name, factor, level in (("Chapitre", 1.5, 0), ("Partie", 1.9, 0)):
+        if name in existing:
             continue
         style = styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
         style.base_style = normal
-        style.font.size = Pt(size)
-        style.font.bold = bold
+        style.font.size = Pt((cal.body_size or 12.0) * factor)
+        style.font.bold = True
+        ppr = style.element.get_or_add_pPr()
         # `w:outlineLvl` alimente le volet Navigation de Word et les signets à
         # l'export PDF. Sans lui, un titre n'est qu'un texte en gras.
-        ppr = style.element.get_or_add_pPr()
         outline = OxmlElement("w:outlineLvl")
         outline.set(qn("w:val"), str(level))
         ppr.append(outline)
-        # Le saut de page vit DANS le style : ajouter un chapitre ne casse
-        # rien, contrairement à des sauts manuels semés dans le document.
-        pbb = OxmlElement("w:pageBreakBefore")
-        ppr.append(pbb)
+        ppr.append(OxmlElement("w:pageBreakBefore"))
 
 
-def _write_document(blocks: list[_Block], out_path: Path) -> tuple[int, int]:
+def _add_runs(paragraph, spans: list[_Span], cal: Calibration) -> None:
+    """Écrit les runs en ne posant QUE ce qui diffère du style.
+
+    Reproduire chaque attribut sur chaque run donnerait un DOCX truffé de
+    formatage direct — précisément ce qu'on veut éviter. On laisse le style
+    `Normal` porter le cas courant, et on ne surcharge que l'exception.
+    """
+    from docx.shared import Pt, RGBColor
+
+    for sp in spans:
+        run = paragraph.add_run(sp.text)
+        if sp.italic:
+            run.italic = True
+        if sp.bold:
+            run.bold = True
+        if sp.size and cal.body_size and abs(sp.size - cal.body_size) > 0.4:
+            run.font.size = Pt(sp.size)
+        if sp.font and sp.font != cal.body_font:
+            run.font.name = sp.font
+        if sp.color:
+            run.font.color.rgb = RGBColor(
+                (sp.color >> 16) & 0xFF, (sp.color >> 8) & 0xFF, sp.color & 0xFF
+            )
+
+
+def _write_document(blocks: list[_Block], out_path: Path,
+                    cal: Calibration) -> tuple[int, int]:
     import docx
 
     document = docx.Document()
-    _ensure_styles(document)
+    _ensure_styles(document, cal)
 
     paragraphs = titles = 0
     for block in blocks:
-        text = join_lines([line.text for line in block.lines])
-        if not text:
+        spans = join_spans([line.spans for line in block.lines])
+        if not any(sp.text.strip() for sp in spans):
             continue
+        para = document.add_paragraph(style="Chapitre" if block.kind == "title" else None)
+        _add_runs(para, spans, cal)
         if block.kind == "title":
-            document.add_paragraph(text, style="Chapitre")
             titles += 1
-        else:
-            document.add_paragraph(text)
         paragraphs += 1
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -432,7 +571,7 @@ def convert_pdf_to_docx(pdf_bytes: bytes, out_path: str | Path) -> ConversionRep
 
     cal = calibrate(doc)
     blocks = _build_blocks(doc, cal)
-    paragraphs, titles = _write_document(blocks, out_path)
+    paragraphs, titles = _write_document(blocks, out_path, cal)
 
     pdf_chars = _char_multiset(pdf_text)
     docx_chars = _char_multiset(_docx_text(out_path))

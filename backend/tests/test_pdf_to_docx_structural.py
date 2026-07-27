@@ -322,3 +322,117 @@ def test_calibration_is_measured_on_the_document(tmp_path):
 
     assert 19.0 < cal.line_pitch < 21.0, f"pas mesuré : {cal.line_pitch}"
     assert cal.para_gap_min > cal.line_pitch
+
+
+# =============================================================================
+# Typographie — ce que la première version extrayait puis JETAIT
+# =============================================================================
+#
+# Franck, sur un manuscrit réel de 395 pages : « aucune taille de texte
+# récupérée, en fait elle a extrait le texte brut, l'a copié-collé dans un
+# .docx et voilà ». Mesure faite, il avait raison sur tout :
+#
+#     PDF source              Ce qui sortait
+#     396 × 612 pt            612 × 792 (US Letter, défaut python-docx)
+#     Times / PublicoText     aucune police
+#     12 · 10 · 14 · 22 pt    aucun corps
+#     64 spans en italique    0
+#     2 couleurs              0
+#
+# Le pire : ces attributs étaient DÉJÀ LUS span par span pour détecter les
+# titres, puis abandonnés au moment d'écrire. Pas un problème difficile — une
+# donnée extraite et jetée. Les classer dans les « raffinements » était un
+# mauvais jugement : pour un manuscrit, c'est le minimum pour que le document
+# se ressemble.
+
+def test_the_page_keeps_the_source_format(tmp_path):
+    """LE test de cette reprise. Un livre en 396 × 612 ne doit pas ressortir
+    en US Letter — c'est la première chose qu'on voit en ouvrant le fichier."""
+    doc = fitz.open()
+    page = doc.new_page(width=396, height=612)
+    y = 100
+    for i in range(6):
+        page.insert_text((50, y), f"Ligne {i} d un paragraphe continu du livre.",
+                         fontsize=_BODY_SIZE, fontname="helv")
+        y += _LINE_PITCH
+    out, _ = _convert(tmp_path, doc)
+
+    import docx
+
+    section = docx.Document(str(out)).sections[0]
+    assert round(section.page_width.pt) == 396
+    assert round(section.page_height.pt) == 612
+
+
+def test_the_body_font_and_size_are_carried_over(tmp_path):
+    """Le corps dominant du document devient celui du style `Normal` — donc
+    UNE modification si Franck veut le changer, pas quatre mille."""
+    doc = fitz.open()
+    page = doc.new_page(width=396, height=612)
+    y = 100
+    for i in range(8):
+        page.insert_text((50, y), f"Ligne {i} en corps de texte du manuscrit.",
+                         fontsize=13.0, fontname="tiro")
+        y += _LINE_PITCH
+    out, _ = _convert(tmp_path, doc)
+
+    import docx
+
+    normal = docx.Document(str(out)).styles["Normal"]
+    assert normal.font.size is not None, "aucun corps posé — Word appliquera le sien"
+    assert abs(normal.font.size.pt - 13.0) < 0.6
+    assert normal.font.name, "aucune police posée"
+
+
+def test_an_italic_span_becomes_an_italic_run(tmp_path):
+    """64 spans en italique sur 55 pages d'un roman : c'est du dialogue, des
+    titres d'œuvres, des mots étrangers. Les perdre change le texte."""
+    doc = fitz.open()
+    page = doc.new_page(width=396, height=612)
+    y = 100
+    for i in range(5):
+        page.insert_text((50, y), f"Ligne ordinaire numero {i} du paragraphe.",
+                         fontsize=_BODY_SIZE, fontname="helv")
+        y += _LINE_PITCH
+    page.insert_text((50, y + _PARA_GAP), "Un mot en italique ici precisement.",
+                     fontsize=_BODY_SIZE, fontname="tiit")
+    out, _ = _convert(tmp_path, doc)
+
+    runs = [r for p in _docx_paragraphs(out) for r in p.runs]
+    assert any(r.italic for r in runs), "toutes les italiques du document ont disparu"
+
+
+def test_a_size_change_inside_the_text_is_preserved(tmp_path):
+    """Le PDF utilise 12, 10, 14 et 22 pt. Tout ramener au corps courant
+    écrase les exergues, les notes et les titres de partie."""
+    doc = fitz.open()
+    page = doc.new_page(width=396, height=612)
+    y = 100
+    for i in range(6):
+        page.insert_text((50, y), f"Corps courant, ligne {i} du paragraphe.",
+                         fontsize=12.0, fontname="helv")
+        y += _LINE_PITCH
+    page.insert_text((50, y + _PARA_GAP), "Une note en petit corps.",
+                     fontsize=8.0, fontname="helv")
+    out, _ = _convert(tmp_path, doc)
+
+    sizes = {r.font.size.pt for p in _docx_paragraphs(out) for r in p.runs
+             if r.font.size is not None}
+    assert any(s < 10 for s in sizes), f"corps trouvés : {sizes} — la note a été normalisée"
+
+
+def test_typography_does_not_break_the_integrity_check(tmp_path):
+    """Garde-fou : écrire des runs formatés ne doit pas perdre de caractère en
+    route. Le contrôle 0 reste la référence."""
+    doc = fitz.open()
+    page = doc.new_page(width=396, height=612)
+    y = 100
+    for i in range(6):
+        page.insert_text((50, y), f"Ligne {i} avec du texte a preserver entierement.",
+                         fontsize=_BODY_SIZE, fontname="helv")
+        y += _LINE_PITCH
+    page.insert_text((50, y + _PARA_GAP), "Et une phrase en italique pour finir.",
+                     fontsize=_BODY_SIZE, fontname="tiit")
+    _, report = _convert(tmp_path, doc)
+
+    assert report.missing_chars == 0
