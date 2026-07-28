@@ -99,16 +99,22 @@ class ComplexityTier(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# Complexity heuristic classifier (no LLM call — pure rule-based)
+# Routage d'une demande utilisateur (aucun appel LLM — pure fonction)
 # ---------------------------------------------------------------------------
-
-_COMPLEX_KEYWORDS = re.compile(
-    r"\b(code|script|architecture|debug|analys[eo]|analyse|MCP|3D|docker|ssh|deploy|"
-    r"implémente|impl[eé]mente|cr[eé][eé] un|développe|refactor|programme|"
-    r"fonction|classe|module|algorithme|pipeline|infrastructure|kubernetes|"
-    r"nginx|postgres|redis|elasticsearch)\b",
-    re.IGNORECASE,
-)
+#
+# Il y avait ici trois listes de mots-clés (_SIMPLE / _MEDIUM / _COMPLEX) qui
+# choisissaient le modèle. Elles ont été supprimées le 28/07/2026 : mesurées
+# contre les demandes réellement formulées, elles classaient à l'envers.
+#
+# La démonstration tenait dans leur contenu même : `_SIMPLE_KEYWORDS`
+# contenait « traduis » et « résume », `_MEDIUM_KEYWORDS` contenait
+# « fichier », « document » et « drive ». Autrement dit « traduis ce document
+# en gardant la mise en page » était réputée FACILE **par conception**, et
+# partait sur un Gemma-4-E4B local — pendant que « refactor cette fonction
+# python » (4 mots) décrochait le tier le plus cher via `_COMPLEX_KEYWORDS`.
+#
+# Seul `_IMAGE_KEYWORDS` survit : ce n'est pas un niveau de difficulté mais
+# une capacité distincte.
 
 _IMAGE_KEYWORDS = re.compile(
     r"\b(image|génère une image|dessine|crée une illustration|illustration|"
@@ -116,60 +122,47 @@ _IMAGE_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-_SIMPLE_KEYWORDS = re.compile(
-    r"\b(traduis|translate|traduction|weather|météo|résume|summarize|"
-    r"c'est quoi|qu'est-ce que|what is|define|définition|définition de|"
-    r"bonjour|merci|hello|salut|rappelle|note)\b",
-    re.IGNORECASE,
-)
-
-# Writing / composition tasks that require some reasoning → MEDIUM
-_MEDIUM_KEYWORDS = re.compile(
-    r"\b(rédige|rédiger|rédaction|écris|écrire|compose|composé|emails?|"
-    r"mail[sx]?|boite mail|boîte mail|boîte aux lettres|inbox|lettre|message|réponse|explique|expliquer|comment faire|"
-    r"aide.moi|aide moi|help me|propose|suggestion|conseil|conseille|"
-    r"planifie|organise|liste|compare|comparer|recherche|trouve|"
-    r"calendrier|agenda|rendez.vous|tâche[sx]?|rappel|note[sx]?|contact[sx]?|"
-    r"newsletter[sx]?|mailing[sx]?|spam|corbeille|archive[sz]?|promotionnel[sx]?|"
-    r"gmail|drive|sheets?|docs?|google|workspace|fichier[sx]?|dossier[sx]?|"
-    r"document[sx]?|tableur[sx]?|spreadsheet[sx]?|événement[sx]?|réunion[sx]?)\b",
-    re.IGNORECASE,
-)
-
 
 def classify_complexity(message: str) -> ComplexityTier:
-    """Classify a user message into a complexity tier using rule-based heuristics.
+    """Route a **user** request. Only two outcomes: IMAGE, or the main model.
+
+    Un seul modèle principal, décision de Franck du 27/07/2026 — la forme
+    d'Hermes, dont le code ne contient aucun routeur de complexité (zéro
+    occurrence de ``classify_complexity`` / ``ComplexityTier``, un seul
+    ``_read_main_model``).
+
+    Ce qu'il y avait avant, et pourquoi c'est parti
+    ----------------------------------------------
+    Le tier était choisi par des regex de mots-clés et un **compte de mots**.
+    Mesuré sur les demandes réellement formulées, le classement était
+    **inversé par rapport à la difficulté réelle** :
+
+        « Traduis ce document en gardant exactement la mise en page » (12 mots)
+            → SIMPLE  → Gemma-4-E4B en LOCAL en tête de chaîne
+        « refactor cette fonction python »                            (4 mots)
+            → COMPLEX → GPT-5.6 → Kimi K3 → DeepSeek Pro
+
+    Une demande exigeante formulée court partait sur un petit modèle local ;
+    une demande triviale contenant « python » décrochait le tier le plus cher.
+    Et le tier pilotait aussi le branchement des outils (cf.
+    ``app.agent.routing.should_bind_tools``), d'où les « je n'ai pas l'outil ».
+
+    Ce que ça NE change pas : les corvées de fond (extraction, résumé, titre,
+    génération de compétences) ne passent pas par ici — elles demandent
+    ``MAINTENANCE`` / ``SKILL`` explicitement. Le local continue de les servir.
+
+    ``IMAGE`` survit parce que ce n'est pas un niveau de difficulté mais une
+    **capacité** : le modèle principal ne sait pas forcément produire une image.
+
+    Contrepartie assumée : les tours triviaux (« bonjour ») partent eux aussi
+    sur le modèle principal. C'est le prix d'un routeur qui ne se trompe plus
+    sur les demandes qui comptent.
 
     No LLM call is made — this is a pure, synchronous, zero-latency function.
     """
-    # Image tier: explicit image generation requests
     if _IMAGE_KEYWORDS.search(message):
         return ComplexityTier.IMAGE
-
-    word_count = len(message.split())
-
-    # Complex tier: code/infra keywords or very long messages
-    if _COMPLEX_KEYWORDS.search(message) or word_count > 150:
-        return ComplexityTier.COMPLEX
-
-    # Simple tier: very short messages with explicit simple intent
-    if word_count < 15 and _SIMPLE_KEYWORDS.search(message):
-        return ComplexityTier.SIMPLE
-
-    # Medium tier: writing/composition/research keywords
-    if _MEDIUM_KEYWORDS.search(message):
-        return ComplexityTier.MEDIUM
-
-    # Short messages (< 40 words) with only simple keywords → SIMPLE
-    if word_count < 40 and _SIMPLE_KEYWORDS.search(message):
-        return ComplexityTier.SIMPLE
-
-    # Short ambiguous messages → MEDIUM (safer default than SIMPLE)
-    if word_count < 60:
-        return ComplexityTier.MEDIUM
-
-    # Everything else is MEDIUM
-    return ComplexityTier.MEDIUM
+    return ComplexityTier.COMPLEX
 
 # ---------------------------------------------------------------------------
 # Module-level in-memory override dict (singleton per process).

@@ -39,6 +39,7 @@ Numbers
 from __future__ import annotations
 
 import logging
+import re
 
 from langchain_core.messages import AIMessage
 
@@ -48,6 +49,98 @@ logger = logging.getLogger(__name__)
 
 
 MAX_AGENT_ITERATIONS: int = 80
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Branchement des outils
+# ──────────────────────────────────────────────────────────────────────
+#
+# Historiquement dans la closure de ``create_agent_node``, avec cette règle :
+# les outils n'étaient bindés que sur tier COMPLEX, ou si la demande matchait
+# une regex de mots-clés. Justification d'origine : « the supervisor already
+# routes tool-needing queries to sub-agents ». Le superviseur a été supprimé
+# (mono-agent depuis le 26/07/2026) — la justification est tombée avec lui.
+#
+# La regex, elle, a été patchée à répétition, chaque fois après un incident
+# du même type. Ses propres commentaires en portent l'aveu : « the LLM said
+# "I have no tool for that" while browser_history_search … were sitting right
+# there ». ``convertis`` et ``transforme`` n'y ont jamais figuré — la demande
+# « Convertis ce PDF en Word » n'avait donc AUCUN outil branché.
+#
+# Depuis que ``classify_complexity`` rend COMPLEX pour toute demande
+# utilisateur, la regex ne décide plus rien sur le chat. Elle reste le filet
+# des appelants qui passent un autre tier (IMAGE : « génère une image et
+# envoie-la par mail » doit garder ses outils).
+#
+# Promue ici en constante de module : c'est ce que réclamait le commentaire
+# de ``tests/test_tool_kw_regex.py`` — « the regex should be promoted to a
+# module-level constant and this test can use a direct import instead ».
+TOOL_KEYWORDS: re.Pattern[str] = re.compile(
+    r"\b("
+    # Verbes d'action explicites
+    r"envoie|envoy|crée|liste|cherche|recherche|trouve|génère|"
+    r"exécute|lance|planifie|programme|enregistre|sauvegarde|"
+    r"supprime|archive|copie|déplace|renomme|partage|"
+    # Verbes de lecture / consultation / navigation
+    r"regarde|regard|consulte|vérifie|vérific|verifie|ouvre|navigue|"
+    r"affiche|montre|résume|résum|read|lis"
+    # Domaines métiers
+    r"|mail|email|courriel|calendrier|agenda|rendez.?vous|rdvs?|"
+    r"réunions?|meetings?|drive|sheet|doc|tâche|rappel|note|"
+    r"fichier|capture|screenshot|météo|news|traduis"
+    # Réseaux sociaux + apps grand public
+    r"|réseau(x)?\s*sociau(x)?|reseau(x)?\s*sociau(x)?|"
+    r"social[\s-]*media|profil|profile|"
+    r"linkedin|mastodon|twitter|x\.com|instagram|insta|"
+    r"facebook|threads|bluesky|tiktok|youtube|"
+    r"abonn[ée]s?|follower|followers|mention|mentions|"
+    r"post|posts|tweet|tweets|publication|publications|"
+    r"notif|notifs|notification|notifications|"
+    # Sites de service souvent croisés
+    r"doctolib|sncf|booking|amazon|leboncoin"
+    # Chrome v2 read-only inspectors (Sprint 0.7, 2026-05-26).
+    r"|historique|navigation|visit[eéès]?|"
+    r"signets?|favori|favoris|bookmark|bookmarks|"
+    r"t[ée]l[ée]charg\w*|download|downloads|"
+    r"chrome|navigateur|browser|"
+    # "site"/"sites" seul est trop générique (matche « le site de la
+    # marque ») : on exige un voisin orienté navigation.
+    r"sites?\s+(visit|web|internet|consult|all[ée]s?|fr[ée]quent)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def should_bind_tools(
+    tier,
+    *,
+    has_profile: bool,
+    automated_task: bool,
+    user_query: str,
+) -> bool:
+    """Faut-il montrer ses outils au modèle pour ce tour ?
+
+    Un profil collant branche toujours ses outils, même sur du bavardage : le
+    modèle a besoin de voir le même catalogue à chaque tour pour l'apprendre
+    (motif Hermes, Chantier 1). Une tâche automatisée aussi — sans quoi le
+    briefing quotidien redit « outil non disponible » (régression 2026-05-31).
+
+    Args:
+        tier: le ``ComplexityTier`` retenu pour ce tour.
+        has_profile: un ``toolset_profile`` est collé à la conversation.
+        automated_task: tour lancé par le planificateur, pas par un humain.
+        user_query: la demande, pour le filet de mots-clés.
+
+    Returns:
+        True s'il faut appeler ``bind_tools``.
+    """
+    from app.services.llm_provider import ComplexityTier
+
+    if has_profile or automated_task:
+        return True
+    if tier == ComplexityTier.COMPLEX:
+        return True
+    return bool(user_query and TOOL_KEYWORDS.search(user_query))
 
 # LangGraph's recursion_limit counts GRAPH SUPER-STEPS, not iterations.
 # Derive it so force_summary (which fires at MAX_AGENT_ITERATIONS

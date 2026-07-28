@@ -78,14 +78,27 @@ def _nodes_src() -> str:
 
 
 class TestWiring:
-    def test_bind_escalation_present(self):
-        """SIMPLE local + outils requis → MEDIUM, débrayable par le même
-        kill-switch que H-1 (bench de modèles locaux)."""
-        src = _nodes_src()
-        assert "[bind-escalation]" in src
-        block = src.split("[bind-escalation]")[0][-2000:]
-        assert "ComplexityTier.SIMPLE" in block
-        assert "HALLUCINATION_GUARD_DISABLED" in block
+    def test_a_user_request_never_lands_on_a_local_tier(self):
+        """Ce que protégeait l'escalade « SIMPLE local + outils requis →
+        MEDIUM » : un modèle LOCAL ne doit jamais recevoir un toolset bindé
+        (prompt processing d'une minute, et les petits modèles annoncent
+        l'action en texte au lieu d'émettre le tool_call).
+
+        L'escalade a été retirée le 28/07/2026 parce que la garantie est
+        désormais plus forte en amont : ``classify_complexity`` ne rend plus
+        jamais SIMPLE pour une demande d'utilisateur, donc le cas qu'elle
+        rattrapait ne peut plus se produire. On teste l'invariant, pas le
+        rustinage disparu.
+        """
+        from app.services.llm_provider import ComplexityTier, classify_complexity
+
+        for demande in (
+            "bonjour",
+            "regarde mes réseaux sociaux",
+            "C'est quoi Choose France 2026 ?",   # le tour mort de 57 s sur Gemma
+            "convertis ce pdf en docx",
+        ):
+            assert classify_complexity(demande) is not ComplexityTier.SIMPLE
 
     def test_h1_uses_response_announcement(self):
         """H-1 doit se déclencher sur l'annonce DANS LA RÉPONSE, pas

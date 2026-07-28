@@ -68,14 +68,16 @@ _CANONICAL_KEYWORDS = (
 
 @pytest.mark.parametrize("kw", _CANONICAL_KEYWORDS)
 def test_tool_kw_regex_contains_keyword(kw: str) -> None:
-    """Pin that the keyword is still part of the `_tool_kw` regex literal."""
-    src = _NODES_PY.read_text(encoding="utf-8")
-    # We don't try to parse the regex out — a substring search is enough
-    # to guard against a deletion. The keyword may appear once in the
-    # comment block above the regex AND inside the pattern itself; we
-    # only require the latter, but the substring check covers both.
-    assert kw in src, (
-        f"Keyword {kw!r} missing from nodes.py — was the _tool_kw regex "
+    """Pin that the keyword is still part of the tool-keyword regex.
+
+    Depuis 2026-07-28 on interroge le **motif réellement compilé** au lieu de
+    grepper le source d'un module : la regex vit dans
+    ``app.agent.routing.TOOL_KEYWORDS``.
+    """
+    from app.agent.routing import TOOL_KEYWORDS
+
+    assert kw in TOOL_KEYWORDS.pattern, (
+        f"Keyword {kw!r} missing from TOOL_KEYWORDS — was the regex "
         f"trimmed by mistake ?"
     )
 
@@ -86,50 +88,12 @@ def test_tool_kw_regex_contains_keyword(kw: str) -> None:
 
 
 # Keep this string in sync with nodes.py `_tool_kw`. Any divergence is
-# caught by the next test (source-grep against the actual pattern body).
-_TOOL_KW_PATTERN = (
-    r"\b("
-    r"envoie|envoy|crée|liste|cherche|recherche|trouve|génère|"
-    r"exécute|lance|planifie|programme|enregistre|sauvegarde|"
-    r"supprime|archive|copie|déplace|renomme|partage|"
-    r"regarde|regard|consulte|vérifie|vérific|verifie|ouvre|navigue|"
-    r"affiche|montre|résume|résum|read|lis"
-    r"|mail|email|courriel|calendrier|agenda|rendez.?vous|rdvs?|"
-    r"réunions?|meetings?|drive|sheet|doc|tâche|rappel|note|"
-    r"fichier|capture|screenshot|météo|news|traduis"
-    r"|réseau(x)?\s*sociau(x)?|reseau(x)?\s*sociau(x)?|"
-    r"social[\s-]*media|profil|profile|"
-    r"linkedin|mastodon|twitter|x\.com|instagram|insta|"
-    r"facebook|threads|bluesky|tiktok|youtube|"
-    r"abonn[ée]s?|follower|followers|mention|mentions|"
-    r"post|posts|tweet|tweets|publication|publications|"
-    r"notif|notifs|notification|notifications|"
-    r"doctolib|sncf|booking|amazon|leboncoin"
-    # Sprint 0.7 — Chrome v2 read-only inspectors
-    r"|historique|navigation|visit[eéès]?|"
-    r"signets?|favori|favoris|bookmark|bookmarks|"
-    r"t[ée]l[ée]charg\w*|download|downloads|"
-    r"chrome|navigateur|browser|"
-    r"sites?\s+(visit|web|internet|consult|all[ée]s?|fr[ée]quent)"
-    r")\b"
-)
-_TOOL_KW = re.compile(_TOOL_KW_PATTERN, re.IGNORECASE)
 
-
-def test_pattern_string_matches_nodes_py_literal() -> None:
-    """Drift guard : the pattern reproduced here must appear verbatim in
-    `nodes.py`. If you update one, update the other."""
-    src = _NODES_PY.read_text(encoding="utf-8")
-    # Strip leading whitespace from each line to remove the Python source
-    # indentation, then re-join. Same trick used elsewhere in the suite.
-    # We accept either the raw concatenated form OR a multi-line `r"…"`
-    # variant — the substring "envoie|envoy|crée|liste" is unique enough
-    # to anchor the search.
-    anchor = "envoie|envoy|crée|liste|cherche|recherche|trouve|génère"
-    assert anchor in src, (
-        "The unique anchor of the _tool_kw regex was not found in nodes.py "
-        "— either the regex was renamed or the canonical order was changed."
-    )
+# La regex a été promue en constante de module dans ``app.agent.routing``
+# (2026-07-28) — exactement ce que la note ci-dessus réclamait. Elle est donc
+# IMPORTÉE ici, plus recopiée : la duplication et son « drift guard » ont
+# disparu avec elle.
+from app.agent.routing import TOOL_KEYWORDS as _TOOL_KW  # noqa: E402
 
 
 def test_pattern_does_not_match_empty_string() -> None:

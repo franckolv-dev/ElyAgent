@@ -567,102 +567,25 @@ def create_agent_node():
                         "fallback manager INACTIVE (legacy path)",
                         _conv_id_fb[:8], _tier.value,
                     )
-            # Bind tools only for COMPLEX queries OR when the query explicitly mentions
-            # tool-related actions. SIMPLE/MEDIUM small-talk and quick facts skip binding.
-            _tool_kw = re.compile(
-                # Mots-clés qui déclenchent bind_tools sur les tiers
-                # SIMPLE / MEDIUM (pour COMPLEX les tools sont toujours bound).
-                # Cette regex doit matcher au moins UN verbe / nom de domaine
-                # de la requête utilisateur pour que l'agent voie ses outils.
-                #
-                # Audit 2026-05-26 : enrichi avec verbes de lecture/navigation
-                # (regarde / vérifie / consulte / ouvre / navigue) +
-                # vocabulaire réseaux sociaux + apps grand public — sans ces
-                # ajouts, « regarde mes réseaux sociaux » échappait au
-                # bind_tools sur Gemma 4 et le LLM inventait qu'il ne
-                # pouvait rien faire (observé en prod sur conv réseau social).
-                #
-                # « rdv » / « rendez-vous » / « réunion » / « meeting » ajoutés
-                # (mai 2026) — sans eux, « Mes RDV cette semaine » échappait au
-                # bind_tools et le LLM hallucinait un agenda inventé.
-                r"\b("
-                # Verbes d'action explicites
-                r"envoie|envoy|crée|liste|cherche|recherche|trouve|génère|"
-                r"exécute|lance|planifie|programme|enregistre|sauvegarde|"
-                r"supprime|archive|copie|déplace|renomme|partage|"
-                # Verbes de lecture / consultation / navigation
-                r"regarde|regard|consulte|vérifie|vérific|verifie|ouvre|navigue|"
-                r"affiche|montre|résume|résum|read|lis"
-                # Domaines métiers
-                r"|mail|email|courriel|calendrier|agenda|rendez.?vous|rdvs?|"
-                r"réunions?|meetings?|drive|sheet|doc|tâche|rappel|note|"
-                r"fichier|capture|screenshot|météo|news|traduis"
-                # Réseaux sociaux + apps grand public
-                r"|réseau(x)?\s*sociau(x)?|reseau(x)?\s*sociau(x)?|"
-                r"social[\s-]*media|profil|profile|"
-                r"linkedin|mastodon|twitter|x\.com|instagram|insta|"
-                r"facebook|threads|bluesky|tiktok|youtube|"
-                r"abonn[ée]s?|follower|followers|mention|mentions|"
-                r"post|posts|tweet|tweets|publication|publications|"
-                r"notif|notifs|notification|notifications|"
-                # Sites de service souvent croisés
-                r"doctolib|sncf|booking|amazon|leboncoin"
-                # Sprint 0.7 (2026-05-26) — Chrome v2 read-only inspectors.
-                # Without these, « quels sites j'ai visité ? » /
-                # « cherche dans mon historique de navigation » /
-                # « mes téléchargements du jour » skipped bind_tools and
-                # the LLM said "I have no tool for that" while
-                # browser_history_search / _bookmarks_search /
-                # _downloads_search were sitting right there.
-                r"|historique|navigation|visit[eéès]?|"
-                r"signets?|favori|favoris|bookmark|bookmarks|"
-                r"t[ée]l[ée]charg\w*|download|downloads|"
-                r"chrome|navigateur|browser|"
-                # "site"/"sites" alone is too generic (matches "le site
-                # de la marque"). Require a navigation-y neighbour to
-                # avoid bind_tools on chitchat about brands' websites.
-                r"sites?\s+(visit|web|internet|consult|all[ée]s?|fr[ée]quent)"
-                r")\b",
-                re.IGNORECASE,
+            # Quels outils le modèle voit-il ? La règle vit désormais dans
+            # ``app.agent.routing.should_bind_tools`` — hors de cette closure,
+            # donc testable. Elle branche toujours les outils sur une demande
+            # d'utilisateur : depuis que ``classify_complexity`` rend COMPLEX,
+            # le vocabulaire employé ne décide plus rien. « Convertis ce PDF
+            # en Word » n'avait aucun outil branché parce que « convertis »
+            # ne figurait dans aucune liste de mots-clés.
+            #
+            # L'escalade « tier SIMPLE local + outils requis → MEDIUM » a été
+            # retirée avec le reste : le chat ne descend plus en local, donc
+            # elle ne pouvait plus se déclencher.
+            from app.agent.routing import should_bind_tools
+
+            _bind_tools_flag = should_bind_tools(
+                _tier,
+                has_profile=bool(state.get("toolset_profile") or ""),
+                automated_task=bool(state.get("automated_task")),
+                user_query=user_query,
             )
-            # When a sticky toolset profile is defined for the conversation,
-            # ALWAYS bind that profile's tools — even for chitchat. The
-            # model needs to see the same catalog every turn to learn it
-            # (Hermes pattern, Chantier 1). The cost is ~3-5K tokens of
-            # tool schemas per call, which is the price for stability.
-            _has_profile = bool(state.get("toolset_profile") or "")
-            _bind_tools_flag = (
-                _has_profile or
-                bool(state.get("automated_task")) or
-                _tier == ComplexityTier.COMPLEX or
-                bool(_tool_kw.search(user_query))
-            )
-            # ── Escalade bind (2026-06-12) — règle absolue du bench
-            # Ministral 26/05 : un modèle LOCAL ne reçoit JAMAIS un toolset
-            # bindé. Le prompt processing des ~80 schémas coûte ~1 min/tour
-            # en local ET les petits modèles répondent en texte (« Je vais
-            # faire une recherche web ») au lieu d'émettre le tool_call —
-            # vécu : tier simple + Gemma 4bit + « C'est quoi Choose France
-            # 2026 ? » = 57 s pour une annonce sans action, tour mort.
-            # Si SIMPLE est local et que des outils vont être bindés →
-            # MEDIUM pour ce tour. HALLUCINATION_GUARD_DISABLED (bench de
-            # modèles locaux) désactive aussi cette escalade.
-            if (
-                _bind_tools_flag
-                and _tier == ComplexityTier.SIMPLE
-                and (os.getenv("HALLUCINATION_GUARD_DISABLED") or "").strip().lower()
-                not in {"1", "true", "yes", "on"}
-            ):
-                try:
-                    from app.services.qwen_no_think import is_local_openai_llm as _is_local_probe
-                    if _is_local_probe(get_llm_for_tier(ComplexityTier.SIMPLE)):
-                        logger.warning(
-                            "[bind-escalation] tier simple LOCAL + outils requis "
-                            "→ tier medium (règle : jamais de toolset bindé en local)"
-                        )
-                        _tier = ComplexityTier.MEDIUM
-                except Exception as _esc_exc:  # noqa: BLE001 — sonde best-effort
-                    logger.debug("bind-escalation probe failed: %s", _esc_exc)
             _tier_key = _tier.value
             # Cache key differentiates with/without tools bound
             # FIX 2026-05-06 (audit H-5): apply keyword-based tool filtering
