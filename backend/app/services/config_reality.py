@@ -235,6 +235,40 @@ def _check_resolved_model(
     return found
 
 
+def check_unguarded_engaging_tools() -> list[Finding]:
+    """Les actes engageants qu'aucune autorisation ne protège.
+
+    Mesuré le 28/07/2026, lot 1 du plan de marche : **26 outils sur 154**, dont
+    ``ssh_execute``, ``gmail_empty_trash`` (« DEFINITIVELY delete ») et sept
+    ``*_raw_api_call`` qui peuvent appeler n'importe quelle méthode des API
+    Google. Plusieurs portent dans leur propre docstring « ALWAYS ask user
+    confirmation » — mais une docstring est une consigne AU MODÈLE, pas un
+    garde-fou : rien ne l'applique s'il passe outre.
+
+    Ce contrôle ne bloque rien, il rend le trou visible. Le combler est le
+    lot 3, et ça se décide en regardant la liste.
+
+    Ne lève jamais : un instrument de diagnostic ne fait pas tomber le démarrage.
+    """
+    try:
+        from app.agent.tool_nature import unguarded_engaging_tools
+    except Exception as exc:  # noqa: BLE001 — le diagnostic reste optionnel
+        logger.debug("nature des outils illisible (%s)", exc)
+        return []
+
+    return [
+        Finding(
+            kind="unguarded_engaging_tool",
+            subject=name,
+            detail=(
+                "acte irréversible ou visible par des tiers, exécutable sans "
+                "que l'utilisateur soit consulté"
+            ),
+        )
+        for name in unguarded_engaging_tools()
+    ]
+
+
 async def check_config_reality(
     models: list[str] | None = None,
     bound_tools: list[str] | None = None,
@@ -308,12 +342,25 @@ async def log_config_reality() -> int:
     findings = await check_config_reality()
     if not findings:
         logger.info("Contrôle de réalité de la configuration : rien à signaler")
-        return 0
+    else:
+        logger.warning(
+            "Contrôle de réalité : %d valeur(s) de configuration tombent dans un "
+            "repli — voir le détail ci-dessous", len(findings),
+        )
+        for f in findings:
+            logger.warning("  %s", f)
 
-    logger.warning(
-        "Contrôle de réalité : %d valeur(s) de configuration tombent dans un "
-        "repli — voir le détail ci-dessous", len(findings),
-    )
-    for f in findings:
-        logger.warning("  %s", f)
-    return len(findings)
+    # Journalisé À PART, et volontairement pas fusionné dans `findings` : ce
+    # n'est pas une valeur de configuration tombée dans un repli, c'est un
+    # périmètre d'action jamais soumis à l'utilisateur. Les mélanger noierait
+    # les constats de configuration sous 26 lignes permanentes et casserait le
+    # contrat « liste vide = rien à signaler » sur lequel s'appuient les pins.
+    nus = check_unguarded_engaging_tools()
+    if nus:
+        logger.warning(
+            "Actes engageants sans autorisation : %d outil(s) peuvent agir de "
+            "façon irréversible ou visible par des tiers sans que l'utilisateur "
+            "soit consulté — %s",
+            len(nus), ", ".join(f.subject for f in nus[:8]) + (" …" if len(nus) > 8 else ""),
+        )
+    return len(findings) + len(nus)
