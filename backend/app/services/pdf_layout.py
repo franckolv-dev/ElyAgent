@@ -274,7 +274,16 @@ ROLES: frozenset[str] = frozenset(
 )
 ATTRIBUTES: frozenset[str] = frozenset({"SAUT", "SUITE", "CENTRE"})
 
-_BLOCK_ID = re.compile(r"^\s*(p\d+b\d+)\b(.*)$", re.IGNORECASE)
+# Les décorations tolérées en tête de ligne : puce de liste, puis chevrons /
+# crochets / accent grave autour de l'identifiant.
+#
+# ⚠️ Mesuré le 28/07 : sans cette tolérance, GPT-5.6 voyait **6 tranches sur
+# 12** entièrement jetées — il rendait `<p1b0> TITRE1 SAUT`, un balisage juste
+# aux chevrons près. Jeter une réponse correcte pour sa décoration est un échec
+# d'Ely, pas du modèle.
+_BLOCK_ID = re.compile(
+    r"^\s*(?:[-*•]\s*)?[<\[(`]?\s*(p\d+b\d+)\s*[>\])`]?\s*(.*)$", re.IGNORECASE
+)
 
 
 @dataclass

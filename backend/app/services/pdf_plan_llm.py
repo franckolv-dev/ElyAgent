@@ -87,6 +87,12 @@ MAX_CONCURRENT_WINDOWS: int = 4
 # on le DIT (cf. règle 3) au lieu de rogner le document en douce.
 MAX_WINDOWS: int = 40
 
+# Une tranche qui revient SANS AUCUNE décision est redemandée. Mesuré après
+# #294 sur des appels réels : à document et prompt identiques, le modèle rend
+# tantôt 26-28 décisions, tantôt du vide. Une seule reprise — au-delà, on
+# paierait des appels sans raison de mieux réussir (leçon de #289).
+WINDOW_RETRIES: int = 1
+
 _PROMPT = """\
 Tu décides de la STRUCTURE d'un document Word reconstruit depuis un PDF.
 
@@ -99,9 +105,13 @@ bout de la justification) et un EXTRAIT de son texte.
 
 Tu ne réécris rien. Le texte reste tel quel : tu ne rends que des identifiants.
 
-RÉPONDS PAR UN BALISAGE, une ligne par bloc sur lequel tu statues :
+RÉPONDS PAR UN BALISAGE, une ligne par bloc sur lequel tu statues. L'identifiant
+NU, puis le rôle, puis les attributs, séparés par des espaces. Exactement ainsi —
+sans chevrons, sans crochets, sans puce, sans guillemets :
 
-    <identifiant> <RÔLE> [ATTRIBUTS]
+    p1b0 TITRE1 SAUT CENTRE
+    p1b4 ARTEFACT
+    p8b0 CORPS SUITE
 
 RÔLES : TITRE1 (chapitre, partie) · TITRE2 (sous-titre) · CORPS · CITATION
         · ARTEFACT (à SUPPRIMER du document : folio, en-tête courant)
@@ -179,10 +189,35 @@ def _boundary_context(layout: DocumentLayout, first: int) -> str:
     )
 
 
+async def _ask_once(llm, prompt: str) -> ConversionPlan:
+    """Un aller-retour. Ne lève jamais : une panne rend un plan vide."""
+    # ``config={"callbacks": []}`` : cet appel tourne PENDANT un tour actif.
+    # Sans cette coupure, LangChain propage l'arbre de callbacks par
+    # contextvars et le balisage s'affiche caractère par caractère dans la
+    # réponse de l'utilisateur (bug réel du 19/07/2026).
+    response = await ainvoke_with_deadline(
+        llm, [HumanMessage(content=prompt)],
+        tier="complex", surface="pdf-plan", config={"callbacks": []},
+    )
+    return parse_conversion_plan(
+        content_to_text(getattr(response, "content", response))
+    )
+
+
 async def _plan_one_window(llm, layout: DocumentLayout, first: int,
                            last: int, requirements: str) -> ConversionPlan:
-    """Une tranche. Ne lève jamais : une panne rend un plan vide."""
-    digest = build_layout_digest(layout, first_page=first, last_page=last)
+    """Une tranche, avec une reprise si elle revient sans aucune décision.
+
+    Mesuré après #294 : sur le MÊME document et le MÊME prompt, GPT-5.6 Terra
+    rend tantôt 26-28 décisions, tantôt **une réponse vide** — sans erreur, sans
+    ``finish_reason``, en quelques secondes (l'échéance est à 240 s). Rien ne
+    permet de distinguer les deux cas avant de lire la réponse.
+
+    Une tranche vide est un signal NET, pas une décision discutable : on
+    redemande. C'est le geste de la boucle de conformité (#288/#289) appliqué
+    ici. **Une seule fois** — un modèle muet deux fois ne le sera pas moins la
+    troisième, et insister coûterait des appels sans raison de mieux réussir.
+    """
     prompt = _PROMPT.format(
         exigences=(
             _WITH_REQUIREMENTS.format(requirements=requirements.strip()[:2000])
@@ -190,27 +225,31 @@ async def _plan_one_window(llm, layout: DocumentLayout, first: int,
         ),
         contexte=_boundary_context(layout, first),
         first=first, last=last, total=layout.page_count,
-        digest=digest,
+        digest=build_layout_digest(layout, first_page=first, last_page=last),
     )
-    try:
-        # ``config={"callbacks": []}`` : cet appel tourne PENDANT un tour actif.
-        # Sans cette coupure, LangChain propage l'arbre de callbacks par
-        # contextvars et le balisage s'affiche caractère par caractère dans la
-        # réponse de l'utilisateur (bug réel du 19/07/2026).
-        response = await ainvoke_with_deadline(
-            llm, [HumanMessage(content=prompt)],
-            tier="complex", surface="pdf-plan", config={"callbacks": []},
-        )
-    except Exception as exc:  # noqa: BLE001 — échouer OUVERT, tranche par tranche
-        logger.warning(
-            "plan de conversion : pages %d-%d non planifiées (%s) — défaut appliqué",
-            first, last, exc,
-        )
-        return ConversionPlan()
 
-    return parse_conversion_plan(
-        content_to_text(getattr(response, "content", response))
+    for attempt in range(1 + WINDOW_RETRIES):
+        try:
+            plan = await _ask_once(llm, prompt)
+        except Exception as exc:  # noqa: BLE001 — échouer OUVERT, tranche par tranche
+            plan, raison = ConversionPlan(), str(exc)
+        else:
+            if not plan.is_empty:
+                return plan
+            raison = "réponse sans aucune décision exploitable"
+
+        if attempt < WINDOW_RETRIES:
+            logger.info(
+                "plan de conversion : pages %d-%d, %s — on redemande",
+                first, last, raison,
+            )
+
+    logger.warning(
+        "plan de conversion : pages %d-%d non planifiées après %d tentative(s) "
+        "(%s) — heuristiques locales pour ces pages",
+        first, last, 1 + WINDOW_RETRIES, raison,
     )
+    return ConversionPlan()
 
 
 async def request_conversion_plan(
@@ -294,5 +333,6 @@ __all__ = [
     "MAX_CONCURRENT_WINDOWS",
     "MAX_WINDOWS",
     "PAGES_PER_WINDOW",
+    "WINDOW_RETRIES",
     "request_conversion_plan",
 ]
