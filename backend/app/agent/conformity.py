@@ -69,10 +69,17 @@ from app.services.llm_deadline import ainvoke_with_deadline
 logger = logging.getLogger(__name__)
 
 
-# Deux relances suffisent : au-delà, l'expérience des boucles de correction
-# montre que le modèle tourne sur le même écart sans le résoudre. Mieux vaut
-# rendre la main avec un résultat imparfait ET l'écart signalé.
-MAX_CONFORMITY_RETRIES: int = 2
+# Ce n'est PLUS le régulateur, c'est un garde-fou d'emballement (28/07/2026).
+#
+# La version livrée en #288 plafonnait à 2 reprises — un chiffre posé SANS
+# mesure, alors que la boucle n'avait jamais tourné en production. Il traitait
+# de la même façon une tâche qui progresse (6 exigences non satisfaites → 2 →
+# 1) et une qui tourne en rond (les mêmes 3 écarts à chaque reprise) : la
+# première méritait de continuer, la seconde devait s'arrêter tout de suite.
+#
+# C'est désormais le PROGRÈS qui décide (``is_making_progress``). Ce plafond ne
+# sert plus qu'à borner un emballement pathologique, d'où une valeur haute.
+MAX_CONFORMITY_RETRIES: int = 5
 
 _CONFORME = "CONFORME"
 
@@ -124,6 +131,28 @@ Reprends le travail en visant précisément ces points. Change d'approche ou de 
 paramètres plutôt que de refaire à l'identique. Si l'un de ces points est \
 réellement hors de portée, dis-le explicitement à l'utilisateur au lieu de le \
 passer sous silence.
+"""
+
+_REPORT_PROMPT = """\
+Tu as travaillé sur cette demande sans pouvoir la satisfaire entièrement, et \
+tu n'as plus de reprise disponible.
+
+DEMANDE :
+{demande}
+
+TA RÉPONSE ACTUELLE :
+{reponse}
+
+CE QUI N'EST PAS SATISFAIT :
+{ecarts}
+
+Réécris ta réponse à l'utilisateur. Garde ce que tu as réellement produit, \
+puis dis-lui clairement, sans détour et sans t'excuser, ce qui n'a pas pu être \
+obtenu. Termine par UNE piste concrète et actionnable — ce qu'il peut fournir, \
+reformuler ou accepter comme contrainte pour que ça aboutisse.
+
+N'invente aucun résultat. Ne promets aucune action future. Réponds uniquement \
+par le texte destiné à l'utilisateur.
 """
 
 
@@ -196,6 +225,44 @@ def parse_conformity_verdict(raw: Any) -> tuple[bool, str]:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Le progrès — ce qui décide vraiment de continuer ou d'arrêter
+# ──────────────────────────────────────────────────────────────────────
+
+
+def count_gaps(gaps: str) -> int:
+    """Combien d'exigences non satisfaites dans ce verdict ?
+
+    Une puce = un écart. Un verdict rédigé en prose, sans puce, compte pour
+    **un** écart : il en signale au moins un, et on ne gonfle pas le compte
+    avec le nombre de lignes de rédaction — sinon une reformulation plus
+    bavarde passerait pour une régression.
+    """
+    text = (gaps or "").strip()
+    if not text:
+        return 0
+    bullets = [
+        ln for ln in text.splitlines()
+        if ln.strip().startswith(("-", "•", "*"))
+    ]
+    return len(bullets) if bullets else 1
+
+
+def is_making_progress(*, new_count: int, previous_count: int) -> bool:
+    """La reprise précédente a-t-elle fait reculer la liste des écarts ?
+
+    ``previous_count == 0`` signifie « pas encore de tour de référence » : la
+    première vérification a toujours droit à sa reprise.
+
+    Un compte identique n'est pas un progrès : le modèle rend la même liste,
+    la reprise suivante rendra la même. Un compte en hausse non plus — la
+    reprise a empiré les choses, insister n'a aucune raison d'aider.
+    """
+    if previous_count <= 0:
+        return True
+    return new_count < previous_count
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Le nœud
 # ──────────────────────────────────────────────────────────────────────
 
@@ -248,15 +315,76 @@ async def conformity_node(state: AgentState | dict) -> dict:
     if conforme:
         return {"messages": []}
 
-    retries = int(state.get("conformity_retries", 0)) + 1
-    logger.info(
-        "conformité : relance %d/%d — écarts : %.200s",
-        retries, MAX_CONFORMITY_RETRIES, ecarts.replace("\n", " ; "),
+    # Le progrès décide, pas le compteur.
+    n = count_gaps(ecarts)
+    previous = int(state.get("conformity_gap_count", 0))
+    retries = int(state.get("conformity_retries", 0))
+
+    if (
+        is_making_progress(new_count=n, previous_count=previous)
+        and retries < MAX_CONFORMITY_RETRIES
+    ):
+        logger.info(
+            "conformité : relance %d — %d écart(s), %d au tour précédent : %.200s",
+            retries + 1, n, previous, ecarts.replace("\n", " ; "),
+        )
+        return {
+            "messages": [HumanMessage(content=_RETRY_TEMPLATE.format(ecarts=ecarts))],
+            "conformity_retries": retries + 1,
+            "conformity_gap_count": n,
+        }
+
+    # On s'arrête — soit ça n'avance plus, soit le garde-fou a parlé. Dans les
+    # deux cas l'utilisateur doit SAVOIR ce qui n'a pas pu être fait : rendre
+    # un résultat incomplet en silence est précisément ce que cette boucle
+    # existe pour supprimer.
+    raison = (
+        "plafond de sécurité atteint" if retries >= MAX_CONFORMITY_RETRIES
+        else f"aucun progrès ({n} écart(s), {previous} au tour précédent)"
     )
-    return {
-        "messages": [HumanMessage(content=_RETRY_TEMPLATE.format(ecarts=ecarts))],
-        "conformity_retries": retries,
-    }
+    logger.info("conformité : arrêt — %s. Écarts : %.200s", raison, ecarts.replace("\n", " ; "))
+    return await _report_remaining_gaps(messages, llm, ecarts)
+
+
+async def _report_remaining_gaps(messages: list, llm: Any, ecarts: str) -> dict:
+    """Réécrit la réponse finale pour y dire ce qui manque, et proposer une piste.
+
+    Le message rendu porte **le même ``id``** que la réponse finale : LangGraph
+    le SUBSTITUE au lieu de l'empiler, donc l'utilisateur voit une seule
+    réponse — complétée, pas doublée.
+
+    Échoue OUVERT : si l'appel tombe, on rend la réponse d'origine telle quelle
+    plutôt que de retenir le tour.
+    """
+    last = messages[-1] if messages else None
+    if not isinstance(last, AIMessage):
+        return {"messages": []}
+
+    prompt = _REPORT_PROMPT.format(
+        demande=_last_user_request(messages)[:2000],
+        reponse=content_to_text(last.content)[:4000],
+        ecarts=ecarts[:2000],
+    )
+    try:
+        response = await ainvoke_with_deadline(
+            llm,
+            [HumanMessage(content=prompt)],
+            tier="complex",
+            surface="conformity-report",
+            config={"callbacks": []},
+        )
+    except Exception as exc:  # noqa: BLE001 — échouer OUVERT
+        logger.warning(
+            "conformité : rapport indisponible (%s) — réponse rendue telle quelle",
+            exc,
+        )
+        return {"messages": []}
+
+    texte = content_to_text(getattr(response, "content", response)).strip()
+    if not texte:
+        return {"messages": []}
+    # Même id ⇒ substitution par ``add_messages``, pas empilement.
+    return {"messages": [AIMessage(content=texte, id=last.id)]}
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -321,6 +449,8 @@ def route_after_conformity(state: AgentState | dict) -> str:
 __all__ = [
     "MAX_CONFORMITY_RETRIES",
     "conformity_node",
+    "count_gaps",
+    "is_making_progress",
     "parse_conformity_verdict",
     "route_after_conformity",
     "should_verify_conformity",
