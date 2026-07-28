@@ -32,7 +32,7 @@ trompait, et personne ne le lui disait).
 
 Deux axes, pas trois catégories
 --------------------------------
-La classification des 154 outils l'a montré : les deux questions sont
+La classification des **208 outils** l'a montré : les deux questions sont
 INDÉPENDANTES. ``gmail_send_email`` est à la fois engageant (il part chez un
 tiers) et arbitre (le corps du message se rédige) ; ``drive_create_folder``
 n'est ni l'un ni l'autre.
@@ -47,10 +47,14 @@ n'est ni l'un ni l'autre.
 
 Comment cette table a été établie
 ----------------------------------
-Par le modèle cloud sur les 154 outils réels — c'est du jugement à grande
-échelle, donc exactement le cas d'usage de la règle qu'elle encode. Puis relue
-par croisement mécanique avec les noms d'outils, ce qui a fait apparaître les
-trois ``gmail_trash_*`` (voir ``ALREADY_GUARDED``).
+Par le modèle cloud sur les outils réels — c'est du jugement à grande échelle,
+donc exactement le cas d'usage de la règle qu'elle encode. Puis relue par
+croisement mécanique avec les noms d'outils.
+
+⚠️ Le lot 1 (#296) n'en recensait que **154** : son inventaire ne regardait que
+``app/agent/tools`` et ratait les **55 outils de ``skills/builtin``** — dont
+ceux qui pilotent le clavier, la souris et le système de fichiers. Corrigé au
+lot 3 : le scan couvre tout ``app/``, et le pin de dérive avec lui.
 
 ⚠️ Ici on échoue FERMÉ — l'inverse de la boucle de conformité
 --------------------------------------------------------------
@@ -60,11 +64,13 @@ l'inverse. Un faux positif coûte une question ; un faux négatif envoie un
 message ou supprime des données sans que l'utilisateur l'ait voulu.
 L'asymétrie est trop forte pour laisser passer le doute.
 
-Ce que ce module ne fait PAS
------------------------------
-Il ne change aucun comportement. Étendre l'autorisation aux 26 actes engageants
-non protégés est le lot 3 — et ça se décide en regardant la liste que
-``unguarded_engaging_tools()`` produit, pas en la subissant.
+Ce que le lot 3 a fermé
+------------------------
+Sur le périmètre complet, **18 actes engageants** n'étaient soumis à rien. Huit
+sont passés sous autorisation (``hitl_preferences.LOCKED_HITL_TOOLS``), dix en
+sont explicitement dispensés avec leur raison (``APPROVAL_WAIVED``).
+``unguarded_engaging_tools()`` doit donc rester vide : ce qu'elle rapporterait
+désormais serait une régression, pas un état de fait.
 """
 from __future__ import annotations
 
@@ -86,21 +92,82 @@ class _N:
     arbitrates: bool = False
 
 
-# Les outils placés sous autorisation AVANT ce lot, par décision de Franck.
-#
-# ⚠️ Cette liste PRIME sur la table. La classification a placé les trois
-# ``gmail_trash_*`` en ECRITURE — raisonnement défendable, la corbeille Gmail
-# est réversible — mais ils sont protégés aujourd'hui. Une table de données ne
-# doit jamais pouvoir DÉPROTÉGER quelque chose : le sens de lecture est
+def _real_guard() -> frozenset[str]:
+    """La garde RÉELLE, lue à ses deux sources.
+
+    ⚠️ #296 écrivait cette liste À LA MAIN depuis ``hitl_descriptions.py``, qui
+    ne décrit que 6 outils. La garde effective vit ailleurs, en deux endroits :
+    ``hitl_preferences.LOCKED_HITL_TOOLS`` (dangereux, ON par défaut) et
+    ``security_filter.ALWAYS_CRITICAL_TOOLS`` — **38 outils**. La liste écrite
+    à la main a fait annoncer 26 trous là où il y en avait 9, et surtout elle
+    aurait pu faire croire protégé ce qui ne l'était pas.
+
+    Une table de sécurité bâtie sur la mauvaise source est pire qu'une absence
+    de table : elle rassure. On DÉRIVE donc, on ne paraphrase plus.
+
+    Ne lève jamais : si une source est illisible, on rend ce qu'on a — le
+    croisement avec ``TOOL_NATURE`` reprotégera les engageants de toute façon.
+    """
+    guard: set[str] = set()
+    for module, attr in (
+        ("app.services.hitl_preferences", "LOCKED_HITL_TOOLS"),
+        ("app.services.security_filter", "ALWAYS_CRITICAL_TOOLS"),
+    ):
+        try:
+            mod = __import__(module, fromlist=[attr])
+            guard |= set(getattr(mod, attr, ()) or ())
+        except Exception as exc:  # noqa: BLE001 — une source absente n'est pas fatale
+            logger.warning("tool_nature : garde %s.%s illisible (%s)", module, attr, exc)
+    return frozenset(guard)
+
+
+# Les outils déjà sous autorisation. ⚠️ PRIME sur la table : la classification
+# a placé les trois ``gmail_trash_*`` en ECRITURE — raisonnement défendable, la
+# corbeille Gmail est réversible — mais ils sont protégés aujourd'hui. Une table
+# de données ne doit jamais pouvoir DÉPROTÉGER : le sens de lecture est
 # toujours « ajouter une garde », jamais « en retirer une ».
-ALREADY_GUARDED: Final[frozenset[str]] = frozenset({
-    "gmail_reply_email",
-    "gmail_send_email",
-    "gmail_send_with_attachment",
-    "gmail_trash_by_category",
-    "gmail_trash_by_query",
-    "gmail_trash_emails",
-})
+ALREADY_GUARDED: Final[frozenset[str]] = _real_guard()
+
+
+# Les actes engageants explicitement DISPENSÉS de confirmation, et pourquoi.
+#
+# Décisions de Franck, 28/07/2026 :
+#     « Je ne veux pas avoir à confirmer pour l'ouverture d'un onglet Chrome ou
+#       pour déclencher une tâche que j'ai créée et encore moins pour m'envoyer
+#       un message via Telegram. »
+#
+# ⚠️ Une dispense n'est PAS un reclassement. ``telegram_send_message`` reste
+# ``ENGAGEANT`` dans la table : il envoie bien un message. Le reclasser ferait
+# mentir la table sur sa nature pour obtenir un effet de politique. On sépare
+# donc ce que l'outil EST de ce qui exige un accord — la nature reste vraie,
+# l'arbitrage reste traçable, et il se relit dans six mois.
+#
+# ⚠️ Une dispense ne peut jamais s'appliquer à un outil déjà gardé : ce serait
+# rouvrir par la fenêtre la porte que ``ALREADY_GUARDED`` ferme. Un pin le
+# vérifie.
+APPROVAL_WAIVED: Final[dict[str, str]] = {
+    # Naviguer n'est pas engager : une session de navigation, c'est des dizaines
+    # de clics, et confirmer chacun rendrait l'automatisation inutilisable.
+    "browser_tab_click": "naviguer n'est pas engager — décision de Franck du 28/07",
+    "browser_click": "naviguer n'est pas engager — décision de Franck du 28/07",
+    "browser_fill": "remplir un formulaire n'est pas le soumettre — même décision",
+    # La tâche a déjà été approuvée à sa création ; la relancer n'ajoute rien.
+    "scheduler_run_task": "la tâche a été approuvée quand l'utilisateur l'a créée",
+    # Destinataire = l'utilisateur lui-même. C'est un canal de notification vers
+    # lui, pas un envoi vers un tiers — et il doit fonctionner pendant une
+    # mission de nuit sans réveiller personne pour demander la permission.
+    "telegram_send_message": "le destinataire est l'utilisateur lui-même, pas un tiers",
+    # La session de contrôle d'écran est autorisée UNE fois, par `trainer_start`
+    # qui est gardé. Confirmer ensuite chaque geste reviendrait à demander
+    # l'autorisation de faire ce qu'on vient d'autoriser.
+    "trainer_click": "geste dans une session déjà autorisée par trainer_start",
+    "trainer_type": "geste dans une session déjà autorisée par trainer_start",
+    "trainer_hotkey": "geste dans une session déjà autorisée par trainer_start",
+    "trainer_move": "geste dans une session déjà autorisée par trainer_start",
+    # Les serveurs MCP accessibles sont déjà filtrés par utilisateur (mcp_acl) :
+    # doubler d'une confirmation ferait payer deux fois le même contrôle.
+    "mcp_call_tool": "déjà filtré par l'ACL MCP propre à chaque utilisateur",
+}
 
 # Paramètres par lesquels une exigence en langage naturel peut entrer dans un
 # outil. C'est ce qui manquait à ``pdf_to_docx(source, output_name)`` : l'outil
@@ -114,9 +181,9 @@ _INTENT_PARAMS: Final[frozenset[str]] = frozenset({
 
 
 TOOL_NATURE: Final[dict[str, _N]] = {
-    # ── agentic_rag_tool ──────────────────────────────────────────
+    # ── agent/tools/agentic_rag_tool ────────────────────────────
     "smart_knowledge_query": _N("LECTURE"),
-    # ── browser_extension_tool ────────────────────────────────────
+    # ── agent/tools/browser_extension_tool ──────────────────────
     "browser_bookmarks_search": _N("LECTURE"),
     "browser_close_tab": _N("ECRITURE"),
     "browser_downloads_search": _N("LECTURE"),
@@ -132,7 +199,7 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "browser_tab_screenshot": _N("LECTURE"),
     "browser_tab_wait_for_selector": _N("LECTURE"),
     "browser_tab_wait_loaded": _N("LECTURE"),
-    # ── calendar_tool ─────────────────────────────────────────────
+    # ── agent/tools/calendar_tool ───────────────────────────────
     "calendar_check_availability": _N("LECTURE"),
     "calendar_create_event": _N("ECRITURE"),
     "calendar_create_meet_event": _N("ENGAGEANT"),
@@ -143,7 +210,7 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "calendar_quick_add": _N("ECRITURE", arbitrates=True),
     "calendar_raw_api_call": _N("ENGAGEANT"),
     "calendar_update_event": _N("ECRITURE"),
-    # ── contacts_tool ─────────────────────────────────────────────
+    # ── agent/tools/contacts_tool ───────────────────────────────
     "contacts_batch_operations": _N("ENGAGEANT"),
     "contacts_create": _N("ECRITURE"),
     "contacts_delete": _N("ENGAGEANT"),
@@ -152,9 +219,9 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "contacts_raw_api_call": _N("ENGAGEANT"),
     "contacts_search": _N("LECTURE"),
     "contacts_update": _N("ECRITURE"),
-    # ── delegate_tool ─────────────────────────────────────────────
+    # ── agent/tools/delegate_tool ───────────────────────────────
     "delegate": _N("LECTURE", arbitrates=True),
-    # ── docs_tool ─────────────────────────────────────────────────
+    # ── agent/tools/docs_tool ───────────────────────────────────
     "docs_append_text": _N("ECRITURE"),
     "docs_batch_update": _N("ECRITURE"),
     "docs_create_document": _N("ECRITURE"),
@@ -162,7 +229,7 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "docs_raw_api_call": _N("ENGAGEANT"),
     "docs_read_document": _N("LECTURE"),
     "docs_replace_text": _N("ECRITURE"),
-    # ── drive_tool ────────────────────────────────────────────────
+    # ── agent/tools/drive_tool ──────────────────────────────────
     "drive_copy_file": _N("ECRITURE"),
     "drive_create_file": _N("ECRITURE"),
     "drive_create_folder": _N("ECRITURE"),
@@ -177,15 +244,13 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "drive_share_file": _N("ENGAGEANT"),
     "drive_update_file": _N("ECRITURE"),
     "drive_upload_local_file": _N("ECRITURE"),
-    # ── fibonacci_tool ────────────────────────────────────────────
-    "fibonacci": _N("LECTURE"),
-    # ── file_tool ─────────────────────────────────────────────────
+    # ── agent/tools/file_tool ───────────────────────────────────
     "analyze_file": _N("LECTURE", arbitrates=True),
-    # ── github_tool ───────────────────────────────────────────────
+    # ── agent/tools/github_tool ─────────────────────────────────
     "github_notifications": _N("LECTURE"),
     "github_repo_stats": _N("LECTURE"),
     "github_traffic_stats": _N("LECTURE"),
-    # ── gmail_tool ────────────────────────────────────────────────
+    # ── agent/tools/gmail_tool ──────────────────────────────────
     "gmail_batch_modify": _N("ECRITURE"),
     "gmail_create_draft": _N("ECRITURE"),
     "gmail_create_label": _N("ECRITURE"),
@@ -208,63 +273,63 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "gmail_trash_by_query": _N("ECRITURE"),
     "gmail_trash_emails": _N("ECRITURE"),
     "gmail_update_settings": _N("ENGAGEANT"),
-    # ── image_tool ────────────────────────────────────────────────
-    "generate_image": _N("ECRITURE", arbitrates=True),
-    # ── knowledge_tool ────────────────────────────────────────────
+    # ── agent/tools/graduated/fibonacci_tool ────────────────────
+    "fibonacci": _N("LECTURE"),
+    # ── agent/tools/knowledge_tool ──────────────────────────────
     "knowledge_list": _N("LECTURE"),
     "knowledge_search": _N("LECTURE"),
-    # ── learned_skills_tool ───────────────────────────────────────
+    # ── agent/tools/learned_skills_tool ─────────────────────────
     "skill_view": _N("LECTURE"),
-    # ── maps_tool ─────────────────────────────────────────────────
+    # ── agent/tools/maps_tool ───────────────────────────────────
     "maps_directions": _N("LECTURE"),
     "maps_geocode": _N("LECTURE"),
     "maps_nearby": _N("LECTURE"),
     "maps_reverse_geocode": _N("LECTURE"),
-    # ── memgpt_tool ───────────────────────────────────────────────
+    # ── agent/tools/memgpt_tool ─────────────────────────────────
     "memory_archive": _N("ECRITURE"),
     "memory_recent": _N("LECTURE"),
     "memory_search": _N("LECTURE"),
     "memory_view_profile": _N("LECTURE"),
-    # ── memory_recall_tool ────────────────────────────────────────
+    # ── agent/tools/memory_recall_tool ──────────────────────────
     "memory_recall": _N("LECTURE"),
-    # ── memory_tool ───────────────────────────────────────────────
+    # ── agent/tools/memory_tool ─────────────────────────────────
     "save_constraint": _N("ECRITURE"),
     "save_user_preference": _N("ECRITURE"),
-    # ── notes_tool ────────────────────────────────────────────────
+    # ── agent/tools/notes_tool ──────────────────────────────────
     "notes_create": _N("ECRITURE"),
     "notes_delete": _N("ENGAGEANT"),
     "notes_list": _N("LECTURE"),
     "notes_read": _N("LECTURE"),
     "notes_search": _N("LECTURE"),
     "notes_update": _N("ECRITURE"),
-    # ── orchestrate_tool ──────────────────────────────────────────
+    # ── agent/tools/orchestrate_tool ────────────────────────────
     "orchestrate": _N("ECRITURE", arbitrates=True),
-    # ── pdf_tool ──────────────────────────────────────────────────
+    # ── agent/tools/pdf_tool ────────────────────────────────────
     "pdf_info": _N("LECTURE"),
     "pdf_read": _N("LECTURE"),
     "pdf_to_docx": _N("ECRITURE", arbitrates=True),
-    # ── python_tool ───────────────────────────────────────────────
+    # ── agent/tools/python_tool ─────────────────────────────────
     "python_execute": _N("ECRITURE"),
-    # ── qrcode_tool ───────────────────────────────────────────────
+    # ── agent/tools/qrcode_tool ─────────────────────────────────
     "qrcode_generate": _N("ECRITURE", arbitrates=True),
     "qrcode_generate_vcard": _N("ECRITURE", arbitrates=True),
     "qrcode_generate_wifi": _N("ECRITURE", arbitrates=True),
-    # ── reversible_tool ───────────────────────────────────────────
+    # ── agent/tools/reversible_tool ─────────────────────────────
     "list_revertible_actions": _N("LECTURE"),
     "revert_action": _N("ECRITURE"),
     "undo_last_action": _N("ECRITURE"),
-    # ── scheduler_tool ────────────────────────────────────────────
+    # ── agent/tools/scheduler_tool ──────────────────────────────
     "scheduler_create_task": _N("ECRITURE"),
     "scheduler_delete_task": _N("ENGAGEANT"),
     "scheduler_list_tasks": _N("LECTURE"),
     "scheduler_run_task": _N("ENGAGEANT"),
     "scheduler_update_task": _N("ECRITURE"),
-    # ── search_tool ───────────────────────────────────────────────
+    # ── agent/tools/search_tool ─────────────────────────────────
     "web_search": _N("LECTURE"),
     "web_search_news": _N("LECTURE"),
-    # ── session_search_tool ───────────────────────────────────────
+    # ── agent/tools/session_search_tool ─────────────────────────
     "search_past_conversations_tool": _N("LECTURE", arbitrates=True),
-    # ── sheets_tool ───────────────────────────────────────────────
+    # ── agent/tools/sheets_tool ─────────────────────────────────
     "sheets_add_sheet": _N("ECRITURE"),
     "sheets_append_rows": _N("ECRITURE"),
     "sheets_batch_update": _N("ENGAGEANT"),
@@ -274,18 +339,18 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "sheets_raw_api_call": _N("ENGAGEANT"),
     "sheets_read_spreadsheet": _N("LECTURE"),
     "sheets_update_cells": _N("ECRITURE"),
-    # ── ssh_tool ──────────────────────────────────────────────────
+    # ── agent/tools/ssh_tool ────────────────────────────────────
     "ssh_execute": _N("ENGAGEANT"),
-    # ── system_diag_tool ──────────────────────────────────────────
+    # ── agent/tools/system_diag_tool ────────────────────────────
     "system_check_channels": _N("LECTURE"),
     "system_check_llm_providers": _N("LECTURE"),
     "system_get_health": _N("LECTURE"),
     "system_get_logs": _N("LECTURE"),
     "system_list_missions": _N("LECTURE"),
     "system_list_scheduled_tasks": _N("LECTURE"),
-    # ── system_tool ───────────────────────────────────────────────
+    # ── agent/tools/system_tool ─────────────────────────────────
     "system_info": _N("LECTURE"),
-    # ── tasks_tool ────────────────────────────────────────────────
+    # ── agent/tools/tasks_tool ──────────────────────────────────
     "tasks_complete": _N("ECRITURE"),
     "tasks_create": _N("ECRITURE"),
     "tasks_create_tasklist": _N("ECRITURE"),
@@ -294,17 +359,85 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "tasks_list_tasklists": _N("LECTURE"),
     "tasks_raw_api_call": _N("ENGAGEANT"),
     "tasks_update": _N("ECRITURE"),
-    # ── telegram_tool ─────────────────────────────────────────────
+    # ── agent/tools/telegram_tool ───────────────────────────────
     "telegram_send_message": _N("ENGAGEANT"),
-    # ── whatsapp_tool ─────────────────────────────────────────────
+    # ── agent/tools/whatsapp_tool ───────────────────────────────
     "whatsapp_send": _N("ENGAGEANT"),
     "whatsapp_send_template": _N("ENGAGEANT"),
-    # ── youtube_tool ──────────────────────────────────────────────
+    # ── agent/tools/youtube_tool ────────────────────────────────
     "youtube_search": _N("LECTURE"),
     "youtube_transcript": _N("LECTURE"),
-    "youtube_video_info": _N("LECTURE"),}
-
-
+    "youtube_video_info": _N("LECTURE"),
+    # ── skills/builtin/briefing_skill ───────────────────────────
+    "briefing_generate": _N("LECTURE", arbitrates=True),
+    # ── skills/builtin/browser_skill ────────────────────────────
+    "browser_click": _N("ENGAGEANT"),
+    "browser_close": _N("ECRITURE"),
+    "browser_fill": _N("ENGAGEANT"),
+    "browser_get_text": _N("LECTURE"),
+    "browser_navigate": _N("LECTURE"),
+    "browser_screenshot": _N("LECTURE"),
+    "browser_search_images": _N("LECTURE"),
+    "browser_search_web": _N("LECTURE"),
+    # ── skills/builtin/desktop_skill ────────────────────────────
+    "desktop_create_dir": _N("ECRITURE"),
+    "desktop_delete_file": _N("ENGAGEANT"),
+    "desktop_hash_file": _N("LECTURE"),
+    "desktop_list_dir": _N("LECTURE"),
+    "desktop_move_file": _N("ECRITURE"),
+    "desktop_read_file": _N("LECTURE"),
+    "desktop_search_files": _N("LECTURE"),
+    "desktop_stat_file": _N("LECTURE"),
+    "desktop_write_file": _N("ECRITURE"),
+    # ── skills/builtin/find_tool_skill ──────────────────────────
+    "find_tool": _N("LECTURE"),
+    "report_missing_capability": _N("ECRITURE", arbitrates=True),
+    # ── skills/builtin/image_skill ──────────────────────────────
+    "generate_image": _N("ECRITURE", arbitrates=True),
+    # ── skills/builtin/mcp_generator_skill ──────────────────────
+    "mcp_generate_server": _N("ECRITURE", arbitrates=True),
+    "mcp_list_library": _N("LECTURE"),
+    "mcp_validate_and_deploy": _N("ENGAGEANT"),
+    # ── skills/builtin/mcp_model_skill ──────────────────────────
+    "mcp_call_tool": _N("ENGAGEANT"),
+    "mcp_connect": _N("ENGAGEANT"),
+    "mcp_discover_tools": _N("LECTURE"),
+    "mcp_get_prompt": _N("LECTURE"),
+    "mcp_list_prompts": _N("LECTURE"),
+    "mcp_list_resources": _N("LECTURE"),
+    "mcp_list_servers": _N("LECTURE"),
+    "mcp_propose_server": _N("ECRITURE"),
+    "mcp_read_resource": _N("LECTURE"),
+    "mcp_search_registry": _N("LECTURE"),
+    # ── skills/builtin/news_skill ───────────────────────────────
+    "news_get_headlines": _N("LECTURE", arbitrates=True),
+    # ── skills/builtin/os_control_skill ─────────────────────────
+    "os_click": _N("ENGAGEANT"),
+    "os_get_active_window": _N("LECTURE"),
+    "os_hotkey": _N("ENGAGEANT", arbitrates=True),
+    "os_mouse_move": _N("ENGAGEANT"),
+    "os_screenshot": _N("LECTURE"),
+    "os_type_text": _N("ENGAGEANT"),
+    # ── skills/builtin/trainer_skill ────────────────────────────
+    "trainer_click": _N("ENGAGEANT"),
+    "trainer_get_screen_size": _N("LECTURE"),
+    "trainer_hotkey": _N("ENGAGEANT"),
+    "trainer_move": _N("ENGAGEANT"),
+    "trainer_screenshot": _N("LECTURE"),
+    "trainer_start": _N("ENGAGEANT", arbitrates=True),
+    "trainer_type": _N("ENGAGEANT"),
+    # ── skills/builtin/translate_skill ──────────────────────────
+    "translate_text": _N("LECTURE", arbitrates=True),
+    # ── skills/builtin/vision_skill ─────────────────────────────
+    "pdf_analyze_with_vision": _N("LECTURE", arbitrates=True),
+    "vision_analyze_image": _N("LECTURE", arbitrates=True),
+    # ── skills/builtin/watchdog_skill ───────────────────────────
+    "watchdog_add": _N("ECRITURE"),
+    "watchdog_list": _N("LECTURE"),
+    "watchdog_remove": _N("ECRITURE"),
+    # ── skills/builtin/weather_skill ────────────────────────────
+    "weather_get": _N("LECTURE"),
+}
 # ──────────────────────────────────────────────────────────────────────
 # Lecture de la table
 # ──────────────────────────────────────────────────────────────────────
@@ -325,18 +458,26 @@ def arbitrates(tool_name: str) -> bool:
 def requires_approval(tool_name: str) -> bool:
     """Cet outil devrait-il demander l'accord de l'utilisateur ?
 
-    Trois sources, dans cet ordre :
-        1. il est déjà protégé aujourd'hui → oui, quoi que dise la table ;
-        2. il est classé ``ENGAGEANT`` → oui ;
-        3. il n'est pas classé du tout → **oui**, on échoue FERMÉ.
+    Quatre sources, dans cet ordre — **l'ordre est la sécurité** :
+        1. il est déjà protégé aujourd'hui → oui, quoi que disent la table
+           et les dispenses ;
+        2. il est explicitement dispensé, avec sa raison → non ;
+        3. il est classé ``ENGAGEANT`` → oui ;
+        4. il n'est pas classé du tout → **oui**, on échoue FERMÉ.
 
-    Le troisième cas est ce qui force à classer un nouvel outil : tant qu'il ne
+    Le premier cas passe AVANT les dispenses : sans cela, ajouter un nom à
+    ``APPROVAL_WAIVED`` suffirait à retirer une protection existante, ce qui
+    rouvrirait par la fenêtre la porte que ``ALREADY_GUARDED`` ferme.
+
+    Le dernier cas est ce qui force à classer un nouvel outil : tant qu'il ne
     l'est pas, il est traité comme engageant. Un faux positif coûte une
     question à l'utilisateur ; un faux négatif envoie un message ou supprime
     des données sans qu'il l'ait voulu.
     """
     if tool_name in ALREADY_GUARDED:
         return True
+    if tool_name in APPROVAL_WAIVED:
+        return False
     entry = TOOL_NATURE.get(tool_name)
     if entry is None:
         logger.info(
@@ -349,18 +490,22 @@ def requires_approval(tool_name: str) -> bool:
 def unguarded_engaging_tools() -> list[str]:
     """Les actes engageants qu'aucune autorisation ne protège aujourd'hui.
 
-    Mesuré le 28/07/2026 : **26 outils**, dont ``ssh_execute``,
-    ``gmail_empty_trash`` (« DEFINITIVELY delete ») et sept ``*_raw_api_call``
-    qui peuvent appeler n'importe quelle méthode des API Google. Plusieurs de
-    ces outils portent dans leur propre docstring « ALWAYS ask user
-    confirmation » — c'est une consigne au modèle, pas un garde-fou : rien ne
-    l'applique si le modèle passe outre.
+    Un outil ne compte comme trou que s'il n'est NI gardé NI dispensé : une
+    dispense est une décision explicite et motivée, pas un oubli. Les confondre
+    ferait crier ce contrôle en permanence, et un contrôle qui crie toujours
+    finit par ne plus être lu.
 
-    Combler ce trou est le lot 3. Ce module se contente de le rendre visible.
+    ⚠️ Au lot 1, cette fonction rendait 26 noms dont ``ssh_execute`` et
+    ``gmail_empty_trash`` — sur une mesure FAUSSE : ``ALREADY_GUARDED`` était
+    bâti sur ``hitl_descriptions.py`` (6 outils) au lieu de la garde réelle
+    (38). Le vrai trou était de 18 sur le périmètre complet. Il est fermé
+    depuis le lot 3 ; cette liste doit rester vide.
     """
     return sorted(
         name for name, entry in TOOL_NATURE.items()
-        if entry.effect == "ENGAGEANT" and name not in ALREADY_GUARDED
+        if entry.effect == "ENGAGEANT"
+        and name not in ALREADY_GUARDED
+        and name not in APPROVAL_WAIVED
     )
 
 
@@ -415,6 +560,7 @@ def _declared_params() -> dict[str, list[str]]:
 
 __all__ = [
     "ALREADY_GUARDED",
+    "APPROVAL_WAIVED",
     "EFFECTS",
     "TOOL_NATURE",
     "arbitrates",

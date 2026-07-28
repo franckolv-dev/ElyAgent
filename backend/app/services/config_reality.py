@@ -235,26 +235,35 @@ def _check_resolved_model(
     return found
 
 
-def check_unguarded_engaging_tools() -> list[Finding]:
+def check_unguarded_engaging_tools(
+    unguarded: list[str] | None = None,
+) -> list[Finding]:
     """Les actes engageants qu'aucune autorisation ne protège.
 
-    Mesuré le 28/07/2026, lot 1 du plan de marche : **26 outils sur 154**, dont
-    ``ssh_execute``, ``gmail_empty_trash`` (« DEFINITIVELY delete ») et sept
-    ``*_raw_api_call`` qui peuvent appeler n'importe quelle méthode des API
-    Google. Plusieurs portent dans leur propre docstring « ALWAYS ask user
-    confirmation » — mais une docstring est une consigne AU MODÈLE, pas un
+    Depuis le lot 3 (28/07/2026) la liste est **vide**, et c'est le résultat
+    voulu : les 18 actes engageants qui n'étaient soumis à rien sont soit sous
+    autorisation, soit explicitement dispensés avec leur raison. Ce contrôle
+    n'existe plus que pour attraper la prochaine régression — un outil ajouté
+    demain sans être classé, ou une garde retirée par inadvertance.
+
+    ⚠️ Plusieurs de ces outils portaient « ALWAYS ask user confirmation » dans
+    leur propre docstring. Une docstring est une consigne AU MODÈLE, pas un
     garde-fou : rien ne l'applique s'il passe outre.
 
-    Ce contrôle ne bloque rien, il rend le trou visible. Le combler est le
-    lot 3, et ça se décide en regardant la liste.
+    Args:
+        unguarded: pour les tests — la liste à transformer en constats. Sans
+            elle, on interroge la table réelle.
 
     Ne lève jamais : un instrument de diagnostic ne fait pas tomber le démarrage.
     """
-    try:
-        from app.agent.tool_nature import unguarded_engaging_tools
-    except Exception as exc:  # noqa: BLE001 — le diagnostic reste optionnel
-        logger.debug("nature des outils illisible (%s)", exc)
-        return []
+    if unguarded is None:
+        try:
+            from app.agent.tool_nature import unguarded_engaging_tools
+
+            unguarded = unguarded_engaging_tools()
+        except Exception as exc:  # noqa: BLE001 — le diagnostic reste optionnel
+            logger.debug("nature des outils illisible (%s)", exc)
+            return []
 
     return [
         Finding(
@@ -265,7 +274,7 @@ def check_unguarded_engaging_tools() -> list[Finding]:
                 "que l'utilisateur soit consulté"
             ),
         )
-        for name in unguarded_engaging_tools()
+        for name in unguarded
     ]
 
 
