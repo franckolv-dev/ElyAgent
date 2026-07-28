@@ -66,16 +66,26 @@ async def ainvoke_with_deadline(
     tier: Any = None,
     timeout_s: float | None = None,
     surface: str = "",
+    config: dict | None = None,
 ):
     """``llm.ainvoke(payload)`` borné par une échéance murale.
 
     ``timeout_s`` explicite gagne ; sinon l'échéance du ``tier`` (défaut
     MEDIUM). ``surface`` est embarqué dans le message d'erreur pour le
     diagnostic (quel chemin a expiré) sans coût quand tout va bien.
+
+    ``config`` est transmis tel quel à ``llm.ainvoke`` quand il est fourni, et
+    OMIS sinon — les dizaines d'appels existants n'en passent pas et ne doivent
+    rien voir changer. Son usage principal est ``{"callbacks": []}`` : un appel
+    qui tourne PENDANT un tour actif doit couper l'arbre de callbacks, sinon
+    LangChain le propage par contextvars et les tokens de cet appel s'affichent
+    dans le stream de l'utilisateur (bug réel du 19/07/2026 : le code du
+    générateur tier-S entrelacé caractère par caractère dans le chat).
     """
     t = float(timeout_s if timeout_s is not None else deadline_for_tier(tier))
+    kwargs = {"config": config} if config is not None else {}
     try:
-        return await asyncio.wait_for(llm.ainvoke(payload), timeout=t)
+        return await asyncio.wait_for(llm.ainvoke(payload, **kwargs), timeout=t)
     except asyncio.TimeoutError:
         # « timed out » = mot-clé du mapping FailoverReason.TIMEOUT — ne pas
         # reformuler sans mettre à jour fallback_manager._REASON_KEYWORDS.

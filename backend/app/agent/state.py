@@ -54,6 +54,13 @@ class AgentState(TypedDict):
     # ONE final API call WITHOUT tools and produces a textual summary so
     # the user always gets something even on tasks that exhaust the budget.
     iteration_count: int
+    # L3 (28/07/2026) — nombre de relances déjà déclenchées par la
+    # vérification de conformité sur ce tour. Le nœud ``verify`` confronte le
+    # résultat aux exigences de la demande et, s'il manque quelque chose,
+    # renvoie l'agent au travail avec l'écart nommé. Plafonné par
+    # ``conformity.MAX_CONFORMITY_RETRIES`` : sans plafond, deux modèles se
+    # renvoient la balle sur une exigence qu'aucun ne sait satisfaire.
+    conformity_retries: int
     # Scheduled / automated execution flag (2026-05-31).
     # Set to True by the scheduler when it runs a task prompt on the FLAT
     # (non-supervisor) graph. The supervisor routes a whole prompt to ONE

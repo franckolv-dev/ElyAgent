@@ -154,7 +154,14 @@ def should_continue(state: AgentState) -> str:
     """Routing decision after agent_node :
     - "force_summary" if the iteration budget is exhausted (Chantier 9)
     - "tools" if the model emitted tool_calls
+    - "verify" if the turn produced something to confront to the request
     - "end" otherwise (final textual answer)
+
+    ``verify`` s'intercale entre la dernière réponse et la fin du tour : le
+    résultat est confronté à la demande, et l'agent est relancé avec les
+    écarts nommés s'il n'y répond pas (cf. ``app.agent.conformity``). Un tour
+    tronqué par ``force_summary`` n'y passe pas : il n'a rien à relancer, il a
+    déjà épuisé son budget.
     """
     last_message = state["messages"][-1]
     iter_count = state.get("iteration_count", 0)
@@ -173,4 +180,9 @@ def should_continue(state: AgentState) -> str:
 
     if isinstance(last_message, AIMessage) and last_message.tool_calls:
         return "tools"
+
+    from app.agent.conformity import should_verify_conformity
+
+    if should_verify_conformity(state):
+        return "verify"
     return "end"
