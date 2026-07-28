@@ -365,16 +365,86 @@ async def conformity_node(state: AgentState | dict) -> dict:
             "conformity_gap_count": n,
         }
 
-    # On s'arrête — soit ça n'avance plus, soit le garde-fou a parlé. Dans les
-    # deux cas l'utilisateur doit SAVOIR ce qui n'a pas pu être fait : rendre
-    # un résultat incomplet en silence est précisément ce que cette boucle
-    # existe pour supprimer.
+    # On s'arrête — soit ça n'avance plus, soit le garde-fou a parlé.
     raison = (
         "plafond de sécurité atteint" if retries >= MAX_CONFORMITY_RETRIES
         else f"aucun progrès ({n} écart(s), {previous} au tour précédent)"
     )
     logger.info("conformité : arrêt — %s. Écarts : %.200s", raison, ecarts.replace("\n", " ; "))
+
+    # Avant d'abandonner : DEMANDER AUX AUTRES (lot 2, 28/07/2026). Ely a
+    # plusieurs modèles configurés dans son tier `complex` et ne s'en servait
+    # qu'en cas de PANNE — jamais quand le résultat était mauvais.
+    #
+    # ⚠️ L'ordre compte : escalader D'ABORD, rapporter ensuite. L'inverse
+    # ferait payer un appel de rédaction pour un texte aussitôt remplacé.
+    escalade = await _try_escalation(state, messages, ecarts, n, previous)
+    if escalade is not None:
+        return escalade
+
+    # Rien de mieux à offrir : l'utilisateur doit SAVOIR ce qui n'a pas pu être
+    # fait. Rendre un résultat incomplet en silence est précisément ce que
+    # cette boucle existe pour supprimer.
     return await _report_remaining_gaps(messages, llm, ecarts)
+
+
+# Ce qu'on ajoute à la réponse retenue. La provenance n'est pas un détail : sans
+# elle, Franck ne peut ni arbitrer sa configuration de modèles ni la corriger —
+# c'est exactement ce qui lui a manqué pendant les cinq essais de conversion.
+_ESCALATION_NOTE = (
+    "\n\n---\n*Cette réponse vient de **{model}** : les exigences n'étaient "
+    "toujours pas satisfaites après reprise, alors {n} modèles ont été "
+    "interrogés et la meilleure réponse retenue.{cout}*"
+)
+
+
+async def _try_escalation(state, messages: list, ecarts: str,
+                          new_count: int, previous_count: int) -> dict | None:
+    """Demande à plusieurs modèles, et substitue la meilleure réponse.
+
+    Returns:
+        ``None`` si l'escalade n'a rien à offrir — panel indisponible, un seul
+        modèle, plafond de budget atteint. L'appelant retombe alors sur le
+        constat d'écarts. **Échouer OUVERT** : une amélioration qui tombe ne
+        doit jamais coûter le résultat déjà obtenu.
+    """
+    from app.agent.escalation import should_escalate
+
+    if not should_escalate(new_count=new_count, previous_count=previous_count):
+        return None
+    last = messages[-1] if messages else None
+    if not isinstance(last, AIMessage):
+        return None
+
+    try:
+        from app.agent import escalation
+
+        result = await escalation.escalate_to_panel(
+            demande=_last_user_request(messages),
+            produit=_produced(messages),
+            ecarts=ecarts,
+            user_id=state.get("user_id", ""),
+            conversation_id=state.get("conversation_id", "") or "",
+        )
+    except Exception as exc:  # noqa: BLE001 — échouer OUVERT
+        logger.warning("conformité : escalade indisponible (%s)", exc)
+        return None
+
+    if result is None or not result.answer.strip():
+        return None
+
+    # Un coût nul (modèle au forfait) ne s'affiche pas : l'annoncer à chaque
+    # fois apprendrait à ne plus le lire.
+    cout = f" Coût : {result.cost_usd:.2f} $." if result.cost_usd > 0 else ""
+    texte = result.answer + _ESCALATION_NOTE.format(
+        model=result.model, n=result.models_asked, cout=cout,
+    )
+    logger.info(
+        "conformité : escalade retenue — %r sur %d modèle(s), %.4f $",
+        result.model, result.models_asked, result.cost_usd,
+    )
+    # Même id ⇒ substitution par `add_messages`, pas empilement.
+    return {"messages": [AIMessage(content=texte, id=last.id)]}
 
 
 async def _report_remaining_gaps(messages: list, llm: Any, ecarts: str) -> dict:
