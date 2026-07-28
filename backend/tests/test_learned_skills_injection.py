@@ -212,7 +212,10 @@ def test_format_block_with_one_skill():
     out = format_active_skills_block([s])
     assert out.startswith("<learned_skills>")
     assert out.rstrip().endswith("</learned_skills>")
-    assert "my-skill : A test skill" in out
+    # Format changé le 28/07/2026 : la procédure est CHARGÉE sous un titre
+    # « ### nom — description », au lieu d'une puce « - nom : description »
+    # qui invitait à un `skill_view` que le modèle n'a jamais appelé.
+    assert "### my-skill — A test skill" in out
     assert "1 playbook apprise" in out  # singular
 
 
@@ -224,7 +227,7 @@ def test_format_block_with_many_skills():
     out = format_active_skills_block(skills)
     assert "3 playbooks apprises" in out
     for i in range(3):
-        assert f"skill-{i} : desc {i}" in out
+        assert f"### skill-{i} — desc {i}" in out
 
 
 def test_format_block_truncates_long_description():

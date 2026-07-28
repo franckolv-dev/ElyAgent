@@ -16,13 +16,27 @@ short description gets injected into the system prompt every turn
 (via memory_snapshot), and the agent can pull its full content on
 demand via the new `skill_view` tool.
 
-Progressive disclosure (Hermes pattern)
----------------------------------------
-- Tier 1 (always in prompt) : the `description` field (≤200 chars).
-  ~50 tokens per skill, capped at MAX_SKILLS_IN_PROMPT = 20.
-- Tier 2 (on demand) : the full `content` body, fetched by the agent
-  via `skill_view(name)`. Bumps `use_count` + `last_used_at` so the
-  Phase-5 curator can detect stale skills.
+Le contenu est CHARGÉ, plus « révélé progressivement » (28/07/2026)
+-------------------------------------------------------------------
+Le schéma d'origine était : description dans le prompt, procédure complète
+récupérée à la demande par ``skill_view(name)``. Mesuré en production :
+**0 appel à ``skill_view`` depuis toujours**, pour 26 playbooks actifs et
+0 usage. Le tool EST bindé — le modèle le voit et ne l'appelle jamais.
+
+On a donc arrêté de parier sur cette décision : la procédure des playbooks
+les plus pertinents est écrite directement dans le prompt
+(``PLAYBOOK_CONTENT_BUDGET_CHARS``), et ceux qui ne tiennent pas dans le
+budget restent nommés — la troncature est annoncée, jamais silencieuse.
+
+C'est ce que fait Hermes : ``skill_preprocessing.py`` matérialise le contenu
+du SKILL.md ; il n'existe pas d'étape « le modèle décide d'ouvrir ».
+
+``skill_view`` reste disponible pour consulter un playbook non détaillé —
+il n'est simplement plus le chemin nominal. Il continue d'incrémenter
+``use_count`` / ``last_used_at`` pour le curateur.
+
+Les ``python_tool``, eux, sont DÉJÀ bindés : seul leur nom est annoncé,
+jamais leur code.
 
 The block is added to the existing `<user_state>` + memory_block in
 `memory_snapshot.build_memory_snapshot`. Best-effort: any DB hiccup
@@ -52,6 +66,23 @@ logger = logging.getLogger(__name__)
 # ~50 tokens each = ~1k tokens, an acceptable fraction of the
 # ~23k system prompt budget. Tune via `LEARNED_SKILLS_PROMPT_MAX` env.
 MAX_SKILLS_IN_PROMPT = 20
+
+# Budget de CONTENU de playbook chargé dans le prompt (28/07/2026).
+#
+# Jusqu'ici on listait nom + description et on demandait au modèle d'appeler
+# ``skill_view`` pour lire la procédure. Mesuré en production : **0 appel à
+# ``skill_view`` depuis toujours**, pour 26 playbooks actifs et 0 usage. Le
+# tool EST bindé (``tool_sets.py``) — le modèle le voit et ne l'appelle
+# jamais. On arrête donc de parier sur cette décision et on charge la
+# procédure directement, comme le fait Hermes (``skill_preprocessing.py``
+# matérialise le SKILL.md ; il n'y a pas d'étape « le modèle décide d'ouvrir »).
+#
+# Calibré sur la mesure : chez Franck, 16 playbooks actifs, 15 462 caractères
+# de contenu au total, le plus gros à 1 595. 8 000 laisse donc passer les 5 à
+# 8 procédures les plus pertinentes ENTIÈRES — la sélection amont ayant déjà
+# classé la liste. Le snapshot étant gelé par conversation, c'est payé UNE
+# fois, dans le préfixe cacheable.
+PLAYBOOK_CONTENT_BUDGET_CHARS = 8_000
 
 # C4-3 — grace window: a skill promoted less than N days ago is ALWAYS
 # part of the injected selection (bypasses the use_count sort). Fixes the
@@ -250,6 +281,46 @@ def _skill_bullet(s, now: datetime) -> str:
     return f"  - {s.name}{tag} : {desc}"
 
 
+def _split_on_content_budget(playbooks: list) -> tuple[list, list]:
+    """Coupe la liste ORDONNÉE en (détaillés, seulement nommés).
+
+    L'ordre d'entrée porte déjà la pertinence (re-rank amont sur la question
+    d'ouverture) : on détaille donc en partant du plus pertinent jusqu'à
+    épuiser le budget. Au moins un playbook est toujours détaillé — un budget
+    trop serré ne doit pas ramener au comportement « liste seule » qu'on est
+    précisément en train de supprimer.
+    """
+    detailed: list = []
+    listed_only: list = []
+    used = 0
+    for s in playbooks:
+        body = (getattr(s, "content", "") or "").strip()
+        if detailed and used + len(body) > PLAYBOOK_CONTENT_BUDGET_CHARS:
+            listed_only.append(s)
+            continue
+        detailed.append(s)
+        used += len(body)
+    return detailed, listed_only
+
+
+def _skill_with_content(s, now: datetime) -> str:
+    """Un playbook rendu ENTIER : son titre, puis sa procédure.
+
+    C'est le geste central du correctif — le modèle n'a plus à décider
+    d'ouvrir quoi que ce soit, la marche à suivre est sous ses yeux.
+    """
+    tag = " (nouveau)" if _in_grace(s, now) else ""
+    desc = (getattr(s, "description", "") or "").replace("\n", " ").strip()
+    # Même plafond que ``_skill_bullet`` : la description est un TITRE, pas la
+    # procédure. Une description à rallonge repousserait le vrai contenu hors
+    # du budget — c'est ce que pinnait déjà test_format_block_truncates_long_description.
+    if len(desc) > 200:
+        desc = desc[:197] + "…"
+    body = (getattr(s, "content", "") or "").strip()
+    head = f"\n### {s.name}{tag}" + (f" — {desc}" if desc else "")
+    return f"{head}\n{body}" if body else head
+
+
 def format_active_skills_block(skills: list[LearnedSkill]) -> str:
     """Render the active-skills section for the system prompt.
 
@@ -286,11 +357,22 @@ def format_active_skills_block(skills: list[LearnedSkill]) -> str:
         n = len(playbooks)
         lines.append(
             f"Tu as {n} playbook{'s' if n > 1 else ''} appris{'es' if n > 1 else 'e'} "
-            "(procédures éprouvées). AVANT d'exécuter une tâche qui correspond "
-            "à l'un d'eux, lis-le EN ENTIER via le tool `skill_view` et suis sa "
-            "procédure — ne l'improvise pas. Liste :"
+            "(procédures éprouvées). Quand une tâche correspond à l'un d'eux, "
+            "SUIS sa procédure — ne l'improvise pas. Les voici :"
         )
-        lines.extend(_skill_bullet(s, now) for s in playbooks)
+        detailed, listed_only = _split_on_content_budget(playbooks)
+        for s in detailed:
+            lines.append(_skill_with_content(s, now))
+        if listed_only:
+            # Jamais de troncature silencieuse : un catalogue amputé sans le
+            # dire se lit comme un catalogue complet. Les procédures écartées
+            # restent NOMMÉES — le modèle peut demander à les consulter.
+            lines.append(
+                f"\nEt {len(listed_only)} autre{'s' if len(listed_only) > 1 else ''} "
+                "playbook(s) non détaillé(s) ici faute de place — demande à les "
+                "consulter si l'un d'eux correspond :"
+            )
+            lines.extend(_skill_bullet(s, now) for s in listed_only)
     if tools:
         m = len(tools)
         pl = "s" if m > 1 else ""
