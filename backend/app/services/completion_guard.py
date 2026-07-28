@@ -72,6 +72,27 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────
 
 DESTRUCTIVE_TOOLS: frozenset[str] = frozenset({
+    # ── Outils qui PRODUISENT un artefact (ajoutés le 28/07/2026) ──────
+    # Incident : `pdf_to_docx` a tourné 3,84 s et RÉUSSI, le .docx existait
+    # (Franck l'a déposé sur son Drive au tour suivant) — et le garde a
+    # bloqué la réponse avec « n'a appelé aucun outil de modification ».
+    # Il voyait pourtant l'outil dans `all_tools`.
+    #
+    # La liste contenait DÉJÀ des créateurs (`drive_create_file`,
+    # `desktop_write_file`, `notes_create`, `docs_create`…) : la catégorie
+    # réelle n'est pas « destructif » mais « a produit un effet observable ».
+    # Il manquait simplement les fabricants de fichiers.
+    #
+    # On n'élargit PAS au-delà : un garde qui accepte n'importe quel appel
+    # comme preuve ne garde plus rien. Les outils de LECTURE restent dehors.
+    "pdf_to_docx",
+    "drive_upload_local_file",
+    "drive_create_folder",
+    "drive_copy_file",
+    "generate_image",
+    "gmail_save_attachments_to_drive",
+    "gmail_create_draft",
+    "desktop_create_dir",
     # Email destructive ops
     "gmail_trash_emails",
     "gmail_trash_by_category",
