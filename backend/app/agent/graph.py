@@ -29,6 +29,7 @@ own graph instance and may want the simpler version.
 from langgraph.graph import StateGraph, END
 
 from app.agent.state import AgentState
+from app.agent.conformity import conformity_node, route_after_conformity
 from app.agent.nodes import (
     create_agent_node,
     force_summary_node,
@@ -53,6 +54,11 @@ def build_simple_agent_graph() -> StateGraph:
     graph.add_node("agent", create_agent_node())
     graph.add_node("tools", tool_node)
     graph.add_node("force_summary", force_summary_node)
+    # L3 — le résultat est confronté à la demande avant de rendre la main.
+    # Conforme → END ; écart nommé → retour à ``agent`` avec la consigne.
+    # ``force_summary`` ne passe PAS par là : un tour qui a épuisé son budget
+    # d'itérations n'a rien à relancer.
+    graph.add_node("verify", conformity_node)
     graph.set_entry_point("agent")
     graph.add_conditional_edges(
         "agent",
@@ -60,8 +66,14 @@ def build_simple_agent_graph() -> StateGraph:
         {
             "tools": "tools",
             "force_summary": "force_summary",
+            "verify": "verify",
             "end": END,
         },
+    )
+    graph.add_conditional_edges(
+        "verify",
+        route_after_conformity,
+        {"agent": "agent", "end": END},
     )
     graph.add_edge("tools", "agent")
     graph.add_edge("force_summary", END)
