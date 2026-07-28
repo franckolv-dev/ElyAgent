@@ -84,6 +84,17 @@ class ConversionReport:
     chars_docx: int = 0
     missing_chars: int = 0
     calibration: Calibration | None = None
+    # Ce que le plan du modèle a produit. Séparé du reste parce que c'est ce
+    # que la boucle de conformité doit pouvoir confronter à la demande : « les
+    # sauts de page du PDF source sont respectés » se vérifie ici.
+    page_breaks: int = 0
+    dropped_blocks: int = 0
+    # Retirés à la demande du modèle (folios, en-têtes courants). Comptés à
+    # part des caractères PERDUS : sans cette séparation, retirer 395 numéros
+    # de page ferait crier le contrôle 0 à la perte de données, et le seul
+    # signal d'intégrité du convertisseur deviendrait un bruit permanent.
+    dropped_chars: int = 0
+    plan_applied: bool = False
 
 
 @dataclass
@@ -128,6 +139,13 @@ class _Line:
 class _Block:
     kind: str                       # "body" | "title"
     lines: list[_Line] = field(default_factory=list)
+    # Décidé par le modèle, jamais deviné : ce bloc ouvre-t-il une page ?
+    page_break: bool = False
+    centered: bool = False
+    # Style Word explicite. ``None`` = le défaut du ``kind``. Un titre et un
+    # SOUS-titre ne peuvent pas partager un style : le premier ouvre une page,
+    # le second non.
+    style: str | None = None
 
 
 # ------------------------------------------------------------------ #
@@ -394,15 +412,20 @@ def _fills_justification(line: _Line, cal: Calibration) -> bool:
     return line.x1 >= cal.right_edge - cal.body_size
 
 
-def _build_blocks(doc, cal: Calibration) -> list[_Block]:
-    toc = _toc_titles(doc)
-    blocks: list[_Block] = []
+def _page_groups(doc, cal: Calibration) -> list[list[list[_Line]]]:
+    """Les groupes de lignes de chaque page, **avant** toute fusion.
 
+    Un étage à part parce que c'est l'unité que le modèle doit pouvoir
+    désigner : une fois deux pages recollées par l'heuristique, plus personne
+    ne peut décider qu'elles auraient dû rester séparées. Une page sans texte
+    rend une liste vide — jamais un trou, sinon les numéros de page se
+    décalent et les identifiants du balisage désignent le mauvais bloc.
+    """
+    per_page: list[list[list[_Line]]] = []
     for pno in range(len(doc)):
-        page = doc[pno]
-        page_h = page.rect.height
-        lines = _page_lines(page, pno)
+        lines = _page_lines(doc[pno], pno)
         if not lines:
+            per_page.append([])
             continue
 
         # Découpage vertical : une avance supérieure au seuil ouvre un bloc.
@@ -412,14 +435,75 @@ def _build_blocks(doc, cal: Calibration) -> list[_Block]:
                 groups.append([cur])
             else:
                 groups[-1].append(cur)
+        per_page.append(groups)
+    return per_page
+
+
+# Ce que chaque rôle du balisage devient dans le document : ``(kind, style)``.
+# Une table plutôt qu'une cascade de `if` : ajouter un rôle au contrat doit
+# être UNE ligne.
+#
+# ``TITRE2`` a son propre style, sans saut de page. Mesuré sur le manuscrit :
+# le modèle rend justement « S'envoler » en TITRE1 et « La mémoire du vent » en
+# TITRE2 — les envoyer tous deux sur `Chapitre` coupait la couverture en deux.
+_ROLE_TO_KIND: dict[str, tuple[str, str | None]] = {
+    "TITRE1": ("title", "Chapitre"),
+    "TITRE2": ("title", "Sous-titre"),
+    "CORPS": ("body", None),
+    "CITATION": ("body", None),
+}
+
+
+def _build_blocks(doc, cal: Calibration, plan=None) -> tuple[list[_Block], list[list[_Line]]]:
+    """Construit les blocs du document, en laissant le plan trancher.
+
+    Un bloc dont le plan ne dit rien garde intégralement le comportement
+    d'avant ce lot — heuristique de titre comprise. C'est la règle « échouer
+    OUVERT » : le modèle AMÉLIORE un défaut, il ne le remplace pas. Sans plan,
+    cette fonction est exactement celle d'avant.
+
+    Returns:
+        ``(blocs, groupes retirés)`` — les seconds sont les blocs que le modèle
+        a désignés comme artefacts (folios, en-têtes courants). Ils sortent du
+        document mais restent comptés, pour que le contrôle d'intégrité
+        distingue une suppression VOULUE d'une perte.
+    """
+    toc = _toc_titles(doc)
+    blocks: list[_Block] = []
+    dropped: list[list[_Line]] = []
+
+    for pno, groups in enumerate(_page_groups(doc, cal)):
+        if not groups:
+            continue
+        page_h = doc[pno].rect.height
 
         for gi, group in enumerate(groups):
-            kind = "title" if _looks_like_title(group, cal, page_h, toc) else "body"
+            block_id = f"p{pno + 1}b{gi}"
+            role = plan.role_of(block_id) if plan else None
+            # « Le modèle a-t-il statué sur CE bloc ? » — pas « y a-t-il un
+            # plan ». Un plan partiel doit laisser les autres blocs tranquilles.
+            decided = bool(plan and block_id in plan.decisions)
 
-            # Fusion inter-pages : uniquement le PREMIER groupe d'une page,
-            # et seulement si la page précédente s'arrêtait en pleine phrase.
+            if role == "ARTEFACT":
+                dropped.append(group)
+                continue
+
+            kind, style = _ROLE_TO_KIND.get(role or "") or (
+                ("title" if _looks_like_title(group, cal, page_h, toc) else "body"),
+                None,
+            )
+
+            # Fusion inter-pages. Quand le modèle a statué, sa décision fait
+            # foi dans les deux sens : SUITE recolle, son absence sépare.
             merged = False
-            if gi == 0 and kind == "body" and blocks and blocks[-1].kind == "body":
+            can_merge = kind == "body" and blocks and blocks[-1].kind == "body"
+            if decided:
+                if plan.continues(block_id) and can_merge:
+                    blocks[-1].lines.extend(group)
+                    merged = True
+            elif gi == 0 and can_merge:
+                # L'heuristique d'avant : uniquement le PREMIER groupe d'une
+                # page, et seulement si la précédente s'arrêtait en pleine phrase.
                 last = blocks[-1].lines[-1]
                 if (
                     last.page == pno - 1
@@ -430,9 +514,15 @@ def _build_blocks(doc, cal: Calibration) -> list[_Block]:
                     merged = True
 
             if not merged:
-                blocks.append(_Block(kind=kind, lines=list(group)))
+                blocks.append(_Block(
+                    kind=kind,
+                    lines=list(group),
+                    page_break=bool(plan and plan.breaks_before(block_id)),
+                    centered=bool(plan and plan.is_centered(block_id)),
+                    style=style,
+                ))
 
-    return blocks
+    return blocks, dropped
 
 
 # ------------------------------------------------------------------ #
@@ -468,7 +558,13 @@ def _ensure_styles(document, cal: Calibration) -> None:
 
     styles = document.styles
     existing = {st.name for st in styles}
-    for name, factor, level in (("Chapitre", 1.5, 0), ("Partie", 1.9, 0)):
+    # `Sous-titre` n'ouvre PAS de page : un sous-titre appartient à la page de
+    # son titre. C'est la seule différence, et elle est structurante.
+    for name, factor, level, breaks in (
+        ("Chapitre", 1.5, 0, True),
+        ("Partie", 1.9, 0, True),
+        ("Sous-titre", 1.2, 1, False),
+    ):
         if name in existing:
             continue
         style = styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
@@ -481,7 +577,8 @@ def _ensure_styles(document, cal: Calibration) -> None:
         outline = OxmlElement("w:outlineLvl")
         outline.set(qn("w:val"), str(level))
         ppr.append(outline)
-        ppr.append(OxmlElement("w:pageBreakBefore"))
+        if breaks:
+            ppr.append(OxmlElement("w:pageBreakBefore"))
 
 
 def _add_runs(paragraph, spans: list[_Span], cal: Calibration) -> None:
@@ -510,26 +607,62 @@ def _add_runs(paragraph, spans: list[_Span], cal: Calibration) -> None:
 
 
 def _write_document(blocks: list[_Block], out_path: Path,
-                    cal: Calibration) -> tuple[int, int]:
+                    cal: Calibration) -> tuple[int, int, int]:
+    """Écrit les blocs. Renvoie ``(paragraphes, titres, sauts de page)``.
+
+    Le saut est posé en ``page_break_before`` sur le paragraphe, et non par un
+    ``w:br`` dans un paragraphe vide : c'est le même mécanisme que celui des
+    styles ``Chapitre``/``Partie``, ça n'ajoute aucun paragraphe fantôme au
+    compte, et un auteur qui édite le texte ne se retrouve pas avec un saut
+    orphelin au milieu d'un chapitre.
+
+    Les sauts comptés sont les sauts EFFECTIFS — ceux posés ici et ceux
+    hérités du style. C'est ce nombre-là qui se confronte aux pages du PDF.
+    """
     import docx
+
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     document = docx.Document()
     _ensure_styles(document, cal)
+    # Ces styles portent déjà `w:pageBreakBefore` : un titre ouvre une page
+    # sans qu'on ait rien à poser dessus. `Sous-titre` n'y est PAS.
+    breaking_styles = {"Chapitre", "Partie"}
 
-    paragraphs = titles = 0
+    paragraphs = titles = page_breaks = 0
     for block in blocks:
         spans = join_spans([line.spans for line in block.lines])
         if not any(sp.text.strip() for sp in spans):
             continue
-        para = document.add_paragraph(style="Chapitre" if block.kind == "title" else None)
+        style = block.style or ("Chapitre" if block.kind == "title" else None)
+        para = document.add_paragraph(style=style)
         _add_runs(para, spans, cal)
+        if block.centered:
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Un saut avant le TOUT PREMIER paragraphe ouvre le document sur une
+        # page blanche. Un modèle qui statue page par page met légitimement
+        # SAUT sur la page 1 aussi : c'est à la matérialisation de le savoir,
+        # pas à lui.
+        wanted = block.page_break or style in breaking_styles
+        breaks = wanted and paragraphs > 0
+        if breaks and style not in breaking_styles:
+            para.paragraph_format.page_break_before = True
+        elif wanted and not breaks and style in breaking_styles:
+            # Le saut vient du STYLE : le retirer demande de le surcharger sur
+            # ce paragraphe. Sans ça, un manuscrit qui ouvre sur « Chapitre 1 »
+            # commence par une page blanche.
+            para.paragraph_format.page_break_before = False
+        if breaks:
+            page_breaks += 1
+
         if block.kind == "title":
             titles += 1
         paragraphs += 1
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     document.save(str(out_path))
-    return paragraphs, titles
+    return paragraphs, titles, page_breaks
 
 
 # ------------------------------------------------------------------ #
@@ -555,8 +688,17 @@ def _docx_text(path: Path) -> str:
 # Point d'entrée                                                      #
 # ------------------------------------------------------------------ #
 
-def convert_pdf_to_docx(pdf_bytes: bytes, out_path: str | Path) -> ConversionReport:
+def convert_pdf_to_docx(pdf_bytes: bytes, out_path: str | Path,
+                        plan=None) -> ConversionReport:
     """Convertit *pdf_bytes* en un ``.docx`` structuré et vérifié.
+
+    Args:
+        pdf_bytes: le PDF source.
+        out_path: où écrire le ``.docx``.
+        plan: un :class:`~app.services.pdf_layout.ConversionPlan` — les
+            décisions de structure prises par le modèle. ``None`` (le défaut)
+            reproduit exactement le comportement d'avant ce lot : c'est ce qui
+            rend la délégation faillible sans risque pour le document.
 
     Lève :class:`NoTextLayer` si aucune page ne porte de texte.
     """
@@ -570,14 +712,18 @@ def convert_pdf_to_docx(pdf_bytes: bytes, out_path: str | Path) -> ConversionRep
         raise NoTextLayer(f"{len(doc)} page(s) sans couche texte")
 
     cal = calibrate(doc)
-    blocks = _build_blocks(doc, cal)
-    paragraphs, titles = _write_document(blocks, out_path, cal)
+    blocks, dropped = _build_blocks(doc, cal, plan=plan)
+    paragraphs, titles, page_breaks = _write_document(blocks, out_path, cal)
 
     pdf_chars = _char_multiset(pdf_text)
     docx_chars = _char_multiset(_docx_text(out_path))
-    # Ce qui manque au DOCX. Le trait d'union d'une césure supprimée est une
-    # perte VOULUE : on ne la compte pas comme une anomalie.
-    missing = pdf_chars - docx_chars
+    dropped_chars = _char_multiset(
+        "".join(line.text for group in dropped for line in group)
+    )
+    # Ce qui manque au DOCX. Deux pertes sont VOULUES et ne sont donc pas des
+    # anomalies : le trait d'union d'une césure recollée, et les blocs que le
+    # modèle a désignés comme artefacts (folios, en-têtes courants).
+    missing = pdf_chars - docx_chars - dropped_chars
     missing.pop("-", None)
 
     return ConversionReport(
@@ -588,4 +734,8 @@ def convert_pdf_to_docx(pdf_bytes: bytes, out_path: str | Path) -> ConversionRep
         chars_docx=sum(docx_chars.values()),
         missing_chars=sum(missing.values()),
         calibration=cal,
+        page_breaks=page_breaks,
+        dropped_blocks=len(dropped),
+        dropped_chars=sum(dropped_chars.values()),
+        plan_applied=bool(plan and not plan.is_empty),
     )
