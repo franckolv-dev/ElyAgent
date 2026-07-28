@@ -61,6 +61,12 @@ class AgentState(TypedDict):
     # ``conformity.MAX_CONFORMITY_RETRIES`` : sans plafond, deux modèles se
     # renvoient la balle sur une exigence qu'aucun ne sait satisfaire.
     conformity_retries: int
+    # Nombre d'écarts relevés au tour de vérification PRÉCÉDENT. C'est lui qui
+    # décide de continuer ou d'arrêter : on ne relance que si la liste recule
+    # (``conformity.is_making_progress``). Un compte identique ou en hausse
+    # signifie que la reprise n'a rien apporté — insister brûlerait du budget
+    # et du temps pour rien.
+    conformity_gap_count: int
     # Scheduled / automated execution flag (2026-05-31).
     # Set to True by the scheduler when it runs a task prompt on the FLAT
     # (non-supervisor) graph. The supervisor routes a whole prompt to ONE
