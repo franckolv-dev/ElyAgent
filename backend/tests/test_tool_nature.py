@@ -56,8 +56,13 @@ def _declared_tools() -> set[str]:
     On relit l'AST plutôt qu'on importe : un import tirerait tout le graphe de
     dépendances des outils (Google, navigateur, MCP) pour une question qui ne
     porte que sur des noms.
+
+    ⚠️ Corrigé au lot 3 : ce scan ne regardait que ``app/agent/tools``, et
+    ratait donc les **55 outils de ``skills/builtin``** — dont ceux qui pilotent
+    le clavier, la souris et le système de fichiers. 154 recensés pour 208
+    réels. Un pin de couverture qui ne couvre pas tout est un faux témoin.
     """
-    root = pathlib.Path(__file__).parent.parent / "app" / "agent" / "tools"
+    root = pathlib.Path(__file__).parent.parent / "app"
     found: set[str] = set()
     for f in root.rglob("*.py"):
         try:
@@ -145,20 +150,22 @@ def test_a_reading_tool_never_requires_approval():
 # ─────────────────────────────────────────────────────────────────────
 
 
-def test_unguarded_engaging_tools_are_reported():
-    """Mesuré le 28/07 : 26 actes engageants sans aucune autorisation, dont
-    ``ssh_execute``, ``gmail_empty_trash`` et sept ``*_raw_api_call``. Plusieurs
-    docstrings disent eux-mêmes « ALWAYS ask user confirmation » — c'est une
-    consigne au modèle, pas un garde-fou. Ce lot le rend VISIBLE ; le combler
-    est le lot 3."""
+def test_there_is_no_unguarded_engaging_tool_left():
+    """⚠️ Ce pin disait l'inverse au lot 1, sur une mesure FAUSSE.
+
+    #296 affirmait « 26 actes engageants sans autorisation, dont
+    ``ssh_execute`` et ``gmail_empty_trash`` ». Ces deux-là étaient déjà
+    protégés : ``ALREADY_GUARDED`` avait été bâti sur ``hitl_descriptions.py``
+    (6 outils) au lieu de la garde réelle (38). Le vrai trou était de 9 sur le
+    périmètre connu, 18 sur le périmètre complet.
+
+    Depuis le lot 3, il est fermé : tout acte engageant est soit sous
+    autorisation, soit explicitement dispensé avec sa raison. Cette liste doit
+    donc rester VIDE — et ce pin est ce qui le garantit dans la durée.
+    """
     from app.agent.tool_nature import unguarded_engaging_tools
 
-    nus = unguarded_engaging_tools()
-    assert "ssh_execute" in nus
-    assert "gmail_empty_trash" in nus
-    assert any(n.endswith("_raw_api_call") for n in nus)
-    # Déjà protégé : ne doit pas ressortir comme un trou.
-    assert "gmail_send_email" not in nus
+    assert unguarded_engaging_tools() == []
 
 
 def test_tools_that_arbitrate_without_a_way_to_be_instructed_are_reported():
@@ -187,26 +194,33 @@ def test_the_classification_is_readable_per_tool():
 # ─────────────────────────────────────────────────────────────────────
 
 
-def test_the_startup_check_reports_the_unguarded_tools():
+def test_the_startup_check_stays_silent_now_that_the_hole_is_closed():
     """Une table que personne ne lit ne vaut rien — c'est le défaut relevé par
     l'audit du 25/07 (42 playbooks pour 1 usage). Le contrôle de réalité, qui
-    tourne déjà au démarrage, est le lecteur naturel : son rôle est précisément
-    de signaler les écarts entre ce qu'on croit configuré et ce qui l'est."""
+    tourne déjà au démarrage, en est le lecteur.
+
+    Depuis le lot 3 il n'a plus rien à dire, et c'est le résultat recherché : un
+    contrôle qui crie en permanence finit par ne plus être lu du tout."""
     from app.services.config_reality import check_unguarded_engaging_tools
 
-    findings = check_unguarded_engaging_tools()
-    assert findings, "aucun constat alors que 26 actes engageants sont nus"
-    assert all(f.kind == "unguarded_engaging_tool" for f in findings)
+    assert check_unguarded_engaging_tools() == []
 
 
-def test_the_finding_states_the_consequence_not_just_the_name():
+def test_a_finding_would_state_its_consequence_not_just_the_name():
     """Leçon de #265 : « un constat qui énonce sa conséquence se remarque, un
-    nom seul se noie ». L'avertissement « Unknown model » n'a jamais été lu."""
+    nom seul se noie ». L'avertissement « Unknown model » n'a jamais été lu.
+
+    Le trou étant fermé, on vérifie la FORME du constat sur un outil simulé —
+    sinon ce pin disparaîtrait avec le dernier trou, et la prochaine régression
+    reviendrait avec un message illisible."""
     from app.services.config_reality import check_unguarded_engaging_tools
 
-    ssh = next(f for f in check_unguarded_engaging_tools() if f.subject == "ssh_execute")
-    assert len(ssh.detail) > 30
-    assert "ssh_execute" not in ssh.detail, "le détail répète le nom au lieu d'expliquer"
+    findings = check_unguarded_engaging_tools(unguarded=["outil_engageant_fictif"])
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.kind == "unguarded_engaging_tool"
+    assert len(f.detail) > 30
+    assert f.subject not in f.detail, "le détail répète le nom au lieu d'expliquer"
 
 
 def test_an_already_guarded_tool_is_not_reported_as_a_hole():

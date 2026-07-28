@@ -66,6 +66,35 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
     "drive_share_file",     # privacy-sensitive (could expose private docs)
     # Calendar destructive
     "calendar_delete_event",
+    # ─────────────────────────────────────────────────────────────────────
+    # Lot 3 du plan de marche (28/07/2026). La classification des 208 outils
+    # (``app.agent.tool_nature``) a montré que ces huit-là sont ENGAGEANTS —
+    # irréversibles, visibles par des tiers, ou donnant le contrôle de la
+    # machine — et n'étaient soumis à rien.
+    #
+    # ⚠️ Plusieurs portaient « ALWAYS ask user confirmation » dans leur propre
+    # docstring. C'est une consigne AU MODÈLE, pas un garde-fou : rien ne
+    # l'applique s'il passe outre. C'est précisément la différence que ce lot
+    # supprime.
+    #
+    # Envoi vers des tiers — les autres ``gmail_send_*`` étaient déjà ici,
+    # celui-ci avait simplement été oublié quand il a été ajouté.
+    "gmail_send_with_local_attachment",
+    # Crée un événement AVEC visio, donc envoie des invitations aux participants.
+    "calendar_create_meet_event",
+    # Destructif sur des données de l'utilisateur.
+    "sheets_delete_rows",
+    "sheets_batch_update",  # opérations avancées : peut effacer en masse
+    "notes_delete",
+    "scheduler_delete_task",
+    # « ELY prend le contrôle de l'écran » : on autorise LA SESSION, une fois.
+    # Les gestes qui suivent (`trainer_click`, `trainer_type`…) en sont
+    # dispensés — confirmer chacun reviendrait à redemander l'autorisation de
+    # faire ce qu'on vient d'autoriser. Cf. ``tool_nature.APPROVAL_WAIVED``.
+    "trainer_start",
+    # Connexion autonome à un serveur MCP distant : sortie réseau + données.
+    # ``mcp_call_tool`` n'est PAS ici — l'ACL MCP par utilisateur le filtre déjà.
+    "mcp_connect",
     # SSH (could rm -rf)
     "ssh_execute",
     # Raw API escape hatches — by design unrestricted, must always confirm
