@@ -64,6 +64,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agent.helpers.message_content import content_to_text
 from app.agent.state import AgentState
+from app.services.analytics_service import log_response_usage
 from app.services.llm_deadline import ainvoke_with_deadline
 
 logger = logging.getLogger(__name__)
@@ -309,10 +310,30 @@ async def conformity_node(state: AgentState | dict) -> dict:
         )
         return {"messages": []}
 
+    # Le coût de la boucle doit être visible au tableau de bord, sinon on ne
+    # peut pas arbitrer s'il vaut ce qu'il rapporte. Même geste que
+    # ``memory_extraction`` : une ligne d'usage, best-effort.
+    try:
+        await log_response_usage(
+            state.get("user_id", ""), response,
+            skill_used="conformity_check",
+            conversation_id=state.get("conversation_id", "") or None,
+        )
+    except Exception as exc:  # noqa: BLE001 — la journalisation est un confort
+        logger.debug("conformité : usage non journalisé (%s)", exc)
+
     conforme, ecarts = parse_conformity_verdict(
         getattr(response, "content", response)
     )
     if conforme:
+        # Le chemin nominal était MUET : impossible de distinguer « jugé
+        # conforme » de « la vérification n'a jamais tourné ». Constaté le
+        # 28/07 sur la première conversion réelle — tout le tour était dans
+        # les journaux SAUF la vérification.
+        logger.info(
+            "conformité : CONFORME après %d reprise(s) — tour rendu tel quel",
+            int(state.get("conformity_retries", 0)),
+        )
         # Conforme APRÈS une reprise = il s'est passé quelque chose de
         # transférable, et on sait quoi : l'écart qui a été comblé. C'est le
         # déclencheur qui manquait au funnel des compétences (66 apprises pour
