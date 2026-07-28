@@ -313,6 +313,16 @@ async def conformity_node(state: AgentState | dict) -> dict:
         getattr(response, "content", response)
     )
     if conforme:
+        # Conforme APRÈS une reprise = il s'est passé quelque chose de
+        # transférable, et on sait quoi : l'écart qui a été comblé. C'est le
+        # déclencheur qui manquait au funnel des compétences (66 apprises pour
+        # 16 usages). Tourne en tâche de fond, après le tour — jamais dans la
+        # boucle de réponse de l'utilisateur (leçon de #286).
+        _maybe_learn_from_success(
+            state.get("user_id", ""),
+            messages,
+            retries=int(state.get("conformity_retries", 0)),
+        )
         return {"messages": []}
 
     # Le progrès décide, pas le compteur.
@@ -426,6 +436,55 @@ def _produced(messages: list) -> str:
         if final:
             parts.append(f"[réponse finale] {final}")
     return "\n".join(parts)
+
+
+def _maybe_learn_from_success(user_id: str, messages: list, *, retries: int) -> bool:
+    """Propose une compétence quand le tour a réussi APRÈS reprise.
+
+    Ne lève jamais et n'attend rien : la rédaction part en tâche de fond, la
+    réponse de l'utilisateur ne l'attend pas.
+
+    Returns:
+        True si une rédaction a été lancée.
+    """
+    from app.services.learning.skill_from_success import (
+        should_propose_skill_from_success,
+    )
+
+    if not user_id or not should_propose_skill_from_success(
+        conforme=True, retries=retries
+    ):
+        return False
+
+    async def _draft() -> None:
+        try:
+            from app.services.learning.skill_from_success import (
+                draft_skill_from_success,
+            )
+
+            skill = await draft_skill_from_success(user_id, list(messages))
+            if skill is None:
+                return
+            from app.database import async_session
+
+            async with async_session() as db:
+                db.add(skill)
+                await db.commit()
+            logger.info(
+                "compétence proposée depuis un succès vérifié : %r (à valider)",
+                skill.name,
+            )
+        except Exception as exc:  # noqa: BLE001 — corvée de fond
+            logger.info("skill_from_success : proposition abandonnée (%s)", exc)
+
+    try:
+        from app.services.background_tasks import spawn
+
+        spawn(_draft(), label="skill_from_success", detach_context=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("skill_from_success : ordonnancement impossible (%s)", exc)
+        return False
+    return True
 
 
 def route_after_conformity(state: AgentState | dict) -> str:
