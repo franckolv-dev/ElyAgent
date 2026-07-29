@@ -23,8 +23,14 @@ browser_navigate      Load a URL and return its text content
 browser_search_web    Search DuckDuckGo and return the top results
 browser_get_text      Extract text from a CSS selector on the current page
 browser_screenshot    Save a screenshot and return the file path
-browser_click         Click an element (⚠ HITL required)
-browser_fill          Fill a form field (⚠ HITL required)
+browser_click         Click an element
+browser_fill          Fill a form field
+
+Ni l'un ni l'autre ne demande d'accord par défaut — décision de Franck du
+28/07 (`APPROVAL_WAIVED`) : « naviguer n'est pas engager », « remplir un
+formulaire n'est pas le soumettre ». HITL se déclenche sur le CONTENU des
+arguments, pas sur le nom de l'outil : un parcours d'achat (`checkout`,
+`panier`, `paypal.com`, `amazon.`…) passe par `_CRITICAL_KEYWORDS`.
 browser_close         Close the user's browser session
 
 All tools receive ``user_id`` via InjectedToolArg so each user has their
@@ -418,8 +424,6 @@ async def browser_click(
 ) -> str:
     """Click an element on the current browser page.
 
-    ⚠️ This action ALWAYS requires human validation before executing.
-
     Accepts a CSS selector OR the visible text of a button/link.
     Examples: '#submit-btn', 'button:has-text("Valider")', 'a:has-text("Connexion")'
 
@@ -454,8 +458,6 @@ async def browser_fill(
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Fill a form field (input, textarea) on the current browser page.
-
-    ⚠️ This action ALWAYS requires human validation before executing.
 
     Args:
         selector: CSS selector of the input field (e.g. '#email', 'input[name="q"]')

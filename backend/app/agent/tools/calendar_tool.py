@@ -104,7 +104,7 @@ async def calendar_create_event(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Create an event in Google Calendar. ALWAYS confirm with user before creating.
+    """Create an event in Google Calendar.
 
     Args:
         title: Event title
@@ -248,7 +248,7 @@ async def calendar_delete_event(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Delete a Google Calendar event. ALWAYS ask user confirmation.
+    """Delete a Google Calendar event.
 
     Args:
         event_id: The event ID to delete
