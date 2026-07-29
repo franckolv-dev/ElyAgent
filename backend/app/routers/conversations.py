@@ -27,6 +27,7 @@ from sqlalchemy import func, or_, select
 from app.auth.dependencies import get_current_user
 from app.database import async_session
 from app.models.conversation import Conversation, Message
+from app.services.tool_traces import TRACE_ROLE
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -155,7 +156,13 @@ async def get_conversation_messages(
 
         result = await db.execute(
             select(Message)
-            .where(Message.conversation_id == conversation_id)
+            .where(Message.conversation_id == conversation_id,
+                   # Les traces d'outils (rôle `tool`) ne sont PAS des messages
+                   # de la conversation : elles servent à rendre à Ely la
+                   # mémoire de ce qu'elle a fait. Sans ce filtre elles
+                   # s'afficheraient comme des réponses d'Ely — `MessageBubble`
+                   # rend en « assistant » tout ce qui n'est pas « user ».
+                   Message.role != TRACE_ROLE)
             .order_by(Message.created_at.asc())
         )
         messages = result.scalars().all()
@@ -222,7 +229,13 @@ async def export_conversation(
 
         result = await db.execute(
             select(Message)
-            .where(Message.conversation_id == conversation_id)
+            .where(Message.conversation_id == conversation_id,
+                   # Les traces d'outils (rôle `tool`) ne sont PAS des messages
+                   # de la conversation : elles servent à rendre à Ely la
+                   # mémoire de ce qu'elle a fait. Sans ce filtre elles
+                   # s'afficheraient comme des réponses d'Ely — `MessageBubble`
+                   # rend en « assistant » tout ce qui n'est pas « user ».
+                   Message.role != TRACE_ROLE)
             .order_by(Message.created_at.asc())
         )
         messages = result.scalars().all()
