@@ -53,7 +53,12 @@ def test_nothing_references_it() -> None:
     offenders: list[str] = []
     for folder in ("app", "tests", "scripts"):
         for path in (_BACKEND / folder).rglob("*.py"):
-            if "__pycache__" in str(path) or path.name == Path(__file__).name:
+            # `test_docs_match_the_code` LISTE volontairement les noms
+            # supprimés pour vérifier qu'aucun document ne les cite. Le nommer
+            # n'est pas le référencer.
+            if "__pycache__" in str(path) or path.name in (
+                Path(__file__).name, "test_docs_match_the_code.py",
+            ):
                 continue
             if "mcp_errors" in path.read_text(encoding="utf-8", errors="ignore"):
                 offenders.append(str(path.relative_to(_BACKEND)))

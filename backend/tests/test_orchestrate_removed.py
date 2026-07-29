@@ -162,7 +162,12 @@ def test_no_module_still_mentions_orchestrate_conversation_id() -> None:
     reperd la traçabilité que ce ménage vise. Un commentaire qui date un
     renommage n'est pas un nom qui ment.
     """
-    exempt = {"app/agent/tool_context.py", Path(__file__).name}
+    exempt = {
+        "app/agent/tool_context.py",   # documente son propre renommage
+        Path(__file__).name,
+        # liste volontairement les noms supprimés pour contrôler les docs
+        "test_docs_match_the_code.py",
+    }
     offenders: list[str] = []
     for folder in ("app", "tests"):
         for path in (_BACKEND / folder).rglob("*.py"):
