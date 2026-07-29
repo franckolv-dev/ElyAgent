@@ -149,7 +149,15 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
         return "La recherche d'outil a échoué temporairement — procède autrement ou réessaie."
 
     k = max(1, min(int(top_k or 5), 10))
-    top = await _rank_capability(capability, k)
+    # Un petit modèle LOCAL lit les descriptions et choisit. Le classement
+    # lexical+sémantique reste dessous, en repli.
+    #
+    # ⚠️ Mesuré le 29/07/2026 : `_rank_capability` se trompait une fois sur
+    # deux — « créer un événement dans l'agenda » rendait `trainer_start`. Ni
+    # « créer », ni « événement », ni « agenda » n'apparaissent dans la
+    # description de `calendar_create_event`, et l'embedding classait mal.
+    # `gemma-4-E4B` répond 4/4 en ~1,1 s, à coût nul.
+    top = await _select_with_model(capability, k) or await _rank_capability(capability, k)
     if not top:
         # Nothing matched the FULL catalog → genuine capability gap (not a
         # binding gap): record + (C4-2) auto-generate via the shared path.
@@ -271,6 +279,36 @@ async def report_missing_capability(capability: str) -> str:
     except Exception:  # noqa: BLE001
         pass
     return await _record_gap_and_trigger(capability, model_judged=True) + caveat
+
+
+async def _select_with_model(capability: str, k: int) -> list[str]:
+    """Les outils choisis par le modèle local, ou ``[]`` s'il n'a rien décidé.
+
+    Returns ``[]`` — jamais une exception — dans tous les cas de doute, pour
+    que l'appelant retombe sur le classement lexical.
+
+    ⚠️ ``select_tools`` **échoue OUVERT** : il rend la liste COMPLÈTE quand le
+    sélecteur est absent ou muet. La prendre pour une réponse afficherait les
+    200 outils comme « les plus pertinents » — pire que le classement lexical.
+    D'où le test ``len(choisis) >= len(tous)`` : une sélection qui ne
+    sélectionne rien n'en est pas une.
+    """
+    try:
+        from app.agent.tool_selector import select_tools
+        from app.skills import get_skill_registry
+
+        tous = list(get_skill_registry().all_tools)
+        if not tous:
+            return []
+        # `include_core=False` : l'annuaire ne doit pas se proposer lui-même.
+        choisis = await select_tools(capability, tous, include_core=False)
+    except Exception as exc:  # noqa: BLE001 — le repli lexical prend la suite
+        logger.info("find_tool : sélecteur indisponible (%s) — classement lexical", exc)
+        return []
+
+    if not choisis or len(choisis) >= len(tous):
+        return []
+    return [getattr(t, "name", "") for t in choisis if getattr(t, "name", "")][:k]
 
 
 async def _rank_capability(capability: str, k: int) -> list[str]:
