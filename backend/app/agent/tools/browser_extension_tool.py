@@ -54,6 +54,38 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT_S = 15.0
 _PROTOCOL_VERSION = "0.1.0"
 
+# Ce qu'on laisse entrer d'une page dans le contexte du modèle.
+#
+# ⚠️ Mesuré le 29/07/2026 : un `browser_tab_click` a coûté **1,76 $ et 8 min**
+# pour 4 037 491 tokens d'entrée. La cause n'est pas un appel cher, c'est que
+# le contenu de page repartait ENTIER — et que la boucle d'outils renvoie tout
+# le contexte à CHAQUE itération, donc un retour de 200 kB est repayé à chaque
+# tour de boucle. Le coût est quadratique, pas linéaire.
+#
+# La borne « 200 kB » de la docstring est appliquée par l'extension Chrome, pas
+# ici. Ce plafond aligne ces outils sur leurs voisins qui bornent déjà :
+# `skills/builtin/browser_skill` à 5 000 et `pdf_read` à 15 000.
+MAX_PAGE_CHARS = 8_000
+
+
+def _bound_page(content: str, kind: str = "contenu") -> tuple[str, bool]:
+    """Borne un contenu de page. Renvoie ``(texte, tronqué)``.
+
+    La troncature est ANNONCÉE, avec la taille réelle et une issue : coupée en
+    silence, elle ferait conclure au modèle que la page est courte, et il
+    répondrait avec assurance sur des données amputées. Sans issue proposée, il
+    réessaie le même appel — et le repaie.
+    """
+    if len(content) <= MAX_PAGE_CHARS:
+        return content, False
+    return (
+        content[:MAX_PAGE_CHARS]
+        + f"\n\n[… {kind} tronqué — {len(content)} caractères au total. "
+          f"Relance avec un `selector` CSS plus précis (par ex. \"main\", "
+          f"\"article\", \"#content\") pour cibler ce qui t'intéresse.]",
+        True,
+    )
+
 
 def _not_connected_msg() -> str:
     return (
@@ -225,11 +257,12 @@ async def browser_tab_read_text(
     if not res.get("ok"):
         return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
     text = res.get("text", "")
+    bounded, _ = _bound_page(text, "contenu")
     return (
         f"URL : {res.get('url', '')}\n"
         f"Titre : {res.get('title', '')}\n"
         f"Sélecteur : {res.get('selector', 'body')}\n"
-        f"Contenu ({len(text)} caractères) :\n{text}"
+        f"Contenu ({len(text)} caractères) :\n{bounded}"
     )
 
 
@@ -260,10 +293,14 @@ async def browser_tab_read_html(
     if not res.get("ok"):
         return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
     html = res.get("html", "")
+    # Le HTML est encore plus verbeux que le texte — il porte les balises en
+    # plus du contenu. Il a coûté 1,42 $ en mai et 0,73 $ en juin sur le même
+    # défaut, avant qu'on le mesure.
+    bounded, _ = _bound_page(html, "HTML")
     return (
         f"URL : {res.get('url', '')}\n"
         f"Sélecteur : {res.get('selector', 'body')}\n"
-        f"HTML ({len(html)} caractères) :\n{html}"
+        f"HTML ({len(html)} caractères) :\n{bounded}"
     )
 
 
