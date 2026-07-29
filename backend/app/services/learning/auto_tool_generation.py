@@ -96,6 +96,27 @@ async def maybe_generate_for_gap(
                 )
                 return None
 
+        # 4. OUTIL ou COMPÉTENCE ? — règle de Franck du 29/07/2026.
+        #
+        #     « Soit la demande peut être réglée par un modèle et dans ce cas
+        #       ce n'est pas un outil qu'il faut mais une skill ; soit elle
+        #       nécessite une ou plusieurs ACTIONS et là il faut un outil. »
+        #
+        # Les gardes ci-dessus ne répondaient qu'à « existe-t-il DÉJÀ un
+        # outil ? ». Aucune ne demandait s'il en fallait un — d'où des outils
+        # fabriqués pour ce qu'un modèle règle en une phrase, puis jamais
+        # utilisés. Le jugement part sur le niveau S (modèle LOCAL, coût nul)
+        # et cette fonction tourne déjà en tâche de fond.
+        from app.services.learning.tool_or_skill import needs_a_tool
+
+        if not await needs_a_tool(capability):
+            logger.info(
+                "auto_tool_gen: gap #%s « %.60s » relève d'une COMPÉTENCE, pas "
+                "d'un outil — pas de génération. Le gap reste consigné dans "
+                "« Capacités manquantes ».", case_id, capability,
+            )
+            return None
+
         logger.info(
             "auto_tool_gen: génération candidate pour gap #%s « %.80s »",
             case_id, capability,

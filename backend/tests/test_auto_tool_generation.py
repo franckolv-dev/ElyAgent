@@ -21,6 +21,23 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _gate_says_tool(monkeypatch):
+    """La garde OUTIL/COMPÉTENCE (lot du 29/07) répond « outil ».
+
+    Ces pins portent sur la GÉNÉRATION — déclenchement, unicité par gap,
+    notification. Sans ce stub ils mesureraient la garde, qui rend False dès
+    qu'aucun modèle de niveau S n'est joignable : ils passeraient au vert pour
+    la mauvaise raison, en ne générant jamais rien.
+    """
+    async def _yes(capability, **kwargs):
+        return True
+
+    monkeypatch.setattr(
+        "app.services.learning.tool_or_skill.needs_a_tool", _yes,
+    )
+
 from app.services.learning import auto_tool_generation as atg
 
 _REPO = Path(__file__).resolve().parents[1]
