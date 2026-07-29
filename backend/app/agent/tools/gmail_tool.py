@@ -408,7 +408,7 @@ async def gmail_send_email(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Send an email via Gmail. ALWAYS ask user confirmation before sending.
+    """Send an email via Gmail.
 
     Args:
         to: Recipient email address
@@ -502,7 +502,7 @@ async def gmail_move_emails(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Move emails to a label/folder. ALWAYS ask user confirmation before executing.
+    """Move emails to a label/folder.
 
     Shows a summary of what will be moved and asks for explicit confirmation.
     The label must exist — use gmail_create_label first if needed.
@@ -1084,7 +1084,7 @@ async def gmail_reply_email(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Reply to an email. ALWAYS ask user confirmation before sending.
+    """Reply to an email.
 
     Args:
         email_id: The email ID to reply to (from gmail_list_emails)
@@ -1159,7 +1159,7 @@ async def gmail_send_with_attachment(
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Send an email with an attachment from Google Drive. ALWAYS ask user confirmation before sending.
+    """Send an email with an attachment from Google Drive.
 
     Args:
         to: Recipient email address
@@ -1249,7 +1249,6 @@ async def gmail_send_with_local_attachment(
       - any tool that writes to /tmp/ely-attachments/ or /tmp/ely-screenshots/
 
     For files already in Drive, use `gmail_send_with_attachment` instead.
-    ALWAYS ask user confirmation before sending.
 
     Args:
         to: Recipient email address
