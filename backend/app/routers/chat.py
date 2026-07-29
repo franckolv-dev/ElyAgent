@@ -454,6 +454,24 @@ async def websocket_chat(websocket: WebSocket):
                     history_msgs.append(AIMessage(content=sf.anonymize(row.content, ner_detection=False)))
             # Keep only last _MAX_HISTORY messages to stay within context limits
             history_msgs = history_msgs[-_MAX_HISTORY:]
+
+            # Ce qu'Ely a FAIT plus tôt dans cette conversation. Mesuré le
+            # 29/07/2026 : 0 message de rôle `tool` sur 6642 en base — les
+            # `ToolMessage` ne vivaient que le temps du tour, et le chemin d'un
+            # fichier produit au message 1 avait disparu au message 5.
+            #
+            # ⚠️ Réinjecté en CONTEXTE, jamais en `ToolMessage` : sans le
+            # `AIMessage` porteur de leurs `tool_calls`, les API des modèles
+            # rejettent la requête entière.
+            try:
+                from app.services.tool_traces import context_from_traces, load_traces
+
+                _bloc = context_from_traces(await load_traces(str(conversation_id)))
+                if _bloc is not None:
+                    history_msgs.append(_bloc)
+            except Exception as _tr_exc:  # noqa: BLE001 — un confort, jamais le tour
+                logger.warning("traces d'outils non rechargées: %s", _tr_exc)
+
             history_msgs.append(HumanMessage(content=clean_content))
 
             # PII sovereignty (2026-06-07) — when the user opted in, force the
@@ -489,6 +507,9 @@ async def websocket_chat(websocket: WebSocket):
             input_tokens_total: int = 0
             output_tokens_total: int = 0
             tools_called: list[str] = []   # track tool invocations for analytics
+            # Les messages du tour, capturés à la fin du graphe : c'est le
+            # seul endroit où les `ToolMessage` existent encore.
+            _turn_messages: list = []
             # V2-1 — latence de bout en bout du tour (vague 2). Prise ICI,
             # avant l'invocation du graphe : c'est le temps que l'utilisateur
             # attend réellement, pas celui d'un appel LLM isolé.
@@ -667,6 +688,12 @@ async def websocket_chat(websocket: WebSocket):
                     await _ws_send(_dumps(_msg))
                 elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
                     output = event.get("data", {}).get("output", {})
+                    # Les messages du tour, seul endroit où les `ToolMessage`
+                    # existent encore : ils ne sont jamais persistés, et c'est
+                    # ce qui faisait perdre à Ely le chemin d'un fichier qu'elle
+                    # venait de produire (mesuré le 29/07 : 0 rôle `tool` sur
+                    # 6642 messages en base).
+                    _turn_messages = list(output.get("messages") or []) or _turn_messages
                     model_used_out = output.get("model_used", "") or model_used_out
                     routing_score_out = output.get("routing_score", routing_score_out)
                     # P2 — même véhicule que `model_used` : l'état renvoyé par
@@ -878,6 +905,22 @@ async def websocket_chat(websocket: WebSocket):
                 if conv_row:
                     conv_row.updated_at = datetime.now(timezone.utc)
                 await db.commit()
+
+            # Ce que les outils ont produit pendant ce tour, gardé pour les
+            # SUIVANTS : le chemin d'un fichier, l'identifiant d'un événement,
+            # une erreur à ne pas retenter. Le contenu transporté n'est PAS
+            # gardé (`pdf_read` rend jusqu'à 15 000 caractères) — seulement le
+            # résultat, ce que l'utilisateur pourra désigner ensuite.
+            try:
+                from app.services.tool_traces import (
+                    persist_traces, traces_from_messages,
+                )
+
+                _traces = traces_from_messages(_turn_messages)
+                if _traces:
+                    await persist_traces(str(conversation_id), _traces)
+            except Exception as _tr_exc:  # noqa: BLE001 — jamais au prix du tour
+                logger.warning("traces d'outils non enregistrées: %s", _tr_exc)
 
             # J4 — replace the naive ``user_content[:50]`` title with a concise
             # LLM-generated one after the first exchange (best-effort, once).
