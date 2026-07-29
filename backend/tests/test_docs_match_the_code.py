@@ -168,3 +168,39 @@ def test_the_graph_nodes_cited_all_exist() -> None:
             f"le nœud {node!r} n'existe plus dans graph.py — corriger le document"
         )
         assert node in doc, f"architecture.md ne décrit plus le nœud {node!r}"
+
+
+def test_the_mcp_delta_explained_by_the_docs_is_real() -> None:
+    """Les documents expliquent l'écart 196 → 206 : ce pin vérifie l'explication.
+
+    ⚠️ **Ce test existe parce que la première explication écrite était FAUSSE.**
+    Les docs annonçaient « 196 intégrés, plus ceux des serveurs MCP connectés ».
+    Mesuré : l'instance en expose 206 avec **zéro** outil `mcp__serveur__outil`.
+    Les 10 en trop sont les outils qui **gèrent** MCP, enregistrés derrière un
+    drapeau — pas des outils apportés par un serveur.
+
+    Une explication plausible et fausse est exactement ce que ce fichier doit
+    empêcher. On épingle donc les trois faits de l'explication : le nom du
+    drapeau, son défaut, et le nombre d'outils qu'il ouvre.
+    """
+    import re
+    from pathlib import Path as _P
+
+    src = (_REPO / "backend" / "app" / "skills" / "builtin" / "mcp_model_skill.py"
+           ).read_text(encoding="utf-8")
+    defined = len(re.findall(r"^async def (mcp_\w+)|^def (mcp_\w+)", src, re.M))
+    assert defined == 10, (
+        f"mcp_model_skill définit {defined} outils, les docs en annoncent 10"
+    )
+
+    config = (_REPO / "backend" / "app" / "config.py").read_text(encoding="utf-8")
+    assert "mcp_client_v2_enabled: bool = False" in config, (
+        "le drapeau a changé de nom ou de défaut — corriger les documents"
+    )
+
+    for doc in (_REPO / "README.md", _REPO / "README.fr.md",
+                _REPO / "docs" / "architecture.md"):
+        text = doc.read_text(encoding="utf-8")
+        assert "mcp_client_v2_enabled" in text, (
+            f"{_P(doc).name} n'explique plus d'où vient l'écart de comptage"
+        )

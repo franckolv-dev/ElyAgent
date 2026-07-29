@@ -57,8 +57,12 @@ un compteur** : une relance ne continue que tant que les écarts reculent.
 
 ## Ce qu'elle sait faire
 
-**196 outils intégrés**, auxquels s'ajoutent ceux des serveurs MCP que vous
-connectez. Les grandes familles :
+**196 outils intégrés** avec les drapeaux par défaut. Activer le client MCP
+(`mcp_client_v2_enabled`, éteint par défaut) en ajoute **10** — les outils de
+gestion MCP — et chaque serveur MCP connecté apporte les siens, sous la forme
+`mcp__serveur__outil`.
+
+Les grandes familles :
 
 - **Google** — Gmail, Agenda, Drive, Sheets, Docs, Contacts, Tasks
 - **Documents** — lecture de PDF, analyse par vision, et conversion PDF → Word
