@@ -1,464 +1,196 @@
-<div align="center">
+<!-- Français : README.fr.md -->
 
-<a href="README.md">English</a> · <a href="README.fr.md">Français</a>
+# Ely
 
-<img src="https://agent-ely.fr/ely-logo.jpeg" alt="ELY — sovereign AI agent" width="200" />
+**Exactly Like You** — a self-hosted personal agent that does things, checks its
+own work, and asks before it commits you to anything.
 
-# ELY
-
-### The self-hosted AI agent that works in *your* browser, with *your* sessions — and can undo what it did.
-
-Self-hosted · masks personal data before any cloud model call · **reversible actions** · multi-LLM (local or cloud, your call) · 10 channels · 207 built-in tools.
-
-[**Website**](https://agent-ely.fr) ·
-[**Documentation**](./docs/START_HERE.md) ·
-[**Licence**](LICENSE) ·
-[**Roadmap**](https://agent-ely.fr/roadmap.html) ·
-[**Discussions**](https://github.com/franckolv-dev/ElyAgent/discussions)
-
-[![Elastic License v2](https://img.shields.io/badge/license-Elastic%20License%20v2-13bbc2?style=flat-square)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/franckolv-dev/ElyAgent/ci.yml?style=flat-square&label=tests)](https://github.com/franckolv-dev/ElyAgent/actions)
-[![Stars](https://img.shields.io/github/stars/franckolv-dev/ElyAgent?style=flat-square&color=13bbc2)](https://github.com/franckolv-dev/ElyAgent/stargazers)
-
-[![Python](https://img.shields.io/badge/Python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-1.0-orange?style=flat-square)](https://langchain-ai.github.io/langgraph/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-
-</div>
-
-> **Note on licensing.** ELY is licensed under the **[Elastic License v2](LICENSE)** — free for any personal use AND any internal business use, regardless of organisation size. Full source published and auditable.
+Ely is a **non-commercial personal project**, published under the Elastic
+License 2.0. Free for personal use and for internal professional use; reselling
+it as a hosted service is not permitted.
 
 ---
 
-<p align="center">
-  ELY masks personal data before any LLM call
-  <br>
-  <sub><i>PII masking in action — sensitive values are masked before cloud model calls (scope &amp; limits in <a href="docs/security.md">docs/security.md</a>).</i></sub>
-</p>
+## The idea
+
+Most assistants either answer questions or run wild. Ely draws the line
+somewhere more useful — not between *talking* and *doing*, but between three
+kinds of decision:
+
+| | Who decides | Who acts | Control |
+|---|---|---|---|
+| **Mechanical** — one correct answer | nobody | Ely | internal check |
+| **Judgement** — several defensible answers | **the model** | Ely | conformity loop |
+| **Committing** — irreversible, or visible to a third party | model proposes | Ely **after approval** | human in the loop |
+
+The test: *would two competent people, given the same information, answer
+differently?* No → mechanical. Yes → judgement.
+
+A language model cannot act on the world; it only emits text. So Ely always
+does the acting — that is physics, not architecture. What she must not do is
+**settle a judgement on your behalf** using thresholds hard-coded in advance.
+
+"Archive mail older than six months" is mechanical: the rule is in the sentence.
+"Tidy up my inbox" is a judgement, and needs your say.
 
 ---
 
-## Why ELY exists
+## What runs
 
-Cloud AI agents — ChatGPT, Claude, Gemini, the upcoming Google Remy, OpenAI Operator, Microsoft Copilot — are powerful, but they all share the same architecture: **your raw data goes to a third-party server in the United States.** Emails, IBANs, family details, medical records, contract drafts — all transit through models you don't control, in jurisdictions that aren't yours.
-
-For most cloud services that's an accepted tradeoff. **If you handle anything you'd rather not hand to a US server — your inbox, your finances, your family's data — it isn't.**
-
-ELY is a personal AI agent that **runs on your own hardware, masks personal data before any cloud model call, asks before every irreversible action — and can undo the ones that went wrong.**
-
-**Where your data goes is your decision, not ours.** ELY routes by complexity tier and you assign a model to each: keep everything on a local model, send the heavy lifting to a cloud provider, or mix. Whatever leaves your machine is masked first — that regex layer is the actual privacy boundary, and [its limits are documented](docs/security.md) rather than glossed over.
-
-It's a non-commercial personal project under the Elastic License v2 — and that licence also covers internal professional use, free of charge.
-
----
-
-## The four pillars
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### Your hardware, your routing
-**You decide which model sees what.**
-
-- Self-hosted on your Mac, server, NAS, on-prem or any cloud you pick
-- **Per-tier model assignment** — six routing tiers (simple · medium · complex · image · maintenance · skill). Put the cheap ones on a local model and the hard ones on a cloud provider, or keep everything local. No restart.
-- **Per-model configuration** — declare each model's real context window, its output cap and its price per million tokens, so ELY stops truncating on a guess and the cost you're shown is the cost you pay
-- Zero telemetry · zero phone-home · no forced cloud dependency
-- Source code auditable (Elastic License v2)
-
-</td>
-<td width="50%" valign="top">
-
-### Security
-**Sensitive data is masked before cloud LLM calls. Irreversible actions never run unattended.**
-
-- **Native PII anonymisation** — emails, IBANs, credit cards, API tokens, phone numbers, French SIRET masked by regex before the prompt is built on the agent path. Coverage, the optional NER layer and known limits are documented in [docs/security.md](docs/security.md).
-- **Structural HITL** — every irreversible tool (mail send, file delete, SSH, sharing) pauses for explicit approval. Allow once · deny once · **ban permanently** (persisted across sessions).
-- Server-side encrypted vault (AES-256-GCM, key derived from your master password) for credentials.
-- Immutable audit trail — every approval logged, exportable for compliance.
-- **Tamper-proof approvals** — the action you approve is cryptographically the one that runs (fail-closed fingerprint); external mutations are never replayed twice (idempotency keys).
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### Integration
-**Plugged into the tools you already use.**
-
-- **Full Google Workspace** — Gmail, Calendar, Drive, Docs, Sheets, Tasks, Contacts (75 tools, full read/write with HITL on every destructive action)
-- 10 channels — Web · Voice (wake-word "Éli") · PWA · iOS native · Android native · Telegram · WhatsApp · Slack · Discord · ntfy push
-- Native push notifications for HITL approvals (FCM + APNs) — most competitors only proxy via messaging bots
-- 207 tools across web automation, system, RAG, vault, missions, self-improvement
-
-</td>
-<td width="50%" valign="top">
-
-### Architecture
-**Multi-user. Multi-LLM. Built to scale from one person to a household.**
-
-- **Multi-user native — and hardened for it** *(June 2026 campaign: 11 releases)* — one deployment serves you or a household. Each user has their own memory, vault, approval queue, **daily LLM budget**, rate limits and storage quota. Secrets encrypted at rest, Alembic migrations, nightly backups, deep healthchecks.
-- **Multi-LLM with complexity tiers** — assign different models to Tier A (fast) / B (standard) / C (deep) / IMG / SYS. Local for simple tasks, Mistral or Anthropic for complex ones — your choice, no restart.
-- 12 LLM providers supported · auto-fallback on provider outage (per-conversation chain, auto-return after cooldown)
-- Channel-to-user mapping prevents impersonation across messaging platforms
-
-</td>
-</tr>
-</table>
-
----
-
-## Browser autonomy — ELY acts in your real Chrome
-
-> **Start here if you only try one thing.**
-
-Most agents browse with a headless engine that carries no cookies — so anything behind a login returns the login page. ELY ships a Chrome extension that lets the agent **read and act on the tabs you already have open, with the sessions you're already signed into.**
-
-That one difference is why *"check my doctor's availability this week"* works: she opens Doctolib in your own Chrome, where you're already authenticated, and reads what you would read.
-
-What this enables, with zero credentials shared:
-
-- *"How many impressions did my last LinkedIn post get?"* → ELY opens linkedin.com (your session, already logged in), reads the data, closes the tab. ~5 seconds.
-- *"What's in my Gmail inbox?"* → reads via the Gmail web UI, no API token needed.
-- *"Summarise this Amazon order page"* → captures + reads the rendered page, even when anti-bot blocks DOM extraction (falls back to Gemini Vision).
+One agent. No supervisor, no specialists — that architecture existed and was
+removed after an A/B bench gave the single agent the edge on all four criteria
+measured, latency and tool choice included.
 
 ```
-You → ELY → Chrome Extension → YOUR Chrome tab → site (with YOUR cookies)
-                  ↑
-             ELY backend never sees your cookies, never stores credentials
+entry ──▶ agent ──▶ tools ──▶ back to agent
+             │
+             ├──▶ verify ──▶ conforming? end : back to agent with the named gap
+             └──▶ force_summary ──▶ end   (iteration budget spent)
 ```
 
-**Setup** (one-time, 2 min):
-1. `chrome://extensions/` → enable Developer Mode → Load unpacked → select [`extension/chrome/`](./extension/chrome/)
-2. Right-click the ⚡ ELY icon → Options → paste your ELY backend URL + access token
-3. Done — pop-up turns green when connected
-
-→ Full extension docs: [`extension/chrome/README.md`](./extension/chrome/README.md)
+The loop **fails open** — without a clear signal of non-conformance it returns
+the answer rather than spinning — and **progress bounds it, not a counter**: a
+retry only continues while the gaps are shrinking.
 
 ---
 
----
+## What it can do
 
-## What makes ELY different: it improves itself
+**196 built-in tools**, plus whatever the MCP servers you connect bring in.
+The larger families:
 
-Most agents are static. **ELY watches its own failures and gets better — transparently, with you in control.**
-
-- **Creates its own tools when a capability is missing — with a human gate.** Ask *"can you convert X?"* or hit a real gap mid-task: ELY searches her full catalog, records the missing capability, **generates a candidate Python tool on the spot** (12 seconds in production for a text-distance tool), runs it through a 7-stage validation pipeline, and pings your phone. **Nothing executable goes live without your explicit promotion** — that's the structural safety line. Once promoted, the tool is injected with a **grace window** (a freshly validated tool is never crowded out of the prompt by older ones) and picked by relevance to what you're asking. The loop was demonstrated end-to-end live: she created it, the human validated it, she used it.
-- **Measures whether learning actually worked.** A promoted skill isn't assumed good: ELY can **replay the original failure in shadow mode** (recorded tool results re-served — nothing real is re-executed, ever) with and without the skill and compare verdicts; a weekly pass checks whether the failure pattern **recurred after promotion**. Your 👎 on any answer feeds the same loop as a first-class failure signal.
-- **Learns reusable playbooks from its own mistakes — autonomously.** When a task goes wrong (a refused action, a hallucination block, a low-graded mission, a thumbs-down), ELY mines the failure into a short Markdown **playbook** — *"when you see X, do Y, never Z"* — evaluates it with a separate judge model, and **creates and activates the good ones on its own** (text is safe to auto-activate; executable code never is — see above). The library ships with starter playbooks, and you can **import community playbooks** (`SKILL.md`) straight from a URL into the review queue.
-- **Notices your routines and suggests — never acts on its own.** A weekly heuristic detector (no LLM involved) spots requests you make on a regular cadence and proposes turning them into a scheduled task: a push notification plus a prefilled creation form. **You create the task, or dismiss the suggestion once and it never comes back.**
-- **Diagnoses its own "façade successes".** A background loop records, after each autonomous run, whether the agent *actually* did what it claimed — flagging *"reported success, no real effect"* — then **diagnoses the cause** and surfaces a **reviewable fix proposal** on an admin Incidents page. ELY measures its real success rate, not its declared one.
-- **Structured missions that ask instead of guessing** *(v1.17)*. Describe a multi-step workflow in simple YAML — `steps`, `foreach` over a previous step's results, and **edge-case handlers**: `on_ambiguous: ask_user("…")`, `on_not_found: skip_with_note("…")`. When ELY hesitates, she **pings you** (web, push, Telegram), you answer, she resumes — while the other items keep running. A live list viewer shows every step and item (✓ ⏳ ⏸ ⊝) with inline answers. For unattended runs, an **autonomy mandate** (now a form in the mission modal — pick tool families, budgets, unforeseen-case behaviour) lets covered actions run without per-action confirmation — **validated once by you, never self-activated**, emergency stop revokes it, and the protected core (ssh, vault, admin…) can never be mandated.
-- **Radical transparency.** Two dashboards — `/me/learning` and `/me/state` — show you exactly what ELY learned from you and the model it holds of you (mood, focus, open loops). Editable, killable, never hidden.
-- **Undo — ELY can take back what she just did.** Say *"undo"* (or click **Undo** in `/me/reversible-actions`) and ELY reverses her last action — a deleted, renamed or moved Drive file restored exactly as it was — in chat, via API or the UI, with a check that the reversal actually landed.
-- **Cognitive typed memory.** Five memory types (episodic · semantic · procedural · error · constraint) instead of one opaque blob — recalled per-type, across conversations, all local.
-- **MCP client — hardened.** Consume any Model Context Protocol server (admin-configured): per-user credentials encrypted in your Vault, SSRF / DNS-rebinding guard, and per-tool ACL/HITL — reads run friction-free, writes are confirmed once then remembered; a quarantine/trust workflow and MCP-registry search grow ELY's toolset without a code change. *(OAuth 2.1/PKCE sign-in, a sandbox for local stdio servers, and read-only resources/prompts are landing behind their own off-by-default flags.)*
-- **MCP server.** ELY is also exposed *as* an MCP server — connect Claude Desktop, Cursor or any MCP client (authenticated by a personal API key) to chat, schedule tasks and search memory.
-- **50-scenario regression bench + nightly CI.** Self-improvement ships safely because every subsystem is pinned by a deterministic harness, on top of 3,200+ automated tests.
-
-> **The honest pitch.** The self-development loop is real and demonstrated — capability gap → candidate tool in seconds → push notification → **human validation** → bound and used. It is *not* an unsupervised code factory: generated tools are pure-compute compositions validated through AST allow-list, lint, type-check and sandbox smoke; anything touching files or the network stays behind additional off-by-default flags, and the human click remains mandatory for every line of executable code.
-
----
-
-## ELY vs. the Alternatives — An Honest Comparison
-
-We respect what other projects do well. We are explicit about what sets us apart.
-
-| | **ELY** | Other Self-Hosted Agents | Hosted AI Assistants |
-|---|:---:|:---:|:---:|
-| Self-Hosted on Your Hardware | ✅ | ✅ | ❌ |
-| **Anonymized PII before LLM Call** | ✅ Native | ⚠️ Plugin or Absent | ❌ |
-| **HITL on by default (per-tool opt-out; forbidden core stays locked under autonomous mandates)** | ✅ Structural | ⚠️ Configurable | N/A |
-| **Multi-User (one person or a household)** | ✅ | ❌ Often Single-User | ✅ (Cloud Publisher) |
-| **Hybrid Local/Cloud Routing** | ✅ Explicit Third Parties | ⚠️ Manual / Partial | ❌ |
-| Native Mobile Apps (iOS + Android) | ✅ | ❌ Rare | ✅ |
-| Encrypted Vault (Zero-Knowledge) | ✅ AES-256-GCM | ❌ Rare | ❌ |
-| Full French Interface | ✅ | ⚠️ Often EN Only | ⚠️ Partial |
-| License | Elastic v2 (free internal use, no SaaS resale) | Variable | Proprietary |
-
-> **Our Honest Read.** Other self-hosted agents have larger communities and more channel adapters. **If you handle data you'd rather not leak — yours, your family's — ELY's anonymization pipeline and structural HITL are the reasons to choose it over the alternatives.**
-
----
-
-## Who ELY is for
-
-**Privacy-conscious individuals & families** — you want a powerful AI assistant but you refuse to send your inbox, banking details and medical history to OpenAI, Google or Anthropic. Run ELY on your own hardware. Free under the Elastic License v2.
-
-ELY is a **non-commercial personal project**. That said, the Elastic License v2 also covers **internal professional use**, free and without any extra agreement — so if it's useful inside your own structure, it's allowed.
+- **Google** — Gmail, Calendar, Drive, Sheets, Docs, Contacts, Tasks
+- **Documents** — read PDFs, vision analysis, and PDF → Word rebuilt from page
+  geometry (the text never passes through the model, so integrity is structural)
+- **Web** — search, images, maps
+- **Browser** — two families, deliberately: a server-side headless Chromium with
+  **no cookies**, and your **real Chrome** through the extension, which is the
+  only way to reach anything behind a login
+- **Machine** — files, screenshots, desktop control, SSH
+- **Memory** — typed recall, vector search, full-text search over past
+  conversations
+- **Scheduling** — recurring tasks
+- **Channels** — Telegram, Slack, Discord, WhatsApp, all on the same runtime as
+  the web chat
+- **MCP** — Ely is both a client of external MCP servers and an MCP server
+  herself
 
 ---
 
 ## Quick start
 
-**Prerequisites:** Docker · Docker Compose · 16 GB RAM (32 GB for local LLMs) · 20 GB disk · `make` (preinstalled on Mac and most Linux) · `openssl` (preinstalled everywhere).
+**You need:** Docker, Docker Compose, 16 GB RAM (32 GB for local models), 20 GB
+disk, `make`, `openssl`.
 
 ```bash
-# 1. Clone
 git clone https://github.com/franckolv-dev/ElyAgent.git
 cd ElyAgent
-
-# 2. Configure — minimum: a JWT secret
 cp .env.example .env
-# Generate a 64-char hex secret and replace the placeholder in .env:
-#   macOS / Linux: openssl is always available
-sed -i.bak "s|^JWT_SECRET_KEY=.*|JWT_SECRET_KEY=$(openssl rand -hex 32)|" .env && rm .env.bak
 
-# 3. Pick a LLM provider (REQUIRED — without this, ELY can't answer anything)
-# Easiest free option: Google Gemini key (Anthropic / Mistral / OpenAI work too)
-# 1. Grab a free key at https://aistudio.google.com/apikey
-# 2. Paste it into .env on the line GEMINI_API_KEY=
-# 3. Change ACTIVE_LLM_PROVIDER from "ollama" to "gemini" in .env
-#
-# Full provider list and setup links: docs/SETUP_AI_PROVIDERS.md
+# 1. Signing secret — the app refuses to start without a real one
+openssl rand -hex 32          # paste into JWT_SECRET_KEY= in .env
 
-# 4. Boot the stack (first run downloads ~2 GB of images, takes 5-10 min)
+# 2. One model provider (required — otherwise Ely cannot answer)
+#    e.g. ACTIVE_LLM_PROVIDER=gemini + GEMINI_API_KEY=…
+#    Local paths also work: Ollama, LM Studio
+
+# 3. Boot (first run pulls several GB, 5-10 min)
 make up
+make logs                     # wait for the backend to report healthy
 
-# 5. Watch logs until the backend is healthy
-make logs s=backend     # ctrl-C once you see "Application startup complete"
-
-# 6. Open http://localhost:3000 — first signup becomes admin
-#    Password policy: min 12 chars, at least one uppercase + one special char (!@#$%^&*…)
+# 4. Open http://localhost:3000 — the first account created becomes admin
 ```
 
-> **Without an LLM key**: ELY boots fine but every chat message will fail
-> with a connection error. The default `ACTIVE_LLM_PROVIDER=ollama`
-> assumes a local Ollama is running on the host — install it from
-> https://ollama.ai or switch to a cloud provider in `.env`.
+⚠️ **`.env` lives at the repository root.** The container reads that one, not
+`backend/.env`. This is the single most common configuration mistake here.
 
-→ **[Full setup guide for non-developers →](./docs/START_HERE.md)**
-Four scenarios, from 30-min local install (Scenario A) to fully remote deployment with Cloudflare Tunnel and all messaging channels (Scenario D). No prior knowledge of Docker, Google Cloud or APIs assumed.
-
-→ **[Browser Extension setup →](./extension/chrome/README.md)** for ELY to act on your real Chrome tabs (LinkedIn, Gmail, GitHub, Amazon…) with your existing sessions. Optional but it's the killer feature.
-
-→ **[Troubleshooting →](./docs/TROUBLESHOOTING.md)** if `make up` fails, the first chat errors out, or ports clash with another project.
-
-## What ELY can do
-
-A real product UI on every surface — not a terminal dressed as a website. ELY treats the UI as a first-class citizen, including for non-technical users.
-
-<details>
-<summary><strong>Security pipeline</strong> — PII masking · HITL · vault · audit trail</summary>
-
-- **PII masking pipeline.** Deterministic regex detection of emails, IBANs, credit cards, API tokens, phone numbers (all French formats), SIRET, employee IDs. Deterministic placeholders, reversed only when displayed back to you. This regex layer is the active privacy boundary. (A local NER layer for free-text names/orgs was built and benchmarked, but is **off by default** — it proved too disruptive for an agentic assistant; see [docs/security.md](docs/security.md).)
-- **Human-in-the-loop.** Blocks 30+ tool categories by default. Three actions: allow once, deny once, **ban permanently** (persisted across sessions).
-- **Encrypted vault.** AES-256-GCM, per-user key derived from password. Zero-knowledge.
-- **Audit trail.** Immutable JSON Lines. Exportable for compliance.
-
-[Full security model →](./docs/security.md)
-
-</details>
-
-<details>
-<summary><strong>Multi-LLM engine</strong> — your keys, route by complexity tier</summary>
-
-Configure providers in **Settings → AI Models**. Assign each of the six tiers (simple · medium · complex · image · maintenance · skill) to a model, with its real context window, output cap and per-million pricing. Switch any time, no code, no restart.
-
-- **Cloud:** Mistral · Anthropic · OpenAI · Gemini · GPT-5.5 / 5.6 (via your ChatGPT subscription, no API key) · Qwen API · Moonshot Kimi K2.x · DeepSeek · Zhipu · OpenRouter
-- **Local:** Ollama · LM Studio (MLX on Apple Silicon)
-- Auto-detected compact prompts so 7B local models actually obey `tool_choice="required"`
-- Auto-fallback if a provider goes down — disable per-tier for pure-local testing
-
-</details>
-
-<details>
-<summary><strong>Google Workspace integration</strong> — 75 tools, full read/write with HITL</summary>
-
-Gmail · Calendar · Drive · Docs · Sheets · Tasks · Contacts. High-level tools, batch operations, and a `raw_api_call` escape hatch for any method of the official Google Python client. Critical raw calls still trigger HITL. Multi-Google-account support — link several mailboxes to one ELY user.
-
-</details>
-
-<details>
-<summary><strong>Missions</strong> — goal-driven loop that survives restarts, now with structured specs</summary>
-
-Give ELY a goal — she breaks it into steps, picks tools, executes, evaluates, replans on failure, and notifies you on completion. Five guardrails: token budget · iteration budget · optional deadline · HITL on critical tools · anti-loop replan after 3 consecutive failures. Failed missions are always graded by an external **LLM-as-judge** that flags "façade success"; successful ones are spot-checked (1 in 5).
-
-**Structured missions** *(v1.17)* — replace the monolithic prompt with a YAML spec:
-
-```yaml
-version: 1
-steps:
-  - id: enrich
-    foreach: "{{ read_companies.output }}"
-    do: "Find the CEO of {{ item }} on LinkedIn."
-    on_ambiguous: ask_user("Several results for {{ item }} — which one?")
-    on_not_found: skip_with_note("Not found")
-    on_error: resume_next
-```
-
-The LLM stays in the loop (the spec *frames* execution, it doesn't replace reasoning) ; declared edge cases are **signalled, not improvised** ; `ask_user` pauses the item, pings you on every channel, and resumes on your answer while the other items keep running. Live list viewer with inline replies. Deterministic completion — no LLM-judged "done". Legacy free-text missions unchanged.
-
-</details>
-
-<details>
-<summary><strong>Learning loop & skills</strong> — ELY turns its mistakes into reusable playbooks</summary>
-
-Failure signals (HITL refusals, hallucination blocks, mission critiques, "missing tool" gaps, **your 👎 on any answer**) feed a learning loop with two distinct products — readable **Markdown playbooks** and executable **Python tools** — each with the safety line it deserves:
-
-- **Autonomous playbook capture.** A background pass mines recent failures into a playbook — *"when X, do Y, never Z"* — an external judge scores it, and passing ones are **created and activated automatically** (text is safe to auto-activate). The library ships **seeded**, and you can **import** community `SKILL.md` from a URL into the admin review queue (external content is never auto-activated).
-- **Tool generation on capability gaps — human-gated.** A meta question (*"can you convert…?"*) or a real gap triggers the whole chain by itself: gap recorded in the **Missing capabilities** panel → candidate Python tool generated (tier-S model, AST allow-list → ruff → mypy → sandboxed smoke → registration) → **push notification** → your promotion click. **Executable code never activates itself.** Promoted tools get a prompt-injection **grace window** + relevance ranking so they're actually used, and the source gap closes automatically.
-- **Measured, not assumed.** `bench --case N` replays a recorded failure in **strict shadow mode** (captured tool results re-served; nothing real re-executed) with and without the learned skill; the weekly curator tracks whether each failure pattern **recurred after promotion**.
-- **Self-diagnosis.** After each autonomous run, a loop checks whether the agent *really* did what it claimed (*"façade success"* detection), diagnoses the cause, and surfaces a **reviewable fix proposal** on an admin Incidents page.
-
-Everything stays auditable and reversible — playbooks are prose you can read, edit, archive; generated tools are diffs you promote. A 50-scenario regression bench + nightly CI keeps the loop honest.
-
-> *Still gated, off by default:* the network **"io" tool variant** (filtering egress proxy, declared domains, Vault-injected secrets) and file-touching tools — the next frontier, deliberately behind flags until the file in/out contract lands.
-
-</details>
-
-<details>
-<summary><strong>Radical transparency</strong> — see what ELY learned about you, and change it</summary>
-
-`/me/learning` shows the failure signals + verdicts ELY recorded; `/me/state` shows the live model it holds of you (mood, focus, recent topics, open loops, energy). Both are user-readable, editable, and killable — no hidden profiling.
-
-</details>
-
-<details>
-<summary><strong>Undo — reversible actions</strong> — take back the last delete / rename / move</summary>
-
-ELY records a compensating action for the destructive operations she runs, so you can reverse the last one — a Drive file deleted, renamed or moved is restored exactly as it was. Trigger it in chat (*"undo that"*), via the API, or from the **`/me/reversible-actions`** page (list, one-click Undo, expiry window). Each undo is **verified** — ELY confirms the reversal actually landed — and entries auto-purge after their window.
-
-</details>
-
-<details>
-<summary><strong>Channels</strong> — 10 ways to reach ELY</summary>
-
-Web UI · Voice (wake-word "Éli") · PWA · iOS native · Android native · Telegram · WhatsApp · Slack · Discord · ntfy push. Same agent, same memory, same security across all surfaces.
-
-</details>
-
-<details>
-<summary><strong>API access & MCP server</strong> — drive ELY from external clients</summary>
-
-Mint personal API keys in **Settings → Clés API** (`ely_api_…`, shown once, max 20 active, revocable). Use one as a bearer token against ELY's own **MCP server** at `/api/mcp` (FastMCP Streamable-HTTP) — v1 tools: chat one autonomous-safe turn, list/create scheduled tasks, semantic memory search. Intended clients: Claude Desktop, Cursor.
-
-</details>
-
-<details>
-<summary><strong>Memory & RAG</strong> — local Qdrant + SQLite FTS5</summary>
-
-PDF · TXT · Markdown · CSV · JSON · DOCX. Everything local — no remote embedding services. ELY decides when to search, reranks results, cites sources. Uploads up to **50 MB** per file (per-user storage quota applies). Note: `.zip` files upload but ELY has no unzip tool — send archives unzipped.
-
-</details>
-
-</details>
-
-<details>
-<summary><strong>LLM Arena, Desktop daemon, Smart File Manager</strong></summary>
-
-Blind LLM head-to-head ELO ranking · Native Go desktop daemon for local automation · On-device duplicate detection on Android (files never transit the backend).
-
-</details>
+Full walkthrough: **[docs/installation.md](docs/installation.md)** (French).
 
 ---
 
-## Architecture
+## Approval, and where it actually lives
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  USER INPUT  ─→  PII Filter (mask)  ─→  Complexity Router            │
-│                                                          │           │
-│  RESPONSE  ←─  Restore real values  ←─  HITL gate  ←─  LangGraph     │
-│                                                          │           │
-│                                              ┌───────────┼─────────┐ │
-│                                              ▼           ▼         ▼ │
-│                                         Local LLM     Tools     Cloud│
-│                                         (Ollama,     (190+)   (PII-│
-│                                         LM Studio)             masked)│
-└──────────────────────────────────────────────────────────────────────┘
-```
+**46 tools** require your approval by name. On top of that, the **content** of a
+request can trigger a check — a transfer, a purchase, a deletion, a checkout
+page.
 
-→ [Full architecture deep-dive](./docs/architecture.md)
+Three rules worth knowing:
+
+1. **It fails closed.** An unclassified tool is treated as committing. A false
+   positive costs a question; a false negative costs a sent message.
+2. **A waiver is not a reclassification.** Some committing actions are exempted
+   with a written reason — a click in Chrome is not a commitment, filling a form
+   field is not submitting it. The tool stays classified as committing: what a
+   tool *is* stays separate from what needs your consent.
+3. **A docstring is not a guardrail.** "Always ask for confirmation" in a tool's
+   documentation is an instruction to the model, not a lock. Those sentences were
+   removed; the guard alone decides.
+
+---
+
+## Your data
+
+Before any call to a **third-party hosted** model, personal data is replaced by
+stable placeholders — the same address becomes the same marker throughout a
+conversation — and the answer is restored on the way back. A call to a **local**
+model skips this entirely: nothing leaves the machine.
+
+Ely reports what a request cost when it used a per-call model.
+
+---
+
+## How it learns
+
+A skill is born from a **success reached after correction**: Ely failed, saw it,
+named the gap, fixed it, and the result passed verification. The procedure is
+then written up and offered as a **candidate**. Nothing becomes active without
+review.
+
+A tool is only built when a request demands an **action** — touching a file, an
+API, a service. Otherwise it becomes a skill: a written procedure, not new code.
 
 ---
 
 ## Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Backend | Python 3.12 · FastAPI · LangGraph · uv |
-| Frontend | Next.js 16 · TypeScript · Tailwind · Three.js |
-| Mobile | iOS SwiftUI · Android Kotlin/Compose |
-| Desktop daemon | Go (Linux · macOS · Windows) |
-| LLM providers | 12 (cloud + local) |
-| Memory | Qdrant · SQLite FTS5 · fastembed |
-| Auth | JWT HS256 · Argon2id · HttpOnly refresh cookie |
-| Vault | AES-256-GCM, per-user key derivation |
-| Push | FCM · APNs · Telegram · WebSocket |
-| Infra | Docker Compose · nginx · Cloudflare Tunnel |
+FastAPI · LangGraph · Next.js · SQLite (Alembic is the sole schema authority) ·
+Qdrant · nginx · Squid for egress filtering · Docker Compose.
+
+Surfaces: web, REST API, Telegram, Slack, Discord, WhatsApp, voice over
+WebSocket, a Chrome extension, a desktop app, Android and iOS.
 
 ---
 
-## Roadmap
+## Documentation
 
-**Shipped** *(July 2026)*
-- **The self-development loop, demonstrated end-to-end** — capability gap → candidate tool generated in seconds → push notification → **human validation** → bound, injected with a grace window, used. Both paths proven live the same evening: the happy one (a text-distance tool, 12 s) and the honest one (PDF→DOCX refused by validation, gap kept visible) ([#217](https://github.com/franckolv-dev/ElyAgent/pull/217)–[#223](https://github.com/franckolv-dev/ElyAgent/pull/223))
-- **Learning, measured** — shadow replay A/B of recorded failures (nothing real re-executed) + post-promotion recurrence metric; 👎 feedback joins the failure funnel ([#225](https://github.com/franckolv-dev/ElyAgent/pull/225)–[#227](https://github.com/franckolv-dev/ElyAgent/pull/227))
-- **Anticipation V1, suggestion-only** — weekly heuristic detector proposes turning recurring requests into scheduled tasks (prefilled form; a dismissal is final) ([#228](https://github.com/franckolv-dev/ElyAgent/pull/228)–[#230](https://github.com/franckolv-dev/ElyAgent/pull/230))
-- **Outcome verifier on all 8 surfaces + wall-clock deadlines + honest fallback** — the anti-"it's done" guard covers web, channels, scheduler, voice and the MCP server; every LLM call has a hard deadline that triggers chain rotation; a fallback agent inherits already-acquired tool results instead of claiming "no access" ([#199](https://github.com/franckolv-dev/ElyAgent/pull/199), [#203](https://github.com/franckolv-dev/ElyAgent/pull/203), [#211](https://github.com/franckolv-dev/ElyAgent/pull/211)–[#215](https://github.com/franckolv-dev/ElyAgent/pull/215))
-- **Autonomy mandate form** — the v2 mission spec (tool families, budgets, unforeseen-case policy) is generated from a form in the mission modal; emergency stop now revokes the mandate ([#233](https://github.com/franckolv-dev/ElyAgent/pull/233), [#236](https://github.com/franckolv-dev/ElyAgent/pull/236))
-- **Unified tool gateway** — chat, autonomous missions and scheduled tasks now execute every tool through one shared pipeline (security filter → HITL → PII boundary → reversible-action journal), so a guarantee added once holds on all three surfaces ([#190](https://github.com/franckolv-dev/ElyAgent/pull/190), [#195](https://github.com/franckolv-dev/ElyAgent/pull/195)–[#197](https://github.com/franckolv-dev/ElyAgent/pull/197))
-- **Autonomous missions: human-activated mandate + mission logbook** — a mission's mandate (token budget, LLM tier, allowed tools) must be explicitly activated by a human, its real budget and tier are actually enforced, and the viewer shows a live logbook of what the mission did; still behind an off-by-default flag ([#191](https://github.com/franckolv-dev/ElyAgent/pull/191), [#194](https://github.com/franckolv-dev/ElyAgent/pull/194))
-- **GPT-5.6 via your ChatGPT subscription** — terra / sol / luna catalogue added next to GPT-5.5, selectable per LLM instance ([#189](https://github.com/franckolv-dev/ElyAgent/pull/189))
-- **Self-diagnosis: recurring incidents deduplicated** — a repeating failure folds into one incident with an occurrence counter instead of flooding the admin page ([#188](https://github.com/franckolv-dev/ElyAgent/pull/188))
-- **ELY Desktop: resilient to tunnel blips** — a Cloudflare-tunnel reset (the daemon reconnects in ~2 s) no longer aborts a running task: tools wait through a 15 s reconnection grace and in-flight commands retry once on the new connection ([#198](https://github.com/franckolv-dev/ElyAgent/pull/198))
-
-**Shipped** *(May–June 2026)*
-- **Self-improving skills loop** *(v2.2)* — ELY mines its real failures into Markdown playbooks and **creates + activates them autonomously**; seeded library; **import community `SKILL.md` from a URL** into the review queue
-- **Self-diagnosis loop** *(v2.2)* — detects "façade success", diagnoses the cause, surfaces a reviewable fix proposal on an admin Incidents page
-- **Smarter scheduled tasks** *(v2.2)* — `[SILENT]` (monitors stop spamming when nothing changed), true one-shot `@once` (runs once then deletes), edit/run a task without recreating it
-- **Chat affordances** *(v2.2)* — LLM-generated conversation titles, regenerate a reply, edit-and-resend the last message
-- **Structured missions** *(v1.17)* — YAML specs with `foreach` + edge-case handlers; `ask_user` pauses, pings you, resumes on your answer; live list viewer
-- **Multi-user hardening campaign** *(11 releases, v1.14.x)* — cross-user isolation audit, per-user budgets/quotas/rate limits, secrets encrypted at rest, Alembic migrations, nightly backups, deep healthchecks
-- **Cognitive typed memory** — 5 memory types, cross-conversation recall
-- **Radical transparency** — `/me/learning` + `/me/state` dashboards
-- **Undo / reversible actions** — revert ELY's last delete, rename or move (Drive) from chat · API · `/me/reversible-actions`, with verification
-- **MCP client, hardened** — consume any MCP server with per-user Vault credentials, SSRF guard and per-tool ACL/HITL; quarantine/trust workflow + registry search (OAuth sign-in, local-server sandbox and read-only resources/prompts landing behind off-by-default flags)
-- **GPT-5.5 via your ChatGPT subscription** — use it as an LLM tier without an API key (token import + auto-refresh), with fallback on quota
-- **MCP server** *(v2.2)* — ELY exposed AS a Model Context Protocol server (authenticated `/api/mcp` endpoint, personal API keys) so you can drive it from Claude Desktop / Cursor (ely_chat, scheduled tasks, typed-memory search)
-- **50-scenario regression bench** + nightly CI · 2,900+ automated tests
-
-**Maybe next** *(optional — this is a personal project, no roadmap pressure)*
-- **Anthropic prompt-cache markers** — shave multi-turn input cost on the Anthropic tier.
-
-→ [Full public roadmap →](https://agent-ely.fr/roadmap.html)
+| | |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | how it works inside (French) |
+| [docs/installation.md](docs/installation.md) | install and configure (French) |
+| [docs/guide-utilisateur.md](docs/guide-utilisateur.md) | day-to-day use (French) |
+| `.env.example` | every setting, annotated |
 
 ---
 
 ## Licence
 
-**Source code** — [Elastic License v2](LICENSE)
+**Elastic License 2.0** — see [LICENSE](LICENSE), with a plain-language summary
+in [licence-ELY.md](licence-ELY.md) and commercial terms in
+[COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
 
-In plain language (informative — the [LICENSE](LICENSE) file is the legal text):
+- **Allowed** — personal use, and internal professional use, free of charge.
+- **Not allowed** — reselling Ely as a hosted or managed service to third
+  parties, or stripping copyright and licence notices.
 
-**You are free to** — use ELY for any personal use (household, family) · use it for any internal business use, any organisation size · modify the source and run your version · distribute it (modified or not) keeping the LICENSE + copyright notices.
-
-**You may not** — offer ELY as a hosted or managed service to third parties (no SaaS resale) · remove or hide the copyright/licence notices · disable or circumvent any licence-key mechanism.
-
-→ [Plain-language summary on the official site →](https://agent-ely.fr/pricing.html)
-
-**Trademark.** The names **ELY**, **Éli**, **agent-ely.fr**, the 3D avatar and the lightning-bolt logo are protected separately from the code.
-
-📩 **Contact:** [contact@agent-ely.fr](mailto:contact@agent-ely.fr) — replies within 48h, always.
+Trademark: [TRADEMARK.md](TRADEMARK.md). Security policy:
+[SECURITY.md](SECURITY.md).
 
 ---
 
 ## Contributing
 
-ELY is open source under the Elastic License v2. ✅ Bug fixes · documentation · translations · channel adapters · performance · tests · ⚠️ Architectural changes — open an issue first.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-[Full contribution guide →](./CONTRIBUTING.md) · [Code of Conduct →](./CODE_OF_CONDUCT.md) · [Security policy →](./SECURITY.md)
-
----
-
-<div align="center">
-
-**Built in Nouvelle-Aquitaine, France **
-
-[Website](https://agent-ely.fr) · [Documentation](./docs/START_HERE.md) · [Sponsor](https://github.com/sponsors/franckolv-dev) · [Newsletter](https://agent-ely.fr/newsletter.html)
-
-</div>
+Ely is a personal project, so the pace is what it is. Bug reports and precise,
+reproducible findings are the most useful thing you can send.

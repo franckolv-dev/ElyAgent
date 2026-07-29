@@ -1,459 +1,294 @@
-# ELY Agent — Architecture
+# Architecture d'Ely
 
-> *Dernière mise à jour : 2026-05-10. Reflète la stack actée pour l'ouverture publique semaine du 11 mai 2026.*
+> Ce document décrit ce que le code fait **aujourd'hui**, mesuré le 30 juillet 2026.
+> Il ne décrit pas d'intentions. Quand un chiffre est cité, il a été compté.
 
-ELY (Exactly Like You) est un **agent IA personnel souverain**, multi-canal, multi-LLM, avec capacité d'action sur le système de fichiers local de l'utilisateur. Cette page décrit l'architecture en mai 2026 — les choix faits, leurs raisons, et où trouver le code.
+Ely — *Exactly Like You* — est un agent personnel auto-hébergé. Un seul agent,
+un catalogue d'outils, une boucle qui vérifie son propre travail avant de rendre
+la main.
 
 ---
 
-## 1. Vue d'ensemble
+## La règle qui gouverne le reste
+
+Toute la conception découle d'une seule distinction, posée après un recadrage de
+juillet 2026 :
+
+| | Qui décide | Qui exécute | Contrôle |
+|---|---|---|---|
+| **Mécanique** — une seule réponse correcte | personne | Ely | vérification interne |
+| **Jugement** — plusieurs réponses défendables | **le modèle** | Ely | boucle de conformité |
+| **Acte engageant** — irréversible ou visible par un tiers | le modèle propose | Ely **après accord** | HITL |
+
+Le test : *« Deux personnes compétentes, avec la même information, pourraient-elles
+répondre différemment ? »* Non → mécanique. Oui → jugement.
+
+Un modèle de langage ne peut pas agir sur le monde : il n'émet que du texte.
+**C'est donc toujours Ely qui exécute** — contrainte physique, pas choix
+d'architecture. Ce qu'elle ne doit pas faire, c'est *trancher un jugement* à
+votre place avec des seuils codés d'avance.
+
+Exemples tranchés : « archive les mails de plus de six mois » est **mécanique**
+(la règle est dans la phrase) ; « nettoie ma boîte » est un **jugement** et
+demande un accord ; « rendez-vous jeudi 14 h » est mécanique ; « cale un
+déjeuner avec Gert » est un jugement, parce que ça dépend de ses habitudes.
+
+---
+
+## Le graphe d'exécution
+
+Un seul agent. Pas de superviseur, pas de spécialistes : cette architecture a
+existé et a été retirée après un banc A/B qui a donné l'avantage au mono-agent
+sur les quatre critères retenus, dont la latence et la justesse du choix d'outil.
 
 ```
-                           CANAUX D'ENTRÉE
-   ┌─────────────────────────────────────────────────────────────────┐
-   │  Web UI (Next.js)   App Android (Kotlin)   App iOS (SwiftUI)    │
-   │  Telegram bot       Discord bot            Slack Socket Mode    │
-   │  WhatsApp Web/Cloud Voice WS (/ws/voice)                        │
-   └────────────┬────────────────────────────────────────────────────┘
-                │ JWT + WebSocket / HTTP
-                ▼
-   ┌─────────────────────────────────────────────────────────────────┐
-   │                    BACKEND (FastAPI / Python)                   │
-   │                                                                 │
-   │   ┌──── Auth + Rate limit + CORS ──────────────────────────┐   │
-   │   │                                                        │   │
-   │   │   ┌── Security ───────────────────────────────────┐    │   │
-   │   │   │  PII anonymizer • HITL multicanal             │    │   │
-   │   │   │  ALWAYS_CRITICAL_TOOLS • LOCKED_HITL_TOOLS    │    │   │
-   │   │   │  Anti-confabulation (system prompt)           │    │   │
-   │   │   └────────────────────────────────────────────────┘    │   │
-   │   │                                                        │   │
-   │   │   ┌── Agent (LangGraph, mono-agent) ────────────┐    │   │
-   │   │   │  router → {research|workspace|infra|general} │    │   │
-   │   │   │   → tools → loop, force_summary at iter≥80   │    │   │
-   │   │   │  Sticky toolset profile (~41 tools)          │    │   │
-   │   │   └────────────────────────────────────────────────┘    │   │
-   │   │                                                        │   │
-   │   │   ┌── LLM routing (4 tiers) ─────────────────────┐    │   │
-   │   │   │  A:Ministral 3B local · B:Mistral Small 4    │    │   │
-   │   │   │  C:Mistral Large 3 · IMG:DeepSeek v4-flash   │    │   │
-   │   │   │  Fallback chain transparent                  │    │   │
-   │   │   └────────────────────────────────────────────────┘    │   │
-   │   └────────────────────────────────────────────────────────┘   │
-   └────────┬──────────────────┬─────────────────┬────────┬─────────┘
-            │                  │                 │        │
-            ▼                  ▼                 ▼        ▼
-  ┌──────────────┐  ┌──────────────────┐  ┌─────────┐  ┌──────────────┐
-  │   SQLite     │  │   Qdrant         │  │ Google  │  │ ELY Desktop  │
-  │              │  │   (Vector DB)    │  │  APIs   │  │ daemon (Go)  │
-  │ users        │  │  memories        │  │ Gmail   │  │ filesystem   │
-  │ messages     │  │  constraints     │  │ Calendar│  │ sandbox      │
-  │ convos       │  │  interactions    │  │ Drive   │  │ HITL forced  │
-  │ llm_instances│  │  user_profile    │  │ Docs    │  │ on writes    │
-  │ missions     │  │                  │  │ Sheets  │  │              │
-  │ hitl_prefs   │  │  fastembed local │  │ Tasks   │  │ WebSocket    │
-  │ scheduled    │  │  (CPU, 384 dim)  │  │ People  │  │ /ws/desktop  │
-  └──────────────┘  └──────────────────┘  └─────────┘  └──────────────┘
+                    ┌───────────┐
+      entrée ──────▶│   agent   │◀────────────┐
+                    └─────┬─────┘             │
+                          │                   │
+         ┌────────────────┼───────────────┐   │
+         ▼                ▼               ▼   │
+    ┌─────────┐    ┌────────────┐   ┌────────────────┐
+    │  tools  │    │   verify   │   │ force_summary  │
+    └────┬────┘    └──────┬─────┘   └───────┬────────┘
+         │                │                 │
+         └────────────────┘                 ▼
+          retour à agent                   fin
+                     │
+              conforme ─▶ fin
+              écart nommé ─▶ agent
 ```
 
----
+- **`agent`** — assemble le prompt, choisit d'appeler un outil ou de répondre.
+- **`tools`** — exécute l'outil, puis rend systématiquement la main à `agent`.
+- **`verify`** — confronte le résultat à la demande. Conforme → fin. Sinon,
+  retour à `agent` **avec l'écart nommé**, pas avec un « recommence ».
+- **`force_summary`** — sortie de secours quand le budget d'itérations est
+  épuisé. Elle ne passe pas par `verify` : un tour à bout de course n'a rien à
+  relancer.
 
-## 2. Frontend — Next.js + 3D avatar
+Deux principes dans cette boucle :
 
-📁 `frontend/`
-
-- **App Router Next.js 14+**, pages `/chat`, `/settings`, `/admin`, `/dashboard`, `/missions`, `/arena`, `/login`, `/offline`
-- **i18n** via `next-intl` (FR par défaut, EN dispo) — fichiers `frontend/messages/{fr,en}.json`
-- **WebSocket** `/ws/chat` avec reconnexion automatique pour le chat temps réel
-- **Avatar 3D cyberpunk** (Three.js / react-three-fiber) — états `idle`, `thinking`, `speaking`, `alert` (HITL)
-- **TTS client** (`lib/tts.ts`) — appelle `/tts/speak` avec sanitizer côté serveur (URLs, JSON, IDs longs filtrés). Toggle « Voix active » persisté par utilisateur via `/api/preferences/voice`
-- **HITL** : double canal — carte sur l'avatar (WebSocket `hitl_pending`) **et** push ntfy → résolu en cliquant l'un ou l'autre
-- **PWA** : manifest + service worker `sw.js` (production uniquement, network-first sur les navigations, jamais de cache pour `/api/*` ni `/ws/*`)
-- **Mode sombre/clair**, thème cyan-cyberpunk
-
----
-
-## 3. Backend — FastAPI
-
-📁 `backend/`
-
-- **API REST + WebSocket**, FastAPI + uvicorn
-- **Auth** JWT access (15 min) + refresh cookie HttpOnly (30 j) — admin via rôle `admin` sur `User`
-- **Rate limiting** (60 req/min/IP), **CORS** configurable
-- **Routers** principaux :
-  - `auth`, `chat` (WS), `voice` (WS), `validation` (HITL resolve), `tts`
-  - `google` (OAuth flow), `setup`, `licence`, `arena`
-  - `settings_llm` (CRUD instances + tier routing), `voice_prefs`, `hitl_prefs`
-  - `desktop_status` / `desktop_config` / `desktop_binaries`, `desktop_ws` (daemon connection)
-  - `missions`, `scheduler`, `watchdog`, `audit`, `analytics`
-  - `attachments`, `upload`, `transcribe`
-  - Channel webhooks : `telegram_webhook`, `whatsapp_webhook`
-- **Database** : SQLite (idempotent migration au boot via `_safe_columns` dans `database.py` — pas d'Alembic)
+- **Elle échoue ouvert.** Sans signal clair de non-conformité, on considère
+  conforme et on rend la réponse. L'inverse ferait boucler sur un doute.
+- **C'est le progrès qui borne, pas un compteur.** La relance ne continue que si
+  les écarts reculent. Un compteur fixe a été mesuré mauvais.
 
 ---
 
-## 4. Agent — LangGraph, mono-agent
+## Les outils
 
-📁 `backend/app/agent/`
+**196 outils** intégrés — le compte reproductible, hors serveurs MCP
+connectés, qui en ajoutent à l'exécution. Les familles les plus fournies :
 
-> **Changement du 26/07/2026.** ELY tournait sur un superviseur multi-agent :
-> un routeur classait le message par domaine, puis déléguait à l'un des quatre
-> spécialistes (research · workspace · infra · general), chacun avec son propre
-> jeu d'outils. **Cette architecture a été supprimée** au profit d'un agent
-> unique — sur mesure, pas par principe. Un banc A/B sur 20 requêtes réelles a
-> donné au mono-agent l'avantage sur les quatre critères retenus, dont la
-> latence (tier B : 1 657 ms contre 2 713 ms en médiane) et la justesse du
-> choix d'outil. Le superviseur avait été introduit pour répondre à la
-> lenteur ; la mesure a montré qu'il la causait en partie. `supervisor.py` et
-> `sub_agents/` ont disparu — **−3 670 lignes**.
+| Famille | Outils | Famille | Outils |
+|---|---:|---|---:|
+| `browser_*` | 23 | `system_*` | 7 |
+| `gmail_*` | 21 | `docs_*` | 7 |
+| `drive_*` | 14 | `trainer_*` | 7 |
+| `calendar_*` | 10 | `notes_*` | 6 |
+| `sheets_*` | 9 | `os_*` | 6 |
+| `desktop_*` | 9 | `scheduler_*` | 5 |
+| `tasks_*` | 8 | `memory_*` | 5 |
+| `contacts_*` | 8 | `pdf_*`, `maps_*` | 4 |
 
-### Topologie
+### Deux familles pour le navigateur, et c'est voulu
+
+- **`browser_*`** — Chromium headless piloté par Playwright, côté serveur.
+  **Aucun cookie, aucune session.** Pour le web public.
+- **`browser_tab_*`** — votre vrai Chrome, via l'extension. Vos sessions
+  réelles. **Seul moyen d'atteindre ce qui est derrière une authentification** :
+  sans elle, LinkedIn, l'interface Gmail ou vos commandes Amazon renvoient la
+  page de connexion.
+
+Ce n'est pas un doublon. Fusionner les deux supprimerait une capacité.
+
+### Ce qui est envoyé au modèle
+
+Le catalogue d'outils part dans le prompt à chaque tour, et il domine le
+contexte. Deux mécanismes coexistent aujourd'hui :
+
+- un **profil** — une liste blanche nommée, portée par la conversation
+  (colonne `conversations.toolset_profile`), figée au premier tour pour
+  préserver le cache de préfixe. Un seul profil existe : `default`,
+  **84 outils** ;
+- un **filtre par mots-clés**, utilisé quand la conversation n'a pas de profil.
+
+⚠️ **État connu, mesuré** : le profil ne contient que 84 outils sur 196. Les
+autres — dont la conversion PDF et le rappel mémoire — ne sont atteignables que
+par le filtre par mots-clés. Sur les conversations récentes, ce second chemin
+est **majoritaire**. Ce n'est pas une architecture cible, c'est une dette
+identifiée.
+
+### Retrouver un outil : `find_tool`
+
+C'est l'annuaire. Un **petit modèle local** lit un catalogue compact — un outil
+par ligne — et choisit. Le choix du modèle fait la latence : mesuré, un modèle
+de 9 milliards de paramètres met 8,9 s là où un modèle de la classe 4B met
+1,1 s pour la même qualité de réponse. Réglable par `TOOL_SELECTOR_MODEL`.
+
+Il échoue **ouvert** : au moindre doute — pas de modèle, panne, réponse
+illisible — il rend la liste complète plutôt que de mentir par omission.
+
+---
+
+## Autorisation humaine (HITL)
+
+Un outil demande votre accord si son nom figure dans l'une des deux listes de
+garde, ou si le **contenu de ses arguments** déclenche une alerte.
 
 ```
-           ┌─────────────┐
-           │    agent    │  prompt assemblé, outils bindés selon le profil
-           └──────┬──────┘
-                  │
-                  ▼
-           ┌────────────┐
-           │   tools    │  exécute, avec HITL si l'action est critique
-           └─────┬──────┘
-                 │
-                 ▼
-           ┌─────────────────┐
-           │ should_continue │
-           └──┬──────────┬───┘
-              │          │
-              │          ▼
-              │   ┌────────────────┐
-              │   │ force_summary  │  si le budget d'itérations est épuisé
-              │   └───────┬────────┘
-              │           ▼
-              │         END
-              │
-              ▼
-        retour à `agent`
+garde par NOM       hitl_preferences.LOCKED_HITL_TOOLS
+                  ∪ security_filter.ALWAYS_CRITICAL_TOOLS      → 46 outils
+garde par CONTENU   security_filter._CRITICAL_KEYWORDS
+                    (« supprimer », « virement », « checkout », « panier »…)
 ```
 
-Trois nœuds : `agent`, `tools`, `force_summary`. Le même graphe sert le chat,
-les tâches planifiées et les missions — `build_agent_graph()` renvoie
-désormais `build_simple_agent_graph()`.
+Trois règles à connaître :
 
-### Ce qui a remplacé les spécialistes
-
-Le domaine ne détermine plus *qui* traite la demande, mais *quels outils sont
-bindés* — c'est le rôle du profil d'outils (section suivante). L'agent voit un
-sous-ensemble pertinent plutôt qu'un catalogue entier, et `find_tool` lui
-permet d'aller chercher dans le catalogue complet ce qui lui manque, en cours
-de conversation.
-
-### Contexte : ce qui décide de la troncature
-
-- **La fenêtre vient du MODÈLE**, pas du niveau de routage. Elle est déclarée
-  sur l'instance LLM (Paramètres → Modèles IA) ; à défaut, une table de repli,
-  puis un défaut prudent de 8 192 tokens. Un contrôle au démarrage signale tout
-  modèle configuré dont la fenêtre n'est pas déclarée.
-- **La place réservée à la réponse suit le plafond de sortie déclaré**, borné à
-  40 % de la fenêtre. Réserver 1 024 tokens quand le modèle peut en produire
-  65 536 ferait tenir l'entrée sur une hypothèse fausse.
-- **La consigne d'une tâche automatisée est ancrée en tête** et survit à la
-  troncature : sans ça, un agent qui boucle longtemps finit son travail sans
-  savoir ce qu'on lui avait demandé.
-
-### Sticky toolset profile (Hermes Chantier 1)
-
-📁 `agent/toolset_profiles.py`
-
-Au lieu de filtrer dynamiquement les outils par mots-clés (technique abandonnée pour le chat), chaque conversation a un **profile sticky** stocké dans `conversations.toolset_profile` :
-
-- `default` : ~41 tools curés à la main couvrant 80% des workflows quotidiens (mail + calendar + drive + browser + desktop + memory + tasks)
-- Profile détecté à la 1re message, persisté pour toute la conversation
-- Avantages : **prompt cache** byte-stable, **muscle memory** des LLM, pas de tool-blindness sur les petits modèles
-
-Les missions, elles, utilisent un filtrage dynamique par mots-clés (`missions/nodes.py`) — différent des conversations chat car chaque step est isolée.
-
-### Iteration budget + force_summary (Hermes Chantier 9)
-
-📁 `agent/nodes.py`
-
-Sur les workflows lourds (audit 30 j de mail, drive_find_duplicates), le compteur `iteration_count` dans `AgentState` incrémente à chaque tour avec tool_calls. Quand il atteint `MAX_AGENT_ITERATIONS = 80`, `should_continue` route vers un nœud terminal `force_summary` qui fait **un dernier appel LLM sans tools** et conclut en texte. Garantit que l'utilisateur reçoit toujours une sortie même sur les tâches qui dépasseraient le `recursion_limit=100` de LangGraph.
-
-### Anti-confabulation (system prompt, 2026-05-09)
-
-📁 `agent/nodes.py:_SYSTEM_PROMPT_BASE` et `_SYSTEM_PROMPT_SLM`
-
-Règle inviolable injectée dans tous les system prompts :
-
-> Si un tool retourne 0 résultat, dire « Je n'ai trouvé aucun élément correspondant ». **Jamais** de liste fabriquée. Si pas de tool appelé pour une info factuelle, demander à l'utilisateur ou dire « je n'ai pas l'information ».
-
-Garantit la fiabilité du discours sur des actions destructives. Ajoutée après l'incident Mistral Medium 3.5 qui inventait 7 événements de calendrier sur un calendrier vide (2026-05-09).
+1. **On échoue fermé.** Un outil non classé est traité comme engageant. Un faux
+   positif coûte une question ; un faux négatif, un message parti.
+2. **Une dispense n'est pas un reclassement.** Certains actes engageants sont
+   dispensés d'accord avec une raison écrite — un clic dans Chrome n'est pas un
+   engagement, remplir un formulaire n'est pas le soumettre. L'outil reste
+   classé « engageant » : on sépare ce qu'il **est** de ce qui exige un accord.
+3. ⚠️ **Une docstring n'est pas un garde-fou.** Une phrase du type « demander
+   toujours confirmation » dans la documentation d'un outil est une consigne au
+   modèle, pas un verrou. Ces phrases ont été retirées ; la garde seule décide.
 
 ---
 
-## 5. Stack LLM — routage par tier
+## Mémoire
 
-📁 `backend/app/services/llm_provider.py` + `agent/intent_router.py`
-
-### 4 tiers, chacun avec sa chaîne de fallback transparent
-
-| Tier | Primary | Fallback 1 | Fallback 2 | Latence typique |
-|---|---|---|---|---|
-| **A — Simple** | Ministral 3B (MLX local) 🇪🇺 | Ministral 14B local | Mistral Small 4 | **~2 s** |
-| **B — Standard** | Mistral Small 4 (API) 🇪🇺 | DeepSeek v4-flash 🇨🇳 | Anthropic Haiku | ~10-15 s |
-| **C — Complex** | Mistral Large 3 (API) 🇪🇺 | DeepSeek v4-pro 🇨🇳 | Anthropic Sonnet | ~30 s |
-| **IMG — Vision** | DeepSeek v4-flash (API) 🇨🇳 | Mistral Small 4 🇪🇺 | Mistral Large 3 🇪🇺 | ~20 s |
-
-**Pitch souverain** : *3 tiers sur 4 en Europe par défaut*. Tier IMG sur DeepSeek pour la performance vision (3-4× plus rapide que Mistral). Mode « 100 % EU strict » planifié post-lancement (toggle UI qui pousse Mistral en primary IMG).
-
-### Fallback chain transparent (Hermes Chantier 4)
-
-📁 `backend/app/services/fallback_manager.py`
-
-Quand un provider échoue (timeout, 4xx/5xx, hallucination détectée par `H-1`), le `fallback_manager` bascule **sticky par conversation** sur le suivant de la chaîne. L'utilisateur ne voit qu'un toast `provider.switched` discret. Le state `chain_pos` survit le temps de la conv pour ne pas réessayer le primary tombé en panne à chaque tour.
-
-### Modèles supportés
-
-📁 `settings_llm.py:_PROVIDER_IDS`
-
-`mistral`, `deepseek`, `anthropic`, `openai`, `google` (Gemini), `moonshot`, `zhipu`, `ollama` (local), `lm_studio` (local), `openrouter`, `xai` (Grok). L'utilisateur configure des **instances** en UI (Paramètres → Modèles IA), avec **edit-in-place** (icône ✏️) pour rotation de clés API sans recréer.
-
-### Bug fix DeepSeek v4-flash thinking-mode
-
-DeepSeek v4-flash et v4-pro ont thinking ON par défaut, ce qui casse le multi-tour avec tool_calls (HTTP 400 « reasoning_content must be passed back »). Fix automatique : `extra_body={"thinking": {"type": "disabled"}}` injecté pour ces modèles. Voir `_deepseek_extra_body()` dans `llm_provider.py`.
+- **Mémoire typée** en base, avec promotion du court terme vers le long terme.
+- **Recherche vectorielle** dans Qdrant, plus un index plein texte SQLite
+  (FTS5) sur les messages.
+- **Traces d'outils** : ce qu'un outil a produit — un chemin de fichier, par
+  exemple — est persisté sous forme compacte et rechargé au tour suivant comme
+  message système. ⚠️ Jamais comme message de rôle `tool` : l'API le rejette
+  hors d'une séquence d'appel valide.
+- **Profil utilisateur** : environ 238 clés stockées, une quinzaine injectées
+  par tour.
 
 ---
 
-## 6. ELY Desktop — daemon local Go
+## Compétences apprises
 
-📁 `desktop/`
+Une compétence naît d'un **succès conforme après reprise** : Ely a échoué, a
+nommé l'écart, a corrigé, et le résultat a passé la vérification. La procédure
+est rédigée par le modèle principal, en état **candidate**, et attend une
+validation avant de devenir active.
 
-Petit binaire Go (~5 MB) que l'utilisateur lance sur son Mac/PC/Linux. Se connecte au backend via WebSocket `/ws/desktop` avec un token JWT signé valide 30 j. Donne à l'agent un accès **sandboxé** au système de fichiers local.
+Les compétences actives sont listées dans le prompt et leur procédure est
+**chargée** à la demande via `skill_view`.
 
-### Architecture daemon
+Un outil n'est fabriqué que si la demande exige une **action** — toucher un
+fichier, une API, un service. Sinon c'est une compétence. Ce tri est fait par un
+modèle local.
 
-| Module | Rôle |
+La validation d'une compétence passe par un bac à sable de sous-processus, avec
+environnement réduit et suppression du groupe de processus complet en fin de
+course (`services/env_filter.py`).
+
+---
+
+## Souveraineté et données personnelles
+
+Avant tout appel à un modèle **hébergé chez un tiers**, les données
+personnelles sont remplacées par des marqueurs stables : la même adresse mail
+devient le même `<EMAIL_3>` d'un bout à l'autre de la conversation, et la
+réponse est dé-anonymisée au retour. La détection repose sur des expressions
+régulières ; la couche de reconnaissance d'entités par modèle est désactivée.
+
+Un appel à un modèle **local** ne passe pas par là : rien ne sort de la machine.
+
+---
+
+## Modèles
+
+Le routage et les clés sont une **configuration d'administration**, héritée par
+tous les comptes — jamais un réglage par utilisateur.
+
+Quatre chaînes, chacune avec ses replis :
+
+| Chaîne | Usage |
 |---|---|
-| `main.go` | Entry point, version injectée via `-ldflags -X main.version=v1.1.0+<sha>` |
-| `config.go` | Charge `ely-config.json` (URL backend + token + user_id) |
-| `filesystem.go` | 9 outils : `list_dir`, `read_file`, `write_file`, `move_file`, `delete_file`, `create_dir`, `stat_file`, `hash_file`, `search_files`. Sandbox via `validatePath()` qui résout symlinks et bloque toute sortie des dossiers autorisés. Expand `~` vers `$HOME` au boot ET sur chaque request |
-| `browser.go` | (futur) contrôle de navigateur local |
-| `input.go` | (futur) automation OS |
+| `simple` | tours courts, modèle local d'abord |
+| `medium` | usage courant |
+| `complex` | raisonnement, outils |
+| `maintenance` | tâches de fond (extraction de faits, résumés) |
 
-### Outils côté backend
+⚠️ **Mesuré** : `medium` et `complex` démarrent sur le même modèle. Router entre
+les deux ne change rien.
 
-📁 `agent/tools/desktop_tool.py` (via `desktop_skill.py`)
-
-- 5 read-only : `desktop_list_dir`, `desktop_read_file`, `desktop_search_files`, `desktop_stat_file`, `desktop_hash_file`
-- 4 destructifs : `desktop_write_file`, `desktop_move_file`, `desktop_delete_file`, `desktop_create_dir` — **tous dans `LOCKED_HITL_TOOLS`** (HITL non désactivable)
-
-Le daemon vérifie sa connexion via `desktop_registry.is_connected(user_id)` avant chaque tool call. Si déconnecté, le tool retourne un message clair plutôt qu'une erreur opaque.
-
-### Configuration UI
-
-Paramètres → Intégrations → ELY Desktop : badge connecté/déconnecté, liste des répertoires autorisés (saisie libre + chips raccourcis `~/Documents`, `~/Downloads`, `~/Desktop`, `~/Pictures`), téléchargement du `ely-config.json` et des binaires pré-buildés.
-
-### Capacité fichiers locaux côté Android
-
-📁 `android/app/src/main/kotlin/com/ely/agent/core/files/`
-
-L'app Android n'a **pas** de daemon. Mais elle expose un écran natif « Gestionnaire de fichiers » (`FileManagerRepository`, `FileHashing`) qui scanne via Storage Access Framework et permet scan + dedup + delete en UI. **Pas connecté au chat agent** — c'est une feature standalone à intégrer post-lancement (piste UX : bouton « demander à Ely d'analyser »).
+**Escalade par panel** : quand le progrès s'arrête — pas après N tentatives —
+la demande part à deux ou trois modèles, et la meilleure réponse est retenue,
+avec sa provenance et son coût annoncés. Le panel améliore une **réponse**, pas
+le résultat d'un outil : il n'a pas d'outils.
 
 ---
 
-## 7. Mémoire
+## Surfaces
 
-### Court terme — SQLite
-
-`messages` table : 40 derniers messages chargés depuis SQLite à chaque message pour le contexte de tour.
-
-### Long terme — Qdrant (vectoriel)
-
-3 collections principales interrogées par similarité sémantique au début de chaque message :
-
-| Collection | Contenu | Source |
-|---|---|---|
-| `memories` | Faits durables (« Franck habite à Paris », « préfère le format markdown ») | Extraits par un LLM silencieux à la déconnexion |
-| `security_constraints` | Règles permanentes (« ne jamais envoyer à @x »). Signalé HITL « ban » → constraint persistée |
-| `interactions` | Echanges passés sur des sujets similaires, pour le cross-conversation context |
-| `user_profile` | Profil agrégé (nom, contexte, projets en cours) reconstruit en background |
-
-**Embeddings** : `fastembed` (all-MiniLM-L6-v2), 384 dim, **local CPU**. Pas d'API embedding payante.
-
-### Frozen memory snapshot (Hermes Chantier 2)
-
-Au début d'une conversation, le backend construit un `FrozenMemorySnapshot` — bloc texte byte-stable contenant profil + contraintes + mémoires + interactions. Ce bloc est inséré dans le **préfixe cacheable** du system prompt. Sur Anthropic et Gemini, le prompt cache exploite cette stabilité pour des hits ~70-90% qui réduisent latence et coût.
-
----
-
-## 8. Sécurité
-
-### HITL (Human In The Loop) multicanal
-
-📁 `services/hitl_manager.py`
-
-Quand l'agent veut exécuter un tool dans `ALWAYS_CRITICAL_TOOLS`, le backend :
-
-1. Suspend l'exécution
-2. Dispatche en parallèle :
-   - WebSocket `/ws/chat` → carte avatar magenta avec 3 boutons (Allow / Deny / Ban)
-   - ntfy push → notification mobile avec actions HTTP signées (token JWT)
-   - Telegram inline keyboard si linked
-   - Discord DM avec emojis
-   - FCM push pour app Android
-3. Le **1er « allow »** sur n'importe quel canal débloque, les autres voient « Résolu »
-
-Tools les plus sensibles dans `LOCKED_HITL_TOOLS` : non désactivables même par préférence utilisateur (`hitl_preferences` table). Couvre : Gmail trash batch, Drive delete, Calendar delete, Desktop write/move/delete/create_dir, SSH execute, Vault, raw API calls.
-
-### Anonymisation PII
-
-📁 `services/security_filter.py`
-
-Avant l'appel LLM, les emails, numéros de téléphone, IBAN, etc. sont remplacés par des tokens (`[EMAIL_1]`, `[PHONE_2]`) via un registry per-conversation. Désanonymisé à la sortie. Évite que l'utilisateur leak ses données quand le LLM est cloud.
-
-### Mode souverain
-
-L'utilisateur peut configurer son routage en local-only (Tier A Ministral 3B suffit pour 80% des chats simples). Roadmap post-lancement : toggle « 100% EU strict » qui force Mistral sur tous les tiers (y compris IMG), au prix d'une latence vision 3-4× plus longue.
-
----
-
-## 9. Outils dédiés serveur — pattern architectural
-
-📁 `backend/app/agent/tools/`
-
-**Principe** : quand un scénario nécessite > 10 tool calls successifs (recherche récursive, agrégation, analyse), coder un **outil serveur dédié** plutôt que de laisser le LLM orchestrer 30 appels.
-
-3 cas livrés en mai 2026 :
-
-| Tool | Remplace |
+| Surface | Détail |
 |---|---|
-| `gmail_trash_by_category` | search + select + trash en boucle |
-| `gmail_update_settings` | filter creation step-by-step |
-| `drive_find_duplicates` | listing récursif + hash + grouping |
+| Web | Next.js, port 3000 |
+| API | FastAPI, port 8000 |
+| Canaux | Telegram, Slack, Discord, WhatsApp |
+| Voix | WebSocket |
+| Extension Chrome | pilotage de votre vrai navigateur |
+| Bureau | application dédiée |
+| Mobile | Android, iOS |
+| MCP | Ely est **client** (`mcp__serveur__outil`) **et serveur** (`/api/mcp`) |
 
-Bénéfices :
-- 1 tool call au lieu de 30 → tractable pour Ministral 3B local comme pour Mistral Large 3
-- 0 confabulation possible (le LLM ne fait que présenter le résultat)
-- Pas de KV cache qui explose sur les contextes longs
-- Latence prédictible (dépend du serveur, pas du LLM)
-
-**À documenter quand on en ajoute un** : docstring claire avec « PREFER ce tool quand X », « DO NOT use quand Y », exemples de cas couverts/non couverts.
+Les cinq surfaces conversationnelles passent par le **même** runtime que le chat
+web : mêmes outils appris, même mémoire, mêmes préférences.
 
 ---
 
-## 10. Missions Loop — agent goal-driven persistant
-
-📁 `backend/app/agent/missions/`
-
-Au-delà du chat requête-réponse, ELY embarque un agent capable de poursuivre une mission long-terme à travers plusieurs itérations qui survivent aux redémarrages.
-
-### Boucle Plan → Act → Eval → Replan
+## Services
 
 ```
-                    ┌─── HEARTBEAT (every 10s) ───┐
-                    ▼                              │
-            ┌────────────┐    ┌──────┐    ┌─────┐ │
-            │   Plan     │───►│ Act  │───►│Eval │─┤
-            └────────────┘    └──────┘    └──┬──┘ │
-                  ▲                          ▼    │
-                  │       ┌────────┐    ┌─────────┴───┐
-                  └───────│ Replan │◄───│ ≥3 failures │
-                          └────────┘    └─────────────┘
+backend        FastAPI + LangGraph
+frontend       Next.js
+nginx          entrée HTTP, port 80
+qdrant         mémoire vectorielle, port 6333
+sandbox        exécution isolée
+egress-proxy   Squid — filtre les sorties réseau du bac à sable
 ```
 
-Chaque mission a son propre `thread_id` LangGraph. State persisté dans `data/missions_checkpoints.sqlite` via `AsyncSqliteSaver`. Quand le heartbeat revient sur une mission au tick suivant, l'état est restauré exactement où on l'a laissé.
+**Base de données** : SQLite, `data/db/cyberentity.db`, monté dans le conteneur
+sur `/app/data`.
 
-### Garde-fous (5)
-
-1. **Budget tokens** — défaut 50 000, configurable
-2. **Budget itérations** — défaut 30 ticks, configurable
-3. **Deadline** absolue (optionnelle)
-4. **HITL** sur outils critiques (réutilise l'infra HITL chat)
-5. **Anti-boucle** — 3 échecs consécutifs → `replan_node`
-
-### Routing LLM par mission
-
-Les nodes utilisent les mêmes tiers que le chat (Mistral Small 4 / Large 3 selon la complexité du step). Filtrage dynamique de tools par mots-clés (`_filter_tools_for_step`) — 145 tools → ~10-15 par step pour rester sous les limites de payload des modèles locaux.
-
-### Sources de goals
-
-| Source | Comment |
-|---|---|
-| Web UI | `/missions` → bouton « Nouvelle mission » → modal titre + goal + budgets |
-| Telegram | Commande `/mission <titre> :: <goal>` |
-| Scheduled tasks | Une `scheduler_create_task` peut créer + démarrer une mission récurrente |
-
-### Notifications de fin (3 canaux parallèles)
-
-Web UI (conv auto-créée `[Missions] Notifications`) + Telegram DM (si source Telegram) + ntfy push. Chaque canal isolé, l'échec d'un n'arrête pas les autres.
+⚠️ **Le schéma a une seule autorité : Alembic.** Les tables manquantes sont
+créées au démarrage, mais **aucune évolution de table existante** ne se fait
+ailleurs que dans une révision. Un second chemin de migration laisse le schéma
+diverger en silence — ça s'est produit, et ça a coûté des centaines d'erreurs
+en production.
 
 ---
 
-## 11. Multi-canal
+## Journal réversible
 
-| Canal | Fichier backend | Notes |
-|---|---|---|
-| Web UI | `routers/chat.py` (`/ws/chat`) | JWT handshake, principal canal |
-| Voice | `routers/voice.py` (`/ws/voice`) | STT → Agent → TTS en boucle, wake-word « Éli » |
-| Telegram | `channels/telegram_bot.py` | HITL via inline keyboard, DM-first |
-| Slack | `channels/slack_bot.py` | Socket Mode, Block Kit HITL |
-| Discord | `channels/discord_bot.py` | DM + @mention, emoji HITL (✅/❌/🚫) |
-| WhatsApp | `channels/whatsapp.py` + `whatsapp_web` | Webhook Twilio + WhatsApp Web Selenium pour les comptes perso |
-| App Android | `android/` (Kotlin/Compose) | Native, FCM push HITL, chat + écran File Manager standalone |
-| App iOS | `ios/` (SwiftUI, iOS 17+) | Chat + push HITL, voice mode |
+Les actions qui modifient quelque chose sont journalisées avec de quoi les
+défaire. Les outils d'annulation ne sont branchés au catalogue que si le drapeau
+correspondant est actif — sinon ils ne coûtent rien en contexte.
 
 ---
 
-## 12. Flux complet d'un message (récap)
+## Missions autonomes
 
-1. **Canal** authentifie l'utilisateur, route le message vers `/ws/chat` ou équivalent
-2. **PII anonymizer** masque les données sensibles (`[EMAIL_N]`)
-3. **Frozen memory snapshot** construit ou rechargé depuis le cache de session
-4. **Profil d'outils** résolu pour la conversation (85 outils bindés par défaut)
-5. **Fenêtre et plafond de sortie** lus sur l'instance du modèle retenu — ils décident de la troncature
-6. **LLM** primary du tier sélectionné (Simple/Standard/Complex/IMG) inférence
-7. Si **fallback** (timeout, hallucination détectée par H-1, 4xx/5xx) → `fallback_manager` bascule sticky + toast `provider.switched`
-8. Si **tool_call** : tool_node vérifie HITL (`ALWAYS_CRITICAL_TOOLS`), injecte credentials, exécute. HITL multicanal si nécessaire
-9. Boucle agent → tool → agent jusqu'à `MAX_AGENT_ITERATIONS` (force_summary) ou réponse texte finale
-10. **Réponse dé-anonymisée** renvoyée au canal d'origine
-11. **Mémoire long terme** : interaction stockée dans Qdrant (collection `interactions`)
-12. **À la déconnexion WS** : conversation résumée par un LLM silencieux et stockée dans `memories`
+Une mission tourne sans vous. Son **mandat** — ce qu'elle peut faire seule, ce
+qui reste sous accord — se déclare dans son fichier YAML. Le noyau interdit
+reste verrouillé même sous mandat autonome.
+
+Les tâches planifiées utilisent un graphe plat, sans boucle de vérification :
+un travail programmé n'a personne à qui demander une précision.
 
 ---
 
-## 13. Configuration
+## Voir aussi
 
-| Source | Priorité | Usage |
-|---|---|---|
-| `system_config` (DB) | 1 (la plus haute) | OAuth credentials, tier_routing_config, runtime config |
-| `llm_instances` (DB) | — | Instances LLM avec clés API stockées (chiffrées au repos) |
-| `.env` | 2 | Clés API par défaut, URLs, paramètres serveur |
-| `config.py` defaults | 3 (fallback) | Valeurs par défaut |
-
-L'admin peut tout reconfigurer en UI sans redémarrer (sauf `.env` qui exige restart container).
-
----
-
-## 14. Hôte de production
-
-- **Mac Studio M1 Max, 32 GB RAM** (machine de l'auteur)
-- VPS abandonné en 2026-05-07
-- Domaine `ely.catalogmaker.fr` exposé via **Cloudflare Tunnel** (équivalent Snowflake)
-- Tailscale pour l'admin/SSH
-
-Cf. `infra_2026-05-07.md` (mémoire utilisateur) pour la décision et le détail.
-
----
-
-## 15. Pour aller plus loin
-
-| Document | Contenu |
-|---|---|
-| [security.md](security.md) | HITL, anti-confabulation, sandbox, anonymisation |
-| [features.md](features.md) | Liste des capacités utilisateur |
-| [SETUP_DESKTOP.md](SETUP_DESKTOP.md) | Installation du daemon ELY Desktop |
-| [SETUP_GOOGLE.md](SETUP_GOOGLE.md) | OAuth Google |
-| [SETUP_AI_PROVIDERS.md](SETUP_AI_PROVIDERS.md) | Config des providers LLM |
-
----
-
-*Cette page est le point d'entrée canonique pour comprendre ELY. Elle est versionnée — chaque changement majeur d'architecture devrait synchroniser ce fichier dans le même commit.*
+- [installation.md](installation.md) — installer et configurer
+- [guide-utilisateur.md](guide-utilisateur.md) — s'en servir au quotidien
+- `.env.example` — la référence de configuration, annotée
