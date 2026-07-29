@@ -87,25 +87,36 @@ def test_content_format_enum_values() -> None:
 
 
 def test_database_module_declares_v2_safe_columns() -> None:
-    """Both V2 columns must be in ``_safe_columns`` so existing prod DBs
-    (V1 already shipped — the table exists) gain them at boot. Source
-    grep mirrors the Sprint 3.7 schema-pin convention; the live
-    round-trip below covers the runtime side."""
-    db_path = Path(__file__).resolve().parents[1] / "app" / "database.py"
-    src = db_path.read_text(encoding="utf-8")
+    """Les deux colonnes V2 sont au schéma, et une skill sans format déclaré
+    reste un playbook.
 
-    assert '("learned_skills", "content_format"' in src, (
-        "_safe_columns is missing content_format on learned_skills — "
-        "existing DBs would never get the column (critic_run_at-class bug)."
+    ⚠️ Ce test grepait `_safe_columns` dans `app/database.py`. Cette liste a
+    été retirée le 29/07 (ménage lot 2), mesurée sans effet : les colonnes
+    sont dans les modèles ET dans la base de production, où l'`ALTER` les
+    avait déjà posées et remplies.
+
+    On épingle donc la **propriété** au lieu du **mécanisme** : les colonnes
+    existent au schéma, et le défaut qui garantissait le rattrapage des lignes
+    V1 vit maintenant sur le modèle. Le round-trip live plus bas couvre le
+    runtime.
+    """
+    from app.database import Base
+    import app.models  # noqa: F401 — enregistre toutes les tables
+
+    cols = Base.metadata.tables["learned_skills"].columns
+    assert "content_format" in cols, (
+        "learned_skills.content_format manquante — bug de classe critic_run_at."
     )
-    assert '("learned_skills", "validation_report_json"' in src, (
-        "_safe_columns is missing validation_report_json on learned_skills."
+    assert "validation_report_json" in cols, (
+        "learned_skills.validation_report_json manquante."
     )
-    # The content_format DDL must carry the backfill default so existing
-    # playbook rows are not left NULL.
-    assert "DEFAULT 'markdown_playbook'" in src, (
-        "content_format ALTER must DEFAULT 'markdown_playbook' to backfill "
-        "existing rows."
+
+    # Le défaut qui empêchait les lignes V1 de rester NULL : une skill créée
+    # sans format déclaré doit rester un playbook markdown.
+    default = cols["content_format"].default
+    assert default is not None and default.arg == SkillContentFormat.MARKDOWN_PLAYBOOK, (
+        "content_format doit défaulter à 'markdown_playbook' — sinon les "
+        "skills V1 existantes cessent d'être lues comme des playbooks."
     )
 
 

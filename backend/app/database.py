@@ -97,68 +97,17 @@ async def init_db():
     from app import models  # noqa: F401  (registers tables with Base.metadata)
 
     async with engine.begin() as conn:
+        # `create_all` crée les tables MANQUANTES. Il ne fait évoluer aucune
+        # table existante — c'est Alembic qui s'en charge, et lui seul.
+        #
+        # Ici vivait `_safe_columns` : 19 `ALTER TABLE … ADD COLUMN` rejoués à
+        # chaque démarrage, échouant chacun sur « duplicate column ». Béquille
+        # d'avant Alembic, mesurée sans effet le 29/07 (les 19 colonnes sont
+        # dans les modèles ET dans la base de production).
+        #
+        # ⚠️ Ne pas la faire renaître : une nouvelle colonne se déclare dans
+        # son modèle et se propage par une révision Alembic. Un second chemin
+        # de migration laisse le schéma diverger en silence — c'est ce drift
+        # qui avait produit le bug `critic_run_at` (676 AttributeError en
+        # production).
         await conn.run_sync(Base.metadata.create_all)
-        # Lightweight idempotent column adds — SQLAlchemy's create_all does NOT
-        # alter existing tables, so when a model gains a new column we patch it
-        # here. Each entry is (table, column_name, ddl_type_with_default).
-        # Wrapped in try/except so a duplicate-column error never breaks boot.
-        from sqlalchemy import text
-        _safe_columns = [
-            ("users", "language", "VARCHAR(2) NOT NULL DEFAULT 'fr'"),
-            ("users", "hitl_preferred_channel", "VARCHAR(20)"),
-            ("users", "onboarding_completed_at", "DATETIME"),
-            ("users", "onboarding_skipped_at", "DATETIME"),
-            ("users", "onboarding_step", "INTEGER NOT NULL DEFAULT 0"),
-            ("users", "onboarding_skip_count", "INTEGER NOT NULL DEFAULT 0"),
-            ("users", "tts_auto_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
-            # PII sovereignty (2026-06-07) — force EU chain for tier B/C
-            # cloud calls when ON. Off by default (opt-in).
-            ("users", "sovereignty_strict", "BOOLEAN NOT NULL DEFAULT 0"),
-            # Hermes Chantier 1 (audit 2026-05-07) — sticky toolset profile
-            # per conversation. NULL until first message auto-detects it.
-            ("conversations", "toolset_profile", "VARCHAR(40)"),
-            # Sprint 2.5 (memory cognitive multi-typed) — dreaming-style scoring
-            # for short→long-term promotion. Inspired by OpenClaw memory-core.
-            ("user_memory_logs", "recall_count", "INTEGER NOT NULL DEFAULT 0"),
-            ("user_memory_logs", "last_recalled_at", "DATETIME"),
-            # Sprint 3.7 Jalon 1 (auto-improvement) — prompt_version hash so
-            # every learning signal can be correlated with the exact prompt
-            # text active at the time. sha256(prompt)[:8], NULL for historical
-            # rows written before this column existed.
-            ("feedback", "prompt_version", "VARCHAR(16)"),
-            ("mission_steps", "prompt_version", "VARCHAR(16)"),
-            ("error_log", "prompt_version", "VARCHAR(16)"),
-            # Sprint 3.7 Jalon 4 — LLM-as-judge bookkeeping : timestamp when
-            # the post-mortem critic last ran for this mission. NULL = not yet.
-            ("missions", "critic_run_at", "DATETIME"),
-            # Sprint 4b V2 J1 — @tool Python generation. content_format
-            # distinguishes V1 markdown playbooks from V2 python_tool source;
-            # validation_report_json holds the 5-stage pipeline report.
-            # Existing rows backfill to 'markdown_playbook' / '{}' via DEFAULT.
-            ("learned_skills", "content_format", "VARCHAR(20) NOT NULL DEFAULT 'markdown_playbook'"),
-            ("learned_skills", "validation_report_json", "TEXT NOT NULL DEFAULT '{}'"),
-            # Sprint 4b V3 J6.a — execution profile for python_tool skills:
-            # "pure" (V2, in-process) vs "io" (V3, sandbox runner). Existing
-            # rows backfill to 'pure' via DEFAULT — no behaviour change until
-            # tool_creator starts persisting "io" (J6.b/J7).
-            ("learned_skills", "tool_profile", "VARCHAR(8) NOT NULL DEFAULT 'pure'"),
-            # Mission autonomous mode (2026-06-04) — auto-approve non-floor HITL
-            # for unattended runs. Existing missions stay non-autonomous (0).
-            ("missions", "autonomous", "BOOLEAN NOT NULL DEFAULT 0"),
-        ]
-        for _table, _col, _ddl in _safe_columns:
-            try:
-                await conn.execute(text(f"ALTER TABLE {_table} ADD COLUMN {_col} {_ddl}"))
-            except Exception as _alter_exc:
-                # B-4 (revue 2026-06-10) — on n'avale plus TOUTES les
-                # exceptions : « duplicate column » est l'état nominal à
-                # chaque redémarrage, tout le reste (disque plein, lock,
-                # faute de frappe SQL) doit se VOIR — c'est exactement le
-                # drift silencieux qui a produit le bug critic_run_at
-                # (676 AttributeError en prod).
-                _msg = str(_alter_exc).lower()
-                if "duplicate column" not in _msg:
-                    logger.warning(
-                        "init_db: ALTER TABLE %s ADD %s a échoué (PAS un "
-                        "duplicate) : %s", _table, _col, _alter_exc,
-                    )

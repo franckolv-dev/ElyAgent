@@ -124,23 +124,33 @@ def test_mission_critique_is_unique_per_mission() -> None:
 
 
 def test_database_module_declares_prompt_version_columns() -> None:
-    """The Jalon 1 colonnes added via _safe_columns must be declared in
-    database.py. We grep the source rather than introspecting a live
-    SQLite to keep the test hermetic."""
-    from pathlib import Path
+    """Les colonnes du Jalon 1 sont déclarées sur leurs modèles.
 
-    db_path = Path(__file__).resolve().parents[1] / "app" / "database.py"
-    src = db_path.read_text(encoding="utf-8")
+    ⚠️ Ce test grepait `_safe_columns` dans `app/database.py`. Cette liste a
+    été retirée le 29/07 (ménage lot 2) : elle rejouait 19 `ALTER TABLE` sans
+    effet à chaque boot, toutes ces colonnes étant déjà dans les modèles ET
+    dans la base de production.
 
-    # Every table receiving prompt_version must be in _safe_columns
+    Le pin épingle donc désormais la **propriété** — la colonne existe dans le
+    schéma que `create_all` va produire — au lieu du **mécanisme** qui la
+    posait. Un pin sur le mécanisme rougit dès qu'on change de mécanisme, sans
+    que rien de réel ait bougé. On reste hermétique : `Base.metadata` se lit
+    sans base ni boucle asynchrone.
+    """
+    from app.database import Base
+    import app.models  # noqa: F401 — enregistre toutes les tables
+
+    # Chaque table qui porte prompt_version, pour la corrélation A/B
+    # (note de conception Jalon 1 §3).
     for table in ("feedback", "mission_steps", "error_log"):
-        marker = f'("{table}", "prompt_version"'
-        assert marker in src, (
-            f"_safe_columns is missing prompt_version on table {table!r}. "
-            f"Jalon 1 design note §3 requires it for A/B correlation."
+        assert table in Base.metadata.tables, f"table {table!r} absente du schéma"
+        assert "prompt_version" in Base.metadata.tables[table].columns, (
+            f"{table}.prompt_version manquante — la corrélation A/B du "
+            f"Jalon 1 §3 ne peut plus se faire."
         )
-    # Missions table gets critic_run_at for the LLM-as-judge cron
-    assert '("missions", "critic_run_at"' in src, (
-        "_safe_columns is missing critic_run_at on missions table. "
-        "Jalon 4 cron will scan WHERE critic_run_at IS NULL."
+
+    # missions.critic_run_at : le cron LLM-as-judge balaye WHERE critic_run_at IS NULL
+    assert "critic_run_at" in Base.metadata.tables["missions"].columns, (
+        "missions.critic_run_at manquante — le cron du Jalon 4 balaye "
+        "WHERE critic_run_at IS NULL."
     )
