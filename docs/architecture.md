@@ -78,8 +78,16 @@ Deux principes dans cette boucle :
 
 ## Les outils
 
-**196 outils** intégrés — le compte reproductible, hors serveurs MCP
-connectés, qui en ajoutent à l'exécution. Les familles les plus fournies :
+**196 outils** avec les drapeaux par défaut — le compte reproductible. Deux
+choses s'y ajoutent selon la configuration :
+
+- **+10** si le client MCP est activé (`mcp_client_v2_enabled`, éteint par
+  défaut) : `mcp_connect`, `mcp_call_tool`, `mcp_discover_tools`… soit les
+  outils qui *gèrent* MCP ;
+- **+N** pour chaque serveur MCP connecté, qui expose les siens sous la forme
+  `mcp__serveur__outil`.
+
+Les familles les plus fournies :
 
 | Famille | Outils | Famille | Outils |
 |---|---:|---|---:|

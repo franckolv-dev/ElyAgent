@@ -56,7 +56,11 @@ retry only continues while the gaps are shrinking.
 
 ## What it can do
 
-**196 built-in tools**, plus whatever the MCP servers you connect bring in.
+**196 built-in tools** with default feature flags. Enabling the MCP client
+(`mcp_client_v2_enabled`, off by default) adds **10** MCP management tools, and
+every MCP server you connect contributes its own on top, as
+`mcp__server__tool`.
+
 The larger families:
 
 - **Google** — Gmail, Calendar, Drive, Sheets, Docs, Contacts, Tasks
