@@ -302,8 +302,6 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "notes_read": _N("LECTURE"),
     "notes_search": _N("LECTURE"),
     "notes_update": _N("ECRITURE"),
-    # ── agent/tools/orchestrate_tool ────────────────────────────
-    "orchestrate": _N("ECRITURE", arbitrates=True),
     # ── agent/tools/pdf_tool ────────────────────────────────────
     "pdf_info": _N("LECTURE"),
     "pdf_read": _N("LECTURE"),

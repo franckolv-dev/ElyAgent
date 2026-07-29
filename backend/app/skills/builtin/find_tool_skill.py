@@ -166,9 +166,9 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     # Record discoveries so agent_node binds them on the next turn (sticky).
     try:
         from app.agent.discovered_tools import add_discovered
-        from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+        from app.agent.tool_context import CURRENT_CONVERSATION_ID
 
-        add_discovered(ORCHESTRATE_CONVERSATION_ID.get(), top)
+        add_discovered(CURRENT_CONVERSATION_ID.get(), top)
     except Exception as exc:  # noqa: BLE001
         logger.debug("find_tool: could not record discovery: %s", exc)
 
@@ -190,7 +190,7 @@ async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False
     _case_id = None
     _gap_user = ""
     try:
-        from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+        from app.agent.tool_context import CURRENT_CONVERSATION_ID
         from app.services.learning.failure_capture import record_tool_absent
         from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
 
@@ -198,7 +198,7 @@ async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False
         _case_id = await record_tool_absent(
             user_id=_gap_user,
             capability=capability,
-            conversation_id=ORCHESTRATE_CONVERSATION_ID.get() or None,
+            conversation_id=CURRENT_CONVERSATION_ID.get() or None,
         )
     except Exception as exc:  # noqa: BLE001 — recording must never break the turn
         logger.debug("find_tool: gap recording skipped: %s", exc)

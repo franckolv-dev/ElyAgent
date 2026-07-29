@@ -381,7 +381,7 @@ def format_active_skills_block(skills: list[LearnedSkill]) -> str:
             f"Tu as {aussi}{m} outil{pl} appris{pl} — créé{pl} par ta boucle "
             f"d'apprentissage, validé{pl} par l'humain, DÉJÀ bindé{pl} : "
             "appelle-les DIRECTEMENT comme n'importe quel outil (jamais via "
-            "`skill_view`, pas besoin d'`orchestrate`). Liste :"
+            "`skill_view`). Liste :"
         )
         lines.extend(_skill_bullet(s, now) for s in tools)
     lines.append("</learned_skills>")

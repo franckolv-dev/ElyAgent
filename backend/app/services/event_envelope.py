@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 # Identifiant de corrélation du tour/mission, posé par tool_node (comme
-# ORCHESTRATE_CONVERSATION_ID). Tous les événements d'un tour le partagent.
+# CURRENT_CONVERSATION_ID). Tous les événements d'un tour le partagent.
 CORRELATION_ID: ContextVar[str] = ContextVar("trust_correlation_id", default="")
 
 _VALUE_CAP = 256

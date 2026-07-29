@@ -39,7 +39,7 @@ Runtime context: builtin tools get hidden args injected by the dispatcher
 (tool_node / dispatch_tool) — Google credentials and user_id. call_tool runs
 *inside* a tool invocation, past that injection point, so it re-injects the
 same args keyed by ``LEARNED_TOOL_USER_ID`` (a ContextVar the dispatcher sets
-before invoking any tool — same pattern as ORCHESTRATE_CONVERSATION_ID).
+before invoking any tool — same pattern as CURRENT_CONVERSATION_ID).
 """
 from __future__ import annotations
 

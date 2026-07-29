@@ -494,8 +494,8 @@ async def websocket_chat(websocket: WebSocket):
             ai_content = ""
             # Contenu du tour COURANT du modèle. Réinitialisé à chaque
             # ``on_tool_start`` : ce qui précède un appel d'outil est un
-            # "préambule" (raisonnement, et avec GPT-5.5 le script orchestrate
-            # complet) redondant avec l'indicateur d'outil affiché à part. À la
+            # "préambule" (raisonnement, et avec GPT-5.5 le code complet qu'il
+            # venait d'écrire) redondant avec l'indicateur d'outil affiché à part. À la
             # fin, si des outils ont tourné, on ne garde que ce dernier tour =
             # la vraie réponse (cf. réassignation après la boucle de streaming).
             _answer_content = ""
@@ -642,37 +642,6 @@ async def websocket_chat(websocket: WebSocket):
                 elif event["event"] == "on_tool_end":
                     tool_name = event.get("name", "")
                     tool_output = event.get("data", {}).get("output", "")
-                    # Sprint 2.7 §4.4 — when ``orchestrate`` finishes, its
-                    # meta header lists the tools dispatched inside the
-                    # sandbox. Add them to ``tools_called`` so the
-                    # completion_guard sees the union and doesn't flag a
-                    # destructive action driven via the sandbox as
-                    # unbacked. (Today the sandbox is read-only — so this
-                    # is mostly preparation for V2 — but it's also harmless
-                    # for read-only tools.)
-                    if tool_name == "orchestrate":
-                        try:
-                            from app.services.orchestrate_runner import (
-                                parse_dispatched_from_result,
-                            )
-                            _output_str = (
-                                tool_output
-                                if isinstance(tool_output, str)
-                                else getattr(tool_output, "content", "") or ""
-                            )
-                            _dispatched = parse_dispatched_from_result(_output_str)
-                            if _dispatched:
-                                tools_called.extend(_dispatched)
-                                logger.debug(
-                                    "completion_guard: union'd %d sandbox tools "
-                                    "from orchestrate result",
-                                    len(_dispatched),
-                                )
-                        except Exception as _orch_parse_exc:
-                            logger.debug(
-                                "orchestrate tools_dispatched parse skipped: %s",
-                                _orch_parse_exc,
-                            )
                     # Detect image results from tools (e.g. qrcode_generate, generate_image)
                     _image_payload: dict | None = None
                     if isinstance(tool_output, str) and tool_output.startswith("{"):
@@ -777,8 +746,8 @@ async def websocket_chat(websocket: WebSocket):
 
             # Si des outils ont tourné, ne garder que le contenu du DERNIER tour
             # (la réponse de synthèse), pas les préambules des tours qui
-            # appelaient un outil — c'est là que GPT-5.5 recopiait son script
-            # orchestrate dans la réponse visible. Filet de sécurité : si le
+            # appelaient un outil — c'est là que GPT-5.5 recopiait son
+            # raisonnement dans la réponse visible. Filet de sécurité : si le
             # dernier tour n'a produit aucun texte (rare — le modèle finit sur un
             # appel d'outil sans synthèse), on retombe sur le contenu complet
             # plutôt que d'afficher un message vide.

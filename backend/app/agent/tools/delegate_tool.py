@@ -36,7 +36,7 @@ from typing import Annotated
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import InjectedToolArg, tool
 
-from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+from app.agent.tool_context import CURRENT_CONVERSATION_ID
 from app.skills.base import Domain
 from app.skills.decorator import register
 
@@ -147,7 +147,7 @@ async def delegate(
         truncated = len(clean) - MAX_TASKS
         clean = clean[:MAX_TASKS]
 
-    conversation_id = ORCHESTRATE_CONVERSATION_ID.get()
+    conversation_id = CURRENT_CONVERSATION_ID.get()
     depth = _DELEGATE_DEPTH.get()
 
     logger.info("delegate: lancement de %d sous-tâches en parallèle", len(clean))

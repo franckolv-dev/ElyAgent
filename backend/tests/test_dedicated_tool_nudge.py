@@ -41,18 +41,6 @@ def test_prompt_has_dedicated_tool_first_rule():
     )
 
 
-def test_orchestrate_docstring_warns_against_bypassing_dedicated_tools():
-    src = (_REPO / "app/agent/tools/orchestrate_tool.py").read_text(encoding="utf-8")
-    assert "Do NOT use this tool" in src, (
-        "Le docstring d'orchestrate doit porter la contre-indication — "
-        "c'est le texte que le modèle lit au moment du choix d'outil."
-    )
-    assert "learned tools" in src, (
-        "La contre-indication doit couvrir les outils appris (bloc "
-        "<learned_skills>), pas seulement les outils core."
-    )
-
-
 def test_memory_snapshot_passes_query_to_skill_selection():
     src = (_REPO / "app/agent/builders/memory_snapshot.py").read_text(encoding="utf-8")
     assert "query=user_query" in src, (

@@ -110,10 +110,10 @@ async def test_find_tool_empty_capability():
 @pytest.mark.asyncio
 async def test_find_tool_returns_ranked_and_records_discovery(monkeypatch):
     _mock_catalog(monkeypatch)
-    from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+    from app.agent.tool_context import CURRENT_CONVERSATION_ID
 
     conv = f"c-{uuid.uuid4().hex}"
-    ORCHESTRATE_CONVERSATION_ID.set(conv)
+    CURRENT_CONVERSATION_ID.set(conv)
 
     out = await fts.find_tool.ainvoke({"capability": "do alpha things", "top_k": 2})
 
@@ -144,14 +144,14 @@ async def test_find_tool_real_catalog_surfaces_sheets():
     Sheet must surface a sheets_* tool. This is the exact failure case (Ely
     said 'I have no tool' when sheets_read_spreadsheet existed). Works without
     FastEmbed — the lexical layer carries it ('sheet' ⊂ 'spreadsheet'/'sheets')."""
-    from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+    from app.agent.tool_context import CURRENT_CONVERSATION_ID
     from app.skills.builtin import register_all
 
     register_all()              # populate the full builtin catalog
     fts._catalog_sig = None     # force a catalog rebuild
 
     conv = f"c-{uuid.uuid4().hex}"
-    ORCHESTRATE_CONVERSATION_ID.set(conv)
+    CURRENT_CONVERSATION_ID.set(conv)
     out = await fts.find_tool.ainvoke(
         {"capability": "lire le contenu d'un Google Sheet existant et y ajouter des lignes",
          "top_k": 8}
@@ -200,10 +200,10 @@ async def test_find_tool_no_match_records_gap(_user, monkeypatch):
 
     monkeypatch.setattr("app.services.memory.get_memory_infra", lambda: _ZeroInfra())
 
-    from app.agent.tools.orchestrate_tool import ORCHESTRATE_CONVERSATION_ID
+    from app.agent.tool_context import CURRENT_CONVERSATION_ID
     from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
 
-    ORCHESTRATE_CONVERSATION_ID.set(f"c-{uuid.uuid4().hex}")
+    CURRENT_CONVERSATION_ID.set(f"c-{uuid.uuid4().hex}")
     LEARNED_TOOL_USER_ID.set(_user)
 
     # Query with no lexical overlap with alpha/beta/gamma + no semantic → no match.

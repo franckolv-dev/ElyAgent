@@ -27,7 +27,7 @@ Three invariants every method enforces :
   3. **Best-effort args scrubbing.** `args_redacted` strings are
      truncated to MAX_VALUE_CHARS to limit PII leak ; a future V2
      hook will use the per-conversation `SecurityFilter` for proper
-     redaction (same pattern as orchestrate_rpc Jalon 6).
+     redaction (same pattern as the tool gateway).
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # Best-effort safety net : truncate string values in tool args to this many
 # chars before serialization. Full PII scrubbing is V2 (per-conv
-# SecurityFilter, same pattern as orchestrate_rpc Jalon 6).
+# SecurityFilter, same pattern as the tool gateway).
 MAX_VALUE_CHARS: int = 200
 
 
@@ -253,7 +253,7 @@ async def record_tool_error(
 
     Differs from `ErrorStore.store()` (which expects an existing
     session) by opening its own session — convenient for fire-and-forget
-    callers in nodes.py / orchestrate_runner where the request session
+    callers in nodes.py where the request session
     isn't easily reachable.
     """
     if not user_id:

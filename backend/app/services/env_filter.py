@@ -8,14 +8,22 @@
 # @license    Elastic License 2.0
 #            https://www.elastic.co/licensing/elastic-license
 # =============================================================================
-"""Pure env-filtering helper, shared by orchestrate sandbox and MCP stdio.
+"""Durcissement partagé des sous-processus : filtre d'environnement + kill.
 
-Two consumers need the same defense-in-depth rule when they spawn a
-child process:
-  1. The orchestrate sandbox (``orchestrate_runner``) runs a generated
-     Python script in a subprocess with a stripped env.
-  2. The MCP client (``mcp_client``) launches arbitrary tool servers
+Deux consommateurs ont besoin de la même règle de défense en profondeur
+quand ils lancent un processus enfant :
+  1. Le bac à sable de validation des compétences (``learning.smoke_sandbox``)
+     exécute un script Python généré, dans un sous-processus à l'environnement
+     réduit.
+  2. Le client MCP (``mcp_client``) lance des serveurs d'outils arbitraires
      via ``uv tool run …``, ``npx …``, etc.
+
+⚠️ Ces trois symboles — ``SAFE_ENV_PREFIXES``, ``SECRET_SUBSTRINGS`` et
+``kill_process_group`` — vivaient dans ``orchestrate_runner``, démantelé le
+29/07 (ménage lot 5). Ils n'avaient rien d'« orchestrate » : c'est du
+durcissement de sous-processus, le métier de ce module. Les déplacer était la
+condition pour supprimer le bac à sable sans casser la validation des
+compétences apprises.
 
 Both must avoid leaking ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` /
 ``GITHUB_TOKEN`` / database credentials into the child's environment.
@@ -35,7 +43,62 @@ Rules
 """
 from __future__ import annotations
 
+import logging
 import os
+import signal
+import subprocess
+
+logger = logging.getLogger(__name__)
+
+# Préfixes de variables conservés pour un enfant. Tout le reste est coupé.
+SAFE_ENV_PREFIXES: tuple[str, ...] = (
+    "PATH", "HOME", "USER", "LANG", "LC_", "TERM",
+    "TMPDIR", "TMP", "TEMP", "SHELL", "LOGNAME",
+    "XDG_", "PYTHONDONTWRITEBYTECODE", "TZ",
+    "ELY_",
+)
+
+# Sous-chaînes qui font tomber une variable même si son préfixe est autorisé.
+SECRET_SUBSTRINGS: tuple[str, ...] = (
+    "KEY", "TOKEN", "SECRET", "PASSWORD",
+    "CREDENTIAL", "PASSWD", "AUTH",
+)
+
+
+def kill_process_group(proc: subprocess.Popen, grace: float = 5.0) -> None:
+    """SIGTERM tout le groupe de processus ; SIGKILL après ``grace``.
+
+    Nécessaire pour les scripts qui lancent des fils ou des petits-enfants :
+    terminer le seul ``Popen`` parent laisserait des orphelins derrière lui.
+    """
+    if os.name == "nt":  # pragma: no cover — bac à sable non supporté sur Windows
+        try:
+            proc.terminate()
+        except Exception:  # noqa: BLE001
+            logger.exception("sandbox: échec de terminate() sur Windows")
+        return
+
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError) as exc:
+        logger.debug("sandbox: killpg SIGTERM échoué (%s) — repli sur proc.kill", exc)
+        try:
+            proc.kill()
+        except Exception:  # noqa: BLE001
+            logger.exception("sandbox: le repli proc.kill a échoué aussi")
+        return
+
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError) as exc:
+            logger.debug("sandbox: killpg SIGKILL échoué : %s", exc)
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                logger.exception("sandbox: le proc.kill final a échoué aussi")
 
 
 def filter_safe_env(
