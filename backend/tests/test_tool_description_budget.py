@@ -141,15 +141,18 @@ def test_the_decision_relevant_content_survives(tool_name, needles):
 def test_the_developer_docstrings_are_kept():
     """Le dégraissage porte sur ce qu'on ENVOIE au modèle, pas sur la
     documentation du code : la docstring reste lisible dans le source."""
-    from app.agent.tools.orchestrate_tool import orchestrate
+    # Ré-ancré le 29/07 : l'exemple était `orchestrate`, démantelé au lot 5
+    # du ménage. `gmail_trash_by_category` est le nouveau poids lourd du
+    # catalogue (docstring ~3 350 car. pour une description ~450).
+    tool = _tool_or_skip("gmail_trash_by_category")
 
-    fn = getattr(orchestrate, "func", None) or getattr(orchestrate, "coroutine", None)
+    fn = getattr(tool, "func", None) or getattr(tool, "coroutine", None)
     doc = (getattr(fn, "__doc__", "") or "")
 
     assert len(doc) > 1_000, (
         "la docstring de développement a été amputée — ce n'est pas le but"
     )
-    assert len(doc) > len(orchestrate.description or ""), (
+    assert len(doc) > len(tool.description or ""), (
         "la description envoyée au modèle doit être plus courte que la "
         "docstring de développement"
     )
@@ -187,16 +190,3 @@ def test_applying_the_slim_descriptions_twice_changes_nothing():
     by = {t.name: t for t in get_skill_registry().all_tools}
 
     assert estimate_tokens(by["orchestrate"].description or "") == once
-
-
-def test_the_orchestrate_sandbox_list_comes_from_the_source_of_truth():
-    """Recopier les 15 stubs dériverait au premier ajout, et le modèle
-    inventerait des appels qui échoueraient à l'exécution."""
-    from app.services.orchestrate_runner import SANDBOX_ALLOWED_TOOLS_V1
-    from app.skills import get_skill_registry
-    from app.skills.builtin import register_all
-
-    desc = _tool_or_skip("orchestrate").description or ""
-
-    for stub in SANDBOX_ALLOWED_TOOLS_V1:
-        assert stub in desc, f"stub absent de la description : {stub}"

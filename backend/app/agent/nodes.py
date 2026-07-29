@@ -745,10 +745,10 @@ def create_agent_node():
                 except Exception as _bext_err:
                     logger.debug("[diag.bind] extension-check skipped: %s", _bext_err)
 
-                # Sprint 2.7 — hide tier_c_only tools from SIMPLE/MEDIUM
-                # tiers. orchestrate is the canonical case: tier A/B models
-                # can't write correct Python scripts, so exposing the tool
-                # to them just burns tokens on broken sandbox runs.
+                # Cache les outils réservés au tier C des tiers SIMPLE et
+                # MEDIUM : un modèle qui ne saura pas s'en servir n'y gagne
+                # que des tokens brûlés. La liste est VIDE aujourd'hui — le
+                # point d'extension reste branché (cf. tool_sets).
                 if _tier != ComplexityTier.COMPLEX:
                     from app.agent.tool_sets import TIER_C_ONLY_TOOLS
                     _before_tc = len(_filtered_tools)

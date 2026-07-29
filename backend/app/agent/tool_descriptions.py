@@ -17,7 +17,7 @@ chez Hermes v0.19 pour 72 outils. Ce poids n'est pas payé une fois : il repart
 à chaque appel de modèle, donc à chaque itération d'une boucle d'outils.
 
 **La cause.** La docstring de développement servait AUSSI de description au
-modèle. ``orchestrate`` exposait ainsi 4 826 caractères, exemples de code et
+modèle. ``orchestrate`` (démantelé le 29/07) exposait 4 826 caractères, code et
 sections de documentation compris — utiles à qui lit le source, inutiles à qui
 choisit un outil.
 
@@ -50,19 +50,6 @@ logger = logging.getLogger(__name__)
 # docstring — le dégraissage vise les poids lourds, pas l'uniformité.
 SLIM_DESCRIPTIONS: dict[str, str] = {
 
-    # 1 378 tokens → la plus lourde du profil, et de loin.
-    "orchestrate": (
-        "Run a multi-step read-only workflow in a sandboxed Python environment.\n"
-        "Provide EITHER `intent` (plain language — a tier-C model writes the "
-        "script for you) OR `code` (you write the Python yourself). Never both.\n"
-        "USE WHEN you must chain many read-only calls (Gmail list + Drive read + "
-        "web search + past conversations…) and return ONE synthesis: a single "
-        "script instead of 10 tool_calls, each of which would flood your context "
-        "with its full result.\n"
-        "DO NOT USE when one dedicated tool already covers the request — "
-        "including your learned tools from <learned_skills>. One precise call "
-        "beats a sandboxed script."
-    ),
 
     "gmail_trash_by_category": (
         "Bulk-trash a whole Gmail CATEGORY in one atomic call.\n"
@@ -232,30 +219,8 @@ def apply_slim_descriptions() -> int:
         logger.warning("descriptions courtes non appliquées : %s", exc)
         return 0
 
-    # `orchestrate` DOIT énumérer les stubs disponibles dans le bac à sable :
-    # en mode B, c'est le modèle principal qui écrit le script Python, et il ne
-    # peut appeler que ceux-là. La liste est lue depuis SANDBOX_ALLOWED_TOOLS_V1
-    # plutôt que recopiée — une recopie dériverait au premier ajout de stub, et
-    # le modèle inventerait des appels qui échoueraient à l'exécution.
-    # Calculé LOCALEMENT : muter SLIM_DESCRIPTIONS accumulerait la liste à
-    # chaque appel (mesuré : 267 → 458 tokens en trois passes). La fonction
-    # doit pouvoir être rejouée sans effet de bord.
     extras: dict[str, str] = {}
     skip: set[str] = set()
-    try:
-        from app.services.orchestrate_runner import SANDBOX_ALLOWED_TOOLS_V1
-
-        extras["orchestrate"] = (
-            "\nStubs available inside the sandbox: "
-            + ", ".join(sorted(SANDBOX_ALLOWED_TOOLS_V1))
-            + "."
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "liste des stubs orchestrate indisponible (%s) — description "
-            "longue conservée", exc,
-        )
-        skip.add("orchestrate")
 
     # #260 — les outils qui naviguent SANS session portent un avertissement
     # ajouté à leur description au chargement de `browser_skill`. Remplacer la

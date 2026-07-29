@@ -89,7 +89,7 @@ MANDATE_ESCALATE_ALWAYS: Final[frozenset[str]] = frozenset({
 def tool_family(tool_name: str) -> str | None:
     """Famille de mandat d'un outil, ou ``None`` si non rattaché.
 
-    ``None`` couvre les outils méta/universels (find_tool, orchestrate,
+    ``None`` couvre les outils méta/universels (find_tool,
     skill_view, save_*) et tout outil futur non mappé — le gate les
     ESCALADE (fail-closed) plutôt que de les autoriser implicitement."""
     if not tool_name:

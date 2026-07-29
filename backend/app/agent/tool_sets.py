@@ -209,13 +209,6 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     # (resolved from User.telegram_id). user_id injected so the LLM can't
     # target arbitrary chats.
     "telegram_send_message",
-    # Sprint 2.7 (2026-05-19) — Programmatic Tool Calling sandbox.
-    # The orchestrate tool needs user_id to scope every RPC dispatch
-    # to the calling user (Gmail / Drive / Calendar / Knowledge / etc.
-    # inside the sandbox all run as this user). Adding to USER_ID_TOOLS
-    # is mandatory — the CI guard test_user_id_injection_completeness
-    # catches it otherwise.
-    "orchestrate",
 })
 
 
@@ -232,25 +225,19 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
 # name appears here is dropped from the binding. The LLM doesn't even see it
 # in its tool schema, so there's no risk of accidental invocation.
 
-TIER_C_ONLY_TOOLS: frozenset[str] = frozenset({
-    # Sprint 2.7 — orchestrate Python sandbox.
-    # Writing a working Python script that drives N tools cleanly was
-    # supposed to require frontier-class generation, hence this filter.
-    #
-    # REMOVED 2026-05-20 during the bench session because the filter
-    # interacted badly with the tier downgrade between turns: after the
-    # first tool_call, the router classifies the continuation in MEDIUM
-    # or IMAGE → orchestrate gets dropped from the binding → the LLM
-    # honestly answers « le tool orchestrate n'existe pas » and abandons
-    # the workflow. Until we have a "sticky tier" mechanism that keeps
-    # tier=complex across the whole turn series of a started workflow,
-    # the cure is worse than the disease. Mistral Small / DeepSeek
-    # flash actually do produce usable scripts in our small test.
-    #
-    # To re-enable a per-tier filter once sticky-tier is in place:
-    # add tool names back to this frozenset and the existing filter in
-    # nodes.py kicks in again automatically.
-})
+# VIDE, et c'est l'état voulu. Son seul occupant historique était le bac à
+# sable `orchestrate`, démantelé le 29/07 (ménage lot 5) — il en était déjà
+# sorti le 20/05.
+#
+# ⚠️ La leçon de ce vidage vaut pour tout ajout futur : un filtre par tier
+# interagit mal avec la BAISSE de tier entre les tours. Après le premier
+# tool_call, la continuation était classée plus bas, l'outil disparaissait du
+# binding, et le modèle répondait de bonne foi « cet outil n'existe pas » avant
+# d'abandonner. Ne remplir cette liste qu'une fois un tier « collant » en place.
+#
+# Le point d'extension reste branché : le filtre de `nodes.py` reprend tout
+# seul dès qu'un nom y est ajouté.
+TIER_C_ONLY_TOOLS: frozenset[str] = frozenset()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Memory skills — available in every specialist domain

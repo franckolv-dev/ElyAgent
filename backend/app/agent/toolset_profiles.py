@@ -245,17 +245,6 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     "scheduler_create_task",
     "scheduler_list_tasks",
     "scheduler_delete_task",
-    # Sprint 2.7 (2026-05-19/20) — Programmatic Tool Calling sandbox.
-    # The orchestrate tool was auto-discovered into the registry via
-    # @register(domain=UNIVERSAL) but the default profile is a STATIC
-    # list — auto-discovery alone doesn't add it here. Without this
-    # entry, the LLM never sees the tool in its binding even though
-    # it's registered. (Bug caught the night of 20 mai during the bench
-    # session — agent kept replying "je n'ai pas de tool orchestrate"
-    # because resolve_profile_tools intersects with this list.)
-    # TIER_C_ONLY_TOOLS filter in nodes.py still removes it from tier
-    # A/B bindings — the entry here only makes it eligible at tier C.
-    "orchestrate",
     # Sprint 4b Phase 4.b (2026-05-29) — progressive disclosure on the
     # autonomous learned playbooks. The system prompt already lists each
     # active LearnedSkill's name + description (~50 tokens per skill,

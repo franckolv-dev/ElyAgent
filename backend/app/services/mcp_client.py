@@ -142,11 +142,11 @@ def _native_tool_names() -> set[str]:
 
 # ── Env scrubbing constants for the spawned MCP process ─────────────────────
 #
-# Same defense-in-depth model as orchestrate_runner: block every variable
+# Same defense-in-depth model as the skill smoke sandbox: block every variable
 # whose name contains a secret substring, allow only whitelisted prefixes
 # through, then layer the per-server `env_json` overrides on top.
 #
-# MCP-specific additions vs the orchestrate list:
+# MCP-specific additions vs the shared env_filter list:
 #   - UV_  : uv (Astral) needs UV_TOOL_DIR / UV_CACHE_DIR / UV_PYTHON, all
 #            harmless and required to run `uv tool run mcp-server-*` from
 #            within the container (see J1.5d, docker-compose.yml).

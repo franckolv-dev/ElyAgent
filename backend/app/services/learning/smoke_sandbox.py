@@ -19,7 +19,7 @@ returns something non-serializable. This is where the J0 §3.2 residual
 risk (ReDoS / runaway allocation) is contained — by RLIMIT + wall-clock
 timeout, not by static inspection.
 
-Isolation reuses the Sprint 2.7 subprocess hardening (orchestrate_runner):
+Isolation reuses the shared subprocess hardening (services.env_filter) :
 ``python -S`` (no site.py → backend/ not importable), scrubbed env (no
 secrets), HOME redirected, PYTHONPATH = staging dir only, ``setsid`` +
 process-group kill. On top, this stage adds RLIMIT_CPU + RLIMIT_AS and a
@@ -54,11 +54,11 @@ from pathlib import Path
 
 # Reuse the Sprint 2.7 hardening — single source of truth for env
 # scrubbing + process-group kill.
-from app.services.env_filter import filter_safe_env
-from app.services.orchestrate_runner import (
-    _SAFE_ENV_PREFIXES,
-    _SECRET_SUBSTRINGS,
-    _kill_process_group,
+from app.services.env_filter import (
+    SAFE_ENV_PREFIXES,
+    SECRET_SUBSTRINGS,
+    filter_safe_env,
+    kill_process_group,
 )
 
 
@@ -277,8 +277,8 @@ def smoke_run(
         )
 
         env = filter_safe_env(
-            safe_prefixes=_SAFE_ENV_PREFIXES,
-            secret_substrings=_SECRET_SUBSTRINGS,
+            safe_prefixes=SAFE_ENV_PREFIXES,
+            secret_substrings=SECRET_SUBSTRINGS,
         )
         env["HOME"] = str(home_dir)
         env["PYTHONPATH"] = str(tmpdir)
@@ -301,7 +301,7 @@ def smoke_run(
                 break
             if time.monotonic() >= deadline:
                 killed_on_timeout = True
-                _kill_process_group(proc, grace=1.0)
+                kill_process_group(proc, grace=1.0)
                 break
             time.sleep(0.02)
 
