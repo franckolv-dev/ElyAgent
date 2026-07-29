@@ -170,7 +170,22 @@ async def generate_and_persist_tool(
     attempts: list[dict[str, Any]] = []
     prior_errors: str | None = None
 
-    for i in range(1, max_iterations + 1):
+    # Les passes locales d'abord, puis UNE seule au repli cloud du niveau S.
+    #
+    # Règle de Franck (29/07/2026) : « le modèle local crée l'outil, Ely le
+    # teste et s'il est fonctionnel on s'arrête ; s'il ne l'est pas, là on fait
+    # appel au fallback du tier S qui est kimi-k3 ».
+    #
+    # Avant ce lot, les trois itérations tournaient toutes sur le MÊME modèle
+    # local, et on abandonnait — alors que `kimi-k3` était configuré juste
+    # derrière lui et n'était jamais sollicité.
+    #
+    # Une seule passe cloud : si trois passes locales n'ont pas produit un
+    # outil valide, une quatrième locale ne le ferait pas davantage — mais
+    # payer plusieurs passes cloud non plus.
+    passes = [False] * max_iterations + [True]
+
+    for i, use_fallback in enumerate(passes, start=1):
         source, gen_info = await generate_tool_source(
             task_description=task_description,
             user_id=user_id,
@@ -178,6 +193,7 @@ async def generate_and_persist_tool(
             profile=profile,
             allowed_egress=allowed_egress,
             available_secret_labels=secret_labels,
+            force_fallback=use_fallback,
         )
         attempt: dict[str, Any] = {"iteration": i, "gen_status": gen_info.get("status")}
 

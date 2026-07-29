@@ -76,7 +76,7 @@ async def test_generate_tool_source_selects_io_system_prompt(monkeypatch) -> Non
                 response_metadata={},
             )
 
-    async def fake_tier_s():
+    async def fake_tier_s(*, force_fallback: bool = False):
         return _FakeLLM(), "deepseek"
 
     monkeypatch.setattr(tg, "get_tier_s_llm", fake_tier_s)

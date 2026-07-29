@@ -415,6 +415,7 @@ async def generate_tool_source(
     profile: str = "pure",
     allowed_egress: list[str] | None = None,
     available_secret_labels: list[str] | None = None,
+    force_fallback: bool = False,
 ) -> tuple[str | None, dict[str, Any]]:
     """Ask the tier-S LLM (niveau « S » du Routage admin) to write a tool.
 
@@ -430,7 +431,11 @@ async def generate_tool_source(
     tools = available_tools if available_tools is not None else get_available_tool_names()
     info["available_tool_count"] = len(tools)
 
-    llm, pick = await get_tier_s_llm()
+    # `force_fallback` saute le PREMIER maillon de la chaîne du niveau S —
+    # le modèle local. Sans lui, les trois itérations tournaient toutes sur le
+    # même modèle, et `kimi-k3`, configuré juste derrière, n'était jamais
+    # sollicité même quand le local n'y arrivait pas (règle de Franck, 29/07).
+    llm, pick = await get_tier_s_llm(force_fallback=force_fallback)
     if llm is None or pick == "none":
         info["status"] = "no_provider"
         info["error"] = (

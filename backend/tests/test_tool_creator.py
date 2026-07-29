@@ -147,7 +147,12 @@ async def test_all_attempts_fail_persists_nothing(_user, monkeypatch):
         max_iterations=2,
     )
     assert result["status"] == "validation_failed"
-    assert result["iterations"] == 2
+    # 2 passes locales + 1 passe au repli cloud du niveau S (lot du 29/07).
+    # Avant, les `max_iterations` tournaient toutes sur le MÊME modèle local et
+    # on abandonnait — alors que `kimi-k3`, configuré juste derrière lui dans
+    # la chaîne, n'était jamais sollicité. Règle de Franck : « s'il n'est pas
+    # fonctionnel, là on fait appel au fallback du tier S ».
+    assert result["iterations"] == 3
     assert all(a["validation"].startswith("failed at registration") for a in result["attempts"])
 
     async with async_session() as db:
