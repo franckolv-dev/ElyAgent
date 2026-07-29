@@ -42,7 +42,7 @@ SQLite FTS5 rows     : memory_fts WHERE collection IN (...)
 What is preserved
 -----------------
 Users + conversations + messages + messages_fts + notes + user_vocabulary
-+ learned_routing_keyword + every non-memory table. Franck's identity
++ every non-memory table. Franck's identity
 and conversational history stay intact — only the typed memory layer
 restarts.
 

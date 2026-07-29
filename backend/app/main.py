@@ -83,7 +83,6 @@ from app.routers import vault as vault_router
 from app.routers import conversations as conversations_router
 from app.routers import knowledge as knowledge_router
 from app.routers import settings_llm as settings_llm_router
-from app.routers import settings_routing as settings_routing_router
 from app.routers import marketplace as marketplace_router
 from app.routers import setup as setup_router
 from app.routers import voice as voice_router
@@ -151,10 +150,6 @@ async def lifespan(app: FastAPI):
     # Load mono-agent toggle (admin: Paramètres → Routage)
     from app.services.mono_agent import load_mono_agent_flag
     await load_mono_agent_flag()
-
-    # Load learned routing keywords cache (self-improving router)
-    from app.services.routing_learning import reload_cache as _reload_routing_cache
-    await _reload_routing_cache()
 
     await get_memory_manager().init_collections()
     await get_fts_store().init()
@@ -538,21 +533,6 @@ async def lifespan(app: FastAPI):
     )
     _startup_logger.info("[missions] heartbeat scheduled every %ds", _hb_interval)
 
-    # Routing learning — auto-detection des reformulations user (Phase 2).
-    # Toutes les 6h. Premier run décalé de 5min (boot calme), coalesce pour
-    # éviter les exécutions en parallèle si le précédent tick traîne.
-    from app.services.routing_learning import analyze_reformulations_tick
-    _memory_scheduler.add_job(
-        analyze_reformulations_tick,
-        trigger="interval",
-        hours=6,
-        id="routing_learning_tick",
-        coalesce=True,
-        max_instances=1,
-        next_run_time=None,  # pas d'exécution immédiate au boot
-    )
-    _startup_logger.info("[routing] learning tick scheduled every 6h")
-
     _memory_scheduler.start()
 
     # MCP server (J2): the Streamable-HTTP session manager must run while the
@@ -670,7 +650,6 @@ app.include_router(conversations_router.router)
 app.include_router(knowledge_router.router, prefix="/api", tags=["knowledge"])
 app.include_router(marketplace_router.router, prefix="/api/marketplace", tags=["marketplace"])
 app.include_router(settings_llm_router.router)
-app.include_router(settings_routing_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
 app.include_router(voice_router.router, prefix="/ws", tags=["voice"])
 app.include_router(arena_router.router)
