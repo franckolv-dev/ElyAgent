@@ -567,16 +567,28 @@ def _make_moonshot(model: str, api_key: str, base_url: str = "", max_tokens: int
     https://api.moonshot.ai/v1 — région CN : https://api.moonshot.cn/v1
     Doc : https://platform.moonshot.ai/docs/api/chat
 
-    Kimi K2.x sont des modèles **reasoning** : l'API renvoie une 400
-    « invalid temperature: only 1 is allowed for this model » si on essaie
-    d'envoyer autre chose que ``temperature=1``. On force donc 1 pour ces
-    modèles (la valeur ``temperature`` passée par le tier router est ignorée
-    de toute façon par le sampler côté Moonshot — pas de perte de qualité).
+    La série Kimi K (K1.5, K2, K3…) est en **raisonnement** : l'API renvoie une
+    400 « invalid temperature: only 1 is allowed for this model » si on envoie
+    autre chose que ``temperature=1``. On force donc 1 pour toute la famille
+    (la valeur passée par le tier router est de toute façon ignorée par le
+    sampler côté Moonshot — pas de perte de qualité).
     """
     from langchain_openai import ChatOpenAI
-    # Kimi K2.x = reasoning model → temperature forcée à 1
+    # Toute la série K de Moonshot est en RAISONNEMENT : l'API rend un 400
+    # « invalid temperature: only 1 is allowed for this model » pour toute autre
+    # valeur. On reconnaît donc la FAMILLE — `kimi-k<chiffre>` — et non une liste
+    # de versions.
+    #
+    # ⚠️ La liste précédente testait « k2 » / « k1.5 » et ratait `kimi-k3` :
+    # placé en tête du tier `complex` le 28/07, il n'a jamais servi et basculait
+    # en silence à chaque tour (17 bascules `bad_request` mesurées en 3 jours,
+    # après avoir téléversé tout le catalogue d'outils pour rien). Une liste de
+    # versions périme à chaque sortie ; une famille, non.
+    #
+    # Si Moonshot publie un jour un Kimi NON raisonnant, c'est ici qu'il faudra
+    # revenir — cf. tests/test_kimi_temperature_family.py.
     _model_lower = (model or "").lower()
-    if "k2" in _model_lower or "k1.5" in _model_lower or "thinking" in _model_lower:
+    if re.search(r"kimi-k\d", _model_lower) or "thinking" in _model_lower:
         temperature = 1.0
     return ChatOpenAI(
         model=model,
