@@ -1,0 +1,63 @@
+# =============================================================================
+# ELY — configuration SearXNG
+#
+# Méta-moteur auto-hébergé, tête de la chaîne de recherche d'Ely.
+# Voir docker-compose.yml (service `searxng`) et
+# backend/app/agent/tools/search_tool.py (`_search_searxng`).
+# =============================================================================
+
+use_default_settings: true
+
+general:
+  instance_name: "Ely"
+  # Instance privée : ne pas se déclarer aux annuaires publics.
+  enable_metrics: false
+
+search:
+  # ⚠️ LA LIGNE QUI COMPTE. Sans `json` dans `formats`, l'API rend une erreur
+  # et Ely ne reçoit rien d'exploitable — conteneur vert, recherche muette.
+  # C'est le mode de panne que la sonde de démarrage guette (`search_mute`).
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "fr"
+
+server:
+  # Repris de l'environnement (docker-compose) — jamais en clair ici.
+  secret_key: ""
+  limiter: false          # instance privée, un seul appelant : le backend
+  image_proxy: false
+
+ui:
+  static_use_hash: true
+
+# ⚠️ Avec `use_default_settings: true`, cette liste n'est PAS une restriction :
+# tous les moteurs par défaut restent actifs. Elle sert seulement à s'assurer
+# que ceux-ci sont bien ACTIVÉS (certains sont désactivés d'origine).
+#
+# Et c'est voulu. Mesuré au premier essai réel (01/08), sur « France » :
+#
+#     26 résultats remontés
+#     moteurs muets : brave « too many requests », qwant CAPTCHA,
+#                     startpage CAPTCHA
+#
+# Trois moteurs bloquaient déjà l'IP de la machine, et la requête a quand même
+# abouti — parce que SearXNG les interroge en parallèle et que les autres ont
+# répondu. **La largeur est ce qui rend l'ensemble résilient** : restreindre
+# la liste rendrait Ely plus fragile, pas plus sobre.
+#
+# ⚠️ Si les recherches deviennent vides alors que le conteneur est vert,
+# regarder `unresponsive_engines` dans la réponse JSON : c'est un blocage
+# amont (CAPTCHA), pas un défaut d'Ely. Le repli sur les fournisseurs à
+# crédits joue alors son rôle.
+engines:
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: qwant
+    disabled: false

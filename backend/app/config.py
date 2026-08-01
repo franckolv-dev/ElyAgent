@@ -199,6 +199,24 @@ class Settings(BaseSettings):
     # repli dans agent/tools/search_tool.py.
     searchcans_api_key: str = ""
 
+    # SearXNG — méta-moteur AUTO-HÉBERGÉ, en TÊTE de la chaîne de recherche.
+    # Pas de clé, pas de compte, pas de quota : c'est ce qui met fin à la
+    # dépendance aux crédits gratuits mensuels (le 31/07, deux fournisseurs
+    # sur trois étaient à sec et la chaîne était muette).
+    #
+    # Vide = non configuré → SearXNG n'est PAS appelé du tout. Un aller-retour
+    # vers un service qu'on sait absent est de la latence pure.
+    #
+    # ⚠️ Il n'a pas d'index propre : il interroge les moteurs amont depuis l'IP
+    # du serveur. On ne supprime pas la dépendance à Google ou Bing, on
+    # supprime l'intermédiaire payant — et on récupère le risque de blocage.
+    # D'où les fournisseurs à crédits conservés EN REPLI.
+    #
+    # ⚠️ L'API JSON n'est pas active par défaut : `formats: [json]` doit figurer
+    # dans `settings.yml`, sinon le conteneur est vert et ne rend rien
+    # d'exploitable. La sonde de démarrage attrape ce cas.
+    searxng_url: str = "http://searxng:8080"
+
     # GitHub Personal Access Token (optionnel)
     # Used by github_traffic_stats / github_repo_stats tools to read traffic,
     # stars, issues, notifications. Generate at https://github.com/settings/tokens
