@@ -391,10 +391,15 @@ async def conformity_node(state: AgentState | dict) -> dict:
 # Ce qu'on ajoute à la réponse retenue. La provenance n'est pas un détail : sans
 # elle, Franck ne peut ni arbitrer sa configuration de modèles ni la corriger —
 # c'est exactement ce qui lui a manqué pendant les cinq essais de conversion.
+#
+# ⚠️ « sans outils » y figure depuis #319 et n'est pas décoratif. Le panel est
+# en lecture seule par construction ; tant que la note ne le disait pas, une
+# réponse qui butait sur une action se lisait comme un constat d'impuissance
+# d'Ely — alors qu'elle venait d'un relais purement textuel.
 _ESCALATION_NOTE = (
-    "\n\n---\n*Cette réponse vient de **{model}** : les exigences n'étaient "
-    "toujours pas satisfaites après reprise, alors {n} modèles ont été "
-    "interrogés et la meilleure réponse retenue.{cout}*"
+    "\n\n---\n*Cette réponse vient de **{model}**, interrogé **sans outils** : "
+    "les exigences n'étaient toujours pas satisfaites après reprise, alors {n} "
+    "modèles ont été interrogés et la meilleure réponse retenue.{cout}*"
 )
 
 
