@@ -50,6 +50,7 @@ Run with:  cd backend && python -m pytest tests/test_tool_traces_survive_the_tur
 """
 from __future__ import annotations
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
@@ -209,3 +210,98 @@ def test_only_the_most_recent_traces_are_reloaded():
     # Ce sont les plus RÉCENTS qui comptent, pas les premiers.
     assert "resultat 39" in bloc.content
     assert "resultat 0" not in bloc.content
+
+
+# ---------------------------------------------------------------------------
+# Une trace répétée mange le budget de rechargement
+# ---------------------------------------------------------------------------
+#
+# ⛔ Mesuré le 01/08 sur la base réelle. Un tour a bouclé sur la même recherche
+# infructueuse : **54 traces identiques** écrites d'un coup. Le tour suivant
+# recharge les 8 dernières — il en a reçu 7 fois la même recherche ratée.
+#
+# La trace qui comptait, elle, était tombée du budget :
+#
+#     drive_create_file(name=Audit_Pro_BAT.md) → Fichier créé · Lien : https://…
+#
+# Ely a donc cherché le fichier dans ses conversations passées, ne l'a pas
+# trouvé, a stagné, et le panel a fini par répondre qu'elle ne savait pas
+# écrire de fichier — seize minutes après l'avoir écrit (#319).
+#
+# 👉 Une répétition n'apporte AUCUNE information et coûte une place à ce qui en
+#    apporte. Le budget doit compter des actions DISTINCTES.
+
+def test_a_repeated_trace_does_not_eat_the_reload_budget():
+    """Sept fois la même recherche ratée ne valent pas sept places."""
+    from app.services.tool_traces import MAX_RELOADED_TRACES, context_from_traces
+
+    ratee = 'web_search(query=site:adobe.com "Share for Review") → aucun résultat'
+    traces = [ratee] * 54 + [
+        "drive_create_file(name=Audit_Pro_BAT.md) → Fichier créé · Lien : https://drive…",
+    ]
+
+    bloc = context_from_traces(traces)
+
+    assert "Audit_Pro_BAT.md" in bloc.content, (
+        "la seule action qui a produit quelque chose ne doit pas être évincée "
+        "par des répétitions qui n'apprennent rien"
+    )
+    assert bloc.content.count(ratee) == 1, (
+        "une trace répétée à l'identique n'est rendue qu'une fois"
+    )
+    assert bloc.content.count("→") <= MAX_RELOADED_TRACES
+
+
+def test_the_reload_budget_counts_distinct_actions():
+    """Le plafond porte sur des actions distinctes, pas sur des lignes."""
+    from app.services.tool_traces import MAX_RELOADED_TRACES, context_from_traces
+
+    # 20 actions distinctes, chacune répétée 5 fois, en ordre chronologique.
+    traces = [f"outil_{i}(...) → resultat {i}" for i in range(20) for _ in range(5)]
+
+    bloc = context_from_traces(traces)
+
+    rendues = [ligne for ligne in bloc.content.splitlines() if ligne.startswith("- ")]
+    assert len(rendues) == MAX_RELOADED_TRACES
+    assert len(set(rendues)) == MAX_RELOADED_TRACES, (
+        "le plafond doit compter des actions DISTINCTES. Compter des LIGNES "
+        "laisse passer exactement le défaut visé : un tour qui boucle remplit "
+        "le budget de la même ligne et évince tout le reste"
+    )
+    # Ce sont les huit actions les plus RÉCENTES : outil_12 … outil_19.
+    for i in range(12, 20):
+        assert f"resultat {i}" in bloc.content
+    assert "resultat 11" not in bloc.content
+
+
+@pytest.mark.asyncio
+async def test_a_looping_turn_does_not_write_the_same_trace_fifty_times(monkeypatch):
+    """Ce qu'on écrit en base est déjà dédoublonné, à la source.
+
+    Dédoublonner au rechargement protège les conversations DÉJÀ écrites ; ne
+    pas écrire les doublons évite de payer le stockage et l'index pour du bruit.
+    Les deux sont utiles, et aucun ne remplace l'autre.
+    """
+    from app.services import tool_traces as tt
+
+    ecrites: list[str] = []
+
+    class _FakeDb:
+        def add(self, msg):
+            ecrites.append(msg.content)
+        async def commit(self):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(tt, "async_session", lambda: _FakeDb())
+
+    ratee = 'web_search(query=site:adobe.com) → aucun résultat'
+    n = await tt.persist_traces("conv-x", [ratee] * 54 + ["drive_create_file(…) → ok"])
+
+    assert ecrites == [ratee, "drive_create_file(…) → ok"], (
+        "54 fois la même trace, c'est une trace"
+    )
+    assert n == 2

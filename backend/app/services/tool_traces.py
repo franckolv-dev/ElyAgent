@@ -70,7 +70,15 @@ MAX_TRACE_CHARS: int = 400
 # messages peut porter des dizaines d'appels ; ce sont les DERNIERS qui portent
 # le contexte utile — « dépose-LE sur Drive » parle du fichier de tout à
 # l'heure, pas de celui d'il y a trois semaines.
+#
+# ⚠️ Le plafond compte des actions DISTINCTES, pas des lignes (cf. `_distinctes`).
 MAX_RELOADED_TRACES: int = 8
+
+# Combien de lignes on relit en base pour en tirer MAX_RELOADED_TRACES actions
+# distinctes. Un tour qui boucle peut en écrire des dizaines d'identiques : lire
+# exactement 8 lignes rendrait 8 fois la même. Mesuré le 01/08 — 54 copies d'une
+# recherche ratée dans un seul tour, donc une marge de 8× n'a rien de théorique.
+_RELOAD_WINDOW: int = MAX_RELOADED_TRACES * 8
 
 # Le rôle sous lequel les traces sont persistées dans ``messages``.
 TRACE_ROLE: str = "tool"
@@ -169,6 +177,24 @@ def traces_from_messages(messages: list[BaseMessage]) -> list[str]:
     return traces
 
 
+def _distinctes(traces: list[str]) -> list[str]:
+    """Les traces, sans les répétitions, dans l'ordre où elles sont apparues.
+
+    ⛔ Mesuré le 01/08 sur la base réelle : un tour a bouclé sur la même
+    recherche infructueuse et écrit **54 traces identiques**. Le tour suivant
+    en recharge huit — il en a reçu sept fois la même. La seule trace qui
+    portait un résultat, ``drive_create_file(…) → Lien : https://drive…``,
+    était tombée du budget. Ely a cherché le fichier au lieu de le connaître,
+    a stagné, et le panel a fini par affirmer qu'elle ne savait pas écrire de
+    fichier — seize minutes après l'avoir écrit (#319).
+
+    👉 **Une répétition n'apporte aucune information et coûte une place à ce
+    qui en apporte.** On garde la PREMIÈRE occurrence : c'est le moment où
+    l'action a eu lieu, et une trace est un repère chronologique.
+    """
+    return list(dict.fromkeys(traces))
+
+
 def context_from_traces(traces: list[str]) -> SystemMessage | None:
     """Les traces d'avant, rendues au modèle comme du CONTEXTE.
 
@@ -182,7 +208,7 @@ def context_from_traces(traces: list[str]) -> SystemMessage | None:
         ``None`` s'il n'y a rien à dire — on n'ajoute pas un message vide que
         le modèle devrait relire à chaque tour.
     """
-    utiles = [t for t in traces if t and t.strip()][-MAX_RELOADED_TRACES:]
+    utiles = _distinctes([t for t in traces if t and t.strip()])[-MAX_RELOADED_TRACES:]
     if not utiles:
         return None
     lignes = "\n".join(f"- {t}" for t in utiles)
@@ -215,7 +241,7 @@ async def persist_traces(conversation_id, traces: list[str]) -> int:
     Returns:
         Le nombre de traces écrites (0 si rien à faire ou en cas d'échec).
     """
-    utiles = [t for t in traces if t and t.strip()]
+    utiles = _distinctes([t for t in traces if t and t.strip()])
     if not utiles:
         return 0
     try:
@@ -242,6 +268,12 @@ async def load_traces(conversation_id, limit: int = MAX_RELOADED_TRACES) -> list
     l'utilisateur et une tâche planifiée tournent en parallèle et ne doivent
     jamais mélanger leurs actions.
 
+    ⚠️ On relit une FENÊTRE plus large que le plafond, puis on dédoublonne. Les
+    conversations écrites avant ce lot portent déjà des dizaines de lignes
+    identiques : lire exactement ``limit`` lignes rendrait ``limit`` fois la
+    même. Dédoublonner à l'écriture ne suffit donc pas — il faut aussi réparer
+    la relecture de ce qui est déjà en base.
+
     Ne lève jamais : sans traces, on retombe sur le comportement d'avant ce lot.
     """
     try:
@@ -255,9 +287,10 @@ async def load_traces(conversation_id, limit: int = MAX_RELOADED_TRACES) -> list
                 .where(Message.conversation_id == conversation_id,
                        Message.role == TRACE_ROLE)
                 .order_by(Message.created_at.desc())
-                .limit(limit)
+                .limit(max(limit, _RELOAD_WINDOW))
             )
-            return [m.content for m in reversed(rows.scalars().all())]
+            recentes = [m.content for m in reversed(rows.scalars().all())]
+            return _distinctes(recentes)[-limit:]
     except Exception as exc:  # noqa: BLE001
         logger.warning("traces d'outils illisibles (%s)", exc)
         return []
