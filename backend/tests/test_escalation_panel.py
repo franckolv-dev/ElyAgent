@@ -278,3 +278,74 @@ def test_the_panel_is_convened_only_when_progress_stops():
     assert should_escalate(new_count=5, previous_count=3) is True   # empiré
     assert should_escalate(new_count=1, previous_count=3) is False  # progresse
     assert should_escalate(new_count=2, previous_count=0) is False  # 1re vérification
+
+
+# ---------------------------------------------------------------------------
+# Le panel n'est pas témoin de l'outillage d'Ely
+# ---------------------------------------------------------------------------
+
+def test_the_panel_is_not_told_to_declare_tools_missing():
+    """Le panel n'a pas d'outils ; **Ely en a 84**. Il ne parle que pour lui.
+
+    ⛔ Incident du 01/08. Ely écrit `Audit_Pro_BAT.md` sur le Drive de Franck à
+    18:46 — `drive_create_file` réussit, le lien est dans la trace. À 19:02,
+    même conversation, elle lui répond :
+
+        « Je n'ai aucun outil de fichier dans cette session : impossible de
+          créer ou sauvegarder Audit_Pro_BAT.md sur le drive. Il faudrait me
+          redonner cet accès, ou créer le document vous-même. »
+
+    Le fichier existait depuis seize minutes. Cette réponse venait du panel,
+    qui a obéi au mot près à ce que _PANEL_PROMPT lui demandait : « Tu n'as
+    aucun outil : tu ne peux ni créer de fichier […] dis-le franchement ».
+
+    Le prompt confondait deux « tu » : le MEMBRE DU PANEL, qui n'a
+    effectivement pas d'outil, et ELY, que l'utilisateur lit. Vrai du premier,
+    faux de la seconde — et l'utilisateur ne voit que la seconde.
+
+    Ce que le panel doit continuer de garantir : ne rien inventer, ne rien
+    promettre. Ce qu'il ne doit plus faire : déclarer un outil absent, réclamer
+    un accès, ou renvoyer l'utilisateur au travail manuel. Il n'a pas la
+    liste des outils sous les yeux — il n'est pas en position de témoigner.
+    """
+    from app.agent.escalation import _PANEL_PROMPT
+
+    p = _PANEL_PROMPT.lower()
+
+    # La garantie qui doit SURVIVRE : pas de résultat inventé, pas de promesse.
+    assert "n'invente" in p
+    assert "promets" in p or "promesse" in p
+
+    # Ce qu'il ne doit plus affirmer.
+    assert "tu n'as aucun outil" not in p, (
+        "le panel écrit à l'utilisateur au nom d'Ely : lui faire dire qu'il "
+        "n'a aucun outil devient « Ely n'a aucun outil »"
+    )
+    assert "ni créer de fichier" not in p, (
+        "Ely a drive_create_file, desktop_write_file et neuf outils Drive — "
+        "annoncer l'inverse est faux, et l'utilisateur agit dessus"
+    )
+
+    # L'interdiction doit être EXPLICITE, sinon le modèle la réinventera :
+    # le prompt doit nommer ce qu'il ne faut pas dire.
+    assert "outil" in p, "l'interdiction doit nommer le sujet qu'elle couvre"
+    interdits = ("ne dis jamais", "n'affirme jamais", "ne déclare jamais")
+    assert any(mot in p for mot in interdits), (
+        "une interdiction implicite n'en est pas une : elle doit être écrite"
+    )
+
+
+def test_the_escalation_note_says_the_answer_came_without_tools():
+    """La note affichée doit dire que le panel a répondu SANS OUTILS.
+
+    Le panel est en lecture seule par construction — c'est ce qui le rend sûr.
+    Mais tant que la note ne le dit pas, une réponse qui bute sur une action
+    se lit comme un constat d'impuissance d'Ely, pas comme la limite connue
+    d'un relais textuel. Nommer la limite, c'est ce qui la rend lisible.
+    """
+    from app.agent.conformity import _ESCALATION_NOTE
+
+    note = _ESCALATION_NOTE.lower()
+    assert "sans outil" in note, (
+        "l'utilisateur doit pouvoir situer une réponse qui ne peut pas agir"
+    )

@@ -47,6 +47,32 @@ C'est délibéré. Trois agents outillés en parallèle enverraient trois mails 
 et c'est ce qui le rend sûr. Le cas « l'outil a mal produit » se traite en
 amont, en donnant à l'outil de quoi recevoir l'exigence (cf. #294).
 
+⛔ Mais il ne parle QUE POUR LUI (#319)
+----------------------------------------
+Le prompt d'origine disait au panel « Tu n'as aucun outil : tu ne peux ni créer
+de fichier […] dis-le franchement ». Il confondait deux « tu » : le membre du
+panel, qui n'a effectivement pas d'outil, et **Ely, que l'utilisateur lit**.
+
+Le 01/08, Ely a écrit `Audit_Pro_BAT.md` sur le Drive de Franck à 18:46 —
+`drive_create_file` a réussi, le lien est dans la trace. À 19:02, même
+conversation, le panel a répondu :
+
+    « Je n'ai aucun outil de fichier dans cette session : impossible de créer
+      ou sauvegarder Audit_Pro_BAT.md sur le drive. Il faudrait me redonner cet
+      accès, ou créer le document vous-même. »
+
+Le fichier existait depuis seize minutes. Le modèle avait obéi au mot près.
+
+👉 **Un relais qui ne voit pas l'outillage ne doit pas témoigner de son
+absence.** Il garde l'interdiction d'inventer un résultat — c'était le vrai but
+— mais il nomme désormais l'action qui reste, sans conclure qu'elle est
+impossible ni renvoyer l'utilisateur au travail manuel.
+
+⚠️ Un prompt reste une **consigne au modèle**, pas un verrou (cf. #297). Le
+garde-fou complémentaire est l'affichage : la note de bas de réponse dit
+maintenant que le panel a répondu **sans outils**, ce qui rend lisible une
+réponse qui bute sur une action.
+
 Budget — décision de Franck
 ----------------------------
     « Si le modèle est de type forfait (GPT 5.6), pas de plafond et si c'est
@@ -89,9 +115,13 @@ CE QUI NE VA PAS — les exigences non satisfaites :
 
 Réponds directement à l'utilisateur, en visant précisément ces exigences.
 
-Tu n'as aucun outil : tu ne peux ni créer de fichier, ni envoyer quoi que ce
-soit. Si ce qui manque exige un outil, dis-le franchement et explique ce qu'il
-faudrait — n'invente aucun résultat et ne promets aucune action future.
+Tu produis un TEXTE, et rien d'autre : n'annonce aucune action que tu aurais
+faite, n'invente aucun résultat, ne promets aucune action future.
+
+Ne dis jamais qu'un outil manque, qu'un accès serait à rétablir, ou que
+l'utilisateur devrait faire le travail lui-même. Tu ne vois pas l'outillage
+disponible et tu n'es pas en position d'en témoigner. Si l'exigence suppose
+une action, nomme simplement l'action qui reste à faire.
 """
 
 _JUDGE_PROMPT = """\
