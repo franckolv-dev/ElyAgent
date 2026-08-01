@@ -108,6 +108,15 @@ def _search_providers() -> dict[str, object]:
     s = get_settings()
     sondes: dict[str, object] = {}
 
+    # SearXNG en premier — c'est la tête de chaîne, et son mode de panne le
+    # plus probable est silencieux : conteneur vert, API JSON désactivée,
+    # zéro résultat. Sans sonde, ça ne se voit qu'à la première recherche.
+    if getattr(s, "searxng_url", ""):
+        url = s.searxng_url
+        async def _searxng(query: str, count: int):
+            return await st._search_searxng(query, count, url)
+        sondes["searxng"] = _searxng
+
     if getattr(s, "serper_api_key", ""):
         cle = s.serper_api_key
         async def _serper(query: str, count: int):

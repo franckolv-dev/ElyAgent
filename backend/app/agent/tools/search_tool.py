@@ -197,6 +197,56 @@ async def _search_ddgs(query: str, count: int) -> list[dict] | None:
 #                                 "knowledgeGraph": {…}}}
 # La forme est proche de Serper — le mapping ci-dessous en est le miroir.
 
+async def _search_searxng(query: str, count: int, base_url: str) -> list[dict] | None:
+    """Recherche via une instance SearXNG auto-hébergée.
+
+    Rend ``None`` en cas d'échec pour que la chaîne continue, ``[]`` quand la
+    recherche a bien eu lieu sans rien trouver.
+
+    ⚠️ **L'absence de clé ``results`` est un ÉCHEC, pas un résultat vide.**
+    C'est la signature de l'API JSON désactivée — `formats: [json]` manquant
+    dans `settings.yml`. Le conteneur répond, il est vert, et il ne rend rien
+    d'exploitable. Confondre ce cas avec « zéro résultat » ferait taire tous
+    les fournisseurs derrière SearXNG : exactement la panne du 31/07, rejouée
+    par celui qui est censé la prévenir.
+    """
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{base_url.rstrip('/')}/search",
+                params={"q": query, "format": "json", "language": "fr"},
+                headers={"Accept": "application/json"},
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+
+        if not isinstance(payload, dict) or "results" not in payload:
+            logger.warning(
+                "SearXNG a répondu sans clé « results » — l'API JSON est "
+                "probablement désactivée (formats: [json] dans settings.yml)"
+            )
+            return None
+
+        muets = payload.get("unresponsive_engines") or []
+        if muets and not payload.get("results"):
+            logger.warning("SearXNG : aucun moteur amont n'a répondu (%s)", muets[:3])
+
+        results: list[dict] = []
+        for item in payload.get("results") or []:
+            results.append({
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "content": item.get("content", ""),
+            })
+            if len(results) >= count:
+                break
+        return results
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SearXNG search failed: %s", exc)
+        return None
+
+
 async def _search_searchcans(query: str, count: int, api_key: str) -> list[dict] | None:
     """Search via SearchCans. Returns None on failure so the chain continues."""
     try:
@@ -338,6 +388,16 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
     # Tavily — qui fonctionnait. Un fournisseur qui répond poliment vide est
     # plus dangereux qu'un fournisseur qui plante.
     _primary_failed = False
+
+    # SearXNG d'abord : auto-hébergé, sans clé et sans quota. Décision de
+    # Franck du 31/07 — les fournisseurs à crédits deviennent le filet, pas
+    # l'ordinaire. Non configuré (URL vide) = pas appelé du tout.
+    searxng_url: str = getattr(s, "searxng_url", "") or ""
+    if searxng_url:
+        results = await _search_searxng(query, count, searxng_url)
+        if results:
+            return results, "SearXNG"
+        _primary_failed = True
 
     if serper_key and not is_quota_exhausted("serper"):
         results = await _search_serper(query, count, serper_key)

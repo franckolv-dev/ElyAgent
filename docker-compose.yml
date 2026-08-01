@@ -297,6 +297,42 @@ services:
       egress-proxy:
         condition: service_started
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # SearXNG — méta-moteur AUTO-HÉBERGÉ, tête de la chaîne de recherche.
+  #
+  # Pourquoi il est là : le 31/07/2026, deux fournisseurs de recherche sur
+  # trois étaient à court de crédits gratuits et la chaîne était muette.
+  # SearXNG n'a ni clé, ni compte, ni quota — il met fin à cette dépendance.
+  #
+  # ⚠️ Il n'a pas d'index propre : il interroge les moteurs amont depuis l'IP
+  # de cette machine. On ne supprime pas la dépendance à Google ou Bing, on
+  # supprime l'intermédiaire payant — et on récupère le risque de blocage.
+  # C'est pourquoi Serper / SearchCans / Tavily restent EN REPLI.
+  #
+  # ⚠️ L'API JSON n'est PAS active par défaut : `formats` doit inclure `json`
+  # dans config/searxng/settings.yml. Sans ça, le conteneur est vert, il
+  # répond, et il ne rend rien d'exploitable. La sonde de démarrage attrape
+  # ce cas (`search_mute`).
+  #
+  # Pas de port publié : seul le backend lui parle, par le réseau interne.
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080/
+      # Sans secret, SearXNG refuse de démarrer en mode non-debug.
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-change-me-with-openssl-rand-hex-32}
+    volumes:
+      - ./config/searxng:/etc/searxng:rw
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - cyberentity-net
+
 networks:
   cyberentity-net:
     driver: bridge
