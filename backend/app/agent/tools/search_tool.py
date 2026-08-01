@@ -212,6 +212,20 @@ async def _search_searchcans(query: str, count: int, api_key: str) -> list[dict]
             resp.raise_for_status()
             payload = resp.json()
 
+        # ⚠️ SearchCans annonce ses erreurs DANS LE CORPS, en HTTP 200 :
+        #     {"code": -2011, "data": null, "msg": "API key has no balance"}
+        # `raise_for_status()` passe donc, et sans ce contrôle le parseur rend
+        # une liste VIDE que la chaîne lit comme un succès — elle s'arrête là
+        # et n'essaie jamais Tavily. Incident du 31/07 : plus aucune recherche
+        # ne remontait de résultat.
+        code = payload.get("code")
+        if code not in (None, 0):
+            msg = str(payload.get("msg") or f"code {code}")
+            logger.warning("SearchCans a refusé la requête : %s", msg)
+            if is_quota_error(msg):
+                mark_quota_exhausted("searchcans")
+            return None
+
         data = payload.get("data") or {}
         results: list[dict] = []
         kg = data.get("knowledgeGraph") or {}
@@ -252,6 +266,9 @@ _QUOTA_MARKERS: tuple[str, ...] = (
     "not enough credits", "insufficient credit", "quota exceeded",
     "quota_exceeded", "out of credits", "rate limit exceeded",
     "payment required",
+    # SearchCans dit « API key has no balance » (31/07). Sans ce motif, son
+    # épuisement n'était pas reconnu et le disjoncteur ne l'écartait jamais.
+    "no balance", "insufficient balance",
 )
 
 
@@ -312,11 +329,19 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
     gse_cx: str     = getattr(s, "google_search_cx", "") or ""
     tavily_key: str = getattr(s, "tavily_api_key", "") or ""
 
+    # ⚠️ Dans une cascade de replis, « zéro résultat » n'est PAS une réponse :
+    # c'est un motif pour essayer le suivant. On teste donc la vérité de la
+    # liste (`if results:`) et non `is not None`.
+    #
+    # Incident du 31/07 : SearchCans, à court de crédits, rendait `[]`. La
+    # chaîne le lisait comme un succès, s'arrêtait, et n'atteignait jamais
+    # Tavily — qui fonctionnait. Un fournisseur qui répond poliment vide est
+    # plus dangereux qu'un fournisseur qui plante.
     _primary_failed = False
 
     if serper_key and not is_quota_exhausted("serper"):
         results = await _search_serper(query, count, serper_key)
-        if results is not None:
+        if results:
             return results, "Serper/Google"
         _primary_failed = True
     elif serper_key:
@@ -325,7 +350,7 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
     searchcans_key: str = getattr(s, "searchcans_api_key", "") or ""
     if searchcans_key and not is_quota_exhausted("searchcans"):
         results = await _search_searchcans(query, count, searchcans_key)
-        if results is not None:
+        if results:
             return results, "SearchCans"
         _primary_failed = True
     elif searchcans_key:
@@ -333,12 +358,12 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
 
     if gse_key and gse_cx:
         results = await _search_google_cse(query, count, gse_key, gse_cx)
-        if results is not None:
+        if results:
             return results, "Google CSE"
 
     if tavily_key:
         results = await _search_tavily(query, count, tavily_key)
-        if results is not None:
+        if results:
             return results, "Tavily"
 
     results = await _search_ddgs(query, count)
