@@ -25,6 +25,20 @@ Deux pannes en une journée sont passées par ce trou, contrôle vert :
                     Toute la chaîne de recherche devenait muette.
 ```
 
+⚠️ **Et la sonde s'est trompée à son tour, le 01/08.** Elle annonçait
+« SearchCans : Invalid API key » alors que la clé était bonne et le service
+sain — elle lui envoyait la clé de **Tavily**. Trois fermetures déclarées à la
+file partageaient le nom de variable ``cle`` ; une fermeture capture la
+variable, pas sa valeur, donc les trois voyaient la dernière affectation.
+
+Le défaut a survécu à sa propre suite de tests parce que **tous les autres
+tests remplacent ``_search_providers`` par un stub** : la fonction qui
+fabrique les sondes n'était jamais exercée. C'est ce que
+``test_each_provider_probe_carries_its_own_key`` répare, en appelant la vraie.
+
+👉 **Une sonde qui accuse un service sain est pire que pas de sonde** : elle
+envoie chercher la panne exactement là où il n'y en a pas.
+
 **Ce qu'elle fait.** Un appel réel par tête de chaîne, LLM *et* recherche, et
 un ``Finding`` pour chacune qui ne répond pas — avec la CAUSE, pas seulement
 « ne répond pas ». Un constat qui énonce sa conséquence se remarque ; un nom de
@@ -96,51 +110,54 @@ def _build(instance_id: str):
     return build_llm_for_provider(instance_id, ComplexityTier.COMPLEX)
 
 
+def _sonde_recherche(appel, secret: str):
+    """Fabrique une sonde qui part avec SON secret, et pas celui du voisin.
+
+    ⚠️ Une fermeture capture la VARIABLE, pas sa valeur. La version d'origine
+    déclarait les fermetures à la file en réutilisant le nom `cle` — les trois
+    dernières voyaient donc toutes la même, celle affectée en dernier. En
+    production le 01/08, SearchCans partait avec la clé de Tavily et la sonde
+    accusait un service parfaitement sain.
+
+    Passer par une fabrique n'est pas un détour : `appel` et `secret` sont des
+    PARAMÈTRES, donc chaque sonde a sa propre liaison. Le défaut redevient
+    impossible, y compris pour qui ajoutera un fournisseur par copier-coller.
+    """
+    async def _sonde(query: str, count: int):
+        return await appel(query, count, secret)
+    return _sonde
+
+
 def _search_providers() -> dict[str, object]:
     """{ nom: coroutine(query, count) } pour chaque fournisseur configuré.
 
     Les fournisseurs sans clé sont absents : ne pas les sonder n'est pas un
     constat, c'est leur état déclaré.
+
+    SearXNG est en tête — c'est la tête de chaîne, et son mode de panne le plus
+    probable est silencieux : conteneur vert, API JSON désactivée, zéro
+    résultat. Sans sonde, ça ne se voit qu'à la première recherche.
     """
     from app.agent.tools import search_tool as st
     from app.config import get_settings
 
     s = get_settings()
+
+    # (nom, attribut de configuration, fonction de recherche) — l'ordre est
+    # celui de la chaîne réelle.
+    declares = (
+        ("searxng", "searxng_url", st._search_searxng),
+        ("exa", "exa_api_key", st._search_exa),
+        ("serper", "serper_api_key", st._search_serper),
+        ("searchcans", "searchcans_api_key", st._search_searchcans),
+        ("tavily", "tavily_api_key", st._search_tavily),
+    )
+
     sondes: dict[str, object] = {}
-
-    # SearXNG en premier — c'est la tête de chaîne, et son mode de panne le
-    # plus probable est silencieux : conteneur vert, API JSON désactivée,
-    # zéro résultat. Sans sonde, ça ne se voit qu'à la première recherche.
-    if getattr(s, "searxng_url", ""):
-        url = s.searxng_url
-        async def _searxng(query: str, count: int):
-            return await st._search_searxng(query, count, url)
-        sondes["searxng"] = _searxng
-
-    if getattr(s, "exa_api_key", ""):
-        cle_exa = s.exa_api_key
-        async def _exa(query: str, count: int):
-            return await st._search_exa(query, count, cle_exa)
-        sondes["exa"] = _exa
-
-    if getattr(s, "serper_api_key", ""):
-        cle = s.serper_api_key
-        async def _serper(query: str, count: int):
-            return await st._search_serper(query, count, cle)
-        sondes["serper"] = _serper
-
-    if getattr(s, "searchcans_api_key", ""):
-        cle = s.searchcans_api_key
-        async def _searchcans(query: str, count: int):
-            return await st._search_searchcans(query, count, cle)
-        sondes["searchcans"] = _searchcans
-
-    if getattr(s, "tavily_api_key", ""):
-        cle = s.tavily_api_key
-        async def _tavily(query: str, count: int):
-            return await st._search_tavily(query, count, cle)
-        sondes["tavily"] = _tavily
-
+    for nom, attribut, appel in declares:
+        secret = getattr(s, attribut, "")
+        if secret:
+            sondes[nom] = _sonde_recherche(appel, secret)
     return sondes
 
 
