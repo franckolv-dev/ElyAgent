@@ -52,12 +52,30 @@ ui:
 # regarder `unresponsive_engines` dans la réponse JSON : c'est un blocage
 # amont (CAPTCHA), pas un défaut d'Ely. Le repli sur les fournisseurs à
 # crédits joue alors son rôle.
+# ⚠️ ON NE REDÉCLARE PAS UN MOTEUR. Les réglages livrés dans l'image
+# définissent déjà chacun avec ses paramètres propres — `wikicommons` exige un
+# `wc_search_type`, `adobe stock` un `adobe_content_types`, `mastodon` un
+# `mastodon_type` et un `base_url`, `gitlab` un `base_url`. Les réécrire à la
+# main fait échouer leur chargement (« can't register engine ») : c'est ce qui
+# est arrivé quatre fois le 01/08.
+#
+# On se contente donc de BASCULER UN DRAPEAU sur des moteurs déjà définis.
+#
+# Déjà actifs, rien à faire : wikipedia, duckduckgo, google, google cse, brave,
+# github, stackoverflow, docker hub, reuters, unsplash, dailymotion,
+# mastodon users/hashtags, wikicommons.images.
 engines:
-  - name: duckduckgo
+  # ── à activer : désactivés dans les réglages livrés ──
+  - name: mojeek           # généraliste, index indépendant
     disabled: false
-  - name: brave
+  - name: gitlab           # catégorie `it`
     disabled: false
-  - name: wikipedia
+  - name: adobe stock      # catégorie `images`
     disabled: false
+
+  # ── à écarter ──
+  # Qwant tape une API non documentée (api.qwant.com/v3, rétro-conçue) et se
+  # heurte à DataDome : CAPTCHA systématique sur les essais du 01/08. Aucune
+  # clé n'y changerait rien — le moteur est fragile par construction.
   - name: qwant
-    disabled: false
+    disabled: true

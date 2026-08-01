@@ -111,7 +111,7 @@ async def test_the_degraded_notice_reaches_the_model(monkeypatch):
     """Le modèle doit LIRE que la recherche est dégradée, pas le deviner."""
     import app.agent.tools.search_tool as st
 
-    async def _fake(query, count):
+    async def _fake(query, count, categories=""):
         return ([{"title": "Accueil", "url": "https://x.fr", "content": "générique"}],
                 "DuckDuckGo (repli — Serper indisponible)")
 
@@ -131,7 +131,7 @@ async def test_a_healthy_search_carries_no_warning(monkeypatch):
     signal, pas un décor permanent."""
     import app.agent.tools.search_tool as st
 
-    async def _fake(query, count):
+    async def _fake(query, count, categories=""):
         return ([{"title": "Un article", "url": "https://x.fr", "content": "du contenu"}],
                 "Serper/Google")
 

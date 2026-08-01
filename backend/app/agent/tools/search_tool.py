@@ -197,7 +197,38 @@ async def _search_ddgs(query: str, count: int) -> list[dict] | None:
 #                                 "knowledgeGraph": {…}}}
 # La forme est proche de Serper — le mapping ci-dessous en est le miroir.
 
-async def _search_searxng(query: str, count: int, base_url: str) -> list[dict] | None:
+# Familles de sources que SearXNG sait viser, et que le modèle peut demander.
+# ⚠️ `general` n'y figure pas : il est TOUJOURS ajouté, jamais choisi. Une
+# intention s'ajoute aux généralistes, elle ne les remplace pas — sans quoi
+# « les actualités sur l'IA » n'interrogerait que Reuters (Franck, 01/08).
+SEARCH_CATEGORIES: frozenset[str] = frozenset({
+    "it",            # github, gitlab, stackoverflow, docker hub, mdn
+    "news",          # reuters, bing news
+    "images",        # adobe stock, unsplash, wikicommons
+    "videos",        # dailymotion
+    "social_media",  # mastodon
+    "science",
+    "files",
+})
+
+
+def _resolve_categories(demandees: str) -> str:
+    """« news » → « general,news ». Une catégorie inconnue est ignorée.
+
+    ⚠️ Ne jamais transmettre telle quelle une catégorie inventée : SearXNG
+    répondrait sans rien trouver, et la chaîne le lirait comme « ce fournisseur
+    n'a rien » — l'erreur de #311 rejouée par le haut.
+    """
+    retenues = [
+        c for c in (x.strip().lower() for x in (demandees or "").split(","))
+        if c in SEARCH_CATEGORIES
+    ]
+    return ",".join(["general", *dict.fromkeys(retenues)])
+
+
+async def _search_searxng(
+    query: str, count: int, base_url: str, categories: str = "general",
+) -> list[dict] | None:
     """Recherche via une instance SearXNG auto-hébergée.
 
     Rend ``None`` en cas d'échec pour que la chaîne continue, ``[]`` quand la
@@ -215,7 +246,8 @@ async def _search_searxng(query: str, count: int, base_url: str) -> list[dict] |
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
                 f"{base_url.rstrip('/')}/search",
-                params={"q": query, "format": "json", "language": "fr"},
+                params={"q": query, "format": "json", "language": "fr",
+                        "categories": categories},
                 headers={"Accept": "application/json"},
             )
             resp.raise_for_status()
@@ -369,7 +401,9 @@ def is_degraded(source: str) -> bool:
     src = (source or "").lower()
     return _DEGRADED_SUFFIX.strip().lower() in src or src.startswith("duckduckgo")
 
-async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, str]:
+async def _dispatch_search(
+    query: str, count: int, categories: str = "",
+) -> tuple[list[dict] | None, str]:
     """Try backends in priority order. Returns (results, source_name)."""
     from app.config import get_settings
     s = get_settings()
@@ -394,7 +428,9 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
     # l'ordinaire. Non configuré (URL vide) = pas appelé du tout.
     searxng_url: str = getattr(s, "searxng_url", "") or ""
     if searxng_url:
-        results = await _search_searxng(query, count, searxng_url)
+        results = await _search_searxng(
+            query, count, searxng_url, _resolve_categories(categories),
+        )
         if results:
             return results, "SearXNG"
         _primary_failed = True
@@ -436,8 +472,9 @@ async def _dispatch_search(query: str, count: int) -> tuple[list[dict] | None, s
 async def web_search(
     query: str,
     count: int = 8,
+    categories: str = "",
 ) -> str:
-    """Search the web (Google) and return the most relevant results.
+    """Search the web and return the most relevant results.
 
     Always use this tool for any factual question, local business search,
     finding websites, restaurant recommendations, opening hours, etc.
@@ -447,9 +484,14 @@ async def web_search(
                searches (e.g. 'pizzeria Chasseneuil-du-Poitou Vienne France').
                Use French for French topics, English for international topics.
         count: Number of results to return (1-10, default 8)
+        categories: OPTIONAL. Adds specialised sources ON TOP of the general
+               web (never instead of it), comma-separated. Leave empty for
+               ordinary questions; set it only when the request plainly calls
+               for one: it (code/sysadmin), news, images, videos,
+               social_media, science, files.
     """
     count = max(1, min(int(count), 10))
-    results, source = await _dispatch_search(query, count)
+    results, source = await _dispatch_search(query, count, categories)
     if results is not None:
         formatted = _fmt_results(results, query, source)
         if is_degraded(source):
