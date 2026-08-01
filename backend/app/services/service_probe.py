@@ -117,6 +117,12 @@ def _search_providers() -> dict[str, object]:
             return await st._search_searxng(query, count, url)
         sondes["searxng"] = _searxng
 
+    if getattr(s, "exa_api_key", ""):
+        cle_exa = s.exa_api_key
+        async def _exa(query: str, count: int):
+            return await st._search_exa(query, count, cle_exa)
+        sondes["exa"] = _exa
+
     if getattr(s, "serper_api_key", ""):
         cle = s.serper_api_key
         async def _serper(query: str, count: int):

@@ -73,6 +73,43 @@ engines:
   - name: adobe stock      # catégorie `images`
     disabled: false
 
+  # ── généralistes supplémentaires ──
+  - name: yahoo            # index distinct de Google et Bing
+    disabled: false
+
+  # ── `it` : dépôts et forge ──
+  - name: gitea.com
+    disabled: false
+  - name: sourcehut
+    disabled: false
+
+  # ── `images` : création, PAO, illustration ──
+  - name: 500px
+    disabled: false
+  - name: cara            # réseau d'artistes, travaux non génératifs
+    disabled: false
+
+  # ── `news` ──
+  - name: tagesschau      # actualité allemande de service public
+    disabled: false
+  - name: bpb             # agence fédérale allemande d'éducation civique
+    disabled: false
+
+  # ── matériel et comparaison de prix ──
+  - name: geizhals
+    disabled: false
+
+  # Déjà actifs, aucune bascule nécessaire : lemmy communities / users /
+  # posts, yahoo news, brave, brave.images.
+  #
+  # ⛔ NON DISPONIBLES dans SearXNG : Discourse et Matrix n'ont pas de moteur
+  # intégré. Les forums Discourse sont en général bien indexés par les
+  # généralistes — un `site:` dans la requête les atteint sans rien construire.
+  #
+  # ⛔ ÉCARTÉ : `braveapi` (API officielle de Brave, avec clé) réglerait le
+  # « too many requests » du moteur `brave` qui scrape. Décision de Franck du
+  # 01/08 : plus cher que les fournisseurs déjà en repli, donc non retenu.
+
   # ── à écarter ──
   # Qwant tape une API non documentée (api.qwant.com/v3, rétro-conçue) et se
   # heurte à DataDome : CAPTCHA systématique sur les essais du 01/08. Aucune
