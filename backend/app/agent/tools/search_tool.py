@@ -209,6 +209,7 @@ SEARCH_CATEGORIES: frozenset[str] = frozenset({
     "social_media",  # mastodon
     "science",
     "files",
+    "shopping",      # geizhals — comparaison de prix, matériel
 })
 
 
@@ -276,6 +277,58 @@ async def _search_searxng(
         return results
     except Exception as exc:  # noqa: BLE001
         logger.warning("SearXNG search failed: %s", exc)
+        return None
+
+
+async def _search_exa(query: str, count: int, api_key: str) -> list[dict] | None:
+    """Recherche sémantique via l'API officielle Exa.
+
+    Contrat relevé dans l'implémentation de référence de SearXNG
+    (``searx/engines/exaapi.py``), pas deviné :
+
+        POST https://api.exa.ai/search
+        en-tête   x-api-key
+        corps     {"query", "type", "numResults", "contents"}
+        réponse   {"results": [{"url", "title", "highlights"|"text", …}]}
+
+    ⚠️ Un résultat sans URL est jeté : il n'est pas exploitable par le modèle,
+    et l'implémentation de référence fait de même.
+    """
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://api.exa.ai/search",
+                headers={"x-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "query": query,
+                    "type": "auto",
+                    "numResults": max(1, min(count, 25)),
+                    "contents": {"highlights": {"maxCharacters": 1_000}},
+                },
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+
+        results: list[dict] = []
+        for item in payload.get("results") or []:
+            url = item.get("url")
+            if not url:
+                continue
+            extraits = item.get("highlights") or []
+            contenu = " ".join(extraits) if extraits else (item.get("text") or "")
+            results.append({
+                "title": item.get("title") or url,
+                "url": url,
+                "content": contenu,
+            })
+            if len(results) >= count:
+                break
+        return results
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Exa search failed: %s", exc)
+        if is_quota_error(str(exc)):
+            mark_quota_exhausted("exa")
         return None
 
 
@@ -435,6 +488,16 @@ async def _dispatch_search(
             return results, "SearXNG"
         _primary_failed = True
 
+    # Exa juste derrière SearXNG : sémantique plutôt que mot-clé, donc un
+    # angle que les moteurs suivants n'apportent pas. Mais bien EN REPLI —
+    # chaque appel consomme un crédit.
+    exa_key: str = getattr(s, "exa_api_key", "") or ""
+    if exa_key and not is_quota_exhausted("exa"):
+        results = await _search_exa(query, count, exa_key)
+        if results:
+            return results, "Exa"
+        _primary_failed = True
+
     if serper_key and not is_quota_exhausted("serper"):
         results = await _search_serper(query, count, serper_key)
         if results:
@@ -488,7 +551,7 @@ async def web_search(
                web (never instead of it), comma-separated. Leave empty for
                ordinary questions; set it only when the request plainly calls
                for one: it (code/sysadmin), news, images, videos,
-               social_media, science, files.
+               social_media, science, files, shopping.
     """
     count = max(1, min(int(count), 10))
     results, source = await _dispatch_search(query, count, categories)

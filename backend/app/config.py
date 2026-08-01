@@ -199,6 +199,17 @@ class Settings(BaseSettings):
     # repli dans agent/tools/search_tool.py.
     searchcans_api_key: str = ""
 
+    # Exa — recherche SÉMANTIQUE, en REPLI de SearXNG (pas dans SearXNG).
+    #
+    # SearXNG sait interroger Exa, mais il le ferait à CHAQUE recherche, mêlé
+    # aux vingt autres moteurs : les crédits partiraient en permanence, alors
+    # que tout ce chantier vise à ne plus en dépendre. Et la clé devrait alors
+    # vivre dans `config/searxng/settings.yml`, SUIVI PAR GIT — le chargeur de
+    # SearXNG n'interpole aucune variable d'environnement dans ces valeurs.
+    #
+    # Vide = Exa n'est pas appelé du tout.
+    exa_api_key: str = ""
+
     # SearXNG — méta-moteur AUTO-HÉBERGÉ, en TÊTE de la chaîne de recherche.
     # Pas de clé, pas de compte, pas de quota : c'est ce qui met fin à la
     # dépendance aux crédits gratuits mensuels (le 31/07, deux fournisseurs
