@@ -15,6 +15,31 @@ Categories used:
 
 ---
 
+## [2.3.0] — 2026-08-01
+
+> Lot du 29 juillet au 1er août 2026 (PRs #303→#316). **Le grand ménage**, puis trois pannes silencieuses corrigées, puis la recherche qui change de nature. Fil conducteur : ce qui se **construit** sans erreur ne **fonctionne** pas forcément — deux services tournaient depuis des jours sans jamais servir, et personne ne le voyait.
+
+### Added
+- **SearXNG — la recherche cesse de dépendre de quotas** (`f7195b0`/`594fc75`/`8eeb355`, PR #314/#315/#316) : un méta-moteur **auto-hébergé** prend la tête de la chaîne. Pas de clé, pas de compte, pas de quota. Il interroge plusieurs dizaines de moteurs en parallèle et croise leurs résultats, au lieu de reprendre les dix premiers liens d'une source unique. Les fournisseurs à crédits deviennent le **filet**, plus l'ordinaire. Souveraineté au passage : les requêtes ne partent plus chez un tiers **sous la clé de l'utilisateur**. ⚠️ SearXNG n'a pas d'index propre — il interroge les moteurs amont depuis l'IP de la machine, donc le risque de blocage change de mains (mesuré : brave, startpage et duckduckgo en CAPTCHA après quelques dizaines de requêtes de test).
+- **`web_search` peut viser une famille de sources** (`594fc75`, PR #315) : `categories` — `it`, `news`, `images`, `videos`, `social_media`, `science`, `files`, `shopping`. La famille demandée **s'ajoute** aux généralistes, elle ne les remplace jamais : « les actualités sur l'IA » interroge Reuters **et** le web, sinon une seule source répondrait. Le choix revient au modèle : mesuré, forcer `it` sur « capitale de la France » remonte de la documentation JavaScript en tête.
+- **Exa en repli sémantique** (`8eeb355`, PR #316) : recherche par le sens plutôt que par mots-clés, appelée seulement quand SearXNG ne rend rien. Placé dans la chaîne d'Ely et non dans SearXNG — qui l'aurait interrogé à chaque recherche et aurait brûlé les crédits en permanence, et dont la configuration, suivie par git, n'est pas un endroit pour une clé.
+- **Sonde des têtes de chaîne** (`bf30944`/`54a758d`, PR #312/#313) : au démarrage, en tâche de fond, un appel **réel** sur chaque tête — LLM et recherche. Le contrôle existant vérifiait qu'un service était *constructible*, jamais qu'il *répondait* ; deux pannes en une journée sont passées par ce trou. Elle **constate** et ne corrige rien : réordonner une chaîne sur un échec transitoire au boot serait décider à la place de l'utilisateur.
+
+### Fixed
+- **Kimi K3 était en tête du tier C et n'a jamais servi** (`39d4ad6`, PR #310) : la garde qui force `temperature=1` pour les modèles de raisonnement Moonshot testait les sous-chaînes « k2 » et « k1.5 » — `kimi-k3` n'en contient aucune. Chaque tour partait vers Moonshot avec une température refusée, se faisait jeter en `400`, et basculait en silence (17 bascules mesurées en trois jours). On reconnaît désormais la **famille** `kimi-k<chiffre>` : une liste de versions périme à chaque sortie.
+- **Un fournisseur à sec faisait taire toute la chaîne de recherche** (`5e7deba`, PR #311) : SearchCans, à court de crédits, répondait **HTTP 200** avec `{"code": -2011, "msg": "API key has no balance"}`. Le parseur en tirait une liste vide, que la cascade lisait comme un succès — elle s'arrêtait là et n'atteignait jamais Tavily, qui fonctionnait. **Dans une cascade de replis, « zéro résultat » n'est pas une réponse.** Un fournisseur qui répond poliment `[]` est plus dangereux qu'un fournisseur qui plante.
+
+### Changed
+- **Le ménage — −11 700 lignes** (`5fe3998`→`59d132b`, PR #303→#309). Mesuré avant de supprimer : sur 385 modules, **un seul module mort et un seul bloc injoignable**. Le désordre était ailleurs.
+  - `routing_learning` (810 l. + migration 0032) : apprenait des mots-clés pour un routeur disparu ; table à 0 ligne, aucun appelant.
+  - `orchestrate` (**2 187 l.**) : bac à sable Python, 9 appels en tout, aucun depuis le 12 juin, ~1 206 tokens de description à chaque tour. Démantèlement et non suppression — la validation des compétences apprises dépendait de trois symboles **privés** du runner, relocalisés dans `env_filter`.
+  - `_safe_columns` : 19 `ALTER TABLE` rejoués à chaque démarrage, sans effet. **Alembic seul fait foi** sur le schéma.
+  - Neuf docstrings promettaient une confirmation ; **trois contredisaient une décision écrite** — elles faisaient redemander un accord explicitement retiré. Une consigne au modèle n'est pas un garde-fou.
+- **Documentation : 23 fichiers archivés hors dépôt, socle réécrit** (`9929e3b`/`59d132b`, PR #308/#309) : un markdown périmé est **pire qu'absent**, il oriente sur une fausse piste avec assurance. Reste un README bilingue et trois documents en français, tous dérivés du code. Le livrable réel est `test_docs_match_the_code.py` : les chiffres cités sont relus dans le registre, et ajouter un outil rend la CI rouge. ⚠️ Il a pris ses propres documents en défaut trois fois — dont une où le chiffre était juste et la **cause** fausse.
+
+### Security
+- La garde HITL réelle (`LOCKED_HITL_TOOLS ∪ ALWAYS_CRITICAL_TOOLS`) couvre **46 outils** — le chiffre publié auparavant, 38, était périmé. Vérifié depuis les deux sources, pas recopié.
+
 ## [Unreleased]
 
 > Lot des 17–23 juillet 2026 (PRs #199→#236) — fin du chantier Consolidation (C3c→C6). La boucle d'apprentissage devient **visible** (questions méta, gaps consignés), **automatique** (génération d'outil candidate sur capacité manquante, validation humaine systématique), **intelligente** (injection avec fenêtre de grâce et pertinence), **mesurée** (replay shadow A/B, métrique post-promotion), **nourrie** (👎 → signal d'apprentissage) — et l'**anticipation** naît en mode suggestion. Démontrée en prod le 19/07 : « crée-toi un outil distance de Levenshtein » → outil candidat généré en 12 s → promu par l'humain → utilisé par Ely.

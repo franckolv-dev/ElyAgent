@@ -52,6 +52,18 @@ The loop **fails open** — without a clear signal of non-conformance it returns
 the answer rather than spinning — and **progress bounds it, not a counter**: a
 retry only continues while the gaps are shrinking.
 
+Which model answers is decided by a **pure function**, not by a model: a request
+is either an image or an ordinary one, and the tier follows. That routing used
+to be a model call, and it was removed — measured, it downgraded requests and
+unplugged the tools it judged unnecessary.
+
+**A small local model carries the background work.** Not the answer to you — the
+work around it: reading the tool directory (196 descriptions, about a second),
+extracting the facts worth remembering from a turn, summarising, testing a
+candidate skill. It runs on your machine, it costs nothing per call, and none of
+that traffic leaves. The choice of model there is not cosmetic: on the same
+directory task, two of them scored 4/4 — one in 1.1 s, the other in 8.9 s.
+
 ---
 
 ## What it can do
@@ -66,7 +78,7 @@ The larger families:
 - **Google** — Gmail, Calendar, Drive, Sheets, Docs, Contacts, Tasks
 - **Documents** — read PDFs, vision analysis, and PDF → Word rebuilt from page
   geometry (the text never passes through the model, so integrity is structural)
-- **Web** — search, images, maps
+- **Web** — search, images, maps (see below)
 - **Browser** — two families, deliberately: a server-side headless Chromium with
   **no cookies**, and your **real Chrome** through the extension, which is the
   only way to reach anything behind a login
@@ -78,6 +90,36 @@ The larger families:
   the web chat
 - **MCP** — Ely is both a client of external MCP servers and an MCP server
   herself
+
+---
+
+## Search, without renting it
+
+A **SearXNG** instance ships in the compose file and heads the chain. It is a
+metasearch engine: it queries dozens of engines in parallel and merges what they
+return, instead of taking the first ten links from a single source. No key, no
+account, no quota, and no third party linking your queries to you under your own
+API key.
+
+Ely can aim it at a family of sources — `it`, `news`, `images`, `videos`,
+`science`, `social_media`, `files`, `shopping`. The requested family is **added**
+to the generalists, never substituted: "the news about AI" queries Reuters *and*
+the open web, or you would be reading a single source.
+
+Behind it, key-based providers remain as a **net**, tried only when the one above
+returns nothing: Exa (semantic), SearchCans, Google CSE, Tavily, DuckDuckGo. A
+provider out of quota is dropped for thirty minutes rather than retried each
+turn.
+
+⚠️ SearXNG has no index of its own — it queries upstream engines from your
+machine's IP, so the risk of being rate-limited moves to you. Breadth is what
+absorbs it: with three engines blocked during testing, twenty-six results still
+came through.
+
+At boot, in the background, Ely places a **real** call on each head of the chain
+— every model tier and every search provider — and reports what actually
+answered. The previous check only verified a service could be *built*; two
+outages in a single day walked through that gap.
 
 ---
 
