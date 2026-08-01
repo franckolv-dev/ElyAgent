@@ -172,7 +172,8 @@ async def test_searxng_comes_first_when_configured(monkeypatch) -> None:
     st.reset_quota_state()
     attendu = [{"title": "France", "url": "https://ex.fr", "content": "…"}]
 
-    async def _searxng(query: str, count: int, base_url: str):
+    async def _searxng(query: str, count: int, base_url: str,
+                       categories: str = "general"):
         return attendu
 
     async def _jamais(query: str, count: int, api_key: str):
@@ -207,7 +208,8 @@ async def test_a_dead_searxng_falls_through_to_the_paid_ones(monkeypatch) -> Non
     st.reset_quota_state()
     attendu = [{"title": "France", "url": "https://ex.fr", "content": "…"}]
 
-    async def _mort(query: str, count: int, base_url: str):
+    async def _mort(query: str, count: int, base_url: str,
+                    categories: str = "general"):
         return None
 
     async def _tavily(query: str, count: int, api_key: str):
@@ -249,7 +251,8 @@ async def test_searxng_is_skipped_when_not_configured(monkeypatch) -> None:
     st.reset_quota_state()
     appele = False
 
-    async def _searxng(query: str, count: int, base_url: str):
+    async def _searxng(query: str, count: int, base_url: str,
+                       categories: str = "general"):
         nonlocal appele
         appele = True
         return []
