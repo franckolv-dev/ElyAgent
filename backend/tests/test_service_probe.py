@@ -223,3 +223,74 @@ async def test_a_failing_provider_is_not_described_as_answering(monkeypatch) -> 
     )
     assert "répond" not in par_sujet["qui-echoue"]
     assert "aucun résultat" in par_sujet["qui-est-vide"].lower()
+
+
+# ---------------------------------------------------------------------------
+# 5. Chaque sonde doit partir avec SA clé
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_each_provider_probe_carries_its_own_key(monkeypatch) -> None:
+    """Une fermeture capture la VARIABLE, pas sa valeur.
+
+    ⚠️ Défaut réel, trouvé en production le 01/08 : `_search_providers`
+    réutilisait le même nom `cle` pour Serper, SearchCans et Tavily. Les trois
+    fermetures voyaient donc la **dernière** affectation — la clé Tavily. La
+    sonde annonçait « SearchCans : Invalid API key » alors que la clé de Franck
+    était bonne et que le service répondait (12/12 en appel direct).
+
+    👉 Une sonde qui se trompe de clé accuse un service sain. C'est exactement
+    la panne qu'elle est censée empêcher, retournée contre elle.
+
+    Ce test exerce le VRAI `_search_providers()` — tous les autres le
+    remplacent par un stub, c'est pour ça que le défaut a survécu à sa propre
+    suite de tests.
+    """
+    from app.agent.tools import search_tool as st
+    from app.services import service_probe as sp
+
+    cles = {
+        "searxng_url": "http://searxng:8080",
+        "exa_api_key": "cle-exa",
+        "serper_api_key": "cle-serper",
+        "searchcans_api_key": "cle-searchcans",
+        "tavily_api_key": "cle-tavily",
+    }
+
+    class _Reglages:
+        def __init__(self) -> None:
+            self.__dict__.update(cles)
+
+    monkeypatch.setattr("app.config.get_settings", lambda: _Reglages())
+
+    recues: dict[str, str] = {}
+
+    def _mouchard(nom: str):
+        async def _stub(query: str, count: int, secret: str):
+            recues[nom] = secret
+            return [{"title": "t", "url": "u", "content": "c"}]
+        return _stub
+
+    monkeypatch.setattr(st, "_search_searxng", _mouchard("searxng"))
+    monkeypatch.setattr(st, "_search_exa", _mouchard("exa"))
+    monkeypatch.setattr(st, "_search_serper", _mouchard("serper"))
+    monkeypatch.setattr(st, "_search_searchcans", _mouchard("searchcans"))
+    monkeypatch.setattr(st, "_search_tavily", _mouchard("tavily"))
+
+    sondes = sp._search_providers()
+    assert set(sondes) == {"searxng", "exa", "serper", "searchcans", "tavily"}, (
+        "les cinq fournisseurs sont déclarés, les cinq doivent être sondés"
+    )
+    for sonde in sondes.values():
+        await sonde("France", 3)
+
+    assert recues == {
+        "searxng": cles["searxng_url"],
+        "exa": cles["exa_api_key"],
+        "serper": cles["serper_api_key"],
+        "searchcans": cles["searchcans_api_key"],
+        "tavily": cles["tavily_api_key"],
+    }, (
+        "chaque fournisseur doit recevoir SA clé ; si plusieurs fermetures "
+        "partagent un nom de variable, elles reçoivent toutes la dernière"
+    )
