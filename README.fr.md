@@ -53,6 +53,19 @@ La boucle **échoue ouvert** — sans signal clair de non-conformité elle rend 
 réponse plutôt que de tourner en rond — et **c'est le progrès qui la borne, pas
 un compteur** : une relance ne continue que tant que les écarts reculent.
 
+Le modèle qui répond est choisi par une **fonction pure**, pas par un modèle :
+une demande est soit une image, soit une demande ordinaire, et le tier suit. Ce
+routage était un appel de modèle ; il a été retiré, mesures à l'appui — il
+dégradait les demandes et débranchait les outils qu'il jugeait inutiles.
+
+**Un petit modèle local porte le travail de fond.** Pas la réponse qui vous est
+faite : le travail autour. Lire l'annuaire des outils (196 descriptions, environ
+une seconde), extraire d'un tour les faits qui méritent d'être retenus, résumer,
+éprouver une compétence candidate. Il tourne sur votre machine, ne coûte rien à
+l'appel, et rien de ce trafic ne sort. Le choix du modèle n'y est pas cosmétique :
+sur la même tâche d'annuaire, deux d'entre eux sortent 4/4 — l'un en 1,1 s,
+l'autre en 8,9 s.
+
 ---
 
 ## Ce qu'elle sait faire
@@ -68,7 +81,7 @@ Les grandes familles :
 - **Documents** — lecture de PDF, analyse par vision, et conversion PDF → Word
   reconstruite depuis la géométrie de la page (le texte ne transite jamais par
   le modèle : l'intégrité est structurelle)
-- **Web** — recherche, images, cartes
+- **Web** — recherche, images, cartes (voir plus bas)
 - **Navigateur** — deux familles, volontairement : un Chromium serveur **sans
   aucun cookie**, et **votre vrai Chrome** via l'extension, seul moyen
   d'atteindre ce qui est derrière une authentification
@@ -80,6 +93,37 @@ Les grandes familles :
   web
 - **MCP** — Ely est à la fois cliente de serveurs MCP externes et serveur MCP
   elle-même
+
+---
+
+## La recherche, sans la louer
+
+Une instance **SearXNG** est livrée dans le compose et prend la tête de la
+chaîne. C'est un méta-moteur : il interroge plusieurs dizaines de moteurs en
+parallèle et croise ce qu'ils rendent, au lieu de reprendre les dix premiers
+liens d'une source unique. Pas de clé, pas de compte, pas de quota, et aucun
+tiers qui relie vos requêtes à vous sous votre propre clé d'API.
+
+Ely peut viser une famille de sources — `it`, `news`, `images`, `videos`,
+`science`, `social_media`, `files`, `shopping`. La famille demandée **s'ajoute**
+aux généralistes, elle ne les remplace jamais : « les actualités sur l'IA »
+interroge Reuters *et* le web ouvert, sinon vous ne liriez qu'une seule source.
+
+Derrière, les fournisseurs à clé restent en **filet**, essayés seulement quand
+celui du dessus ne rend rien : Exa (sémantique), SearchCans, Google CSE, Tavily,
+DuckDuckGo. Un fournisseur à court de quota est écarté trente minutes plutôt que
+rappelé à chaque tour.
+
+⚠️ SearXNG n'a pas d'index à lui — il interroge les moteurs amont depuis l'IP de
+votre machine, donc le risque de blocage change de mains. C'est l'ampleur qui
+l'absorbe : trois moteurs bloqués pendant les essais, vingt-six résultats sont
+tout de même passés.
+
+Au démarrage, en tâche de fond, Ely place un appel **réel** sur chaque tête de
+chaîne — chaque tier de modèle et chaque fournisseur de recherche — et rapporte
+ce qui a effectivement répondu. Le contrôle précédent vérifiait seulement qu'un
+service était *constructible* ; deux pannes en une seule journée sont passées
+par ce trou.
 
 ---
 
