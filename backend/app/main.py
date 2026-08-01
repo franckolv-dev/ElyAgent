@@ -219,6 +219,21 @@ async def lifespan(app: FastAPI):
     except Exception:
         _startup_logger.debug("Contrôle de réalité ignoré", exc_info=True)
 
+    # Sonde des têtes de chaîne — elle EXERCE les services au lieu de vérifier
+    # qu'ils sont constructibles. Le contrôle ci-dessus était vert le 30 et le
+    # 31/07 pendant que `kimi-k3` rendait 400 à chaque appel et que SearchCans
+    # répondait « 200 OK » sans un résultat.
+    #
+    # Lancée en TÂCHE DE FOND : elle fait de vrais appels réseau (jusqu'à 40 s
+    # par tête). Le démarrage n'a pas à les attendre — un diagnostic qui
+    # retarde le service qu'il diagnostique se paie deux fois.
+    try:
+        import asyncio as _aio
+        from app.services.service_probe import log_service_probe
+        _aio.ensure_future(log_service_probe())
+    except Exception:
+        _startup_logger.debug("Sonde des têtes ignorée", exc_info=True)
+
     # Start watchdog service
     from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
     try:
