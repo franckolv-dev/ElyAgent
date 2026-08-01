@@ -167,6 +167,19 @@ async def _probe_search(nom: str, sonde) -> Finding | None:
     except Exception as exc:  # noqa: BLE001
         return Finding("search_mute", nom, f"a échoué : {exc}"[:200])
 
+    # ⚠️ `None` et `[]` ne disent PAS la même chose, et la chaîne s'appuie sur
+    # cette distinction : `None` = le fournisseur signale son échec, `[]` = il
+    # a répondu sans rien trouver. Les confondre envoie chercher au mauvais
+    # endroit — « pas de résultat » fait penser à un quota, « a échoué » fait
+    # lire l'erreur. Constaté au premier démarrage : Serper, qui rendait un
+    # 400, était annoncé comme « répond mais ne rend aucun résultat ».
+    if resultats is None:
+        return Finding(
+            "search_failed", nom,
+            f"a échoué sur « {_REQUETE_TEMOIN} » — voir le journal du "
+            f"fournisseur juste au-dessus ; la chaîne le paiera d'un "
+            f"aller-retour à chaque recherche",
+        )
     if not resultats:
         return Finding(
             "search_mute", nom,

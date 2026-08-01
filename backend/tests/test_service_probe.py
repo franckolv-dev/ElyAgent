@@ -183,3 +183,43 @@ async def test_the_probe_does_not_reorder_anything(monkeypatch) -> None:
     assert not st.is_quota_exhausted("searchcans"), (
         "la sonde a écarté un fournisseur — elle doit constater, pas décider"
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. Le constat doit dire LEQUEL des deux échecs s'est produit
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_failing_provider_is_not_described_as_answering(monkeypatch) -> None:
+    """`None` = le fournisseur a ÉCHOUÉ ; `[]` = il a répondu sans résultat.
+
+    ⚠️ Constaté au premier démarrage réel (31/07) : la sonde annonçait
+    « répond mais ne rend AUCUN résultat » pour **Serper**, qui avait en fait
+    rendu un `400`. `_search_serper` attrape l'exception et rend `None`,
+    `_search_searchcans` rend `[]` — la distinction existe dans le code et la
+    sonde la jetait.
+
+    Un diagnostic qui se trompe sur la nature de la panne envoie chercher au
+    mauvais endroit : « pas de résultat » fait penser à un quota, « a échoué »
+    fait lire l'erreur.
+    """
+    from app.services import service_probe as sp
+
+    async def _echoue(query: str, count: int):
+        return None                    # le fournisseur signale son échec
+
+    async def _vide(query: str, count: int):
+        return []                      # il répond, sans résultat
+
+    monkeypatch.setattr(sp, "_chain_heads", lambda: {})
+    monkeypatch.setattr(sp, "_search_providers",
+                        lambda: {"qui-echoue": _echoue, "qui-est-vide": _vide})
+
+    par_sujet = {f.subject: f.detail for f in await sp.probe_services()}
+
+    assert set(par_sujet) == {"qui-echoue", "qui-est-vide"}
+    assert "échoué" in par_sujet["qui-echoue"], (
+        "un fournisseur qui rend None a ÉCHOUÉ — ne pas dire qu'il répond"
+    )
+    assert "répond" not in par_sujet["qui-echoue"]
+    assert "aucun résultat" in par_sujet["qui-est-vide"].lower()
