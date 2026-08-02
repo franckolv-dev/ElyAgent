@@ -256,11 +256,53 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
 )
 
 
-# Registry of profiles. Add new ones by appending tuples and registering them
-# in this dict. Auto-detect logic lives below.
-_PROFILES: dict[str, tuple[str, ...]] = {
-    "default": _DEFAULT_TOOLS,
+# Registre des profils. `None` signifie **tout le catalogue**.
+#
+# ⛔ Le 30/07, mesuré : 206 outils enregistrés, 87 joignables, **119 hors
+# d'atteinte**. Seize familles entières absentes — Sheets (0/9), Docs (0/7),
+# PDF (0/4), Maps (0/4), YouTube, QR codes, `os_*`, `system_*`, `trainer_*`,
+# `watchdog_*`, WhatsApp… Une conversation avec un profil ne pouvait ni ouvrir
+# un tableur ni lire un PDF, y compris `pdf_to_docx` construit en juillet.
+#
+# La liste n'a pas dérivé : elle a été **conçue** comme un sous-ensemble
+# volontaire (« ~25-35 tool names […] ~80 % of everyday workflows »), puis
+# rafistolée un outil à la fois quand quelqu'un butait dessus — #37, #43, #106,
+# #143, #257, #267. Six correctifs en trois mois, jamais de revue d'ensemble.
+#
+# Bascule décidée sur un banc A/B (`bench/run_catalog_ab.py`), règle posée
+# AVANT de lancer : basculer si la moitié RÉGRESSION ne perd pas plus d'un cas
+# ET si la moitié TROU progresse nettement. Sur gpt-5.6-terra et gpt-5.6-sol :
+# justesse inchangée ou −2 appels sur 60, et le trou passe de 0 % à 86,7 %.
+#
+# 👉 **Le mécanisme est CONSERVÉ à dessein.** Cinq surfaces l'appellent (chat,
+# voix, Telegram, Slack, Discord) ; le champ porte un second sens (attribution
+# d'architecture dans `usage_instrumentation`) ; et le retour arrière tient en
+# une entrée : remettre ici le tuple des 84 noms. Pas de migration, pas de
+# schéma, pas de données touchées. Le défaut n'était pas le mécanisme, c'était
+# une liste tenue à la main — une valeur calculée ne peut pas décrocher.
+# ⛔ …mais PAS pour tout le monde, et c'est une mesure qui l'impose.
+#
+# Le banc A/B n'a validé le catalogue complet que sur des têtes de tier COMPLEX
+# (gpt-5.6-terra, gpt-5.6-sol). Mesuré le 02/08, avant de brancher :
+#
+#     catalogue complet   ~61 000 tokens de descriptions
+#     tête du tier IMAGE  gemma-4-E4B, fenêtre déclarée 65 536
+#     → 93 % de la fenêtre mangés par le seul catalogue
+#
+# Le doc de conception avait conclu « les fenêtres ne posent pas de problème »
+# en comparant à la fenêtre d'un million de Sol. Il n'avait pas fait le ratio
+# pour le tier qui tourne réellement sur le modèle local. C'était faux, et ça
+# aurait laissé ~4 000 tokens à la conversation et à l'image.
+#
+# Le profil `compact` existe donc pour ça — premier usage réel du mécanisme
+# qu'on a pris soin de conserver. Le nœud le choisit hors tier COMPLEX.
+_PROFILES: dict[str, tuple[str, ...] | None] = {
+    "default": None,          # None = tout le catalogue
+    "compact": _DEFAULT_TOOLS,  # la liste tenue à la main, pour petites fenêtres
 }
+
+# Le profil à utiliser quand la fenêtre ne peut pas porter tout le catalogue.
+COMPACT_PROFILE: str = "compact"
 
 
 def list_profiles() -> list[str]:
@@ -273,10 +315,12 @@ def is_valid_profile(name: str) -> bool:
     return name in _PROFILES
 
 
-def get_profile_tool_names(name: str) -> tuple[str, ...]:
-    """Return the tool-name tuple for ``name``. Falls back to ``default``
-    if the name is unknown (defensive — better to bind something than to
-    crash on a stale config value)."""
+def get_profile_tool_names(name: str) -> tuple[str, ...] | None:
+    """Les noms d'outils du profil ``name``, ou ``None`` pour « tout ».
+
+    Un nom inconnu retombe sur ``default`` — mieux vaut brancher quelque chose
+    que planter sur une valeur périmée en base.
+    """
     if name not in _PROFILES:
         logger.warning(
             "toolset_profiles: unknown profile %r — falling back to %r",
@@ -355,7 +399,22 @@ def resolve_profile_tools(name: str, all_tools: Sequence) -> list:
     list
         Tools in registration order, filtered to ``profile ∪ mcp-skills``.
     """
-    wanted = set(get_profile_tool_names(name))
+    declares = get_profile_tool_names(name)
+    if not declares:
+        # `None` (tout le catalogue) ou un tuple vide. Le cas `""` passe ici via
+        # le repli sur `default` — une valeur vide en base ne doit pas amputer
+        # l'outillage.
+        #
+        # ⚠️ « Tout » ne veut pas dire « y compris ce qu'un drapeau éteint ».
+        # Les outils d'annulation du Reversible Journal ne sont branchés que si
+        # `reversible_journal_enabled` est ON ; sans ce retrait, passer le
+        # profil à « tout » les rendrait appelables drapeau baissé. Un test
+        # l'a signalé — c'est exactement le genre de régression qu'un lot
+        # « on branche tout » introduit sans bruit.
+        eteints = set(_REVERSIBLE_TOOL_NAMES) - _reversible_tool_names()
+        return [t for t in all_tools if t.name not in eteints]
+
+    wanted = set(declares)
     wanted |= _mcp_tool_names()
     wanted |= _reversible_tool_names()
     have = {t.name for t in all_tools}

@@ -13,6 +13,23 @@ from app.skills.base import Skill
 from app.skills.registry import get_skill_registry
 
 
+def _joignables() -> set[str]:
+    """Les outils qu'une conversation avec le profil `default` peut appeler.
+
+    ⚠️ Ce que ces pins épinglent a changé de NATURE en #323, pas d'exigence.
+    Ils interrogeaient l'appartenance à un tuple tenu à la main ; ils
+    interrogent maintenant la JOIGNABILITÉ, qui est la propriété réelle. « Ely
+    doit pouvoir supprimer ses tâches planifiées » reste vrai et reste
+    vérifié — c'est la façon de le vérifier qui suit le mécanisme.
+    """
+    from app.skills import get_skill_registry
+    from app.skills.builtin import register_all
+
+    register_all()
+    catalogue = get_skill_registry().all_tools
+    return {t.name for t in resolve_profile_tools("default", catalogue)}
+
+
 # ── Profile registry ─────────────────────────────────────────────────────────
 
 
@@ -27,9 +44,10 @@ def test_default_profile_in_list():
 
 def test_unknown_profile_falls_back_to_default(caplog):
     """Asking for an unregistered profile returns the default tuple, not crash."""
-    fallback_tools = get_profile_tool_names("does_not_exist")
-    default_tools = get_profile_tool_names("default")
-    assert fallback_tools == default_tools
+    assert get_profile_tool_names("does_not_exist") == get_profile_tool_names("default")
+    assert get_profile_tool_names("default") is None, (
+        "`default` vaut désormais None — tout le catalogue (#323)"
+    )
 
 
 def test_default_profile_has_reasonable_size():
@@ -65,19 +83,19 @@ def test_default_profile_has_reasonable_size():
     interdire une capacité manquante pour 1,6 %.
     DeepSeek / Mistral Small / Mistral Large handle 50-80 tools
     comfortably; xLAM-style fragile FC-tunes are no longer in the chain."""
-    tools = get_profile_tool_names("default")
-    assert 25 <= len(tools) <= 86, f"default has {len(tools)} tools (target 25-86)"
+    tools = get_profile_tool_names("compact")
+    assert 25 <= len(tools) <= 86, f"compact has {len(tools)} tools (target 25-86)"
 
 
 def test_default_profile_no_duplicates():
-    tools = get_profile_tool_names("default")
+    tools = get_profile_tool_names("compact")
     assert len(tools) == len(set(tools))
 
 
 def test_default_profile_includes_universals():
     """Memory + knowledge tools must be in every profile so cross-session
     context survives."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     universals = {
         "knowledge_list",
         "knowledge_search",
@@ -104,7 +122,7 @@ def test_default_profile_exposes_full_scheduler_lifecycle():
     She literally scheduled a cleanup task at 9am to delete the others.
     Fixing the toolset_profiles entry restores the full lifecycle.
     """
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     lifecycle = {
         "scheduler_create_task",
         "scheduler_list_tasks",
@@ -122,7 +140,7 @@ def test_default_profile_covers_capture_mail_drive_workflow():
     """The recurring workflow that exposed all the bugs: capture site +
     mail to address + save to drive. The profile MUST include the three
     needed tools."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     must_have = {
         "browser_screenshot",            # capture
         "gmail_send_with_local_attachment",  # mail with file
@@ -138,7 +156,7 @@ def test_default_profile_covers_mail_cleanup_workflow():
     `gmail_delete_email` (which doesn't exist) and the loop dies on
     « tool not available ». Mission nodes work because they bind by
     keyword booster — chat does NOT, so the profile must carry them."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     must_have = {
         "gmail_search_for_cleanup",
         "gmail_trash_by_category",
@@ -154,7 +172,7 @@ def test_default_profile_exposes_drive_find_duplicates():
     in working memory. We saw Ministral 14B OOM Metal on this scenario
     after 21 messages (mai 2026). The dedicated tool collapses 30+ tool
     calls into one — must stay in the default profile."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     assert "drive_find_duplicates" in tools, (
         "drive_find_duplicates missing — duplicate-finding scenarios will "
         "fall back to manual recursive listing and OOM small local models"
@@ -167,7 +185,7 @@ def test_default_profile_exposes_drive_delete_file():
     in the toolset. The tool itself is a soft trash (30-day Drive recycle
     bin) and is locked into LOCKED_HITL_TOOLS, so it cannot fire without
     user confirmation."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     assert "drive_delete_file" in tools, (
         "drive_delete_file missing — user can find duplicates but not "
         "remove them, which is the obvious follow-up action"
@@ -182,7 +200,7 @@ def test_default_profile_exposes_drive_organisation_tools():
     it had no way to make folders or move files. These tools exist in
     drive_tool.py + GOOGLE_TOOLS but were missing from the default profile
     (the "tool invisible" trap). They are non-destructive (no HITL)."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     for name in ("drive_create_folder", "drive_move_file", "drive_copy_file", "drive_rename_file"):
         assert name in tools, (
             f"{name} missing from default profile — Drive organisation "
@@ -199,7 +217,7 @@ def test_default_profile_exposes_desktop_filesystem_tools():
     Read-only tools have no HITL gate (just sandbox check). Write tools
     (write/move/delete/create_dir) are all in LOCKED_HITL_TOOLS, so even
     when exposed they cannot fire without user confirmation."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     read_tools = {
         "desktop_list_dir",
         "desktop_read_file",
@@ -245,7 +263,7 @@ def test_default_profile_exposes_gmail_settings():
     isn't in the profile, the LLM confabulates a success without ever
     calling the tool (observed 2026-05-08 with Qwen 3.6 Flash). Lock the
     tool into the default profile so the proposal can actually execute."""
-    tools = set(get_profile_tool_names("default"))
+    tools = _joignables()
     assert "gmail_update_settings" in tools, (
         "gmail_update_settings missing — the LLM will confabulate filter "
         "creation success messages with no tool call ever happening"
@@ -268,13 +286,20 @@ def test_resolve_filters_to_profile_subset():
         _FakeTool("watchdog_add"),      # not in default
         _FakeTool("knowledge_list"),
     ]
-    resolved = resolve_profile_tools("default", all_tools)
+    # ⚠️ Réancré sur `compact` en #323 : `default` vaut désormais « tout le
+    # catalogue », donc il ne filtre plus rien — c'est le but du lot. La
+    # mécanique de restriction, elle, doit rester couverte : c'est elle qui
+    # rend le retour arrière possible, et elle sert au tier IMAGE.
+    resolved = resolve_profile_tools("compact", all_tools)
     names = {t.name for t in resolved}
     assert "gmail_send_email" in names
     assert "browser_screenshot" in names
     assert "knowledge_list" in names
     assert "ssh_execute" not in names
     assert "watchdog_add" not in names
+
+    # Et le pendant : `default` ne retranche plus rien.
+    assert len(resolve_profile_tools("default", all_tools)) == len(all_tools)
 
 
 def test_resolve_drops_missing_tools_silently():
@@ -292,11 +317,11 @@ def test_resolve_unknown_profile_uses_default():
         _FakeTool("browser_screenshot"),
         _FakeTool("ssh_execute"),
     ]
+    # Un profil inconnu retombe sur `default`, qui vaut tout le catalogue :
+    # une valeur périmée en base ne doit PAS amputer l'outillage.
     resolved = resolve_profile_tools("nonexistent_profile", all_tools)
     names = {t.name for t in resolved}
-    # browser_screenshot is in default, ssh_execute is not
-    assert "browser_screenshot" in names
-    assert "ssh_execute" not in names
+    assert names == {"browser_screenshot", "ssh_execute"}
 
 
 def test_resolve_empty_input():
@@ -343,7 +368,10 @@ def test_resolve_includes_mcp_tools_even_when_absent_from_default(_mcp_skill_in_
     out_of_default = _FakeTool("totally_not_in_default")
     all_tools = [static, mcp_a, mcp_b, out_of_default]
 
-    resolved = resolve_profile_tools("default", all_tools)
+    # ⚠️ Réancré sur `compact` en #323 — sous `default` (tout le catalogue) le
+    # test passerait trivialement et ne prouverait plus la découverte
+    # dynamique, qui est ce qu'il garde.
+    resolved = resolve_profile_tools("compact", all_tools)
     names = {t.name for t in resolved}
 
     assert "mcp_time_get_current_time" in names, "MCP tool A must be included"
@@ -368,7 +396,7 @@ def test_resolve_only_includes_scope_mcp_not_other_scopes():
     registry.register_or_replace(not_mcp)
     try:
         all_tools = [_FakeTool("not_mcp_tool"), _FakeTool("knowledge_list")]
-        resolved = resolve_profile_tools("default", all_tools)
+        resolved = resolve_profile_tools("compact", all_tools)
         names = {t.name for t in resolved}
         assert "not_mcp_tool" not in names, (
             "scopes=['other_service_api_key'] must NOT trigger dynamic inclusion"
@@ -383,11 +411,11 @@ def test_resolve_drops_mcp_skill_after_unload(_mcp_skill_in_registry):
     must immediately stop being included — no stale binding."""
     mcp_a, _ = _mcp_skill_in_registry
     # Sanity: tool is currently bound
-    assert any(t.name == mcp_a.name for t in resolve_profile_tools("default", [mcp_a]))
+    assert any(t.name == mcp_a.name for t in resolve_profile_tools("compact", [mcp_a]))
     # Simulate admin delete
     get_skill_registry().unregister("mcp_time_test")
     # Tool must no longer pass
-    resolved = resolve_profile_tools("default", [mcp_a])
+    resolved = resolve_profile_tools("compact", [mcp_a])
     assert not resolved, "MCP tool must vanish from binding after skill unregistered"
 
 
@@ -403,3 +431,34 @@ def test_auto_detect_returns_default_for_now():
 
 def test_auto_detect_handles_empty_string():
     assert auto_detect_profile("") == DEFAULT_PROFILE
+
+
+def test_resolve_never_invents_a_tool_absent_from_the_catalog():
+    """La garantie « un serveur MCP supprimé ne reste pas branché », au bon
+    étage.
+
+    L'ancien pin la vérifiait DANS `resolve_profile_tools`, en lui passant une
+    liste construite à la main. Le vrai garde-fou est en amont : `nodes.py`
+    passe `registry.all_tools`, le registre VIVANT — un skill désenregistré
+    n'y figure plus, donc ses outils ne peuvent pas être branchés. Ce qu'on
+    doit épingler ici est donc plus faible et plus juste : la fonction ne rend
+    jamais rien qui ne soit pas dans ce qu'on lui a donné.
+    """
+    tous = [_FakeTool("knowledge_list"), _FakeTool("gmail_send_email")]
+
+    for profil in ("default", "compact", "inconnu"):
+        rendus = resolve_profile_tools(profil, tous)
+        assert {t.name for t in rendus} <= {t.name for t in tous}
+
+
+def test_the_binding_reads_the_live_registry():
+    """Sans ça, la garantie ci-dessus n'a pas de sens."""
+    import inspect
+
+    from app.agent import nodes
+
+    assert "resolve_profile_tools(\n" in inspect.getsource(nodes) or \
+           "registry.all_tools" in inspect.getsource(nodes)
+    assert "registry.all_tools" in inspect.getsource(nodes), (
+        "le nœud doit résoudre le profil sur le registre vivant"
+    )

@@ -667,13 +667,29 @@ def create_agent_node():
                 # back to the legacy keyword filter (graceful migration).
                 _profile = state.get("toolset_profile") or ""
                 if _profile:
-                    from app.agent.toolset_profiles import resolve_profile_tools
+                    from app.agent.toolset_profiles import (
+                        COMPACT_PROFILE,
+                        resolve_profile_tools,
+                    )
+                    # Le catalogue complet n'a été mesuré que sur des têtes de
+                    # tier COMPLEX. Mesuré le 02/08 : il pèse ~61 000 tokens de
+                    # descriptions, et la tête du tier IMAGE (gemma-4-E4B en
+                    # local) déclare une fenêtre de 65 536 — 93 % mangés par le
+                    # seul catalogue, il ne resterait rien pour la conversation
+                    # ni pour l'image. Hors COMPLEX on garde donc la liste
+                    # restreinte : brancher un catalogue qu'une fenêtre ne peut
+                    # pas porter, c'est livrer une régression non mesurée.
+                    _profile_effectif = (
+                        _profile if _tier == ComplexityTier.COMPLEX
+                        else COMPACT_PROFILE
+                    )
                     _filtered_tools = resolve_profile_tools(
-                        _profile, registry.all_tools,
+                        _profile_effectif, registry.all_tools,
                     )
                     logger.warning(
-                        "[diag.bind] tier=%s profile=%r tools(%d)=%s",
-                        _tier_key, _profile, len(_filtered_tools),
+                        "[diag.bind] tier=%s profile=%r→%r tools(%d)=%s",
+                        _tier_key, _profile, _profile_effectif,
+                        len(_filtered_tools),
                         sorted(t.name for t in _filtered_tools),
                     )
                 else:

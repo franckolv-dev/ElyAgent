@@ -184,9 +184,11 @@ l'appel.
 Si vous avez besoin d'une page longue en entier, demandez-la par morceaux ou
 faites-la résumer.
 
-**Le catalogue d'outils disponibles à un tour donné n'est pas le catalogue
-complet.** C'est une dette identifiée : le profil d'outils ne couvre que 84 des
-196 outils. Si Ely semble ignorer une capacité qu'elle a, passez par `find_tool`.
+**Ely voit tout son catalogue d'outils** sur les demandes courantes. Sur une
+demande qui part au modèle local — l'analyse d'image — elle n'en voit qu'une
+partie : la fenêtre de ce modèle ne peut pas porter les descriptions des deux
+cents outils. Si elle semble alors ignorer une capacité qu'elle a, `find_tool`
+va la chercher.
 
 **La latence est le vrai coût d'usage, pas l'argent.** Un tour enchaîne plusieurs
 appels au modèle. Sur un abonnement forfaitaire, ce n'est pas la facture qui

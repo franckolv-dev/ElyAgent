@@ -402,8 +402,16 @@ def test_skill_view_in_default_profile():
     """If a future refactor drops skill_view from the default profile,
     the agent never binds the tool and the prompt's <learned_skills>
     block becomes useless. Pin it."""
-    from app.agent.toolset_profiles import get_profile_tool_names
-    assert "skill_view" in get_profile_tool_names("default")
+    from app.skills import get_skill_registry
+    from app.skills.builtin import register_all
+    from app.agent.toolset_profiles import get_profile_tool_names, resolve_profile_tools
+
+    register_all()
+    joignables = {t.name for t in resolve_profile_tools("default", get_skill_registry().all_tools)}
+    assert "skill_view" in joignables
+    # Et dans la liste restreinte, qui sert aux petites fenêtres (#323) —
+    # sinon le bloc <learned_skills> serait mort dès le tier IMAGE.
+    assert "skill_view" in get_profile_tool_names("compact")
 
 
 def test_skill_view_in_user_id_tools():
