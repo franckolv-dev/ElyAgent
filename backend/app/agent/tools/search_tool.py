@@ -52,6 +52,12 @@ def _fmt_results(results: list[dict], query: str, source: str = "") -> str:
             lines.append(f"   {snippet[:300]}")
         if url:
             lines.append(f"   {url}")
+        # Le fichier image, quand le moteur le donne — distinct de la page qui
+        # le présente, et nommé comme tel pour que le modèle ne confonde pas
+        # les deux liens.
+        img = r.get("img_src")
+        if img and img != url:
+            lines.append(f"   image : {img}")
     return "\n".join(lines)
 
 
@@ -210,6 +216,11 @@ SEARCH_CATEGORIES: frozenset[str] = frozenset({
     "science",
     "files",
     "shopping",      # geizhals — comparaison de prix, matériel
+    # ⚠️ `pao` N'EXISTE PAS en amont : c'est config/searxng/settings.yml qui la
+    # crée, en la nommant sur graphicdesign, tex et les banques d'images à
+    # licence explicite. Sur une instance SearXNG standard elle est ignorée et
+    # la requête retombe sur `general` — dégradé, pas cassé. (02/08)
+    "pao",           # PAO et prépresse : sources à licence claire, imprimables
 })
 
 
@@ -267,11 +278,20 @@ async def _search_searxng(
 
         results: list[dict] = []
         for item in payload.get("results") or []:
-            results.append({
+            resultat = {
                 "title": item.get("title", ""),
                 "url": item.get("url", ""),
                 "content": item.get("content", ""),
-            })
+            }
+            # Sur les moteurs d'image, `url` est la page QUI CONTIENT l'image ;
+            # le fichier lui-même est dans `img_src`. Sans ce second lien,
+            # `categories=images` ou `pao` rend des liens de galerie et le
+            # modèle n'a rien à ouvrir ni à proposer au téléchargement — la
+            # catégorie paraît marcher et ne sert à rien. (02/08)
+            src = item.get("img_src")
+            if src:
+                resultat["img_src"] = src
+            results.append(resultat)
             if len(results) >= count:
                 break
         return results
@@ -454,6 +474,23 @@ def is_degraded(source: str) -> bool:
     src = (source or "").lower()
     return _DEGRADED_SUFFIX.strip().lower() in src or src.startswith("duckduckgo")
 
+
+# Suffixe posé quand une famille de sources a été demandée mais que la chaîne
+# est descendue SOUS SearXNG. Seul SearXNG sait cibler une catégorie ; tous les
+# fournisseurs derrière ne prennent qu'une requête en texte. Sans ce marqueur,
+# une recherche `pao` remontant du web générique se présenterait comme des
+# sources qualifiées — le modèle proposerait à l'impression des images dont la
+# licence n'a jamais été vérifiée. C'est la faute du 26/07 sur un autre axe :
+# un repli qui se présente comme nominal. (02/08)
+_UNHONOURED_SUFFIX = " (catégories « {cats} » NON honorées — web générique)"
+
+
+def is_unhonoured(source: str) -> bool:
+    """La famille de sources demandée a-t-elle été perdue en cours de repli ?"""
+    marqueur = _UNHONOURED_SUFFIX.split("{cats}")[1].strip().lower()
+    return marqueur in (source or "").lower()
+
+
 async def _dispatch_search(
     query: str, count: int, categories: str = "",
 ) -> tuple[list[dict] | None, str]:
@@ -476,15 +513,25 @@ async def _dispatch_search(
     # plus dangereux qu'un fournisseur qui plante.
     _primary_failed = False
 
+    # Ce qui a été demandé EN PLUS des généralistes. `general` seul ne compte
+    # pas : il n'y a rien à perdre, donc rien à signaler.
+    retenues = _resolve_categories(categories)
+    ciblage = [c for c in retenues.split(",") if c != "general"]
+
+    def _nom(fournisseur: str) -> str:
+        """Nom du fournisseur, marqué si le ciblage s'est perdu en route."""
+        if not ciblage:
+            return fournisseur
+        return fournisseur + _UNHONOURED_SUFFIX.format(cats=", ".join(ciblage))
+
     # SearXNG d'abord : auto-hébergé, sans clé et sans quota. Décision de
     # Franck du 31/07 — les fournisseurs à crédits deviennent le filet, pas
     # l'ordinaire. Non configuré (URL vide) = pas appelé du tout.
     searxng_url: str = getattr(s, "searxng_url", "") or ""
     if searxng_url:
-        results = await _search_searxng(
-            query, count, searxng_url, _resolve_categories(categories),
-        )
+        results = await _search_searxng(query, count, searxng_url, retenues)
         if results:
+            # Le seul chemin où le ciblage a VRAIMENT été honoré.
             return results, "SearXNG"
         _primary_failed = True
 
@@ -495,13 +542,13 @@ async def _dispatch_search(
     if exa_key and not is_quota_exhausted("exa"):
         results = await _search_exa(query, count, exa_key)
         if results:
-            return results, "Exa"
+            return results, _nom("Exa")
         _primary_failed = True
 
     if serper_key and not is_quota_exhausted("serper"):
         results = await _search_serper(query, count, serper_key)
         if results:
-            return results, "Serper/Google"
+            return results, _nom("Serper/Google")
         _primary_failed = True
     elif serper_key:
         _primary_failed = True  # écarté : crédits épuisés
@@ -510,7 +557,7 @@ async def _dispatch_search(
     if searchcans_key and not is_quota_exhausted("searchcans"):
         results = await _search_searchcans(query, count, searchcans_key)
         if results:
-            return results, "SearchCans"
+            return results, _nom("SearchCans")
         _primary_failed = True
     elif searchcans_key:
         _primary_failed = True
@@ -518,15 +565,17 @@ async def _dispatch_search(
     if gse_key and gse_cx:
         results = await _search_google_cse(query, count, gse_key, gse_cx)
         if results:
-            return results, "Google CSE"
+            return results, _nom("Google CSE")
 
     if tavily_key:
         results = await _search_tavily(query, count, tavily_key)
         if results:
-            return results, "Tavily"
+            return results, _nom("Tavily")
 
     results = await _search_ddgs(query, count)
-    return results, "DuckDuckGo" + (_DEGRADED_SUFFIX if _primary_failed else "")
+    return results, _nom(
+        "DuckDuckGo" + (_DEGRADED_SUFFIX if _primary_failed else "")
+    )
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -551,7 +600,8 @@ async def web_search(
                web (never instead of it), comma-separated. Leave empty for
                ordinary questions; set it only when the request plainly calls
                for one: it (code/sysadmin), news, images, videos,
-               social_media, science, files, shopping.
+               social_media, science, files, shopping, pao (print/DTP:
+               licence-clear banks, vector icons).
     """
     count = max(1, min(int(count), 10))
     results, source = await _dispatch_search(query, count, categories)
@@ -570,6 +620,19 @@ async def web_search(
                 "source directement avec browser_navigate puis "
                 "browser_tab_read_text, et signale à l'utilisateur que sa "
                 "recherche web est dégradée."
+            )
+        if is_unhonoured(source):
+            # Deux messages distincts, et c'est voulu : « dégradé » dit que la
+            # QUALITÉ a baissé, celui-ci que le CIBLAGE a été perdu. Les
+            # confondre laisserait passer des liens web ordinaires pour des
+            # sources qualifiées.
+            formatted += (
+                "\n\n⚠️ Familles de sources NON honorées : seul SearXNG sait "
+                "cibler une famille, et il n'a rien rendu — ces résultats "
+                "viennent du web générique. Ne les présente PAS comme des "
+                "sources spécialisées : en particulier, aucune licence n'a été "
+                "vérifiée, donc ne présente aucune image d'ici comme "
+                "réutilisable ou imprimable. Dis-le à l'utilisateur."
             )
         return formatted
     return (
