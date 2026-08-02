@@ -163,6 +163,12 @@ async def _execute_task(task_id: str) -> None:
                 "conversation_id": conv_id,
                 "google_credentials": google_credentials or "",
                 "automated_task": True,
+                # Le canal sur lequel LE PLANIFICATEUR livrera lui-même. Le
+                # nœud `agent` s'en sert pour ne pas brancher l'outil qui
+                # ferait doublon : le 01/08, Franck recevait son briefing deux
+                # fois — Ely l'envoyait sur Telegram, et le planificateur le
+                # livrait aussi sur le canal `telegram`.
+                "delivery_channel": (task.channel or "web"),
             },
             config={"recursion_limit": _recursion},
         )

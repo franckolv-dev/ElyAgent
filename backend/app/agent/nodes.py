@@ -768,6 +768,30 @@ def create_agent_node():
                 except Exception as _replay_err:  # noqa: BLE001 — jamais au prix du tour
                     logger.debug("[diag.bind] garde de rejeu ignorée: %s", _replay_err)
 
+                # Retire l'outil qui ferait DOUBLON avec la livraison du
+                # planificateur. Le 01/08, Franck recevait son briefing deux
+                # fois avant même les reprises : le prompt disait « livre-le
+                # sur Telegram » et le canal de la tâche valait `telegram`.
+                # C'est l'outil qui s'efface — le planificateur seul découpe à
+                # 4096 caractères et sait à quel compte lier l'utilisateur.
+                try:
+                    from app.agent.replay_guard import channel_delivery_tools
+                    _doublons = channel_delivery_tools(state.get("delivery_channel"))
+                    if _doublons:
+                        _avant_liv = len(_filtered_tools)
+                        _filtered_tools = [
+                            t for t in _filtered_tools if t.name not in _doublons
+                        ]
+                        if len(_filtered_tools) != _avant_liv:
+                            logger.info(
+                                "[diag.bind] canal=%s livré par le planificateur "
+                                "— %d outil(s) d'envoi retiré(s) : %s",
+                                state.get("delivery_channel"),
+                                _avant_liv - len(_filtered_tools), sorted(_doublons),
+                            )
+                except Exception as _liv_err:  # noqa: BLE001 — jamais au prix du tour
+                    logger.debug("[diag.bind] garde de livraison ignorée: %s", _liv_err)
+
                 # Cache les outils réservés au tier C des tiers SIMPLE et
                 # MEDIUM : un modèle qui ne saura pas s'en servir n'y gagne
                 # que des tokens brûlés. La liste est VIDE aujourd'hui — le
