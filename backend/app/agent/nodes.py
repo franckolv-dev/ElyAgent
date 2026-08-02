@@ -745,6 +745,29 @@ def create_agent_node():
                 except Exception as _bext_err:
                     logger.debug("[diag.bind] extension-check skipped: %s", _bext_err)
 
+                # Retire les actes ENGAGEANTS déjà accomplis quand la
+                # vérification a relancé le tour. Une reprise peut refaire un
+                # calcul, elle ne peut pas défaire un acte : le 02/08, Franck a
+                # reçu son briefing quatre fois parce que chaque relance
+                # rejouait `telegram_send_message`. Ne mord QUE sur reprise —
+                # un tour a le droit d'envoyer deux mails.
+                try:
+                    from app.agent.replay_guard import should_withhold
+                    _deja_faits = should_withhold(state.get("messages") or [])
+                    if _deja_faits:
+                        _avant_rejeu = len(_filtered_tools)
+                        _filtered_tools = [
+                            t for t in _filtered_tools if t.name not in _deja_faits
+                        ]
+                        logger.warning(
+                            "[diag.bind] reprise — %d acte(s) engageant(s) déjà "
+                            "accompli(s), retiré(s) du branchement : %s (%d → %d)",
+                            len(_deja_faits), sorted(_deja_faits),
+                            _avant_rejeu, len(_filtered_tools),
+                        )
+                except Exception as _replay_err:  # noqa: BLE001 — jamais au prix du tour
+                    logger.debug("[diag.bind] garde de rejeu ignorée: %s", _replay_err)
+
                 # Cache les outils réservés au tier C des tiers SIMPLE et
                 # MEDIUM : un modèle qui ne saura pas s'en servir n'y gagne
                 # que des tokens brûlés. La liste est VIDE aujourd'hui — le
