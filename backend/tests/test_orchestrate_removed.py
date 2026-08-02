@@ -77,9 +77,15 @@ def test_orchestrate_is_no_longer_a_registered_tool() -> None:
 
 def test_orchestrate_left_the_default_profile() -> None:
     """Et il ne se paie plus dans le catalogue bindé à chaque tour."""
+    from app.skills import get_skill_registry
+    from app.skills.builtin import register_all
     from app.agent.toolset_profiles import get_profile_tool_names
 
-    assert "orchestrate" not in get_profile_tool_names("default")
+    # #323 : `default` vaut tout le catalogue, donc « absent du profil » ne
+    # prouverait plus rien. On épingle plus fort — absent du CATALOGUE.
+    register_all()
+    assert "orchestrate" not in {t.name for t in get_skill_registry().all_tools}
+    assert "orchestrate" not in get_profile_tool_names("compact")
 
 
 # ---------------------------------------------------------------------------

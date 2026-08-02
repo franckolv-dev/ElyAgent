@@ -120,16 +120,25 @@ def test_the_tool_count_cited_is_the_real_one() -> None:
             )
 
 
-def test_the_profile_size_cited_is_the_real_one() -> None:
-    """« 84 outils » pour le profil `default` doit rester vrai."""
+def test_the_docs_no_longer_describe_the_profile_hole_as_open() -> None:
+    """Le trou est comblé (#323) — un document qui le dit ouvert oriente faux.
+
+    ⚠️ Un markdown périmé est PIRE qu'absent : il décrit une dette réglée avec
+    l'assurance d'un constat. Ce pin remplace celui qui vérifiait « 84 outils » ;
+    la taille du profil `default` n'est plus un nombre, c'est « tout ».
+    """
     from app.agent.toolset_profiles import get_profile_tool_names
 
-    real = len(get_profile_tool_names("default"))
-    doc = (_REPO / "docs" / "architecture.md").read_text(encoding="utf-8")
-    cited = {int(n) for n in re.findall(r"\*\*(\d{2}) outils\*\*", doc)}
-    assert cited, "architecture.md ne cite plus la taille du profil"
-    for n in cited:
-        assert n == real, f"architecture.md annonce {n} outils au profil, réel {real}"
+    assert get_profile_tool_names("default") is None
+    compact = get_profile_tool_names("compact")
+    assert compact and len(compact) >= 25
+
+    for nom in ("architecture.md", "guide-utilisateur.md"):
+        texte = (_REPO / "docs" / nom).read_text(encoding="utf-8")
+        assert "dette identifiée" not in texte or "profil" not in texte, (
+            f"{nom} décrit encore le trou du profil comme ouvert"
+        )
+        assert "que 84 des" not in texte, f"{nom} cite encore le profil amputé"
 
 
 def test_the_guarded_tool_count_cited_is_the_real_one() -> None:

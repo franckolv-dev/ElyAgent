@@ -118,15 +118,25 @@ contexte. Deux mécanismes coexistent aujourd'hui :
 
 - un **profil** — une liste blanche nommée, portée par la conversation
   (colonne `conversations.toolset_profile`), figée au premier tour pour
-  préserver le cache de préfixe. Un seul profil existe : `default`,
-  **84 outils** ;
+  préserver le cache de préfixe ;
 - un **filtre par mots-clés**, utilisé quand la conversation n'a pas de profil.
 
-⚠️ **État connu, mesuré** : le profil ne contient que 84 outils sur 196. Les
-autres — dont la conversion PDF et le rappel mémoire — ne sont atteignables que
-par le filtre par mots-clés. Sur les conversations récentes, ce second chemin
-est **majoritaire**. Ce n'est pas une architecture cible, c'est une dette
-identifiée.
+Le profil `default` vaut désormais **tout le catalogue**. Il a longtemps été
+une liste tenue à la main : conçue pour 25-35 noms, rafistolée un outil à la
+fois, elle en comptait 84 tout en oubliant seize familles entières — Sheets,
+Docs, PDF, Maps… Une conversation ne pouvait ni ouvrir un tableur ni lire un
+PDF, y compris avec la conversion construite en juillet.
+
+La bascule s'appuie sur un banc A/B : à demande et modèle identiques, la
+justesse du choix d'outil est inchangée sur les cas déjà couverts, et les cas
+auparavant hors d'atteinte passent de **0 % à 86,7 %**. Le gain n'est pas
+« Ely y arrive enfin » — elle consultait l'annuaire — mais qu'elle y arrive
+**du premier coup**.
+
+⚠️ **Sauf sur les petites fenêtres.** Le catalogue complet pèse ~61 000 tokens
+de descriptions ; la tête du tier IMAGE tourne en local sur une fenêtre de
+65 536. Hors tier COMPLEX, un profil restreint (`compact`, la liste de 84)
+reste donc branché. Le mécanisme de profil a été conservé exactement pour ça.
 
 ### Retrouver un outil : `find_tool`
 
