@@ -188,3 +188,72 @@ def test_the_guard_is_actually_wired_into_the_binding():
         "le garde doit lire les messages de l'ÉTAT — sur une autre source, il "
         "ne verrait jamais l'envoi qui vient d'avoir lieu"
     )
+
+
+# ---------------------------------------------------------------------------
+# Deux chemins de livraison pour un seul message
+# ---------------------------------------------------------------------------
+#
+# ⛔ Le 01/08, Franck recevait DÉJÀ son briefing en double, avant même que les
+# reprises n'en fassent quatre. Cause distincte : le prompt de la tâche dit
+# « livre-le sur Telegram », donc Ely appelle l'outil ; et le canal de la tâche
+# vaut `telegram`, donc le planificateur livre AUSSI. Deux chemins, un message.
+#
+# 👉 Le planificateur est le chemin DÉCLARÉ : c'est lui qui découpe à 4096
+#    caractères et qui journalise la livraison. C'est donc l'outil qui s'efface.
+
+def test_the_scheduler_channel_hides_the_matching_send_tool():
+    from app.agent.replay_guard import channel_delivery_tools
+
+    assert channel_delivery_tools("telegram") == {"telegram_send_message"}
+    assert channel_delivery_tools("whatsapp") == {"whatsapp_send",
+                                                 "whatsapp_send_template"}
+
+
+def test_an_unknown_or_absent_channel_hides_nothing():
+    """Le canal `web` n'a pas d'outil équivalent — rien à retirer."""
+    from app.agent.replay_guard import channel_delivery_tools
+
+    assert channel_delivery_tools("web") == set()
+    assert channel_delivery_tools("") == set()
+    assert channel_delivery_tools(None) == set()
+    assert channel_delivery_tools("Telegram") == {"telegram_send_message"}
+
+
+def test_the_email_channel_does_NOT_hide_the_gmail_tools():
+    """⚠️ Dispense assumée, et sa raison.
+
+    Livrer le résultat d'une tâche à son propriétaire et envoyer un mail à un
+    tiers ne sont pas le même acte. `gmail_send_email` adresse un destinataire
+    quelconque : le retirer casserait « fais le point et envoie-le au
+    comptable ». Le doublon éventuel sur le canal `email` se règle dans le
+    prompt de la tâche, pas en amputant l'outillage.
+    """
+    from app.agent.replay_guard import channel_delivery_tools
+
+    assert channel_delivery_tools("email") == set()
+
+
+def test_the_delivery_guard_is_wired_into_the_binding():
+    """Même faiblesse assumée que le pin de câblage précédent : relit la source."""
+    import inspect
+
+    from app.agent import nodes
+
+    source = inspect.getsource(nodes)
+    assert "channel_delivery_tools" in source
+    assert "delivery_channel" in source, (
+        "le nœud doit lire le canal que le planificateur a déclaré dans l'état"
+    )
+
+
+def test_the_scheduler_declares_its_delivery_channel_in_the_state():
+    """Sans ce champ, le garde ne voit rien et le doublon revient."""
+    import inspect
+
+    from app.services import scheduler
+
+    source = inspect.getsource(scheduler)
+    assert '"delivery_channel"' in source, (
+        "le planificateur doit annoncer le canal sur lequel IL livrera"
+    )

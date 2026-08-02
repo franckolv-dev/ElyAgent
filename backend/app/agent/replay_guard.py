@@ -131,9 +131,40 @@ def should_withhold(messages: list[BaseMessage]) -> set[str]:
     return engaging_actions_done(messages)
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Le second doublon : deux chemins de livraison pour un seul message
+# ──────────────────────────────────────────────────────────────────────
+#
+# Le 01/08, Franck recevait déjà son briefing EN DOUBLE, avant que les reprises
+# n'en fassent quatre. Cause distincte : le prompt de la tâche dit « livre-le
+# sur Telegram », donc Ely appelle l'outil ; et le canal de la tâche vaut
+# `telegram`, donc le planificateur livre AUSSI.
+#
+# 👉 C'est l'OUTIL qui s'efface, pas le planificateur : lui seul découpe à
+#    4096 caractères, journalise la livraison et sait à quel compte lier
+#    l'utilisateur. Corriger par le prompt de la tâche marcherait aussi, mais
+#    dépendrait d'une formulation — donc se recasserait tout seul.
+_TOOLS_PAR_CANAL: dict[str, frozenset[str]] = {
+    "telegram": frozenset({"telegram_send_message"}),
+    "whatsapp": frozenset({"whatsapp_send", "whatsapp_send_template"}),
+    # ⚠️ `email` est ABSENT à dessein. Livrer le résultat d'une tâche à son
+    # propriétaire et envoyer un mail à un tiers ne sont pas le même acte :
+    # `gmail_send_email` adresse un destinataire quelconque, et le retirer
+    # casserait « fais le point et envoie-le au comptable ».
+    # ⚠️ `discord`, `slack`, `ntfy` aussi — le planificateur y livre par son
+    # propre code, aucun outil équivalent n'existe. Rien à retirer.
+}
+
+
+def channel_delivery_tools(channel: str | None) -> set[str]:
+    """Les outils qui feraient doublon avec la livraison du planificateur."""
+    return set(_TOOLS_PAR_CANAL.get((channel or "").strip().lower(), frozenset()))
+
+
 __all__ = [
     "RETRY_MARKER",
     "after_verification_bounce",
+    "channel_delivery_tools",
     "engaging_actions_done",
     "should_withhold",
 ]
