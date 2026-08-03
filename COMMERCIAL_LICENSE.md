@@ -81,7 +81,7 @@ Pricing is **deliberately simple and transparent**. We don't do "contact sales f
 To keep things honest :
 
 - ❌ **We don't host for you** at these prices — you self-host. If you want managed hosting, see *agent-ely.fr* (separate offering, launching Q3 2026).
-- ❌ **No training / onboarding** included in T1-T3 (it's all in our docs at [docs/START_HERE.md](./docs/START_HERE.md)). Available as a paid add-on.
+- ❌ **No training / onboarding** included in T1-T3 (it's all in our docs at [docs/installation.md](./docs/installation.md)). Available as a paid add-on.
 - ❌ **No custom development** included — but we'll quote you fairly for any feature you need.
 - ❌ **No 24/7 support** below Enterprise tier.
 

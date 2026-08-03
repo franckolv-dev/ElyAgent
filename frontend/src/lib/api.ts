@@ -443,6 +443,25 @@ export const api = {
       }
     >,
 
+  // ── Mes mémoires (Sprint 2.5 §2.5.6) ────────────────────────────────────
+  /** Familles de mémoire, inspectables ou non (avec la raison). */
+  memoryFamilies: () =>
+    fetchAPI("/api/me/memories/families") as Promise<MemoryFamiliesResponse>,
+
+  /** Parcours paginé d'une famille. `offset` = curseur du précédent appel. */
+  memoryBrowse: (family: string, offset?: string | null, limit = 50) =>
+    fetchAPI(
+      `/api/me/memories/${encodeURIComponent(family)}?limit=${limit}` +
+        (offset ? `&offset=${encodeURIComponent(offset)}` : ""),
+    ) as Promise<MemoryBrowseResponse>,
+
+  /** Oublier une entrée. 404 si elle n'existe pas ou n'est pas à l'appelant. */
+  memoryForget: (family: string, entryId: string) =>
+    fetchAPI(
+      `/api/me/memories/${encodeURIComponent(family)}/${encodeURIComponent(entryId)}`,
+      { method: "DELETE" },
+    ) as Promise<{ ok: boolean }>,
+
   // ── MCP servers (Sprint 4a J2 — admin only) ─────────────────────────────
   mcpServersList: () =>
     fetchAPI("/admin/mcp/servers") as Promise<MCPServerOut[]>,
@@ -873,6 +892,35 @@ export interface UserStateResponse {
   updated_at: string | null;
   prompt_version: string | null;
   disabled: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Mes mémoires (Sprint 2.5 §2.5.6)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Une entrée de mémoire telle qu'on la montre. Miroir de `MemoryEntry`
+ *  dans `backend/app/services/memory/inspection.py`. */
+export interface MemoryEntry {
+  id: string;
+  /** Le MemoryType côté serveur : `semantic_user`, `constraint`, `episodic`. */
+  type: string;
+  content: string;
+  created_at: string | null;
+  metadata: { family?: string; conversation_id?: string | null };
+}
+
+export interface MemoryFamiliesResponse {
+  inspectable: string[];
+  /** Familles sans surface d'audit, AVEC la raison — affichée telle quelle :
+   *  les masquer ferait croire à une mémoire à quatre familles. */
+  uninspectable: Array<{ family: string; reason: string }>;
+}
+
+export interface MemoryBrowseResponse {
+  family: string;
+  entries: MemoryEntry[];
+  /** Curseur de la page suivante, `null` en fin de parcours. */
+  next_offset: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -48,10 +48,15 @@ class UnreadableMemoryType(RuntimeError):
         super().__init__(f"memory type {memory_type.value!r} is not readable")
 
 
-# PROCEDURAL : le magasin était un stub sans aucune voie d'écriture (retiré
-# en V0-5). ERROR : écriture seule — les erreurs partent en failure_cases,
-# rien ne les relit.
-_UNREADABLE_TYPES = frozenset({MemoryType.PROCEDURAL, MemoryType.ERROR})
+# ERROR : écriture seule — les erreurs partent en failure_cases, rien ne les
+# relit.
+#
+# PROCEDURAL en est SORTI (02/08, Sprint 2.5 §2.5.2) : il n'a toujours pas de
+# magasin à lui, et n'en aura pas. Sa source est le registre d'outils, déjà
+# interrogeable en langage naturel par `find_tool`. Le sprint demandait « le
+# catalogue requêtable » et non « une table de plus » — il est donc servi
+# depuis cette voie-là, pas dupliqué.
+_UNREADABLE_TYPES = frozenset({MemoryType.ERROR})
 
 
 class MemoryRecallService:
@@ -83,12 +88,10 @@ class MemoryRecallService:
             return []
 
         mt = MemoryType.parse(memory_type)
-        # V0-5 — deux types n'ont AUCUNE lecture derrière eux :
-        #   PROCEDURAL : le magasin était un stub sans voie d'écriture ;
-        #   ERROR      : écriture seule (les erreurs vont en failure_cases).
-        # Levé AVANT le try : rendre [] ferait lire au modèle « aucune
-        # procédure connue » / « je n'ai jamais échoué là-dessus » — une
-        # affirmation fausse présentée comme un fait.
+        # ERROR n'a AUCUNE lecture derrière lui (écriture seule — les erreurs
+        # vont en failure_cases). Levé AVANT le try : rendre [] ferait lire au
+        # modèle « je n'ai jamais échoué là-dessus » — une affirmation fausse
+        # présentée comme un fait.
         if mt in _UNREADABLE_TYPES:
             raise UnreadableMemoryType(mt)
         try:
@@ -100,6 +103,8 @@ class MemoryRecallService:
                 return await self._recall_semantic_user(query, user_id, limit)
             if mt == MemoryType.CONSTRAINT:
                 return await self._recall_constraint(query, user_id, limit)
+            if mt == MemoryType.PROCEDURAL:
+                return await self._recall_procedural(query, user_id, limit)
         except Exception as exc:
             logger.warning(
                 "MemoryRecallService.recall(%s) failed: %s — returning []",
@@ -170,6 +175,37 @@ class MemoryRecallService:
             for rule in rules
         ]
 
+    async def _recall_procedural(
+        self, query: str, user_id: str, limit: int
+    ) -> list[MemoryHit]:
+        """Le catalogue d'outils, requêtable en langage naturel — §2.5.2.
+
+        Pas de magasin : la source est le registre, et le classement est celui
+        de ``find_tool``. Ajouter un outil au code le rend donc visible ici
+        sans autre geste — c'est le livrable mesurable que le sprint demandait.
+
+        Import LOCAL, pas en tête de module : ``find_tool_skill`` importe déjà
+        ``app.services.memory`` pour l'encodeur fastembed, un import de module
+        refermerait le cycle. Le dépôt fait pareil ailleurs (``_search_hybrid``
+        importe ``fts_store`` dans le corps).
+
+        ``user_id`` n'est pas utilisé : le catalogue est le même pour tous. Les
+        outils APPRIS, eux, sont personnels — mais ils ne sont pas dans ce
+        registre, et c'est ``find_tool`` qui les couvre.
+        """
+        from app.skills.builtin.find_tool_skill import rank_tools_for_capability
+
+        pairs = await rank_tools_for_capability(query, limit)
+        return [
+            MemoryHit(
+                type=MemoryType.PROCEDURAL,
+                content=f"{name} — {summary}" if summary else name,
+                score=1.0,
+                metadata={"tool_name": name},
+            )
+            for name, summary in pairs
+        ]
+
     # ── Fan-out (AUTO) ─────────────────────────────────────────────────
 
     async def _recall_auto(
@@ -177,12 +213,18 @@ class MemoryRecallService:
     ) -> list[MemoryHit]:
         """Parallel fan-out to all reading stores, merged & sorted by score.
 
-        ERROR is skipped (write-only in V1). Each store gets `limit` slots
+        ERROR and PROCEDURAL are both skipped. Each store gets `limit` slots
         in its own search, then we keep the top `limit` across the merged
         pool. Constraints are de-prioritised slightly so semantic/episodic
         hits surface first when both score equally (constraints are
         injected separately into the system prompt).
         """
+        # PROCEDURAL hors du fan-out, délibérément (02/08) : « de quoi te
+        # souviens-tu à propos de X » ne doit pas rendre des noms d'outils au
+        # milieu des souvenirs. La procédurale répond à une AUTRE question —
+        # « par quel moyen fait-on X » — et se demande explicitement.
+        # L'ajouter ici casse test_recall_auto_fans_out_to_all_stores_and_merges,
+        # qui épingle exactement les trois familles ci-dessous.
         results = await asyncio.gather(
             self._recall_episodic(query, user_id, limit),
             self._recall_semantic_user(query, user_id, limit),

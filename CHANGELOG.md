@@ -40,7 +40,9 @@ Categories used:
 ### Security
 - La garde HITL réelle (`LOCKED_HITL_TOOLS ∪ ALWAYS_CRITICAL_TOOLS`) couvre **46 outils** — le chiffre publié auparavant, 38, était périmé. Vérifié depuis les deux sources, pas recopié.
 
-## [Unreleased]
+## [Non versionné] — lot du 17–23 juillet 2026
+
+> ⚠️ **Ce lot EST livré** — il est dans `main` et il précède la 2.3.0 du 1er août. Il portait le titre `[Unreleased]`, ce qui faisait exactement l'inverse de ce qu'un changelog doit faire : quelqu'un installant la 2.3.0 en concluait que la boucle d'apprentissage n'y était pas encore. Le titre est corrigé le 02/08 ; **le numéro de version reste à attribuer** — l'inventer ici graverait dans l'historique public une version qui n'a jamais été taguée. Il se place chronologiquement entre la 2.2.0 (16 juin) et la 2.3.0 (1er août), et les PRs #237→#302 ne sont couvertes nulle part.
 
 > Lot des 17–23 juillet 2026 (PRs #199→#236) — fin du chantier Consolidation (C3c→C6). La boucle d'apprentissage devient **visible** (questions méta, gaps consignés), **automatique** (génération d'outil candidate sur capacité manquante, validation humaine systématique), **intelligente** (injection avec fenêtre de grâce et pertinence), **mesurée** (replay shadow A/B, métrique post-promotion), **nourrie** (👎 → signal d'apprentissage) — et l'**anticipation** naît en mode suggestion. Démontrée en prod le 19/07 : « crée-toi un outil distance de Levenshtein » → outil candidat généré en 12 s → promu par l'humain → utilisé par Ely.
 

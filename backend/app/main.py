@@ -93,6 +93,8 @@ from app.routers import extension_tokens as extension_tokens_router
 from app.routers import api_keys as api_keys_router
 from app.routers import learning_report as learning_report_router
 from app.routers import user_state as user_state_router
+# Sprint 2.5 §2.5.6 — page « Mes mémoires » (parcourir / oublier)
+from app.routers import memory as memory_router
 # Sprint 4b Phase 3 — autonomous skill_creator admin endpoints
 from app.routers import learning_skills as learning_skills_router
 # Sprint 4b Phase 5.b — user-facing learned-skills endpoints
@@ -639,6 +641,8 @@ app.include_router(feedback_router.router)
 app.include_router(learning_report_router.router, tags=["learning"])
 # Sprint 3 Jalon 3 — `/api/me/state` + `/api/me/state/recompute`
 app.include_router(user_state_router.router, tags=["learning"])
+# Sprint 2.5 §2.5.6 — `/api/me/memories/*` : inspection et oubli
+app.include_router(memory_router.router, tags=["memory"])
 # Sprint 4b Phase 3 — admin endpoints for the autonomous skill_creator loop.
 # Carries its own /admin/learning prefix.
 app.include_router(learning_skills_router.router, tags=["learning"])
