@@ -67,29 +67,49 @@
 }
 
 /* ============================================
-   DARK — Charbon doux étagé avec accent cyan
+   DARK — Ardoise/anthracite étagée avec accent cyan
    ============================================ */
 [data-theme="dark"], html.dark, html:not(.light) {
-  /* Surfaces (étagées, pas du noir profond) */
-  --bg-app:        #0e1216;
-  --bg-sidebar:    #11161c;
-  --bg-surface:    #161c24;
-  --bg-surface-2:  #1c232c;
-  --bg-surface-3:  #232b35;
-  --bg-hover:      #1f2731;
-  --bg-active:     #243040;
+  /* Surfaces — remontées d'un cran (proposition claude.ai/design, 08/2026).
+     Avant : #0e1216 → #232b35, un quasi-noir sur lequel les sept étages se
+     séparaient d'un ou deux points de luminance — en pratique on ne voyait
+     ni la sidebar ni les cartes, seulement leurs bordures. Le ramp part
+     maintenant de L 0.33 et monte par pas lisibles. */
+  --bg-app:        oklch(0.33 0.012 255);
+  --bg-sidebar:    oklch(0.36 0.013 255);
+  --bg-surface:    oklch(0.39 0.014 255);
+  --bg-surface-2:  oklch(0.44 0.016 255);
+  --bg-surface-3:  oklch(0.48 0.016 255);
+  --bg-hover:      oklch(0.42 0.015 255);
+  --bg-active:     oklch(0.46 0.016 255);
 
-  /* Text */
-  --text-primary:   #e6ecf2;
-  --text-secondary: #a4b0bd;
-  --text-tertiary:  #6b7785;
-  --text-muted:     #4a5460;
+  /* Text — blanc adouci, jamais pur : sur un fond remonté à 0.33 le #fff
+     vibre.
+     ⚠️ Les trois tiers bas sont REMONTÉS par rapport à la maquette
+     (0.72 / 0.62 / 0.54). Éclaircir le fond coûte mécaniquement du contraste
+     au texte clair, et aux valeurs de la maquette le calcul WCAG donnait
+     2.64:1 pour tertiary sur --bg-surface et 1.53:1 pour muted sur
+     --bg-surface-2 — sous la barre des 3:1, et EN DESSOUS de ce que rendait
+     l'ancien thème quasi-noir (3.76 et 2.06). On ne troque pas de la
+     lisibilité contre une teinte. Aux valeurs ci-dessous chaque tier
+     retrouve au moins son niveau d'avant sur le fond où il sert. */
+  --text-primary:   oklch(0.94 0.004 255);
+  --text-secondary: oklch(0.76 0.008 255);
+  --text-tertiary:  oklch(0.68 0.008 255);
+  --text-muted:     oklch(0.61 0.008 255);
   --text-on-accent: #07181c;
 
-  /* Borders */
-  --border-subtle:  rgba(255, 255, 255, 0.05);
-  --border-default: rgba(255, 255, 255, 0.09);
-  --border-strong:  rgba(255, 255, 255, 0.16);
+  /* Borders — OPAQUES désormais. Un blanc à 5 % donnait un trait net sur
+     #0e1216 ; sur un fond à 0.33 il disparaît, et toutes les cartes perdent
+     leur contour d'un coup — le ramp et les bordures se changent ensemble
+     ou pas du tout. */
+  --border-subtle:  oklch(0.43 0.013 255);
+  --border-default: oklch(0.47 0.014 255);
+  --border-strong:  oklch(0.55 0.014 255);
+
+  /* Le voile d'accent porte la page active : à 0.12 il se noyait sur le
+     fond remonté, 0.16 tient. Le thème clair garde le 0.12 de :root. */
+  --accent-soft: oklch(72% 0.13 var(--accent-h) / 0.16);
 
   /* Status */
   --success: oklch(72% 0.16 155);
@@ -102,13 +122,16 @@
   --danger-soft:  oklch(68% 0.18 25 / 0.14);
   --info-soft:    oklch(72% 0.12 230 / 0.14);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.45);
+  /* Shadows — allégées avec le ramp : un noir à 35 % passait pour de la
+     profondeur sur un fond quasi-noir, il passe pour de la salissure sur
+     une ardoise. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.32);
 
-  /* Avatar wireframe */
-  --wire-bg: radial-gradient(circle at 50% 40%, #1a3138 0%, #0e1216 65%);
+  /* Avatar wireframe — le bord du dégradé suit --bg-app ; figé sur l'ancien
+     #0e1216 il aurait laissé un trou noir au milieu du panneau. */
+  --wire-bg: radial-gradient(circle at 50% 40%, oklch(0.42 0.045 200) 0%, oklch(0.33 0.012 255) 65%);
   --wire-line: oklch(78% 0.12 var(--accent-h));
   --wire-glow: oklch(72% 0.14 var(--accent-h) / 0.5);
 
@@ -127,11 +150,24 @@
   --bg-hover:      #d2dbe6;
   --bg-active:     #c4d0de;
 
+  /* Accent ASSOMBRI pour le thème clair. `:root` le pose à 72 % de luminance,
+     calé pour le sombre, et les deux thèmes le partageaient : sur du blanc
+     cassé ça donnait 1.75:1 à 2.16:1 — un accent illisible partout où il
+     sert de texte (liens, titre du chat, badges). La maquette 08/2026 pose
+     deux valeurs, une par thème ; on fait pareil. Mesuré : 3.72:1 à 4.62:1.
+     C'est le passage de la page active à un libellé coloré qui a rendu la
+     correction bloquante — à 72 % ce libellé tombait à 1.61:1. */
+  --accent:        oklch(52% 0.12 var(--accent-h));
+  --accent-strong: oklch(45% 0.13 var(--accent-h));
+  --accent-glow:   oklch(52% 0.14 var(--accent-h) / 0.30);
+
   --text-primary:   #0e1726;
   --text-secondary: #4b5868;
   --text-tertiary:  #6b7785;
   --text-muted:     #8a95a3;
-  --text-on-accent: #07181c;
+  /* Sur un accent à 52 % c'est le blanc qui porte (4.68:1), pas l'encre
+     sombre héritée du thème sombre (3.66:1). */
+  --text-on-accent: oklch(0.98 0.004 255);
 
   --border-subtle:  rgba(15, 30, 50, 0.10);
   --border-default: rgba(15, 30, 50, 0.14);
@@ -332,7 +368,11 @@
   font-weight: 700;
   line-height: 16px;
   text-align: center;
-  box-shadow: 0 0 0 2px var(--bg-base, var(--bg-primary, #0c1014));
+  /* L'anneau détoure la pastille sur la topbar, donc il prend le fond de la
+     topbar. `--bg-base` et `--bg-primary` n'ont jamais existé (les tokens
+     sont `--bg-app` / `--bg-sidebar`) : la règle tombait sur le #0c1014 de
+     secours, invisible tant que le thème était quasi-noir. */
+  box-shadow: 0 0 0 2px var(--bg-sidebar);
   pointer-events: none;
   animation: hitlBadgePulse 1.6s ease-in-out infinite;
 }
@@ -348,8 +388,10 @@
   max-width: calc(100vw - 32px);
   max-height: 500px;
   overflow-y: auto;
-  background: var(--bg-elevated, var(--bg-secondary, #11161c));
-  border: 1px solid var(--border-strong, var(--border-subtle, #2a333e));
+  /* Même dérive que la pastille : ni `--bg-elevated` ni `--bg-secondary`
+     n'existent, le menu était donc peint en #11161c en dur. */
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md, 8px);
   box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.55);
   z-index: 1000;
@@ -592,19 +634,24 @@
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+/* Page active : voile d'accent + libellé à l'accent. Avant, c'était un pavé
+   --bg-surface bordé plus une barre de 3px ; sur le ramp remonté ce pavé
+   n'est plus qu'à quatre points de luminance du fond de sidebar, donc la
+   barre restait le seul signal. La couleur porte la mise en avant. */
 .nav-item.active {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  border-color: var(--border-default);
-  box-shadow: var(--shadow-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+  box-shadow: none;
 }
-.nav-item.active::before {
-  content: "";
-  position: absolute;
-  left: -1px; top: 8px; bottom: 8px;
-  width: 3px;
-  background: var(--accent);
-  border-radius: 999px;
+/* Un groupe dont un enfant est actif reçoit `.active` lui aussi
+   (Sidebar.tsx : `hasActive`). Sans cette règle le voile s'afficherait deux
+   fois — sur l'entête ET sur la page — et on ne saurait plus laquelle des
+   deux est ouverte. L'entête garde la couleur, pas le fond.
+   Le sélecteur tient au balisage : les feuilles sont des <a> (next/link),
+   les entêtes de groupe des <button>. */
+button.nav-item.active {
+  background: transparent;
 }
 .nav-icon {
   width: 16px; height: 16px;
@@ -614,12 +661,16 @@
 }
 .nav-item.active .nav-icon { color: var(--accent); }
 
+/* « Nouvelle conversation » : contour plein sur fond vide. Le tireté + le
+   voile d'accent le faisaient lire comme une zone de dépôt inactive, et le
+   voile est maintenant la marque de la page active — deux sens pour un même
+   aplat. Le bouton garde le trait, la page garde le fond. */
 .nav-cta {
   margin: var(--sp-3) var(--sp-3) 0;
   padding: 9px 12px;
   border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  border: 1px dashed var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
   color: var(--accent);
   font-size: 13px;
   display: flex; align-items: center; gap: var(--sp-2);
@@ -628,7 +679,6 @@
 .nav-cta:hover {
   background: var(--accent);
   color: var(--text-on-accent);
-  border-style: solid;
 }
 
 .nav-section-label {
