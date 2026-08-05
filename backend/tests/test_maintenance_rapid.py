@@ -148,7 +148,11 @@ async def test_consolidate_happy_path_dispatches_to_typed_stores(monkeypatch) ->
             _make_msg("user", "I work on a project called ELY"),
         ]
 
-    async def fake_extract(self, conversation_text):
+    # Signature reelle : `user_id`/`conversation_id` ont ete ajoutes le
+    # 05/08 pour que l'appel LLM soit RATTACHABLE a un utilisateur, sans
+    # quoi sa consommation n'est pas ecrivable. Ce double les porte —
+    # c'est lui qui a signale le changement de contrat.
+    async def fake_extract(self, conversation_text, user_id="", conversation_id=None):
         return [
             {"fact": "User prefers concise answers", "type": "preference"},
             {"fact": "User works on a project called ELY", "type": "context"},
@@ -200,7 +204,7 @@ async def test_consolidate_returns_zero_when_llm_extracts_nothing(monkeypatch) -
     async def fake_load(self, _):
         return [_make_msg("user", "ok"), _make_msg("assistant", "noted")]
 
-    async def fake_extract(self, _):
+    async def fake_extract(self, _, user_id="", conversation_id=None):
         return []
 
     # Stub the Sprint 3 Jalon 2 hook so we don't actually hit the LLM

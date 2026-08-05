@@ -321,6 +321,25 @@ async def compute_user_state(
         logger.debug("user_state: LLM call failed : %s", exc)
         return current
 
+    # `config={"callbacks": []}` isole cet appel du tour actif — et l'isole
+    # donc AUSSI de `record_turn_usage`, qui compte au niveau du tour. Tout ce
+    # qui coupe l'arbre de callbacks doit consigner pour son propre compte,
+    # sinon la dépense sort des chiffres sans que rien ne le signale (défaut
+    # diagnostiqué le 05/08). `log_response_usage` ne fait rien si le
+    # fournisseur n'a pas remonté d'usage.
+    try:
+        from app.services.analytics_service import log_response_usage
+        from app.services.llm_provider import describe_llm
+
+        _provider, _model = describe_llm(llm)
+        await log_response_usage(
+            user_id, response, provider=_provider, model=_model,
+            channel="background", skill_used="user_state",
+            conversation_id=conversation_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
+        logger.debug("user_state: usage non consigné (%s)", exc)
+
     raw = getattr(response, "content", "") or ""
     raw = _strip_json_fences(raw)
     try:

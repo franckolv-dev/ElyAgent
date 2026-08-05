@@ -197,7 +197,11 @@ class MaintenanceAgentRapid:
             return {"status": "skipped", "reason": "empty_text"}
 
         try:
-            facts = await self._extract_facts(conversation_text)
+            # user_id/conversation_id transmis pour que l'appel soit RATTACHABLE :
+            # sans user_id la ligne d'usage n'est pas écrivable (clé étrangère).
+            facts = await self._extract_facts(
+                conversation_text, user_id, conversation_id,
+            )
         except Exception as exc:
             logger.debug("maintenance_rapid: LLM call failed: %s", exc)
             return {"status": "failed", "reason": "llm_failed"}
@@ -291,7 +295,10 @@ class MaintenanceAgentRapid:
             parts.append(f"{role_label}: {content[:500]}")
         return "\n".join(parts)
 
-    async def _extract_facts(self, conversation_text: str) -> list[dict]:
+    async def _extract_facts(
+        self, conversation_text: str, user_id: str = "",
+        conversation_id: str | None = None,
+    ) -> list[dict]:
         """Call the Ministral 3B tier and parse the JSON response.
 
         Wrapped so tests can monkeypatch this method to a fake list and
@@ -307,8 +314,27 @@ class MaintenanceAgentRapid:
         # OPTIM — corvée de fond : pas de raisonnement (voir
         # services/background_llm.py). Le helper porte aussi l'isolation du
         # stream et le retrait d'un éventuel bloc <think> avant le parse.
-        from app.services.background_llm import ainvoke_background
-        raw = await ainvoke_background(llm, [{"role": "user", "content": prompt}])
+        # `..._with_usage` plutôt qu'`ainvoke_background` : il rend AUSSI la
+        # réponse brute, dont l'`usage_metadata`. L'isolation du stream met
+        # cet appel hors de portée de `record_turn_usage`, qui compte au
+        # niveau du tour — sans consignation propre, la corvée dépense hors
+        # bilan (défaut diagnostiqué le 05/08).
+        from app.services.background_llm import ainvoke_background_with_usage
+        raw, _reponse = await ainvoke_background_with_usage(
+            llm, [{"role": "user", "content": prompt}],
+        )
+        try:
+            from app.services.analytics_service import log_response_usage
+            from app.services.llm_provider import describe_llm
+
+            _provider, _model = describe_llm(llm)
+            await log_response_usage(
+                user_id, _reponse, provider=_provider, model=_model,
+                channel="background", skill_used="memory_maintenance",
+                conversation_id=conversation_id,
+            )
+        except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
+            logger.debug("maintenance_rapid: usage non consigné (%s)", exc)
         raw = _strip_json_fences(raw)
         try:
             data = json.loads(raw)

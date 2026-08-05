@@ -85,7 +85,7 @@ Réponds par un seul mot, sans rien d'autre :
 """
 
 
-async def needs_a_tool(capability: str, **_: object) -> bool:
+async def needs_a_tool(capability: str, *, user_id: str = "", **_: object) -> bool:
     """Cette capacité justifie-t-elle de FABRIQUER un outil ?
 
     Le jugement est confié au niveau S — donc au modèle **local** en tête de
@@ -131,6 +131,22 @@ async def needs_a_tool(capability: str, **_: object) -> bool:
             "fabriquée", exc, texte,
         )
         return False
+
+    # Ce jugement VISE le modèle local en tête de chaîne, gratuit. Mais
+    # `get_tier_s_llm` descend la chaîne quand ce local est indisponible, et
+    # le rang suivant est facturé : « conçu pour être gratuit » n'est pas
+    # « gratuit ». Sans cette ligne, ce chemin dépensait sans laisser de
+    # trace — le défaut diagnostiqué le 05/08 sur le tier `complex`.
+    # `log_response_usage` ne fait rien si le fournisseur n'a rien remonté.
+    try:
+        from app.services.analytics_service import log_response_usage
+
+        await log_response_usage(
+            user_id, response, provider=pick, model=str(pick),
+            channel="background", skill_used="tool_or_skill",
+        )
+    except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
+        logger.debug("outil-ou-compétence : usage non consigné (%s)", exc)
 
     verdict = content_to_text(getattr(response, "content", response)).strip().upper()
     if _OUTIL in verdict:

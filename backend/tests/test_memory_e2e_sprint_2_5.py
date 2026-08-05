@@ -161,7 +161,9 @@ async def test_full_chain_maintenance_extract_then_recall_returns_same_fact(monk
         m2 = SimpleNamespace(role="assistant", content="Noted.")
         return [m1, m2]
 
-    async def fake_extract(self, conversation_text):
+    # Signature reelle (user_id/conversation_id ajoutes le 05/08 pour la
+    # consignation d'usage) — un double a `**kwargs` n'aurait rien signale.
+    async def fake_extract(self, conversation_text, user_id="", conversation_id=None):
         return [
             {"fact": "The user works on a project named ELY", "type": "context"},
             {"fact": "The user prefers concise answers", "type": "preference"},

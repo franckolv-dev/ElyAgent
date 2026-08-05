@@ -221,6 +221,22 @@ async def draft_skill_from_success(user_id: str, messages: list) -> LearnedSkill
         logger.info("skill_from_success : rédaction abandonnée (%s)", exc)
         return None
 
+    # Consigné AVANT le parsing : une réponse inexploitable a quand même été
+    # facturée, et sortir sans rien écrire la rendrait gratuite dans les
+    # chiffres. C'est ce chemin-là — celui qui échoue — qui disparaissait le
+    # plus sûrement des mesures.
+    try:
+        from app.services.analytics_service import log_response_usage
+        from app.services.llm_provider import describe_llm
+
+        _provider, _model = describe_llm(llm)
+        await log_response_usage(
+            user_id, response, provider=_provider, model=_model,
+            channel="background", skill_used="skill_from_success",
+        )
+    except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
+        logger.debug("skill_from_success : usage non consigné (%s)", exc)
+
     from app.services.learning.skill_creator import parse_playbook_response
 
     parsed = parse_playbook_response(
