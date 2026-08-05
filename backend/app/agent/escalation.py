@@ -247,15 +247,133 @@ def _model_name(llm: object, fallback: str) -> str:
     return str(described) if described else fallback
 
 
-async def _ask(llm: object, prompt: str) -> str:
+@dataclass(slots=True)
+class _Reponse:
+    """Ce qu'un modèle a répondu, ET ce que l'appel a consommé.
+
+    ⚠️ Les tokens ne sont pas un ornement. ``_ask`` ne rendait que le texte :
+    ``response.usage_metadata`` partait à la poubelle, et comme la coupure de
+    callbacks ci-dessous détache aussi l'appel de l'instrumentation du tour,
+    ces requêtes n'étaient comptées NULLE PART. Le panel interroge jusqu'à
+    trois modèles facturés par escalade, plus un juge : de l'argent dépensé
+    qui n'apparaissait ni dans ``usage_logs``, ni sur la page Analyse.
+    """
+
+    texte: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    mesure: bool = False  # False = le fournisseur n'a rien remonté
+    # La réponse LangChain telle quelle : `log_response_usage` la relit
+    # lui-même. Lui passer l'objet plutôt que mes entiers garde UNE seule
+    # lecture d'``usage_metadata`` dans le dépôt — si son contrat change en
+    # amont, il change à un seul endroit.
+    brut: object = None
+
+
+def _usage_of(response: object) -> tuple[int, int, bool]:
+    """(entrée, sortie, mesuré) depuis ``usage_metadata``.
+
+    ``mesure`` distingue « zéro token » (impossible) de « le fournisseur n'a
+    rien renvoyé » (fréquent en local) — la même nuance que
+    ``usage_instrumentation.usage_from_result``, dont c'est le pendant pour
+    une réponse unique. Ne lève jamais.
+    """
+    try:
+        um = getattr(response, "usage_metadata", None)
+        if not um:
+            return 0, 0, False
+        return (
+            int(um.get("input_tokens", 0) or 0),
+            int(um.get("output_tokens", 0) or 0),
+            True,
+        )
+    except Exception as exc:  # noqa: BLE001 — l'instrumentation ne casse rien
+        logger.debug("escalade : usage illisible (%s)", exc)
+        return 0, 0, False
+
+
+async def _ask(llm: object, prompt: str) -> _Reponse:
     """``config={"callbacks": []}`` : cet appel tourne PENDANT un tour actif.
     Sans cette coupure, LangChain propage l'arbre de callbacks par contextvars
-    et les tokens du panel s'affichent dans la réponse (bug réel du 19/07)."""
+    et les tokens du panel s'affichent dans la réponse (bug réel du 19/07).
+
+    ⚠️ Cette coupure a un prix : elle détache aussi l'appel de tout ce qui
+    compte les tokens. C'est pourquoi l'usage est relevé ICI, à la main, et
+    consigné par l'appelant — sinon le panel dépense sans laisser de trace.
+    """
     response = await ainvoke_with_deadline(
         llm, [HumanMessage(content=prompt)],
         tier="complex", surface="escalation", config={"callbacks": []},
     )
-    return content_to_text(getattr(response, "content", response)).strip()
+    tokens_in, tokens_out, mesure = _usage_of(response)
+    return _Reponse(
+        texte=content_to_text(getattr(response, "content", response)).strip(),
+        input_tokens=tokens_in, output_tokens=tokens_out, mesure=mesure,
+        brut=response,
+    )
+
+
+async def _consigner(
+    *, user_id: str, conversation_id: str, model: str,
+    reponse: _Reponse, role: str,
+) -> float:
+    """Écrit une ligne ``usage_logs`` pour UN appel du panel. Rend son coût.
+
+    ``role`` vaut ``panel`` ou ``juge`` : sans lui, une escalade à trois
+    modèles apparaîtrait comme quatre tours d'agent et fausserait la
+    ventilation par architecture.
+
+    Sans ``user_id``, on ne consigne pas : la colonne est une clé étrangère.
+    Les paramètres ``user_id`` / ``conversation_id`` d'``escalate_to_panel``
+    existaient depuis #298 et n'étaient utilisés nulle part — la plomberie
+    était posée, elle n'était pas branchée.
+    """
+    if not reponse.mesure:
+        # Ne rien écrire plutôt qu'écrire zéro : une ligne à 0 token se lirait
+        # « gratuit », alors que le fournisseur n'a simplement rien remonté.
+        # `log_response_usage` applique déjà cette règle ; on la double ici
+        # seulement pour ne pas annoncer un coût inventé.
+        logger.info("escalade : %s (%s) n'a pas remonté d'usage — non consigné",
+                    model, role)
+        return 0.0
+    try:
+        from app.services.analytics_service import estimate_cost, log_response_usage
+
+        cout = estimate_cost(model, reponse.input_tokens, reponse.output_tokens)
+        if not user_id:
+            logger.info("escalade : usage de %s non consigné (pas d'user_id)", model)
+            return cout
+        await log_response_usage(
+            user_id,
+            reponse.brut,
+            provider=_provider_of(model),
+            model=model,
+            channel="web",
+            skill_used=f"escalation:{role}",
+            conversation_id=conversation_id or None,
+        )
+        return cout
+    except Exception as exc:  # noqa: BLE001 — consigner ne casse pas un tour
+        logger.warning("escalade : usage de %s non consigné (%s)", model, exc)
+        return 0.0
+
+
+def _provider_of(model: str) -> str:
+    """Le fournisseur derrière un nom de modèle, au mieux.
+
+    ``describe_llm`` le donne à partir de l'objet LLM, mais ``_consigner`` ne
+    reçoit qu'un nom. Un préfixe suffit pour la ventilation ; « unknown » est
+    rendu tel quel plutôt que deviné.
+    """
+    m = (model or "").lower()
+    for marqueur, nom in (
+        ("deepseek", "deepseek"), ("gpt", "openai"), ("o3", "openai"),
+        ("claude", "anthropic"), ("kimi", "moonshot"), ("mistral", "mistral"),
+        ("gemini", "google"), ("qwen", "qwen"), ("glm", "zhipu"),
+    ):
+        if marqueur in m:
+            return nom
+    return "unknown"
 
 
 async def escalate_to_panel(
@@ -305,36 +423,64 @@ async def escalate_to_panel(
         *(_ask(llm, prompt) for _, llm in retenus), return_exceptions=True,
     )
 
+    # Consigné AVANT le filtrage sur le texte : un modèle qui répond à vide a
+    # quand même consommé des tokens, et les facturer sans les écrire
+    # reproduirait exactement le défaut qu'on corrige.
+    cout_reel = 0.0
+    for (name, _), rep in zip(retenus, reponses):
+        if isinstance(rep, _Reponse):
+            cout_reel += await _consigner(
+                user_id=user_id, conversation_id=conversation_id,
+                model=name, reponse=rep, role="panel",
+            )
+
     propositions = [
-        (name, txt) for (name, _), txt in zip(retenus, reponses)
-        if isinstance(txt, str) and txt.strip()
+        (name, rep.texte) for (name, _), rep in zip(retenus, reponses)
+        if isinstance(rep, _Reponse) and rep.texte.strip()
     ]
     if not propositions:
         logger.warning("escalade : aucune réponse exploitable — tour laissé tel quel")
         return None
 
-    gagnant = await _pick_best(retenus[0][1], demande, ecarts, propositions)
+    gagnant, cout_juge = await _pick_best(
+        retenus[0][1], demande, ecarts, propositions,
+        user_id=user_id, conversation_id=conversation_id,
+        judge_name=retenus[0][0],
+    )
+    cout_reel += cout_juge
     name, answer = propositions[gagnant]
+    # Le coût RENDU est celui qui a été mesuré, pas l'estimation d'avant-appel.
+    # `cout` (4 caractères par token, sortie supposée au quart) sert à décider
+    # AVANT de payer ; l'annoncer ensuite ferait passer une approximation pour
+    # une facture. On retombe dessus seulement si aucun fournisseur n'a remonté
+    # d'usage — auquel cas c'est bien la meilleure estimation disponible.
+    facture = cout_reel if cout_reel > 0 else cout
     logger.info(
-        "escalade : %d modèle(s) interrogé(s), %r retenu, %.4f $ (%d écarté(s) pour budget)",
-        len(propositions), name, cout, len(ecartes),
+        "escalade : %d modèle(s) interrogé(s), %r retenu, %.4f $ mesuré "
+        "(estimé %.4f $, %d écarté(s) pour budget)",
+        len(propositions), name, cout_reel, cout, len(ecartes),
     )
     return PanelResult(
         answer=answer, model=name, models_asked=len(propositions),
-        cost_usd=cout, skipped_for_budget=ecartes,
+        cost_usd=facture, skipped_for_budget=ecartes,
     )
 
 
 async def _pick_best(judge: object, demande: str, ecarts: str,
-                     propositions: list[tuple[str, str]]) -> int:
-    """Quel numéro de réponse satisfait le mieux les exigences ?
+                     propositions: list[tuple[str, str]], *,
+                     user_id: str = "", conversation_id: str = "",
+                     judge_name: str = "") -> tuple[int, float]:
+    """Quel numéro de réponse satisfait le mieux les exigences ? Et à quel prix ?
 
     Échoue sur la PREMIÈRE proposition : la chaîne du tier est ordonnée par
     préférence, donc le premier modèle est déjà le choix par défaut d'Ely. Un
     juge en panne ne doit pas transformer l'escalade en échec.
+
+    Le coût est rendu au lieu d'être avalé : le juge est un appel facturé de
+    plus par escalade, et il manquait à la facture au même titre que le panel.
     """
     if len(propositions) == 1:
-        return 0
+        return 0, 0.0
     listing = "\n\n".join(
         f"--- Réponse {i + 1} ---\n{txt[:2500]}"
         for i, (_, txt) in enumerate(propositions)
@@ -345,16 +491,23 @@ async def _pick_best(judge: object, demande: str, ecarts: str,
         ))
     except Exception as exc:  # noqa: BLE001 — échouer sur le premier
         logger.warning("escalade : juge indisponible (%s) — 1re réponse retenue", exc)
-        return 0
+        return 0, 0.0
+
+    cout = await _consigner(
+        user_id=user_id, conversation_id=conversation_id,
+        model=judge_name or _model_name(judge, "juge"),
+        reponse=verdict, role="juge",
+    )
 
     import re
 
-    m = re.search(r"\d+", verdict)
+    m = re.search(r"\d+", verdict.texte)
     if not m:
-        logger.info("escalade : verdict illisible (%.60s) — 1re réponse retenue", verdict)
-        return 0
+        logger.info("escalade : verdict illisible (%.60s) — 1re réponse retenue",
+                    verdict.texte)
+        return 0, cout
     idx = int(m.group()) - 1
-    return idx if 0 <= idx < len(propositions) else 0
+    return (idx if 0 <= idx < len(propositions) else 0), cout
 
 
 def _estimate_call_usd(model: str, *parts: str) -> float:

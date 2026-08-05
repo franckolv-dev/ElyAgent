@@ -235,6 +235,68 @@ def _check_resolved_model(
     return found
 
 
+async def _primary_models() -> dict[str, str]:
+    """Le modèle du fournisseur de RANG 1 de chaque tier, sans rien instancier.
+
+    Lu depuis ``_instance_cache``, pas construit : construire exigerait la clé,
+    et c'est justement son absence qu'on cherche à révéler.
+    """
+    out: dict[str, str] = {}
+    try:
+        from app.services.llm_provider import (
+            _instance_cache, get_tier_config, load_llm_settings_from_db,
+        )
+
+        await load_llm_settings_from_db()
+        for tier, cfg in (get_tier_config() or {}).items():
+            providers = list((cfg or {}).get("providers") or [])
+            if not providers:
+                continue
+            inst = _instance_cache.get(providers[0])
+            model = (inst or {}).get("model") or ""
+            if model:
+                out[str(tier)] = str(model)
+    except Exception as exc:  # noqa: BLE001 — un diagnostic ne casse rien
+        logger.debug("rangs 1 illisibles (%s)", exc)
+    return out
+
+
+def _check_tier_uses_primary(
+    tier: str, resolved: str, primary: str,
+) -> Finding | None:
+    """Le tier sert-il le fournisseur choisi, ou un repli de sa chaîne ?
+
+    **Le trou que ce contrôle bouche.** ``_check_resolved_model`` vérifie que
+    le modèle servi est *connu des tables* et *déclaré par une instance*. Un
+    rang 2 de la même chaîne satisfait les deux : il est parfaitement déclaré.
+    Le tier pouvait donc servir son repli en permanence sans qu'aucun constat
+    ne soit émis.
+
+    **L'incident, 28/07 → 05/08.** Le tier ``complex`` a servi DeepSeek v4 Pro
+    (rang 2) pendant neuf jours : 994 requêtes, 42 M tokens, ~14 $. Les tokens
+    par requête — ~42 500, le poids d'un tour agentique complet — disaient que
+    ce modèle ne donnait pas un second avis : il FAISAIT le travail. La table
+    ``provider_switches`` ne portait qu'UNE bascule sur ``complex`` pour la
+    période, parce que la cascade de CONSTRUCTION (``get_llm_for_tier``) ne
+    passe pas par ``fallback_manager`` : pas de ligne, pas de toast, rien.
+
+    C'est l'invariant « un repli doit se voir » pris en défaut sur le chemin le
+    plus cher du système.
+    """
+    if not resolved or not primary or resolved == primary:
+        return None
+    return Finding(
+        kind="tier_serves_fallback",
+        subject=tier,
+        detail=(
+            f"le tier « {tier} » sert « {resolved} » alors que son rang 1 est "
+            f"« {primary} » — le rang 1 n'a pas pu être construit (clé absente, "
+            f"instance hors cache) et la cascade l'a écarté SANS enregistrer de "
+            f"bascule : ce repli est facturé et invisible"
+        ),
+    )
+
+
 def check_unguarded_engaging_tools(
     unguarded: list[str] | None = None,
 ) -> list[Finding]:
@@ -329,6 +391,8 @@ async def check_config_reality(
     # Ce que le système UTILISE, et pas seulement ce qu'il déclare. C'est
     # l'angle mort qui a laissé gpt-5.5 facturé 4 USD/M sur la majorité du
     # trafic pendant que l'instance voulue, au forfait, coûtait 0.
+    # Résolu UNE fois : `_resolved_models` instancie un client par tier.
+    used: dict[str, str] = {}
     try:
         used = await _resolved_models() if resolved_models is None else resolved_models
         declared = {m for m in (names or []) if m}
@@ -336,6 +400,18 @@ async def check_config_reality(
             findings.extend(_check_resolved_model(tier, model or "", declared))
     except Exception as exc:  # noqa: BLE001
         logger.debug("contrôle du résolveur échoué (%s)", exc)
+
+    # Servir le rang 2 de sa propre chaîne passe les contrôles ci-dessus — le
+    # modèle est connu ET déclaré. C'est pourtant un repli, et sur ce chemin
+    # il n'en existe aucune trace ailleurs (cf. `_check_tier_uses_primary`).
+    try:
+        primaries = await _primary_models()
+        for tier, model in (used or {}).items():
+            found = _check_tier_uses_primary(tier, model or "", primaries.get(tier, ""))
+            if found is not None:
+                findings.append(found)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("contrôle rang 1 vs rang servi échoué (%s)", exc)
 
     return findings
 

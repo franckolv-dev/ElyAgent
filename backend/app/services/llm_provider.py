@@ -1553,6 +1553,38 @@ def build_llm_for_provider(
         return None
 
 
+# Signatures de repli-construction déjà annoncées. `get_llm_for_tier` est
+# appelé à CHAQUE tour et pour chaque tier : sans cette mémoire, une clé
+# durablement absente produirait la même alerte des milliers de fois, et une
+# alerte qui se répète est une alerte qu'on cesse de lire — le défaut même que
+# `log_config_reality` reproche à l'ancien « Unknown model ». On parle une fois
+# par situation distincte, et de nouveau si elle change.
+_repli_construction_vus: set[tuple] = set()
+
+
+def _warn_construction_fallback(
+    tier: str, retenu: str, rang: int, ecartes: list[str],
+) -> None:
+    """Annonce, UNE fois par situation, qu'un tier sert un rang de repli.
+
+    C'est précisément la ligne dont l'absence a rendu un diagnostic impossible
+    pendant neuf jours (28/07 → 05/08) : le tier `complex` servait son rang 2
+    sans qu'aucune trace n'existe, la cascade de construction ne passant pas
+    par `fallback_manager`.
+    """
+    signature = (tier, retenu, tuple(ecartes))
+    if signature in _repli_construction_vus:
+        return
+    _repli_construction_vus.add(signature)
+    logger.warning(
+        "[repli-construction] Tier %s: rang %d retenu ('%s') — écartés avant "
+        "lui : %s. Ce chemin n'enregistre AUCUNE bascule : le tier sert un "
+        "fournisseur de repli comme s'il était le principal, et la facture "
+        "part sur lui. (Signalé une fois par situation.)",
+        tier, rang, retenu, ", ".join(ecartes),
+    )
+
+
 def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
     """Return the appropriate LLM for a given complexity tier.
 
@@ -1645,6 +1677,15 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
         max_tokens = 8192
 
     last_exc: Optional[Exception] = None
+    # Ce qui a été écarté AVANT le fournisseur finalement rendu. Sans cette
+    # liste, la cascade de construction est un repli qui ne se voit pas :
+    # elle ne passe pas par `fallback_manager`, donc aucune ligne
+    # `provider_switches`, aucun toast, aucune trace — le tier sert son rang 2
+    # comme s'il était le rang 1. Diagnostiqué le 05/08 sur le tier `complex` :
+    # 994 requêtes DeepSeek v4 Pro à ~42 500 tokens (le poids d'un tour agentique
+    # complet, pas d'un second avis) pour UNE seule bascule enregistrée sur la
+    # période. La facture le voyait ; Ely non.
+    ecartes: list[str] = []
     for i, provider_id in enumerate(providers):
         try:
             if _is_instance_id(provider_id):
@@ -1653,11 +1694,15 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
                 llm = _make_llm_for_provider(provider_id, settings,
                                              max_tokens=max_tokens, temperature=temperature)
             if llm is not None:
+                if ecartes:
+                    _warn_construction_fallback(tier.value, provider_id, i + 1, ecartes)
                 return llm
-            # llm is None = no key for this provider/instance → skip silently
+            # llm is None = pas de clé pour ce fournisseur/instance.
+            ecartes.append(f"{provider_id} (pas de clé)")
             logger.debug("Tier %s: no key for '%s' — skipping", tier.value, provider_id)
         except Exception as exc:
             last_exc = exc
+            ecartes.append(f"{provider_id} ({type(exc).__name__})")
             logger.warning("Tier %s: '%s' failed (%s)", tier.value, provider_id, exc)
 
         if not fallback_enabled:
