@@ -37,6 +37,9 @@ class TaskCreate(BaseModel):
     prompt: str
     cron_expression: str  # "0 8 * * 1-5"
     channel: str = "web"  # "web" | "telegram"
+    # Défaut FAUX : une tâche qui n'a rien demandé livre toujours son
+    # résultat. Seule une tâche de VEILLE peut se taire (révision 0033).
+    allow_silent: bool = False
 
 
 class TaskUpdate(BaseModel):
@@ -45,6 +48,7 @@ class TaskUpdate(BaseModel):
     cron_expression: str | None = None
     channel: str | None = None
     enabled: bool | None = None
+    allow_silent: bool | None = None
 
 
 class TaskResponse(BaseModel):
@@ -56,7 +60,11 @@ class TaskResponse(BaseModel):
     enabled: bool
     last_run_at: str | None
     last_result: str | None
-    last_status: str | None       # "running" | "success" | "error" | None
+    # "running" | "success" | "error" | "silent" | "missed" | None.
+    # "missed" = occurrence due, trop ancienne pour la fenêtre de
+    # rattrapage : elle ne sera PAS rejouée.
+    last_status: str | None
+    allow_silent: bool = False
     last_run_started_at: str | None
     created_at: str
 
@@ -89,6 +97,7 @@ async def create_task(
         prompt=body.prompt,
         cron_expression=body.cron_expression,
         channel=body.channel,
+        allow_silent=body.allow_silent,
     )
     db.add(task)
     await db.flush()
@@ -133,6 +142,8 @@ async def update_task(
         task.channel = body.channel
     if body.enabled is not None:
         task.enabled = body.enabled
+    if body.allow_silent is not None:
+        task.allow_silent = body.allow_silent
 
     await db.commit()
     await db.refresh(task)
@@ -218,6 +229,7 @@ def _to_response(task: ScheduledTask) -> TaskResponse:
         last_run_at=task.last_run_at.isoformat() if task.last_run_at else None,
         last_result=task.last_result,
         last_status=task.last_status,
+        allow_silent=bool(task.allow_silent),
         last_run_started_at=(
             task.last_run_started_at.isoformat() if task.last_run_started_at else None
         ),

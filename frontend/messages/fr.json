@@ -971,6 +971,7 @@
     "statusSuccess": "Réussie",
     "statusError": "Échec",
     "statusSilent": "Silencieuse",
+    "statusMissed": "Occurrence manquée",
     "statusNever": "Jamais exécutée",
     "lastRun": "Dernière exécution",
     "runNow": "Exécuter maintenant",

@@ -275,6 +275,10 @@ export default function ScheduledTasksPage() {
                               error:   { cls: "bg-red-500/10 border-red-500/30 text-red-400", label: t("statusError"), dot: "✕" },
                               // [SILENT] : la tâche a tourné sans rien à signaler — ce n'est PAS un échec.
                               silent:  { cls: "bg-bg-primary border-border-dim text-text-muted", label: t("statusSilent"), dot: "○" },
+                              // Rendez-vous MANQUÉ, pas exécution : la tâche
+                              // était due et la fenêtre de rattrapage l'a
+                              // écartée. En orange, car rien ne sera rejoué.
+                              missed:  { cls: "bg-amber-500/10 border-amber-500/30 text-amber-400", label: t("statusMissed"), dot: "⚠" },
                             } as const;
                             const fallback = { cls: "bg-bg-primary border-border-dim text-text-muted", label: t("statusNever"), dot: "○" };
                             // Défensif : un statut inconnu (ex. nouvelle valeur côté backend) NE DOIT PAS

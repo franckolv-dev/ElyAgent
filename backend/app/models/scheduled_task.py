@@ -46,5 +46,15 @@ class ScheduledTask(Base):
     # _execute_task (running au début, success/error à la fin).
     last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     last_run_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Cette tâche a-t-elle le DROIT de répondre « [SILENT] » (rien à signaler,
+    # ni livraison ni conversation) ? Défaut FAUX — on échoue fermé.
+    #
+    # Avant le 06/08, la restriction ne vivait que dans le prompt (« pour une
+    # tâche qui produit toujours un livrable, NE l'utilise JAMAIS »). Une
+    # phrase adressée au modèle n'est pas un verrou : la tâche « Propositions
+    # LinkedIn » a rendu [SILENT], sa conversation a été supprimée, et rien
+    # n'est parvenu à l'utilisateur ni n'est resté pour l'expliquer.
+    # Cf. révision 0033.
+    allow_silent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

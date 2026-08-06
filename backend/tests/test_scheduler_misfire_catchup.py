@@ -215,7 +215,20 @@ async def test_restart_schedules_a_catchup_job_for_a_missed_occurrence():
         assert scheduler.get_job(f"task_{task.id}") is not None, "cron normal absent"
         catchup = scheduler.get_job(f"catchup_{task.id}")
         assert catchup is not None, "aucun job de rattrapage pour l'occurrence manquée"
-        assert list(catchup.args) == [task.id]
+        # Le job porte MAINTENANT l'occurrence manquée en second argument.
+        # Sans elle, `_execute_task` rejouait le prompt à l'identique et la
+        # tâche croyait être à l'heure : c'est ce qui a fait rendre [SILENT] à
+        # « Propositions LinkedIn » un jeudi soir pour une consigne qui
+        # commençait par « Nous sommes un mercredi matin » (06/08).
+        args = list(catchup.args)
+        assert args[0] == task.id
+        assert len(args) == 2, (
+            "le rattrapage doit transmettre l'occurrence manquée, sinon il se "
+            "fait passer pour une exécution à l'heure"
+        )
+        assert args[1] and args[1].startswith("20"), (
+            f"second argument attendu : un ISO de date, vu {args[1]!r}"
+        )
     finally:
         if sched._scheduler is not None and sched._scheduler.running:
             sched._scheduler.shutdown(wait=False)

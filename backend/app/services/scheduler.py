@@ -72,8 +72,42 @@ def _job_defaults() -> dict:
     }
 
 
-async def _execute_task(task_id: str) -> None:
-    """Execute a scheduled task: invoke agent and deliver result."""
+def _late_run_notice(due_iso: str) -> str:
+    """L'entête qu'une exécution en retard ajoute au prompt de la tâche.
+
+    **Pourquoi le modèle doit le savoir.** Le 06/08, la tâche « Propositions
+    LinkedIn » portait « Nous sommes un mercredi matin » et demandait de
+    vérifier que la date du jour appartenait à une cadence de mercredis. Elle
+    a tourné un JEUDI à 17 h 31. Ely injecte la vraie date dans son prompt
+    système : le modèle a donc constaté que ce n'était pas un mercredi, a
+    suivi la consigne « arrête-toi sans produire de propositions », et rendu
+    `[SILENT]`. Il a fait exactement ce qu'on lui demandait.
+
+    Un rattrapage rejouait le prompt à l'identique, sans jamais dire qu'il
+    était en retard. C'est l'invariant « un repli doit se voir » dans une
+    variante inattendue : le mode dégradé se présentait comme nominal AU
+    MODÈLE. Une tâche qui raisonne sur « aujourd'hui » ne pouvait pas savoir
+    qu'elle rattrapait la veille.
+    """
+    return (
+        "⚠️ EXÉCUTION EN RETARD (rattrapage).\n"
+        f"Cette exécution remplace l'occurrence du {due_iso}, qui n'a pas pu "
+        "avoir lieu à l'heure prévue (Ely était arrêté). Nous ne sommes donc "
+        "PAS au moment prévu par la tâche.\n"
+        "Raisonne sur la date de l'occurrence MANQUÉE ci-dessus, pas sur la "
+        "date du jour, pour décider si le travail est encore pertinent — puis "
+        "produis le livrable. Si tu juges qu'il ne l'est plus, dis-le "
+        "explicitement dans ta réponse plutôt que de ne rien rendre.\n\n"
+        "--- Consigne d'origine de la tâche ---\n"
+    )
+
+
+async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
+    """Execute a scheduled task: invoke agent and deliver result.
+
+    ``catchup_for`` porte l'ISO de l'occurrence manquée quand cette exécution
+    est un rattrapage — voir ``_late_run_notice``.
+    """
     from app.agent.graph import build_simple_agent_graph
     from langchain_core.messages import HumanMessage
 
@@ -117,16 +151,24 @@ async def _execute_task(task_id: str) -> None:
                 _t0.last_run_started_at = datetime.now(timezone.utc)
                 await db.commit()
 
+        # Le prompt RÉELLEMENT soumis : celui de la tâche, précédé de l'aveu
+        # de retard quand c'en est un. Il est persisté tel quel dans la
+        # conversation — sans ça, relire l'exécution donnerait un raisonnement
+        # incompréhensible face au prompt d'origine.
+        effective_prompt = (
+            _late_run_notice(catchup_for) + task.prompt if catchup_for else task.prompt
+        )
+
         # Create a conversation for this execution
         async with async_session() as db:
             conv = Conversation(
                 user_id=task.user_id,
-                title=f"[Planifié] {task.name}"
+                title=f"[Planifié]{' [rattrapage]' if catchup_for else ''} {task.name}"
             )
             db.add(conv)
             await db.flush()
             conv_id = str(conv.id)
-            db.add(Message(conversation_id=conv_id, role="user", content=task.prompt))
+            db.add(Message(conversation_id=conv_id, role="user", content=effective_prompt))
             await db.commit()
 
         # Invoke agent. Scheduled tasks run on the FLAT (non-supervisor) graph
@@ -158,7 +200,7 @@ async def _execute_task(task_id: str) -> None:
         _turn_started_at = time.monotonic()
         invoke_result = await agent.ainvoke(
             {
-                "messages": [HumanMessage(content=_pii_sf.anonymize(task.prompt))],
+                "messages": [HumanMessage(content=_pii_sf.anonymize(effective_prompt))],
                 "user_id": task.user_id,
                 "conversation_id": conv_id,
                 "google_credentials": google_credentials or "",
@@ -210,13 +252,42 @@ async def _execute_task(task_id: str) -> None:
         # doesn't spam the channel or the conversation list. By convention,
         # a real failure still delivers (it lands in the except branch, which
         # never sees this path).
-        if ai_content.strip().upper().startswith("[SILENT]"):
+        # ÉGALITÉ STRICTE, et non plus `startswith`. La consigne dit « ce seul
+        # mot, rien d'autre » ; le test acceptait n'importe quel préfixe, donc
+        # « [SILENT] côté actualités, mais voici trois propositions… » partait
+        # à la poubelle, livrable compris. Un test plus large que son contrat
+        # finit toujours par avaler autre chose que ce qu'il visait.
+        _silent_ask = ai_content.strip().upper() == "[SILENT]"
+        # …et la PERMISSION est portée par la tâche, pas par le prompt (0033).
+        # `[SILENT]` demandé par une tâche qui ne l'a pas : on livre quand
+        # même, et on le dit. Échouer fermé du côté de la livraison — une
+        # proposition en trop se lit, une proposition manquante ne se voit pas.
+        if _silent_ask and not getattr(task, "allow_silent", False):
+            logger.warning(
+                "Tâche '%s' a répondu [SILENT] sans y être autorisée "
+                "(allow_silent=False) — résultat livré quand même. Si c'est "
+                "une tâche de veille, coche « peut rester silencieuse ».",
+                task.name,
+            )
+            ai_content = (
+                "⚠️ Cette tâche a voulu ne rien signaler, mais elle n'est pas "
+                "déclarée comme tâche de veille — son résultat est livré tel "
+                "quel plutôt que supprimé.\n\n" + ai_content
+            )
+            _silent_ask = False
+
+        if _silent_ask:
             async with async_session() as db:
+                # La conversation est CONSERVÉE. La supprimer effaçait la seule
+                # trace du raisonnement qui a mené au silence — c'est ce qui a
+                # rendu l'incident du 06/08 inexplicable après coup. Elle est
+                # renommée pour ne pas encombrer la liste comme une vraie
+                # conversation.
                 _conv = (await db.execute(
                     select(Conversation).where(Conversation.id == conv_id)
                 )).scalar_one_or_none()
                 if _conv is not None:
-                    await db.delete(_conv)  # cascade removes the user message
+                    _conv.title = f"[Silencieuse] {task.name}"
                 _t = (await db.execute(
                     select(ScheduledTask).where(ScheduledTask.id == task_id)
                 )).scalar_one_or_none()
@@ -226,7 +297,7 @@ async def _execute_task(task_id: str) -> None:
                     _t.last_result = "[SILENT] — rien de nouveau à signaler"
                 await db.commit()
             logger.info(
-                "Scheduled task '%s' silent — delivery + conversation skipped",
+                "Scheduled task '%s' silent — delivery skipped, conversation kept",
                 task.name,
             )
             return
@@ -692,6 +763,68 @@ async def _delete_oneshot(task_id: str) -> None:
         logger.warning("One-shot cleanup failed for %s: %s", task_id, exc)
 
 
+def _signaler_occurrence_perdue(
+    scheduler: AsyncIOScheduler, task: ScheduledTask
+) -> None:
+    """Marque une occurrence due mais trop vieille pour être rattrapée.
+
+    Rejoue le calcul sans plafond d'âge : si une occurrence était due et que la
+    fenêtre l'a écartée, elle existe ici et pas dans ``_schedule_catchup``.
+
+    Le constat est posé dans ``last_status``/``last_result`` — pas dans
+    ``last_run_at``, qui doit continuer à dire *quand la tâche a réellement
+    tourné*. Le confondre ferait passer un rendez-vous manqué pour une
+    exécution, exactement ce qui a rendu l'incident du 06/08 illisible.
+
+    Idempotent : réécrire la même valeur à chaque démarrage ne coûte rien et
+    évite d'avoir à dédupliquer une notification.
+    """
+    try:
+        perdue = compute_catchup_run(
+            task.cron_expression, task.last_run_at,
+            created_at=task.created_at, max_age=timedelta(days=365),
+        )
+    except Exception as exc:  # noqa: BLE001 — un diagnostic ne bloque pas le boot
+        logger.debug("occurrence perdue : calcul impossible pour %s (%s)", task.id, exc)
+        return
+    if perdue is None:
+        return
+
+    quand = perdue.isoformat(timespec="minutes")
+    logger.warning(
+        "Occurrence PERDUE pour '%s' — due le %s, trop ancienne pour la "
+        "fenêtre de rattrapage (%d h). Elle ne sera pas rejouée.",
+        task.name, quand, _catchup_window_hours(),
+    )
+
+    async def _marquer() -> None:
+        try:
+            async with async_session() as db:
+                t = (await db.execute(
+                    select(ScheduledTask).where(ScheduledTask.id == task.id)
+                )).scalar_one_or_none()
+                if t is None or t.last_status == "running":
+                    return
+                t.last_status = "missed"
+                t.last_result = (
+                    f"⚠️ Occurrence du {quand} manquée — Ely était arrêté, et "
+                    f"elle est trop ancienne pour la fenêtre de rattrapage "
+                    f"({_catchup_window_hours()} h). Elle ne sera pas rejouée."
+                )
+                await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("occurrence perdue : marquage impossible (%s)", exc)
+
+    from app.services.background_tasks import spawn
+    spawn(_marquer(), label=f"missed-{task.id}")
+
+
+def _catchup_window_hours() -> int:
+    """La fenêtre de rattrapage effective, en heures."""
+    from app.config import get_settings as _gs
+    return int(_gs().scheduler_catchup_max_age_hours)
+
+
 def _schedule_catchup(scheduler: AsyncIOScheduler, task: ScheduledTask) -> bool:
     """Programme le rattrapage immédiat d'une occurrence manquée, s'il y en a.
 
@@ -704,6 +837,16 @@ def _schedule_catchup(scheduler: AsyncIOScheduler, task: ScheduledTask) -> bool:
         task.cron_expression, task.last_run_at, created_at=task.created_at
     )
     if missed is None:
+        # Rien à rattraper DANS LA FENÊTRE — ce qui ne veut pas dire qu'il n'y
+        # avait rien. `scheduler_catchup_max_age_hours` vaut 24 h par défaut :
+        # une occurrence plus vieille était simplement écartée, en silence.
+        # Pour une tâche quotidienne c'est un jour sauté ; pour une tâche « un
+        # mercredi sur deux » c'est un CYCLE entier — quatre semaines entre
+        # deux livraisons au lieu de deux, sans que rien ne le dise. La
+        # fenêtre est calibrée pour du quotidien ; elle décide pour tout le
+        # monde. On ne la change pas ici (rattraper une occurrence trop vieille
+        # a ses propres effets de bord), on cesse de la taire.
+        _signaler_occurrence_perdue(scheduler, task)
         return False
     scheduler.add_job(
         _execute_task,
@@ -711,7 +854,9 @@ def _schedule_catchup(scheduler: AsyncIOScheduler, task: ScheduledTask) -> bool:
             run_date=datetime.now(ZoneInfo("Europe/Paris")) + timedelta(seconds=10),
             timezone="Europe/Paris",
         ),
-        args=[task.id],
+        # L'occurrence manquée part AVEC le job : sans elle, le rattrapage
+        # rejoue le prompt à l'identique et la tâche croit être à l'heure.
+        args=[task.id, missed.isoformat(timespec="minutes")],
         id=f"catchup_{task.id}",
         replace_existing=True,
         name=f"[rattrapage] {task.name}",

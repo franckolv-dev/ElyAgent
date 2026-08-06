@@ -971,6 +971,7 @@
     "statusSuccess": "Succeeded",
     "statusError": "Failed",
     "statusSilent": "Silent",
+    "statusMissed": "Missed run",
     "statusNever": "Never run",
     "lastRun": "Last run",
     "runNow": "Run now",
