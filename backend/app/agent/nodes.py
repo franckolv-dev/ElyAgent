@@ -107,6 +107,39 @@ from app.agent.helpers.memory_formatting import _format_memory_block  # noqa: E4
 # Agent node                                                           #
 # ------------------------------------------------------------------ #
 
+def _slm_real_name(llm, settings) -> str:
+    """Le nom du modèle qui répond RÉELLEMENT sur la voie SLM.
+
+    **Le défaut qu'il corrige (06/08).** `get_slm()` ne lit pas
+    ``settings.slm_model`` : il rend ``get_llm_for_tier(ComplexityTier.SIMPLE)``,
+    donc le tier A tel que l'utilisateur l'a configuré dans Réglages → Routage.
+    Or l'étiquette ET la fenêtre de contexte étaient calculées sur
+    ``SLM_MODEL`` — un réglage statique hérité du chemin Ollama, que plus rien
+    ne fait correspondre au modèle servi.
+
+    Deux consequences, la seconde pire que la premiere :
+
+    - l'écran nommait un modèle qui n'avait pas travaillé ;
+    - ``fit_messages_to_context`` cherchait la fenêtre de ce nom fantôme,
+      retombait sur le défaut de 8 192 tokens, et TRONQUAIT l'historique d'un
+      modèle qui en tenait bien plus. C'est la classe de défaut que
+      ``config_reality`` traque depuis le 26/07 : une correspondance dont le
+      repli est plausible, donc que personne ne vérifie.
+
+    Repli sur ``settings.slm_model`` uniquement si l'introspection échoue —
+    et il vaut alors « au mieux », pas « vrai ».
+    """
+    try:
+        from app.services.llm_provider import describe_llm
+
+        _provider, _model = describe_llm(llm)
+        if _model and _model != "?":
+            return str(_model)
+    except Exception as exc:  # noqa: BLE001 — un nom de confort ne casse rien
+        logger.debug("SLM : nom réel illisible (%s)", exc)
+    return settings.slm_model
+
+
 def create_agent_node():
     from app.skills import get_skill_registry
     from app.config import get_settings
@@ -119,13 +152,23 @@ def create_agent_node():
 
     # Pre-build SLM if enabled — cached in closure but re-bound when tools change
     _slm_with_tools = None
+    _slm_base = None          # le modèle NON bindé — voir `_slm_real_name`
     _slm_version = -1
     if settings.slm_enabled:
         try:
             from app.services.llm_provider import get_slm
-            _slm_with_tools = get_slm().bind_tools(registry.all_tools)
+            # ⚠️ On garde une référence au modèle AVANT `bind_tools`. Celui-ci
+            # rend un RunnableBinding qui n'expose pas `.model` : introspecter
+            # l'objet bindé rendrait « ? ». La voie cloud fait pareil — elle
+            # décrit `_base_llm`, pas `_llm_with_tools`.
+            _slm_base = get_slm()
+            _slm_with_tools = _slm_base.bind_tools(registry.all_tools)
             _slm_version = registry.tools_version
-            logger.info("SLM pre-built: model=%s, threshold=%d", settings.slm_model, settings.slm_complexity_threshold)
+            logger.info(
+                "SLM pre-built: model=%s (réglage SLM_MODEL=%s), threshold=%d",
+                _slm_real_name(_slm_base, settings), settings.slm_model,
+                settings.slm_complexity_threshold,
+            )
         except Exception as exc:
             logger.warning("SLM init failed: %s — all requests will use LLM", exc)
 
@@ -144,7 +187,7 @@ def create_agent_node():
         import time as _t
         _gt_start = _t.monotonic()
         logger.warning("⏱ TIMING[general] starting")
-        nonlocal _slm_with_tools, _slm_version
+        nonlocal _slm_with_tools, _slm_base, _slm_version
         # _tier_llm_cache / _tier_cache_version are dicts/lists mutated in-place — no nonlocal needed
         messages = state["messages"]
         # P2 — posé plus bas quand la requête est complète. Initialisé ici pour
@@ -192,7 +235,9 @@ def create_agent_node():
         if _slm_with_tools is not None and current_version != _slm_version:
             try:
                 from app.services.llm_provider import get_slm
-                _slm_with_tools = get_slm().bind_tools(registry.all_tools)
+                nonlocal_base = get_slm()
+                _slm_base = nonlocal_base
+                _slm_with_tools = nonlocal_base.bind_tools(registry.all_tools)
                 _slm_version = current_version
             except Exception:
                 pass
@@ -431,7 +476,12 @@ def create_agent_node():
                 _slm_fitted = fit_messages_to_context(
                     messages=_sanitized,
                     system_prompt=system,
-                    model=settings.slm_model,
+                    # Le VRAI modèle, pas `SLM_MODEL`. C'est une table de
+                    # fenêtres de contexte : la nourrir d'un nom qui ne
+                    # correspond à rien fait retomber sur le défaut 8 192 et
+                    # tronque l'historique d'un modèle qui tenait bien plus.
+                    # Exactement le défaut du 26/07 que `config_reality` traque.
+                    model=_slm_real_name(_slm_base, settings),
                     reserve_for_response=1024,
                     # Ancrage du mandat : sur une tâche planifiée la consigne
                     # est messages[0], et la troncature supprime par l'avant.
@@ -446,10 +496,11 @@ def create_agent_node():
                     ),
                     timeout=settings.slm_timeout,
                 )
-                model_used = f"slm:{settings.slm_model}"
+                model_used = f"slm:{_slm_real_name(_slm_base, settings)}"
                 logger.info(
                     "SLM answered (score=%d, model=%s, reason=%s)",
-                    decision.score, settings.slm_model, decision.reason,
+                    decision.score, _slm_real_name(_slm_base, settings),
+                    decision.reason,
                 )
             except asyncio.TimeoutError:
                 logger.warning(
