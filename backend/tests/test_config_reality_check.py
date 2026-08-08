@@ -213,3 +213,104 @@ async def test_the_log_wrapper_counts_what_it_reports():
     count = await log_config_reality()
 
     assert isinstance(count, int) and count >= 0
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Servir le rang 2 de sa propre chaîne — diagnostic du 05/08/2026
+# ─────────────────────────────────────────────────────────────────────
+#
+# L'incident. Du 28/07 au 05/08, le tier `complex` a servi DeepSeek v4 Pro —
+# son rang 2 — pendant neuf jours : 994 requêtes, 42 M tokens, ~14 $. Les
+# ~42 500 tokens par requête disaient que ce modèle ne donnait pas un second
+# avis, il FAISAIT le travail. Or `provider_switches` ne portait qu'UNE
+# bascule sur `complex` pour toute la période.
+#
+# Parce que la cascade de CONSTRUCTION (`get_llm_for_tier`) ne passe pas par
+# `fallback_manager` : quand le rang 1 ne peut pas être construit (clé absente,
+# instance hors cache), il est écarté et le rang 2 sert — sans ligne, sans
+# toast, sans rien.
+#
+# `_check_resolved_model` ne pouvait pas le voir : il vérifie que le modèle
+# servi est CONNU des tables et DÉCLARÉ par une instance. Un rang 2 de la même
+# chaîne satisfait les deux — il est parfaitement déclaré.
+
+
+@pytest.mark.asyncio
+async def test_a_tier_serving_its_own_rank_2_is_reported(monkeypatch):
+    """C'est l'invariant « un repli doit se voir » sur le chemin le plus cher.
+
+    Un repli qui se présente comme nominal fait conclure que la configuration
+    est appliquée alors qu'elle est contournée — ici, pendant neuf jours et
+    pour 14 $.
+    """
+    from app.services import config_reality
+
+    async def _rangs_1():
+        return {"complex": "gpt-5.6-sol"}
+
+    monkeypatch.setattr(config_reality, "_primary_models", _rangs_1)
+
+    findings = await config_reality.check_config_reality(
+        models=["gpt-5.6-sol", "deepseek-v4-pro"], bound_tools=[],
+        # Ce que le tier sert RÉELLEMENT : le rang 2.
+        resolved_models={"complex": "deepseek-v4-pro"},
+    )
+
+    replis = [f for f in findings if f.kind == "tier_serves_fallback"]
+    assert len(replis) == 1, (
+        "un tier qui sert son rang 2 doit produire un constat — sans lui, "
+        "aucune surface du système ne le dit"
+    )
+    detail = replis[0].detail
+    assert "deepseek-v4-pro" in detail and "gpt-5.6-sol" in detail, (
+        "le constat doit nommer les DEUX modèles : « le tier sert X alors que "
+        "son rang 1 est Y ». Un seul des deux ne se diagnostique pas"
+    )
+    assert "invisible" in detail or "SANS enregistrer" in detail, (
+        "le constat doit dire sa conséquence — c'est ce qui distingue une "
+        "ligne qu'on lit d'un avertissement qu'on ignore (cf. log_config_reality)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_tier_serving_its_rank_1_reports_nothing(monkeypatch):
+    """Le pendant obligatoire : un contrôle qui crie toujours ne se lit plus.
+
+    Sans ce pin, remplacer la comparaison par `if resolved:` passerait le test
+    ci-dessus et produirait un constat permanent sur chaque tier.
+    """
+    from app.services import config_reality
+
+    async def _rangs_1():
+        return {"complex": "gpt-5.6-sol"}
+
+    monkeypatch.setattr(config_reality, "_primary_models", _rangs_1)
+
+    findings = await config_reality.check_config_reality(
+        models=["gpt-5.6-sol"], bound_tools=[],
+        resolved_models={"complex": "gpt-5.6-sol"},
+    )
+
+    assert [f for f in findings if f.kind == "tier_serves_fallback"] == [], (
+        "le rang 1 servi est le cas nominal : il ne doit rien signaler"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_rank_1_does_not_invent_a_finding(monkeypatch):
+    """Rang 1 illisible (cache vide, config absente) = « non vérifié », pas
+    « repli détecté ». Accuser sans savoir ferait perdre au constat la
+    confiance qui le rend utile."""
+    from app.services import config_reality
+
+    async def _rien():
+        return {}
+
+    monkeypatch.setattr(config_reality, "_primary_models", _rien)
+
+    findings = await config_reality.check_config_reality(
+        models=["deepseek-v4-pro"], bound_tools=[],
+        resolved_models={"complex": "deepseek-v4-pro"},
+    )
+
+    assert [f for f in findings if f.kind == "tier_serves_fallback"] == []

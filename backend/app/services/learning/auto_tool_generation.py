@@ -109,7 +109,10 @@ async def maybe_generate_for_gap(
         # et cette fonction tourne déjà en tâche de fond.
         from app.services.learning.tool_or_skill import needs_a_tool
 
-        if not await needs_a_tool(capability):
+        # `user_id` transmis pour que l'appel soit RATTACHABLE : sans lui, la
+        # ligne d'usage n'est pas écrivable (clé étrangère) et ce chemin
+        # redeviendrait invisible.
+        if not await needs_a_tool(capability, user_id=user_id):
             logger.info(
                 "auto_tool_gen: gap #%s « %.60s » relève d'une COMPÉTENCE, pas "
                 "d'un outil — pas de génération. Le gap reste consigné dans "

@@ -349,3 +349,163 @@ def test_the_escalation_note_says_the_answer_came_without_tools():
     assert "sans outil" in note, (
         "l'utilisateur doit pouvoir situer une réponse qui ne peut pas agir"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Ce que le panel dépense doit se voir — diagnostic du 05/08/2026
+# ─────────────────────────────────────────────────────────────────────
+#
+# L'incident. Le tableau de bord DeepSeek montrait 994 requêtes et 42 M
+# tokens sur `deepseek-v4-pro` du 28/07 au 05/08, sans que rien côté Ely ne
+# permette d'en rendre compte. Deux chemins y menaient, aucun tracé :
+#
+#   1. la cascade de CONSTRUCTION (`get_llm_for_tier`) — couverte par
+#      `test_config_reality_check.py` ;
+#   2. le panel d'escalade — couvert ici.
+#
+# `_ask` ne rendait que le texte. `response.usage_metadata` était jeté, et la
+# coupure `config={"callbacks": []}` — nécessaire, sinon les tokens du panel
+# s'affichent dans la réponse (bug du 19/07) — détache aussi l'appel de
+# l'instrumentation du tour. Jusqu'à trois modèles facturés par escalade, plus
+# un juge, dépensaient donc sans laisser AUCUNE ligne.
+
+
+class _ModelWithUsage:
+    """Un faux modèle qui remonte son usage, comme le font les fournisseurs.
+
+    ⚠️ Garde la signature réelle (`ainvoke(payload, **kwargs)`) et la forme
+    réelle de `usage_metadata` : c'est ce qui fait remarquer un changement de
+    contrat côté LangChain.
+    """
+
+    def __init__(self, reply: str, tokens_in: int = 1000, tokens_out: int = 200):
+        self.reply, self.tokens_in, self.tokens_out = reply, tokens_in, tokens_out
+
+    async def ainvoke(self, payload, **kwargs):
+        class _R:
+            content = self.reply
+            usage_metadata = {
+                "input_tokens": self.tokens_in,
+                "output_tokens": self.tokens_out,
+                "total_tokens": self.tokens_in + self.tokens_out,
+            }
+
+        return _R()
+
+
+@pytest.fixture
+def panel_mesure(monkeypatch):
+    """Deux modèles qui remontent leur usage + la capture des lignes écrites."""
+    ecrit: list[dict] = []
+
+    models = {
+        "id-a": _ModelWithUsage("Réponse de A", 1000, 200),
+        "id-b": _ModelWithUsage("1", 500, 10),
+    }
+    monkeypatch.setattr(
+        "app.services.llm_provider.get_tier_config",
+        lambda: {"complex": {"providers": list(models), "fallback_enabled": True}},
+    )
+    monkeypatch.setattr(
+        "app.services.llm_provider._make_llm_for_instance",
+        lambda iid, **kw: models.get(iid),
+    )
+    monkeypatch.setattr(
+        "app.services.llm_provider.describe_llm",
+        lambda llm: ("deepseek", "deepseek-v4-pro"),
+    )
+
+    async def _capture(**kwargs):
+        ecrit.append(kwargs)
+
+    monkeypatch.setattr("app.services.analytics_service.log_usage", _capture)
+    return ecrit
+
+
+@pytest.mark.asyncio
+async def test_each_panel_call_is_written_to_usage_logs(panel_mesure):
+    """Un appel facturé qui n'apparaît pas dans `usage_logs` est de l'argent
+    dépensé qu'Ely ne sait pas compter — c'est le défaut qui a rendu 42 M
+    tokens inexplicables pendant neuf jours."""
+    from app.agent.escalation import escalate_to_panel
+
+    await escalate_to_panel(
+        demande="Traduis en néerlandais.", produit="anglais", ecarts="- langue",
+        user_id="u-1", conversation_id="c-1",
+    )
+
+    panel = [e for e in panel_mesure if e.get("skill_used") == "escalation:panel"]
+    assert len(panel) == 2, (
+        f"les 2 modèles interrogés doivent produire 2 lignes, vu {len(panel)}"
+    )
+    assert all(e["input_tokens"] > 0 for e in panel), (
+        "les tokens doivent venir de usage_metadata, pas d'un zéro par défaut"
+    )
+    assert all(e["user_id"] == "u-1" and e["conversation_id"] == "c-1" for e in panel), (
+        "user_id et conversation_id étaient acceptés depuis #298 et jamais "
+        "utilisés : la ligne doit être rattachable à son tour"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_judge_is_billed_too(panel_mesure):
+    """Le juge est un appel facturé de plus par escalade. L'oublier
+    sous-estimerait la facture d'un tiers sur un panel de deux."""
+    from app.agent.escalation import escalate_to_panel
+
+    await escalate_to_panel(
+        demande="Traduis en néerlandais.", produit="anglais", ecarts="- langue",
+        user_id="u-1", conversation_id="c-1",
+    )
+
+    juge = [e for e in panel_mesure if e.get("skill_used") == "escalation:juge"]
+    assert len(juge) == 1, "le verdict du juge coûte, et doit se compter"
+
+
+@pytest.mark.asyncio
+async def test_a_provider_that_reports_nothing_is_not_written_as_zero(panel, monkeypatch):
+    """Écrire 0 token se lirait « gratuit ». Un fournisseur muet (fréquent en
+    local) n'est PAS un fournisseur gratuit — mieux vaut aucune ligne qu'une
+    ligne fausse, la même règle que `usage_from_result.has_metadata`."""
+    from app.agent.escalation import escalate_to_panel
+
+    ecrit: list[dict] = []
+
+    async def _capture(**kwargs):
+        ecrit.append(kwargs)
+
+    monkeypatch.setattr("app.services.analytics_service.log_usage", _capture)
+
+    # La fixture `panel` rend des réponses SANS usage_metadata.
+    await escalate_to_panel(
+        demande="x", produit="y", ecarts="- z",
+        user_id="u-1", conversation_id="c-1",
+    )
+    assert ecrit == [], "un usage non remonté ne doit pas devenir un usage nul"
+
+
+@pytest.mark.asyncio
+async def test_the_reported_cost_is_measured_not_estimated(panel_mesure, monkeypatch):
+    """`_estimate_call_usd` sert à décider AVANT de payer (4 caractères par
+    token, sortie supposée au quart). L'annoncer ensuite ferait passer une
+    approximation pour une facture."""
+    from app.agent import escalation
+
+    monkeypatch.setattr(
+        "app.services.analytics_service.estimate_cost",
+        lambda model, tin, tout: 0.25,
+    )
+    # Une estimation volontairement absurde : si elle ressort, c'est elle
+    # qu'on affichait.
+    monkeypatch.setattr(escalation, "_estimate_call_usd", lambda *a, **k: 0.0001)
+
+    result = await escalation.escalate_to_panel(
+        demande="Traduis en néerlandais.", produit="anglais", ecarts="- langue",
+        user_id="u-1", conversation_id="c-1",
+    )
+
+    assert result is not None
+    assert result.cost_usd > 0.0001, (
+        f"coût rendu {result.cost_usd} — c'est l'estimation d'avant-appel, "
+        f"pas ce qui a été mesuré"
+    )
