@@ -75,10 +75,12 @@ async def _user():
         await db.commit()
 
 
-async def _make_task(uid: str, *, cron: str = "0 8 * * *") -> str:
+async def _make_task(uid: str, *, cron: str = "0 8 * * *",
+                     allow_silent: bool = False) -> str:
     async with async_session() as db:
         t = ScheduledTask(user_id=uid, name="Veille test",
-                          prompt="surveille X", cron_expression=cron, channel="web")
+                          prompt="surveille X", cron_expression=cron, channel="web",
+                          allow_silent=allow_silent)
         db.add(t)
         await db.commit()
         return t.id
@@ -138,20 +140,84 @@ async def _planifie_conv_count(uid):
         )).scalar_one()
 
 
+async def _silencieuse_conv_count(uid):
+    """Les conversations d'exécutions silencieuses — renommées, pas supprimées."""
+    async with async_session() as db:
+        return (await db.execute(
+            select(func.count()).select_from(Conversation).where(
+                Conversation.user_id == uid,
+                Conversation.title.like("[Silencieuse]%"),
+            )
+        )).scalar_one()
+
+
 # ── [SILENT] ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_silent_suppresses_delivery_and_conversation(_user, monkeypatch):
+async def test_silent_suppresses_delivery_but_keeps_the_conversation(_user, monkeypatch):
+    """Une tâche AUTORISÉE à se taire ne livre pas — mais laisse sa trace.
+
+    La conversation était supprimée. C'est ce qui a rendu l'incident du 06/08
+    inexplicable : plus aucun moyen de relire le raisonnement qui avait mené
+    au silence. Elle est désormais conservée, simplement renommée pour ne pas
+    encombrer la liste comme une vraie conversation.
+    """
     from app.services.scheduler import _execute_task
     delivered = _patch_execute(monkeypatch, "[SILENT]")
-    tid = await _make_task(_user)
+    tid = await _make_task(_user, allow_silent=True)
 
     await _execute_task(tid)
 
-    assert delivered == []                       # no delivery
+    assert delivered == []                       # pas de livraison
     t = await _task_row(tid)
-    assert t is not None and t.last_status == "silent"   # task kept, marked silent
-    assert await _planifie_conv_count(_user) == 0        # throwaway conv removed
+    assert t is not None and t.last_status == "silent"
+    assert await _silencieuse_conv_count(_user) == 1, (
+        "la conversation d'une exécution silencieuse doit rester relisible"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_task_without_permission_delivers_anyway(_user, monkeypatch):
+    """LE pin de l'incident. Le garde-fou vivait dans le prompt — « pour une
+    tâche qui produit toujours un livrable, NE l'utilise JAMAIS » — donc dans
+    une phrase adressée au modèle. Invariant 3 : ce n'est pas un verrou.
+
+    « Propositions LinkedIn » a rendu [SILENT], et tout a disparu. Sans
+    permission, on livre : une proposition en trop se lit et s'ignore, une
+    proposition manquante ne se voit pas.
+    """
+    from app.services.scheduler import _execute_task
+    delivered = _patch_execute(monkeypatch, "[SILENT]")
+    tid = await _make_task(_user)          # allow_silent=False par défaut
+
+    await _execute_task(tid)
+
+    assert len(delivered) == 1, (
+        "une tâche non déclarée « de veille » doit livrer, même si le modèle "
+        "a demandé le silence"
+    )
+    t = await _task_row(tid)
+    assert t is not None and t.last_status == "success"
+
+
+@pytest.mark.asyncio
+async def test_a_prefixed_silent_does_not_swallow_the_deliverable(_user, monkeypatch):
+    """`startswith` avalait la réponse entière, propositions comprises.
+
+    La consigne dit « ce seul mot, rien d'autre » ; le test acceptait
+    n'importe quel préfixe. Un test plus large que son contrat finit toujours
+    par avaler autre chose que ce qu'il visait.
+    """
+    from app.services.scheduler import _execute_task
+    delivered = _patch_execute(
+        monkeypatch, "[SILENT] côté actualités, mais voici trois propositions…",
+    )
+    tid = await _make_task(_user, allow_silent=True)   # AUTORISÉE, et pourtant
+
+    await _execute_task(tid)
+
+    assert len(delivered) == 1, "un [SILENT] suivi de texte n'est pas un silence"
+    assert "trois propositions" in delivered[0][1]
 
 
 @pytest.mark.asyncio

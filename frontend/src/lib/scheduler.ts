@@ -13,7 +13,11 @@ import { authFetch } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export type RunStatus = "running" | "success" | "error";
+// `silent` et `missed` étaient ÉMIS par le backend sans figurer ici : le
+// rendu de /scheduled tombait sur un statut inconnu. `missed` = occurrence
+// due mais trop ancienne pour la fenêtre de rattrapage — elle ne sera pas
+// rejouée (06/08).
+export type RunStatus = "running" | "success" | "error" | "silent" | "missed";
 
 export interface ScheduledTask {
   id: string;
@@ -26,6 +30,8 @@ export interface ScheduledTask {
   last_result: string | null;
   last_status: RunStatus | null;       // null = jamais exécutée
   last_run_started_at: string | null;
+  // Cette tâche a-t-elle le DROIT de se taire ? Seule une tâche de veille.
+  allow_silent: boolean;
   created_at: string;
 }
 
