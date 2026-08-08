@@ -110,9 +110,123 @@ engines:
   # « too many requests » du moteur `brave` qui scrape. Décision de Franck du
   # 01/08 : plus cher que les fournisseurs déjà en repli, donc non retenu.
 
+  # ── PAO / prépresse — catégorie `pao` ─────────────────────────────────────
+  #
+  # ⚠️ `pao` N'EXISTE PAS en amont. SearXNG reconstruit son registre de
+  # catégories à chaque chargement, depuis les moteurs déclarés
+  # (`engines/__init__.py` : `categories.setdefault(nom, []).append(engine)`) —
+  # la nommer ici SUFFIT à la créer. Sur une instance SearXNG standard, une
+  # requête `categories=pao` est simplement ignorée et retombe sur `general` :
+  # dégradé, pas cassé.
+  #
+  # Elle n'apparaît pas en onglet dans l'UI (`categories_as_tabs` ne la
+  # contient pas, et on ne l'y ajoute pas) : elle sert à Ely, pas à la
+  # navigation humaine.
+  #
+  # ⚠️ Les entrées ci-dessous ne posent QUE `categories:` et `disabled:` sur
+  # des moteurs déjà définis — jamais leurs paramètres propres. C'est la
+  # nuance qui sépare cette liste de l'échec du 01/08 : `update_settings`
+  # fusionne clé par clé sur le nom (`settings_loader.py`, `update_dict`),
+  # donc surcharger `categories` préserve `wc_search_type` & consorts, tandis
+  # que RÉÉCRIRE un moteur entier les perd et fait « can't register engine ».
+  #
+  # ⚠️ `categories:` REMPLACE la liste, elle ne s'y ajoute pas. Chaque entrée
+  # répète donc la catégorie d'origine du module — relevée dans le code amont,
+  # pas devinée : `images` pour les huit premières, `images, icons` pour les
+  # deux jeux d'icônes. L'omettre les sortirait de `images`.
+
+  # Le savoir métier. Le module `stackexchange` est générique — `api_site`
+  # suffit, et il n'a pas de `categories` au niveau module : la déclarer est
+  # donc OBLIGATOIRE ici. graphicdesign couvre la PAO et l'impression, tex la
+  # typographie fine, l'imposition et PDF/X.
+  - name: graphicdesign
+    engine: stackexchange
+    api_site: 'graphicdesign'
+    shortcut: gd
+    categories: [q&a, pao]
+  - name: tex
+    engine: stackexchange
+    api_site: 'tex'
+    shortcut: tex
+    categories: [q&a, pao]
+
+  # Les sources visuelles à LICENCE EXPLICITE — les seules exploitables en
+  # production. Elles restent dans `images` et gagnent `pao`.
+  #
+  # ⚠️ Ce qui n'est PAS ici est un choix : pinterest, deviantart, artstation,
+  # pixiv, wallhaven sont des portfolios, pas des banques libres de droits.
+  # Les faire remonter sur `pao` reviendrait à proposer à l'impression des
+  # images qu'on n'a pas le droit d'imprimer. Même raison pour `500px` et
+  # `cara`, activés plus haut sur `images` : on les laisse en illustration et
+  # en veille, on ne les qualifie pas pour la production.
+  - name: openverse                  # agrégateur CC, filtre de licence intégré
+    categories: [images, pao]
+  - name: wikicommons.images
+    categories: [images, pao]
+  - name: artic                      # domaine public, qualité musée
+    categories: [images, pao]
+  - name: unsplash
+    categories: [images, pao]
+  - name: pexels
+    categories: [images, pao]
+  - name: pixabay images
+    disabled: false
+    categories: [images, pao]
+  - name: public domain image archive
+    disabled: false
+    categories: [images, pao]
+  - name: library of congress
+    disabled: false
+    categories: [images, pao]
+
+  # Icônes VECTORIELLES — du SVG, donc imprimable sans perte d'échelle.
+  - name: flaticon
+    disabled: false
+    categories: [images, icons, pao]
+  - name: material icons
+    disabled: false
+    categories: [images, icons, pao]
+
+  # ── Recherche inversée d'image ────────────────────────────────────────────
+  #
+  # ⚠️ TinEye prend une URL D'IMAGE comme requête, pas des mots. Sa catégorie
+  # amont est `general` (relevé dans `engines/tineye.py`) : l'activer tel quel
+  # enverrait CHAQUE recherche ordinaire d'Ely dans un moteur qui ne peut pas y
+  # répondre, avec ~9 s d'attente à la clé. Il est donc sorti dans une
+  # catégorie à lui — atteignable par le bang `!tin <url>`, jamais par accident.
+  #
+  # Il sert à vérifier provenance et antériorité d'un visuel AVANT de partir en
+  # production : un geste délibéré, pas un moteur de fond.
+  - name: tineye
+    disabled: false
+    categories: [reverse_image]
+
   # ── à écarter ──
   # Qwant tape une API non documentée (api.qwant.com/v3, rétro-conçue) et se
   # heurte à DataDome : CAPTCHA systématique sur les essais du 01/08. Aucune
   # clé n'y changerait rien — le moteur est fragile par construction.
   - name: qwant
     disabled: true
+
+  # ⚠️ `disabled: false` NE SUFFIT PAS sur ces trois-là : ils portent
+  # `inactive: true` en amont, et `load_engines` fait `continue` AVANT même de
+  # charger le moteur (`engines/__init__.py`). Il faudrait aussi `inactive:
+  # false` — et un moteur que ses mainteneurs marquent inactif est réputé
+  # cassé. L'activer produirait exactement le mode de panne que ce fichier
+  # combat : un moteur vert qui ne rend rien.
+  #
+  # À rouvrir seulement après vérification manuelle sur l'UI SearXNG :
+  #
+  #   - name: openclipart     # SVG domaine public — la meilleure source PAO
+  #     disabled: false       # ⚠️ timeout amont à 30 s : le baisser d'abord,
+  #     inactive: false       #    sinon une recherche `pao` attend 30 s quand
+  #     timeout: 6.0          #    Ely coupe à 15 s (search_tool.py)
+  #     categories: [images, pao]
+  #
+  #   - name: marginalia      # index indépendant, bon en texte long
+  #     disabled: false       # ⚠️ exige une clé : about.marginalia-search.com
+  #     inactive: false
+  #
+  #   - name: repology        # versions de paquets, toutes distributions
+  #     disabled: false
+  #     inactive: false

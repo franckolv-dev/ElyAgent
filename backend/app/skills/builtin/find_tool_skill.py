@@ -311,6 +311,29 @@ async def _select_with_model(capability: str, k: int) -> list[str]:
     return [getattr(t, "name", "") for t in choisis if getattr(t, "name", "")][:k]
 
 
+async def rank_tools_for_capability(
+    capability: str, k: int = 5
+) -> list[tuple[str, str]]:
+    """Les outils qui couvrent *capability*, en couples ``(nom, résumé)``.
+
+    Voie PARTAGÉE avec ``memory_recall("procedural", …)`` — Sprint 2.5 §2.5.2.
+    La « mémoire procédurale » du sprint, c'est le catalogue d'outils
+    requêtable en langage naturel : ce que ce module calcule déjà. Lui donner
+    son propre magasin aurait ouvert un SECOND chemin de découverte d'outils,
+    sans sélecteur local ni consignation de gap — deux fois la même dette.
+
+    Même chaîne que ``find_tool``, sélecteur d'abord : le classement lexical
+    seul se trompait une fois sur deux à la mesure du 29/07 (cf. le commentaire
+    dans ``find_tool``). Servir la procédurale depuis le repli connu-faible
+    aurait rejoué cette panne sous un autre nom.
+    """
+    await _ensure_catalog()
+    names = await _select_with_model(capability, k) or await _rank_capability(
+        capability, k
+    )
+    return [(n, _tool_first_sentence.get(n, "")) for n in names]
+
+
 async def _rank_capability(capability: str, k: int) -> list[str]:
     """Classement lexical+sémantique du catalogue COMPLET pour une capacité.
 

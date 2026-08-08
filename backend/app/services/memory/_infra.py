@@ -156,6 +156,99 @@ class MemoryInfra:
         return result.points
 
 
+    # ── Surface d'inspection (page « Mes mémoires », §2.5.6) ────────────
+    # La recherche par pertinence ne suffit pas à auditer : pour savoir ce
+    # qu'Ely retient, il faut pouvoir TOUT parcourir, sans requête. D'où ces
+    # deux primitives, qui n'existent que pour l'inspection humaine.
+
+    async def scroll_entries(
+        self,
+        collection: str,
+        user_id: str,
+        limit: int,
+        offset: str | None = None,
+    ) -> tuple[list, str | None]:
+        """Parcours paginé des points d'un utilisateur — (points, offset suivant).
+
+        Refuse un ``user_id`` vide, comme `qdrant_candidates` : ici la fuite
+        serait pire, il n'y a pas de requête pour restreindre le résultat.
+
+        ⚠️ Le curseur transite en **chaîne**. Ça tient parce que tous les points
+        de ce dépôt sont créés avec un UUID en chaîne (`upsert` fait
+        `str(uuid.uuid4())`, `store_preference` réutilise `str(existing.id)`) et
+        que Qdrant réaccepte un UUID textuel. Sur une collection à identifiants
+        ENTIERS, `str(42)` repartirait en `"42"` et le parcours boucherait à la
+        première page — il faudrait alors typer le curseur.
+
+        Laisse remonter ses erreurs : c'est l'appelant (`inspection.list_entries`)
+        qui décide de dégrader en page vide.
+        """
+        if not user_id:
+            logger.warning(
+                "Scroll refused: empty user_id on collection=%s "
+                "(would have listed every tenant — returning [])", collection
+            )
+            return [], None
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        points, next_offset = await asyncio.to_thread(
+            self.client.scroll,
+            collection_name=collection,
+            scroll_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            limit=limit,
+            offset=offset,
+            with_payload=True,
+        )
+        return points, (str(next_offset) if next_offset is not None else None)
+
+    async def delete_point(
+        self, collection: str, point_id: str, user_id: str
+    ) -> bool:
+        """Supprimer UN point, à condition qu'il appartienne à *user_id*.
+
+        Le filtre porte sur l'identifiant ET le propriétaire dans la MÊME
+        requête. Relire le point puis le supprimer laisserait une fenêtre
+        entre les deux, et surtout ferait reposer la garde sur du code
+        appelant — ici Qdrant ne peut pas supprimer le point d'un tiers, même
+        si l'appelant se trompe.
+
+        Rend `True` si un point a bien été retiré — le routeur en fait un 404,
+        pour ne pas confirmer l'existence d'un identifiant qui n'est pas à
+        l'appelant.
+        """
+        if not user_id or not point_id:
+            return False
+        from qdrant_client.models import (
+            FieldCondition, Filter, FilterSelector, HasIdCondition, MatchValue,
+        )
+        selector = FilterSelector(
+            filter=Filter(
+                must=[
+                    HasIdCondition(has_id=[point_id]),
+                    FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+                ]
+            )
+        )
+        # `count` AVANT le delete : l'opération Qdrant ne dit pas combien de
+        # points elle a touchés, et « supprimé » vs « inexistant » est
+        # exactement la distinction que le routeur doit rendre.
+        before = await asyncio.to_thread(
+            self.client.count,
+            collection_name=collection,
+            count_filter=selector.filter,
+            exact=True,
+        )
+        if before.count == 0:
+            return False
+        await asyncio.to_thread(
+            self.client.delete,
+            collection_name=collection,
+            points_selector=selector,
+        )
+        return True
+
+
 @lru_cache(maxsize=1)
 def get_memory_infra() -> MemoryInfra:
     return MemoryInfra()

@@ -55,7 +55,8 @@
     "navGroupSkills": "Skills",
     "navGroupAnalysis": "Analytics",
     "navReversibleActions": "Undo history",
-    "navGroupAdmin": "Admin"
+    "navGroupAdmin": "Admin",
+    "navMemories": "My memories"
   },
   "knowledge": {
     "title": "Knowledge base",
@@ -1197,5 +1198,16 @@
         "3": "Copy the generated key"
       }
     }
+  },
+  "memories": {
+    "title": "My memories",
+    "subtitle": "What ELY remembers about you — Sprint 2.5",
+    "loading": "Loading your memories…",
+    "empty": "Nothing in this family yet.",
+    "noContent": "(entry with no text)",
+    "forget": "Forget this entry",
+    "confirmForget": "Confirm",
+    "cancel": "Cancel",
+    "loadMore": "Load more"
   }
 }

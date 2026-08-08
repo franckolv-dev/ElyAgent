@@ -38,14 +38,15 @@ from app.skills.decorator import register
 logger = logging.getLogger(__name__)
 
 
-# V0-5 — `procedural` et `error` ne sont PLUS annoncés : aucun des deux n'a
-# de lecture derrière lui (magasin procédural = stub retiré ; erreurs =
-# écriture seule). Les annoncer poussait le modèle à les interroger, et à lire
-# la réponse vide comme « aucune procédure connue » / « je n'ai jamais échoué
-# là-dessus ». MemoryType.parse les accepte encore (données existantes) — la
+# `error` n'est PAS annoncé : écriture seule. L'annoncer poussait le modèle à
+# l'interroger, et à lire la réponse vide comme « je n'ai jamais échoué
+# là-dessus ». MemoryType.parse l'accepte encore (données existantes) — la
 # réponse dit alors franchement que la mémoire n'est pas consultable.
+#
+# `procedural` est de retour (02/08) : il a désormais une lecture, servie par
+# le registre d'outils via find_tool.
 _VALID_TYPES_TEXT = (
-    "episodic | semantic_user | constraint | auto"
+    "episodic | semantic_user | procedural | constraint | auto"
 )
 
 
@@ -55,7 +56,7 @@ _VALID_TYPES_TEXT = (
     skill_display_name="Mémoire unifiée multi-typée",
     skill_description=(
         "Recall typé sur la mémoire cognitive d'ELY (épisodique, sémantique-user, "
-        "contraintes). API unique remplaçant à terme les "
+        "procédurale, contraintes). API unique remplaçant à terme les "
         "anciens tools memory_search / memory_recent / notes_search / etc."
     ),
     skill_icon="🧠",
@@ -83,20 +84,25 @@ async def memory_recall(
     - **semantic_user**  : stable facts about the user (preferences, who
                           they are, projects, vocabulary).
                           "Does the user have a doctor?"
+    - **procedural**     : HOW to do something — which of your own tools
+                          covers a need ("how do I send an email?" →
+                          ``gmail_send_email``). Read from the tool catalog,
+                          so it is never out of date. The tools it names
+                          become callable for the rest of the conversation.
     - **constraint**     : user-imposed security rules
                           ("never delete without asking").
-    - **auto**           : fan out across all of the above in parallel and
-                          merge results by score.
+    - **auto**           : fan out across episodic, semantic_user and
+                          constraint, merging by score. ``procedural`` is
+                          NOT in the fan-out — ask for it explicitly.
 
-    Deux types existent en base mais ne sont PAS consultables : ``procedural``
-    (jamais eu de magasin) et ``error`` (écriture seule). Les demander rend un
-    message explicite, pas une liste vide — la nuance évite de conclure « rien
-    en mémoire » alors que la bonne conclusion est « pas de lecture ».
+    One type exists but is NOT readable: ``error`` (write-only). Asking for it
+    returns an explicit message, not an empty list — the distinction avoids
+    concluding "nothing in memory" when the truth is "no read path".
 
     Args:
         query: free-text describing what you want to remember.
-        memory_type: one of (``episodic | semantic_user | constraint |
-                     auto``). Default ``auto``.
+        memory_type: one of (``episodic | semantic_user | procedural |
+                     constraint | auto``). Default ``auto``.
         limit: how many hits to return. Clamped to [1, 10].
 
     Returns:
@@ -143,11 +149,37 @@ async def memory_recall(
         )
 
     if not hits:
+        if mt == MemoryType.PROCEDURAL:
+            # Message DISTINCT : « aucun souvenir » n'a aucun sens ici. Un
+            # catalogue muet dit « aucun outil ne couvre ça », ce qui appelle
+            # report_missing_capability — pas « on n'en a jamais parlé ».
+            return (
+                f"Aucun outil du catalogue ne couvre « {query} ». Si le besoin "
+                "est réel, signale-le avec report_missing_capability plutôt que "
+                "de conclure que c'est impossible."
+            )
         return (
             f"Aucun souvenir trouvé pour « {query} » (type={mt.value}). "
             "Cela peut signifier qu'on n'en a jamais parlé, ou que la "
             "formulation actuelle ne matche pas les mots utilisés à l'époque."
         )
+
+    if mt == MemoryType.PROCEDURAL:
+        # Nommer un outil sans le rendre appelable serait une façade : le
+        # modèle lirait « gmail_send_email existe », l'appellerait, et ne le
+        # trouverait pas dans son profil bindé. `find_tool` enregistre ses
+        # trouvailles pour qu'`agent_node` les binde au tour suivant ; la
+        # procédurale sert le MÊME classement, elle doit donc le faire aussi.
+        try:
+            from app.agent.discovered_tools import add_discovered
+            from app.agent.tool_context import CURRENT_CONVERSATION_ID
+
+            names = [
+                h.metadata["tool_name"] for h in hits if h.metadata.get("tool_name")
+            ]
+            add_discovered(CURRENT_CONVERSATION_ID.get(), names)
+        except Exception as exc:  # noqa: BLE001 — jamais casser le tour
+            logger.debug("memory_recall: binding collant impossible: %s", exc)
 
     # Compose a prose digest — one paragraph per hit. Avoid JSON / tables.
     lines: list[str] = [
@@ -158,7 +190,7 @@ async def memory_recall(
         kind_label = {
             MemoryType.EPISODIC: "conversation passée",
             MemoryType.SEMANTIC_USER: "fait stable",
-            MemoryType.PROCEDURAL: "procédure",
+            MemoryType.PROCEDURAL: "outil disponible",
             MemoryType.CONSTRAINT: "règle",
             MemoryType.ERROR: "erreur passée",
             MemoryType.AUTO: "souvenir",

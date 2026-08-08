@@ -38,12 +38,21 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 
 # Les quatre documents réécrits + les READMEs.
+#
+# ⚠️ 02/08 — `COMMERCIAL_LICENSE.md` et `ROADMAP.md` ont rejoint la liste. Le
+# premier a porté DEUX liens morts pendant trois jours (`./ROADMAP.md` et
+# `./docs/START_HERE.md`, tous deux archivés en #308) précisément parce qu'il
+# était classé « surface légale » et non « documentation » : rien ne le
+# relisait. Un document contractuel public mérite le même garde-fou — c'est
+# même celui qu'on peut le moins se permettre de laisser pourrir.
 _DOCS: tuple[Path, ...] = (
     _REPO / "README.md",
     _REPO / "README.fr.md",
     _REPO / "docs" / "architecture.md",
     _REPO / "docs" / "installation.md",
     _REPO / "docs" / "guide-utilisateur.md",
+    _REPO / "COMMERCIAL_LICENSE.md",
+    _REPO / "ROADMAP.md",
 )
 
 # Modules et symboles retirés par les lots 1 à 5 du ménage. Un document qui les

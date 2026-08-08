@@ -50,9 +50,6 @@ def get_semantic_user_store() -> SemanticUserStore:
 
 
 @lru_cache(maxsize=1)
-
-
-@lru_cache(maxsize=1)
 def get_error_store() -> ErrorStore:
     return ErrorStore()
 

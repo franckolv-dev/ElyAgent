@@ -34,6 +34,15 @@ on n'en a peut-être jamais parlé ». Le modèle pouvait en conclure qu'il
 n'existe pas de procédure — alors qu'il n'existe pas de *magasin*. C'est
 exactement la façade que la boucle d'auto-diagnostic est censée détecter.
 
+**Suite, 02/08.** ``procedural`` est redevenu annonçable — non pas en
+rouvrant le magasin, mais en lui donnant la seule source qui existait déjà :
+le **registre d'outils**, relu par la voie de ``find_tool``. Le stub reste
+supprimé (les trois premiers tests ci-dessous le vérifient toujours), et la
+règle qui comptait est désormais épinglée telle quelle : *ne jamais annoncer
+un type qu'on ne sait pas lire*. Un catalogue muet répond « aucun outil ne
+couvre ça », jamais « aucun souvenir » — la formulation d'origine renvoyait
+le modèle vers la mauvaise conclusion.
+
 Run with:  cd backend && python -m pytest tests/test_inert_code_removed.py -v
 """
 from __future__ import annotations
@@ -123,24 +132,39 @@ def test_memory_manager_still_builds_without_the_stub():
 
 # ------------------------------- le mensonge retiré au modèle (le vrai gain)
 
-def test_memory_recall_no_longer_offers_unreadable_types():
-    """Les deux types sans lecture ne sont plus proposés comme valeurs
-    acceptées. (La docstring peut les MENTIONNER pour dire qu'ils ne sont pas
-    consultables — c'est justement le but.)"""
-    from app.agent.tools.memory_recall_tool import _VALID_TYPES_TEXT, memory_recall
+def test_memory_recall_never_offers_a_type_it_cannot_read():
+    """L'invariant, pas la liste — révisé le 02/08.
 
-    assert "procedural" not in _VALID_TYPES_TEXT
-    assert "error" not in _VALID_TYPES_TEXT
-    assert "episodic" in _VALID_TYPES_TEXT and "auto" in _VALID_TYPES_TEXT
+    Version d'origine : « ni `procedural` ni `error` ne sont proposés ». Elle
+    figeait un CONSTAT (aucun des deux n'avait de lecture) là où la leçon est
+    une RÈGLE : ne jamais annoncer au modèle un type qu'on ne sait pas lire.
+    `procedural` a désormais une lecture — le registre d'outils — donc
+    l'annoncer n'est plus un mensonge. `error` reste en écriture seule.
+
+    Dérivé de `_UNREADABLE_TYPES` : la règle se vérifie toute seule au
+    prochain changement, au lieu de rougir sur une liste à remettre à jour.
+    """
+    from app.agent.tools.memory_recall_tool import _VALID_TYPES_TEXT, memory_recall
+    from app.services.memory.recall_service import _UNREADABLE_TYPES
+
+    offerts = {t.strip() for t in _VALID_TYPES_TEXT.split("|")}
+    illisibles = {t.value for t in _UNREADABLE_TYPES}
+
+    assert not (offerts & illisibles), (
+        f"types annoncés alors qu'ils ne se lisent pas : {offerts & illisibles}"
+    )
+    assert "episodic" in offerts and "auto" in offerts
+    # Le gain du 02/08 : celui-ci est passé d'illisible à annonçable.
+    assert "procedural" in offerts
 
     described = f"{memory_recall.description}".lower()
-    assert "pas consultable" in described or "ne sont pas consultables" in described, (
-        "l'outil doit dire explicitement que ces types ne se lisent pas"
+    assert "not readable" in described or "pas consultable" in described, (
+        "l'outil doit dire explicitement qu'un type ne se lit pas"
     )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("memory_type", ["procedural", "error"])
+@pytest.mark.parametrize("memory_type", ["error"])
 async def test_memory_recall_on_an_unreadable_type_says_so_plainly(memory_type):
     """Si le modèle demande quand même ces types, la réponse doit être « ce
     n'est pas consultable », pas « aucun souvenir trouvé » — la seconde

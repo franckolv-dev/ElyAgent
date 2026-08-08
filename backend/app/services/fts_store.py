@@ -183,6 +183,27 @@ class FTSStore:
     # Maintenance                                                          #
     # ------------------------------------------------------------------ #
 
+    async def delete_point(self, qdrant_id: str, user_id: str) -> None:
+        """Retirer de l'index la ligne d'UN point Qdrant — bouton « oublier ».
+
+        Filtré sur ``user_id`` en plus de l'identifiant : l'identifiant vient
+        du client, et un point n'appartient pas forcément à qui le nomme.
+
+        Sans ce nettoyage, la ligne FTS survit au vecteur supprimé et continue
+        de sortir en `search()` — `_search_hybrid` fait `fts_boost` sur des
+        identifiants que Qdrant ne connaît plus. Le souvenir « oublié »
+        pèserait encore sur le classement, invisible mais actif.
+        """
+        try:
+            async with _connect(_db_path()) as db:
+                await db.execute(
+                    "DELETE FROM memory_fts WHERE qdrant_id = ? AND user_id = ?",
+                    (qdrant_id, user_id),
+                )
+                await db.commit()
+        except Exception as exc:
+            logger.warning("FTS delete_point failed: %s", exc)
+
     async def delete_user_data(self, user_id: str) -> None:
         """Remove all FTS entries for a given user (GDPR / account deletion)."""
         try:

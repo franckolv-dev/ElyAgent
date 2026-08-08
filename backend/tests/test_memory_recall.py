@@ -13,7 +13,8 @@ Covers:
   - MemoryRecallService input guards (empty user_id, empty query)
   - MemoryRecallService.recall() correctly dispatches to the right store
   - AUTO fan-out merges and de-duplicates
-  - ERROR type returns [] (write-only in V1)
+  - ERROR type raises UnreadableMemoryType (write-only)
+  - PROCEDURAL reads the tool registry (02/08) and stays out of the fan-out
   - LangChain tool input validation
   - LangChain tool composes a prose digest from MemoryHits
 
@@ -113,6 +114,50 @@ async def test_recall_error_type_raises_unreadable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_recall_procedural_is_readable_again(monkeypatch) -> None:
+    """PIN 02/08 — `procedural` a cessé d'être « non consultable ».
+
+    Il l'était parce qu'aucun magasin ne le servait. Sa source est désormais le
+    registre d'outils, via la même voie que `find_tool`. Ce test échoue si
+    quelqu'un le remet dans `_UNREADABLE_TYPES` sans retirer la lecture.
+    """
+    import app.skills.builtin.find_tool_skill as fts
+
+    async def fake_rank(capability: str, k: int = 5) -> list[tuple[str, str]]:
+        return [("gmail_send_email", "Envoyer un email")]
+
+    monkeypatch.setattr(fts, "rank_tools_for_capability", fake_rank)
+
+    svc = MemoryRecallService()
+    hits = await svc.recall(MemoryType.PROCEDURAL, "envoyer un mail", user_id="u1")
+    assert [h.type for h in hits] == [MemoryType.PROCEDURAL]
+    assert hits[0].metadata["tool_name"] == "gmail_send_email"
+    assert "gmail_send_email" in hits[0].content
+
+
+@pytest.mark.asyncio
+async def test_recall_procedural_reflects_the_registry_without_a_store() -> None:
+    """Le livrable mesurable du §2.5.2 : ajouter un outil au CODE suffit.
+
+    Aucun magasin, aucune écriture, aucune migration — la procédurale lit le
+    registre. Un outil qui vient d'être enregistré doit donc pouvoir sortir
+    d'un recall sans qu'on ait rien stocké.
+    """
+    from app.skills.builtin import register_all
+
+    register_all()
+    svc = MemoryRecallService()
+    hits = await svc.recall(
+        MemoryType.PROCEDURAL, "chercher sur le web", user_id="u1", limit=5
+    )
+    # Best-effort sur le classement (encodeur/sélecteur peuvent manquer en
+    # test) — ce qui est épinglé, c'est que la voie RÉPOND au lieu de lever.
+    assert isinstance(hits, list)
+    assert all(h.type == MemoryType.PROCEDURAL for h in hits)
+    assert all("tool_name" in h.metadata for h in hits)
+
+
+@pytest.mark.asyncio
 async def test_recall_invalid_memory_type_string_raises_value_error() -> None:
     """The service rejects unknown types loudly. The tool layer above
     catches this and returns a user-friendly error to the LLM."""
@@ -182,8 +227,10 @@ async def test_recall_auto_fans_out_to_all_stores_and_merges(monkeypatch) -> Non
 
     hits = await svc.recall(MemoryType.AUTO, "anything", user_id="u1", limit=20)
     types_returned = {h.type for h in hits}
-    # V0-5 : 3 types lisibles. PROCEDURAL a quitté le fan-out (magasin stub
-    # retiré) et ERROR n'y a jamais été (écriture seule).
+    # 3 types dans le fan-out. ERROR n'y a jamais été (écriture seule).
+    # PROCEDURAL est lisible depuis le 02/08 mais reste DEHORS, exprès : « de
+    # quoi te souviens-tu à propos de X » ne doit pas rendre des noms d'outils
+    # au milieu des souvenirs. L'y remettre casse ce test — c'est voulu.
     assert types_returned == {
         MemoryType.EPISODIC,
         MemoryType.SEMANTIC_USER,
@@ -321,3 +368,85 @@ async def test_tool_composes_prose_digest_from_hits(monkeypatch) -> None:
     assert "Doctolib" in out
     # Numbered list expected
     assert "1." in out and "2." in out
+
+
+# ── Procédurale, couche outil (02/08) ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tool_procedural_binds_the_tools_it_names(monkeypatch) -> None:
+    """PIN anti-façade : nommer un outil doit le rendre APPELABLE.
+
+    Sans ce binding, le modèle lit « gmail_send_email existe », l'appelle, et
+    ne le trouve pas dans son profil — l'outil aurait annoncé une capacité que
+    le tour suivant dément. `find_tool` enregistre ses trouvailles pour
+    qu'`agent_node` les binde ; la procédurale sert le même classement et doit
+    donc faire pareil.
+    """
+    from app.agent import discovered_tools
+    from app.agent.tool_context import CURRENT_CONVERSATION_ID
+    from app.agent.tools import memory_recall_tool
+
+    async def fake_recall(
+        memory_type, query: str, user_id: str, limit: int = 5,
+        filter: dict | None = None,
+    ) -> list[MemoryHit]:
+        return [
+            MemoryHit(
+                type=MemoryType.PROCEDURAL,
+                content="gmail_send_email — Envoyer un email",
+                metadata={"tool_name": "gmail_send_email"},
+            )
+        ]
+
+    # staticmethod : sans lui `recall` devient une méthode liée et `self`
+    # passe en 1er positionnel, ce qui casse la signature réelle. Les faux
+    # gardent la vraie signature — c'est ce qui fait remarquer un changement
+    # de contrat, un `**kwargs` l'avalerait en silence.
+    fake_service = type("S", (), {"recall": staticmethod(fake_recall)})()
+    monkeypatch.setattr(
+        memory_recall_tool, "get_memory_recall_service", lambda: fake_service
+    )
+
+    token = CURRENT_CONVERSATION_ID.set("conv-proc-test")
+    try:
+        await memory_recall_tool.memory_recall.ainvoke({
+            "query": "envoyer un mail",
+            "memory_type": "procedural",
+            "user_id": "u1",
+        })
+        assert "gmail_send_email" in discovered_tools.get_discovered("conv-proc-test")
+    finally:
+        CURRENT_CONVERSATION_ID.reset(token)
+        discovered_tools.discard_discovered("conv-proc-test")
+
+
+@pytest.mark.asyncio
+async def test_tool_procedural_empty_says_no_tool_not_no_memory(monkeypatch) -> None:
+    """Un catalogue muet ne dit pas « on n'en a jamais parlé ».
+
+    Le message générique parle de souvenirs et de formulation d'époque : sur la
+    procédurale il enverrait le modèle chercher dans la mauvaise direction, au
+    lieu de l'orienter vers report_missing_capability.
+    """
+    from app.agent.tools import memory_recall_tool
+
+    async def fake_recall(
+        memory_type, query: str, user_id: str, limit: int = 5,
+        filter: dict | None = None,
+    ) -> list[MemoryHit]:
+        return []
+
+    fake_service = type("S", (), {"recall": staticmethod(fake_recall)})()
+    monkeypatch.setattr(
+        memory_recall_tool, "get_memory_recall_service", lambda: fake_service
+    )
+
+    out = await memory_recall_tool.memory_recall.ainvoke({
+        "query": "piloter un drone",
+        "memory_type": "procedural",
+        "user_id": "u1",
+    })
+    assert "Aucun outil du catalogue" in out
+    assert "report_missing_capability" in out
+    assert "souvenir" not in out.lower()

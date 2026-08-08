@@ -85,12 +85,19 @@ pendant la transition V1, le legacy disparaîtra en V2 ou V3.
 
 1. Choisir le **MemoryType** (cf. design note §2).
 
-> ⚠️ **V0-5** — deux types ne sont pas *lisibles* : `PROCEDURAL` (son magasin
-> était un stub sans aucune voie d'écriture, retiré) et `ERROR` (écriture
-> seule : les erreurs partent en `failure_cases`, rien ne les relit).
-> `memory_recall` ne les propose plus et, si on les demande, répond « pas
-> consultable » au lieu de rendre une liste vide — un vide se lit « rien en
-> mémoire », ce qui est une affirmation sur le monde que rien ne justifie.
+> ⚠️ **`ERROR` n'est pas *lisible*** : écriture seule, les erreurs partent en
+> `failure_cases` et rien ne les relit. `memory_recall` ne le propose pas et,
+> si on le demande, répond « pas consultable » au lieu de rendre une liste
+> vide — un vide se lit « rien en mémoire », ce qui est une affirmation sur le
+> monde que rien ne justifie.
+
+> ⚠️ **`PROCEDURAL` n'a pas de magasin, et n'en veut pas** (02/08). Il est
+> *lisible* mais **jamais écrit** : sa source est le registre d'outils, lu par
+> `rank_tools_for_capability` — la voie de `find_tool`. C'est ce que le §2.5.2
+> demandait (« le catalogue requêtable en langage naturel »), et lui donner sa
+> propre table aurait ouvert un second chemin de découverte d'outils, sans
+> sélecteur local ni consignation de gap. **Ne pas ajouter d'écriture ici** :
+> un outil ajouté au code y apparaît sans qu'on stocke quoi que ce soit.
 
 2. Récupérer le store typé via le bon accessor :
    - `get_semantic_user_store()`

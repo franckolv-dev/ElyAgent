@@ -55,7 +55,8 @@
     "navGroupSkills": "Compétences",
     "navGroupAnalysis": "Analyse",
     "navReversibleActions": "Annulations",
-    "navGroupAdmin": "Admin"
+    "navGroupAdmin": "Admin",
+    "navMemories": "Mes mémoires"
   },
   "knowledge": {
     "title": "Base de connaissances",
@@ -1197,5 +1198,16 @@
         "3": "Copiez la clé générée"
       }
     }
+  },
+  "memories": {
+    "title": "Mes mémoires",
+    "subtitle": "Ce qu'ELY retient de toi — Sprint 2.5",
+    "loading": "Chargement de tes mémoires…",
+    "empty": "Rien dans cette famille pour l'instant.",
+    "noContent": "(entrée sans texte)",
+    "forget": "Oublier cette entrée",
+    "confirmForget": "Confirmer l'oubli",
+    "cancel": "Annuler",
+    "loadMore": "Charger la suite"
   }
 }
