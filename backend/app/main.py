@@ -261,9 +261,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         _startup_logger.warning("MCP client manager failed to load", exc_info=True)
 
-    # Warm up SLM — loads model into RAM so the first real request has no cold-start
+    # Chauffe du SLM — charge le modèle en RAM pour épargner un démarrage à
+    # froid à la première question. ⚠️ `warmup_slm` REND LA MAIN aussitôt : il
+    # ne fait que poser une tâche de fond. Le 08/08, il était attendu ici, son
+    # backoff brûlait 62 s sur un serveur local injoignable, et le healthcheck
+    # du compose (15 s + 3 × 30 s) déclarait le conteneur mort alors qu'Ely
+    # finissait par démarrer. Un confort optionnel ne prend pas le service en
+    # otage — ne pas remettre d'`await` ici.
     from app.services.slm_warmup import warmup_slm
-    await warmup_slm()
+    await warmup_slm()  # non bloquant par construction — voir le module
 
     # Couche 2 PII NER (GLiNER ONNX int8) — chargée au boot UNIQUEMENT si
     # PII_NER_ENABLED est posé (défaut off). Fail-open : tout échec laisse
