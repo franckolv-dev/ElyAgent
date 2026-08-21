@@ -565,13 +565,26 @@ async def websocket_voice(websocket: WebSocket):
                 try:
                     from app.services.analytics_service import log_usage
 
-                    _parts = model_used_out.split(":", 1)
-                    _type = _parts[0]
-                    _rest = _parts[1] if len(_parts) > 1 else model_used_out
-                    if "/" in _rest:
-                        _provider, _model = _rest.split("/", 1)
-                    else:
-                        _provider, _model = ("ollama" if _type == "slm" else "unknown"), _rest
+                    # Troisième copie du découpage, supprimée le 21/08 — celle-ci
+                    # avait DÉJÀ dérivé : elle ne retirait pas le suffixe
+                    # « +tools », donc le nom de modèle le portait dans les
+                    # lignes d'usage de la voix. C'est précisément ce que la
+                    # docstring de `split_model_used` annonçait.
+                    from app.services.usage_instrumentation import (
+                        estimate_tokens_if_missing, split_model_used,
+                    )
+                    _provider, _model = split_model_used(model_used_out)
+                    # Et la voix ne complétait pas les compteurs restés à zéro :
+                    # un tour local y était journalisé à 0 jeton, ce qui le
+                    # rendait invisible dans les chiffres au lieu d'approximatif.
+                    input_tokens_total, output_tokens_total, _ = (
+                        estimate_tokens_if_missing(
+                            input_tokens=input_tokens_total,
+                            output_tokens=output_tokens_total,
+                            user_content=user_text,
+                            ai_content=ai_content,
+                        )
+                    )
                     _skill = (
                         max(set(tools_called), key=tools_called.count)
                         if tools_called else None

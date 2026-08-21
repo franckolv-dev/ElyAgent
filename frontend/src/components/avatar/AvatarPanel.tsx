@@ -121,6 +121,9 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   // the value visible after the streaming ends (wsMessage drops to null).
   const [lastModel,   setLastModel]   = useState<string>("");
   const [tokensUsed,  setTokensUsed]  = useState<{ input: number; output: number }>({ input: 0, output: 0 });
+  // Les serveurs locaux ne renvoient pas toujours d'`usage_metadata` : le
+  // backend estime alors, et le dit. Cf. `estimate_tokens_if_missing`.
+  const [tokensEstimated, setTokensEstimated] = useState(false);
 
   // SYNC = rolling success rate over last 10 messages (1=success, 0=error)
   const recentOutcomes = useRef<number[]>([]);
@@ -218,13 +221,18 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
         setNeuralScore(neuralScoreForModel(modelUsed));
         setLastModel(modelUsed);
       }
-      // Tokens cumulés sur la session (incrément par message)
-      const wsAny = wsMessage as unknown as { input_tokens?: number; output_tokens?: number };
-      if (wsAny.input_tokens || wsAny.output_tokens) {
+      // Tokens cumulés sur la session (incrément par message).
+      // Le `as unknown as {…}` qui vivait ici a été retiré le 21/08 : les
+      // champs sont déclarés dans `WSMessage`. Il masquait le vrai défaut —
+      // le backend ne les émettait pas, et un cast ne peut pas s'en plaindre.
+      if (wsMessage.input_tokens || wsMessage.output_tokens) {
         setTokensUsed((prev) => ({
-          input: prev.input + (wsAny.input_tokens || 0),
-          output: prev.output + (wsAny.output_tokens || 0),
+          input:  prev.input  + (wsMessage.input_tokens  || 0),
+          output: prev.output + (wsMessage.output_tokens || 0),
         }));
+        // Une session reste marquée « estimée » dès qu'un seul de ses tours
+        // l'était : le total affiché n'est alors plus une mesure.
+        if (wsMessage.tokens_estimated) setTokensEstimated(true);
       }
 
       setHitlAction(null);
@@ -424,7 +432,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
           <span className="k">TOKENS</span>
           <span className="v">
             {tokensUsed.input + tokensUsed.output > 0
-              ? `${formatTokens(tokensUsed.input + tokensUsed.output)}`
+              ? `${tokensEstimated ? "~" : ""}${formatTokens(tokensUsed.input + tokensUsed.output)}`
               : "—"}
           </span>
         </div>

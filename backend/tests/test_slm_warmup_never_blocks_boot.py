@@ -205,12 +205,36 @@ async def test_the_declared_provider_wins_over_the_guessed_one(monkeypatch):
 
 
 def test_the_declared_provider_is_read_from_the_instance_not_reinvented():
-    """Il doit venir du cache d'instances — la source de ce que l'UI écrit."""
+    """Il doit venir du cache d'instances — la source de ce que l'UI écrit.
+
+    Le corps a déménagé le 21/08 dans `llm_provider.declared_provider_for_tier`
+    quand le chemin d'étiquetage a eu besoin de la même lecture. L'invariant
+    n'a pas bougé, seulement son adresse : ce pin le suit.
+    """
     import inspect
 
-    from app.services import slm_warmup
+    from app.services import llm_provider, slm_warmup
 
-    src = inspect.getsource(slm_warmup._provider_declare)
+    src = inspect.getsource(llm_provider.declared_provider_for_tier)
     assert "_instance_cache" in src and "get_tier_config" in src, (
-        "le fournisseur déclaré se lit dans la configuration réelle du tier A"
+        "le fournisseur déclaré se lit dans la configuration réelle du tier"
+    )
+    # Et le warm-up DÉLÈGUE : une seconde lecture recopiée ici dériverait de
+    # celle du nœud agent, et les deux se contrediraient en silence.
+    assert "declared_provider_for_tier" in inspect.getsource(
+        slm_warmup._provider_declare
+    ), "le warm-up doit déléguer, pas recopier la lecture"
+
+
+def test_the_declared_provider_is_read_per_tier():
+    """Le tier A n'est pas le seul concerné : l'étiquette du chemin SLM lit la
+    même chaîne. La fonction extraite prend donc le tier en paramètre — un
+    « simple » codé en dur aurait re-planté au premier autre appelant."""
+    import inspect
+
+    from app.services import llm_provider
+
+    params = inspect.signature(llm_provider.declared_provider_for_tier).parameters
+    assert "tier_key" in params, (
+        "la lecture doit être paramétrée par tier, pas figée sur « simple »"
     )

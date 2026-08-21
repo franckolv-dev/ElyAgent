@@ -82,28 +82,15 @@ _TIMEOUT_APPEL = 30.0     # un chargement en RAM, pas une génération
 def _provider_declare() -> str:
     """Le fournisseur du rang 1 du tier A, tel que l'utilisateur l'a DÉCLARÉ.
 
-    Rend ``""`` quand la chaîne est illisible — l'appelant retombe alors sur
-    la déduction de ``describe_llm``, qui vaut « au mieux ».
-
-    Une entrée de chaîne est soit un UUID d'instance (le cas normal : on lit
-    son champ ``provider``), soit un nom de fournisseur hérité, qui EST la
-    réponse.
+    Le corps vit dans `llm_provider.declared_provider_for_tier` depuis le
+    21/08 : le chemin d'étiquetage en a eu besoin à son tour, et deux copies
+    de cette lecture auraient dérivé. Cette fonction reste ici comme point
+    d'entrée nommé du warm-up — les pins de #328 s'y accrochent, et c'est le
+    tier A que la chauffe concerne, pas un tier quelconque.
     """
-    try:
-        from app.services.llm_provider import (
-            _instance_cache, _is_instance_id, get_tier_config,
-        )
+    from app.services.llm_provider import declared_provider_for_tier
 
-        chaine = list((get_tier_config().get("simple") or {}).get("providers") or [])
-        if not chaine:
-            return ""
-        premier = chaine[0]
-        if not _is_instance_id(premier):
-            return str(premier)
-        return str((_instance_cache.get(premier) or {}).get("provider") or "")
-    except Exception as exc:  # noqa: BLE001 — un diagnostic ne casse rien
-        logger.debug("SLM warm-up : fournisseur déclaré illisible (%s)", exc)
-        return ""
+    return declared_provider_for_tier("simple")
 
 
 async def _warmup() -> None:

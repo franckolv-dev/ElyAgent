@@ -140,6 +140,14 @@ def split_model_used(model_used: str | None) -> tuple[str, str]:
 
     Même découpage que `chat.py`, extrait ici pour que les canaux n'aient pas
     à le recopier — trois copies auraient dérivé.
+
+    ⚠️ Le séparateur est le PREMIER ``/``, et c'est délibéré : LM Studio nomme
+    ses modèles ``nvidia/nemotron-3-nano-4b``, ``google/gemma-4-12b``. Le nom
+    contient donc un ``/`` qui n'est pas celui du fournisseur. Un découpage sur
+    le dernier ``/`` rendrait « nemotron-3-nano-4b » comme fournisseur ; sur le
+    premier, l'étiquette DOIT porter le fournisseur en tête. C'est ce que fait
+    le chemin SLM depuis le 21/08 — avant, il émettait ``slm:<modèle>`` nu et
+    le tableau de bord attribuait les tours locaux à « nvidia ».
     """
     raw = (model_used or "").strip()
     if not raw:
@@ -151,7 +159,47 @@ def split_model_used(model_used: str | None) -> tuple[str, str]:
     if "/" in rest:
         provider, model = rest.split("/", 1)
         return provider, model
-    return ("ollama" if kind == "slm" else "unknown"), rest
+    # Sans fournisseur en tête, on ne sait pas — et « ollama » en dur était un
+    # reste du temps où le SLM ne pouvait être QUE d'Ollama. C'est faux depuis
+    # que le tier A est configurable (LM Studio chez Franck) : le défaut
+    # nommait un fournisseur au hasard, ce qui est pire que d'admettre le
+    # trou. Les lignes d'usage écrites avant le 21/08 le portent encore.
+    return ("local" if kind == "slm" else "unknown"), rest
+
+
+def estimate_tokens_if_missing(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    user_content: Any,
+    ai_content: Any,
+) -> tuple[int, int, bool]:
+    """``(entrée, sortie, estimé)`` — complète les compteurs restés à zéro.
+
+    LM Studio et les serveurs locaux compatibles OpenAI ne renvoient souvent
+    pas d'``usage_metadata`` en flux : les totaux restent à 0 alors que le tour
+    a bien eu lieu. L'heuristique des 4 caractères par jeton comble le trou.
+
+    ⚠️ Le troisième membre n'est pas décoratif. C'est l'invariant « un repli
+    doit se voir » : une estimation qui se présente comme une mesure est pire
+    qu'une case vide, parce qu'elle invite à raisonner dessus. L'appelant DOIT
+    la marquer — l'interface préfixe d'un ``~``.
+
+    ⚠️ Et elle SOUS-ESTIME l'entrée, franchement : elle ne compte que le
+    message de l'utilisateur, pas le prompt système, ni la mémoire injectée,
+    ni les schémas d'outils — c'est-à-dire l'essentiel de ce qui est envoyé.
+    Elle dit « il s'est passé quelque chose », pas « voilà combien ».
+    """
+    estime = False
+    if input_tokens == 0 and user_content:
+        brut = user_content if isinstance(user_content, str) else str(user_content)
+        input_tokens = max(1, len(brut) // 4)
+        estime = True
+    if output_tokens == 0 and ai_content:
+        brut = ai_content if isinstance(ai_content, str) else str(ai_content)
+        output_tokens = max(1, len(brut) // 4)
+        estime = True
+    return input_tokens, output_tokens, estime
 
 
 def _last_context_breakdown() -> str | None:
