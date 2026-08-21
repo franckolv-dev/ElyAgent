@@ -58,8 +58,15 @@ DIAGNOSIS_CONFIDENCES: frozenset[str] = frozenset({"low", "medium", "high"})
 
 # Arbitrage humain (J4) ; "merged" = doublon replié sur l'incident canonique
 # (dédup des récurrences — posé par la garde, jamais par l'humain).
+#
+# "obsolete" = la CIBLE de l'incident a disparu (tâche planifiée supprimée).
+# Ajouté le 21/08 : ces incidents ne pouvaient plus être tranchés du tout.
+# Toute action dessus échouait sur « tâche planifiée introuvable (supprimée ?) »
+# et ils restaient « open » indéfiniment, à s'accumuler dans la liste. Les
+# rejeter aurait été faux — l'hypothèse n'était pas mauvaise, elle est devenue
+# sans objet. Posé par le service, jamais par l'humain (comme "merged").
 DIAGNOSIS_STATUSES: frozenset[str] = frozenset({
-    "open", "validated", "rejected", "actioned", "merged",
+    "open", "validated", "rejected", "actioned", "merged", "obsolete",
 })
 
 

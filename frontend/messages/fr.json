@@ -377,6 +377,7 @@
     "status_rejected": "rejeté",
     "status_actioned": "traité",
     "status_merged": "fusionné",
+    "status_obsolete": "sans objet",
     "seenTimes": "vu {count} fois · dernier le {date}",
     "generate": "Générer un outil",
     "generateHint": "Lance l'auto-développement (tier S) pour créer un python_tool depuis cette cause. Coût LLM réel.",
@@ -410,7 +411,9 @@
     "flash_validated": "Incident validé.",
     "flash_rejected": "Incident rejeté.",
     "flash_generated": "Outil « {name} » généré — à valider sur la page des candidates.",
-    "flash_generation_failed": "Génération échouée (status: {status})."
+    "flash_generation_failed": "Génération échouée (status: {status}).",
+    "flash_tool_exists": "Hypothèse confirmée : l'outil « {name} » couvre déjà cette capacité. Incident validé — le trou de liaison reste à traiter.",
+    "flash_target_gone": "La tâche planifiée visée n'existe plus — incident classé sans suite."
   },
   "reversibleActions": {
     "title": "Annulations",

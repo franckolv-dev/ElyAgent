@@ -19,6 +19,26 @@ import { authFetch } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/**
+ * Erreur d'API portant son code HTTP.
+ *
+ * Le `throw new Error(detail)` d'origine jetait le statut : l'appelant ne
+ * recevait qu'un texte, donc ne pouvait distinguer « la cible a disparu »
+ * (410) d'une panne réseau. Les deux s'affichaient en rouge et laissaient
+ * l'écran dans le même état — cf. les incidents orphelins du 21/08.
+ *
+ * Étend `Error` : tous les `catch (e) { e instanceof Error ? e.message : … }`
+ * existants continuent de fonctionner sans être touchés.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 /** Authenticated fetch — adds Bearer token, retries once after token refresh. */
 async function fetchAPI(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
@@ -30,7 +50,7 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `API error: ${res.status}`);
+    throw new ApiError(body.detail || `API error: ${res.status}`, res.status);
   }
 
   return res.json();

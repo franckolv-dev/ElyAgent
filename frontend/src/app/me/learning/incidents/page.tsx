@@ -30,7 +30,7 @@ import {
 import { AdminGuard } from "@/components/layout/AuthGuard";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { api, type Incident } from "@/lib/api";
+import { api, ApiError, type Incident } from "@/lib/api";
 
 const FILTERS = ["open", "all"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -119,6 +119,25 @@ export default function IncidentsPage() {
         );
         await dropOrRefetch(inc.id);
         showFlash("ok", t("flash_generated", { name: result.tool_name ?? "tool" }));
+      } else if (result.status === "exists") {
+        // `exists` N'EST PAS UN ÉCHEC — c'est la confirmation de l'hypothèse.
+        // Le backend refuse de dépenser un appel tier-S parce qu'un outil
+        // couvre déjà la capacité, et il le NOMME. Or l'incident disait
+        // « l'outil existe mais n'a pas été lié à ce tour ». La réponse lui
+        // donne raison.
+        //
+        // L'affichage rangeait ça en « Génération échouée (status: exists) »
+        // et laissait l'incident ouvert : le seul retour possible était de
+        // recliquer indéfiniment. (21/08)
+        //
+        // ⚠️ `validated` et pas `actioned` : l'hypothèse est confirmée, mais
+        // RIEN n'est réparé — le trou de binding reste entier. Dire
+        // « actioned » ferait croire à un correctif qui n'existe pas.
+        await api.adminLearningIncidentResolve(
+          inc.id, "validated", `outil existant : ${result.tool_name ?? "?"}`,
+        );
+        await dropOrRefetch(inc.id);
+        showFlash("ok", t("flash_tool_exists", { name: result.tool_name ?? "?" }));
       } else {
         showFlash("err", t("flash_generation_failed", { status: result.status }));
       }
@@ -140,7 +159,16 @@ export default function IncidentsPage() {
       setRows((cur) => cur.map((r) => (r.id === inc.id ? { ...r, patch } : r)));
       showFlash("ok", t("flash_patch_proposed"));
     } catch (e) {
-      showFlash("err", e instanceof Error ? e.message : t("actionError"));
+      // 410 — la tâche planifiée visée n'existe plus. Le backend a classé
+      // l'incident « obsolete » ; la carte doit partir avec lui. Sans ça,
+      // l'incident restait à l'écran et chaque clic rejouait la même erreur :
+      // aucun chemin ne le faisait sortir de la liste (21/08).
+      if (e instanceof ApiError && e.status === 410) {
+        await dropOrRefetch(inc.id);
+        showFlash("ok", t("flash_target_gone"));
+      } else {
+        showFlash("err", e instanceof Error ? e.message : t("actionError"));
+      }
     } finally {
       setBusyId(null);
     }
@@ -154,7 +182,14 @@ export default function IncidentsPage() {
       await dropOrRefetch(inc.id);    // l'incident passe « actioned »
       showFlash("ok", t("flash_patch_applied"));
     } catch (e) {
-      showFlash("err", e instanceof Error ? e.message : t("actionError"));
+      // Même impasse un clic plus tard : correctif proposé, tâche supprimée
+      // entre-temps. Le correctif est caduc, l'incident classé.
+      if (e instanceof ApiError && e.status === 410) {
+        await dropOrRefetch(inc.id);
+        showFlash("ok", t("flash_target_gone"));
+      } else {
+        showFlash("err", e instanceof Error ? e.message : t("actionError"));
+      }
     } finally {
       setBusyId(null);
     }
@@ -314,7 +349,11 @@ export default function IncidentsPage() {
                               </span>
                               {!isOpen && (
                                 <span className={`px-1.5 py-0.5 text-[10px] font-mono rounded border ${
-                                  inc.status === "merged"
+                                  // « fusionné » et « sans objet » ne sont pas
+                                  // des succès : l'incident n'a rien produit,
+                                  // il a été rangé. Le vert est réservé à ce
+                                  // qui a été tranché ou traité.
+                                  inc.status === "merged" || inc.status === "obsolete"
                                     ? "bg-bg-primary text-text-muted border-border-dim"
                                     : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
                                 }`}>
