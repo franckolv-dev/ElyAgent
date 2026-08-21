@@ -240,6 +240,18 @@ def create_agent_node():
         # que le `return` reste sûr même si la branche de calcul n'est pas
         # atteinte (chemin SLM, sortie anticipée, exception).
         _ctx_breakdown: str | None = None
+        # MÊME RAISON, MÊME PIÈGE, DÉCOUVERT LE 21/08. Celui-ci n'était
+        # initialisé QUE dans `if response is None:` — la branche cloud — et
+        # relu inconditionnellement au pied du nœud (`_fb.record_response`).
+        # Tant que le SLM échouait systématiquement, la branche cloud tournait
+        # toujours et la variable était toujours liée : le défaut existait
+        # depuis #265 sans être atteignable. Le jour où la voie locale a enfin
+        # répondu, chaque tour SLM levait `UnboundLocalError` APRÈS avoir
+        # affiché sa réponse — l'utilisateur voyait le texte, puis « erreur
+        # interne » l'écrasait. Une voie qu'on répare est une voie qu'on
+        # emprunte pour la première fois : ce qu'elle traverse n'a jamais été
+        # exécuté. Cf. le pin `test_slm_path_binds_every_local_it_reads`.
+        _fb_state = None
         user_id = state.get("user_id", "")
         # Hermes Chantier 2 / 4 — conversation id needs to be available BEFORE
         # the system prompt is built (cache key) and before the fallback state
@@ -638,7 +650,10 @@ def create_agent_node():
             # switched to a fallback provider, ``_fb_state`` carries that
             # choice into this turn (sticky for the conversation).
             # _conv_id_fb is hoisted to the top of agent_node (used by Chantier 2 too).
-            _fb_state = None
+            # ⚠️ `_fb_state` l'est AUSSI, et pas par confort : il est relu au
+            # pied du nœud, que cette branche ait tourné ou non. Ne pas le
+            # réinitialiser ici — et surtout ne pas « ramener » l'init dans ce
+            # bloc en croyant ranger.
             if _conv_id_fb:
                 _tier_cfg_for_fb = get_tier_config().get(_tier.value, {})
                 _chain = list(_tier_cfg_for_fb.get("providers", []) or [])
