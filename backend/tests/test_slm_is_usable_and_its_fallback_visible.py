@@ -176,3 +176,153 @@ def test_an_empty_conversation_id_is_ignored():
     fm._reset_for_tests()
     fm.note_slm_fallback("", model="m", reason="r")
     assert fm.drain_events("") == []
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 3 — Ce que la voie rapide traverse une fois qu'elle marche
+# ─────────────────────────────────────────────────────────────────────
+
+def test_slm_path_binds_every_local_it_reads():
+    """La suite immédiate de l'incident, le soir même.
+
+    Le correctif ci-dessus a rendu la voie locale utilisable. Elle a alors
+    traversé, pour la première fois en production, du code qu'aucun tour
+    n'avait jamais exécuté — et ``_fb_state``, initialisé UNIQUEMENT dans
+    ``if response is None:`` (la branche cloud), était relu sans condition au
+    pied du nœud :
+
+        « Bonjour Ely » → réponse affichée → UnboundLocalError
+                        → « Une erreur interne s'est produite »
+
+    Le pire profil de défaut : la réponse s'affichait une demi-seconde, puis
+    l'erreur l'écrasait. Le défaut datait de #265 (26/07) et n'était pas
+    ATTEIGNABLE tant que le SLM échouait systématiquement — la branche cloud
+    tournait alors à chaque tour et liait la variable au passage.
+
+    ⚠️ LA LEÇON, plus large que la variable : réparer une voie morte, c'est
+    l'emprunter pour la première fois. Ce qu'elle traverse n'a jamais tourné,
+    et la suite verte ne prouvait rien à son sujet.
+
+    ⚠️ POURQUOI CETTE FORME. Ni ruff 0.15.15 (pas de PLE0601) ni pyflakes ne
+    voient cette classe : ils signalent les noms INDÉFINIS, pas les noms
+    liés sur une branche seulement. Et le pin comportemental ne l'aurait pas
+    attrapé — monter `agent_node` demande le graphe, la mémoire, le registre
+    et un LLM. C'est ce coût qui a laissé la branche sans couverture.
+
+    L'analyse est volontairement CONSERVATRICE : un nom lié dans les deux
+    membres d'un ``if/else``, ou déclaré ``nonlocal``, est tenu pour sûr. Elle
+    signale peu, mais ce qu'elle signale est réel.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from app.agent import nodes
+
+    fabrique = ast.parse(
+        textwrap.dedent(inspect.getsource(nodes.create_agent_node))
+    ).body[0]
+    agent_node = next(
+        (n for n in ast.walk(fabrique)
+         if isinstance(n, ast.AsyncFunctionDef) and n.name == "agent_node"),
+        None,
+    )
+    assert agent_node is not None, (
+        "`agent_node` introuvable dans `create_agent_node` — la structure a "
+        "changé, revérifie l'invariant à la main avant d'adapter ce pin"
+    )
+
+    def _noms(noeud, ctx) -> set:
+        return {n.id for n in ast.walk(noeud)
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ctx)}
+
+    def _lies_partout(stmts) -> set:
+        """Les noms liés sur TOUS les chemins traversant ``stmts``."""
+        acquis: set = set()
+        for s in stmts:
+            if isinstance(s, ast.If):
+                # Sans `else`, la branche peut ne pas être prise : rien d'acquis.
+                if s.orelse:
+                    acquis |= _lies_partout(s.body) & _lies_partout(s.orelse)
+            elif isinstance(s, ast.Try):
+                sur = _lies_partout(s.body)
+                for h in s.handlers:           # une exception peut survenir
+                    sur &= _lies_partout(h.body)
+                acquis |= sur | _lies_partout(s.finalbody)
+            elif isinstance(s, (ast.With, ast.AsyncWith)):
+                acquis |= _lies_partout(s.body)
+            elif isinstance(s, (ast.For, ast.AsyncFor, ast.While)):
+                pass                            # zéro tour est un chemin
+            else:
+                acquis |= _noms(s, ast.Store)
+        return acquis
+
+    # Un `nonlocal` vit dans la fermeture : il est lié avant l'appel.
+    hors_scope = {
+        nom
+        for n in ast.walk(agent_node)
+        if isinstance(n, (ast.Nonlocal, ast.Global))
+        for nom in n.names
+    }
+    args = {a.arg for a in agent_node.args.args}
+    locaux = _noms(agent_node, ast.Store) - hors_scope - args
+
+    acquis = set(args)
+    coupables: list = []
+    for stmt in agent_node.body:
+        # Un nom lié DANS le statement courant lui est disponible : on ne
+        # descend pas plus fin, l'analyse resterait juste mais bavarde.
+        for nom in sorted((_noms(stmt, ast.Load) & locaux) - acquis
+                          - _noms(stmt, ast.Store)):
+            coupables.append(f"{nom} (ligne ~{stmt.lineno} du nœud)")
+        acquis |= _lies_partout([stmt])
+
+    assert not coupables, (
+        "nom(s) local(aux) de `agent_node` lu(s) sur un chemin qui ne les lie "
+        f"pas : {', '.join(coupables)}. Le tour lèvera UnboundLocalError APRÈS "
+        "avoir produit sa réponse — c'est exactement ce qu'a fait `_fb_state` "
+        "sur la voie SLM le 21/08. Initialise le nom en tête de `agent_node`, "
+        "avec `_ctx_breakdown`."
+    )
+
+
+def test_the_pin_above_would_have_caught_the_real_defect():
+    """Un pin qui ne rougit jamais ne protège rien.
+
+    On rejoue la forme EXACTE du défaut du 21/08 sur une fonction jouet, et on
+    vérifie que l'analyse la voit — sinon le test précédent est un décor.
+    """
+    import ast
+
+    source = (
+        "def agent_node(state):\n"
+        "    response = None\n"
+        "    if response is None:\n"
+        "        _fb_state = None\n"
+        "        _fb_state = charger()\n"
+        "    if _fb_state is not None:\n"          # ← le défaut
+        "        enregistrer(_fb_state)\n"
+        "    if state:\n"
+        "        _sur = 1\n"
+        "    else:\n"
+        "        _sur = 2\n"
+        "    return _sur\n"                        # ← lié partout : muet
+    )
+    fn = ast.parse(source).body[0]
+
+    def _noms(n, ctx):
+        return {x.id for x in ast.walk(n)
+                if isinstance(x, ast.Name) and isinstance(x.ctx, ctx)}
+
+    vus = []
+    acquis = {"state"}
+    for stmt in fn.body:
+        vus += sorted((_noms(stmt, ast.Load) & (_noms(fn, ast.Store)))
+                      - acquis - _noms(stmt, ast.Store))
+        if isinstance(stmt, ast.If) and stmt.orelse:
+            acquis |= _noms(stmt.body[0], ast.Store) & _noms(stmt.orelse[0], ast.Store)
+        elif not isinstance(stmt, ast.If):
+            acquis |= _noms(stmt, ast.Store)
+
+    assert "_fb_state" in vus, "l'analyse rate le défaut qu'elle prétend épingler"
+    assert "_sur" not in vus, "l'analyse crie au loup sur un if/else pourtant sûr"
