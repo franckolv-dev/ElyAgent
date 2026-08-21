@@ -35,6 +35,10 @@ const STATUS_COLOR: Record<string, string> = {
   ok: "text-emerald-400 border-emerald-500/30 bg-emerald-500/5",
   partial: "text-amber-400 border-amber-500/30 bg-amber-500/5",
   error: "text-cyber-red border-cyber-red/30 bg-cyber-red/5",
+  // `offline` n'est pas une erreur : le démon ELY Desktop n'est pas connecté,
+  // donc rien n'a pu être tenté. Ambre plutôt que rouge — c'est une condition
+  // à remplir, pas une panne à chercher.
+  offline: "text-amber-400 border-amber-500/30 bg-amber-500/5",
   running: "text-cyber-cyan border-cyber-cyan/30 bg-cyber-cyan/5",
   pending: "text-text-muted border-border-dim bg-bg-tertiary/30",
 };
