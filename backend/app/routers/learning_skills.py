@@ -1033,9 +1033,12 @@ async def resolve_incident(
     from app.models.execution_outcome import ExecutionOutcome
 
     new_status = (body.status or "").strip().lower()
-    # "open" est l'état initial, "merged" est posé par la garde de dédup —
-    # ni l'un ni l'autre ne se pose à la main.
-    if new_status not in DIAGNOSIS_STATUSES or new_status in ("open", "merged"):
+    # "open" est l'état initial, "merged" est posé par la garde de dédup et
+    # "obsolete" par le service quand la cible a disparu — aucun des trois ne
+    # se pose à la main.
+    if new_status not in DIAGNOSIS_STATUSES or new_status in (
+        "open", "merged", "obsolete",
+    ):
         raise HTTPException(
             400,
             f"Unknown status {body.status!r}. Valid: validated, rejected, actioned",
@@ -1074,10 +1077,17 @@ async def propose_incident_patch(
 ) -> PatchOut:
     """Génère un correctif de prompt (réécriture) pour un incident de tâche
     planifiée. NE l'applique PAS — l'admin verra le diff puis Appliquera."""
-    from app.services.learning.patch_service import PatchError, propose_patch
+    from app.services.learning.patch_service import (
+        PatchError, PatchTargetGone, propose_patch,
+    )
 
     try:
         patch = await propose_patch(incident_id)
+    except PatchTargetGone as exc:
+        # 410 et pas 422 : ce n'est pas une demande mal formée, c'est une cible
+        # qui a disparu. Le code porte l'information — l'interface s'en sert
+        # pour retirer la carte au lieu de laisser l'incident à l'écran.
+        raise HTTPException(410, str(exc))
     except PatchError as exc:
         raise HTTPException(422, str(exc))
     if patch is None:
@@ -1093,10 +1103,14 @@ async def apply_incident_patch(
     _admin: User = Depends(require_admin),
 ) -> PatchOut:
     """Applique un correctif proposé (réversible — l'ancienne valeur est gardée)."""
-    from app.services.learning.patch_service import PatchError, apply_patch
+    from app.services.learning.patch_service import (
+        PatchError, PatchTargetGone, apply_patch,
+    )
 
     try:
         patch = await apply_patch(patch_id)
+    except PatchTargetGone as exc:
+        raise HTTPException(410, str(exc))
     except PatchError as exc:
         raise HTTPException(409, str(exc))
     logger.info("patch_applied: patch=%s by_admin=%s",

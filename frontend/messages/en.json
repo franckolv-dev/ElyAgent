@@ -377,6 +377,7 @@
     "status_rejected": "rejected",
     "status_actioned": "actioned",
     "status_merged": "merged",
+    "status_obsolete": "moot",
     "seenTimes": "seen {count} times · last {date}",
     "generate": "Generate a tool",
     "generateHint": "Runs auto-dev (tier S) to create a python_tool from this cause. Real LLM cost.",
@@ -410,7 +411,9 @@
     "flash_validated": "Incident validated.",
     "flash_rejected": "Incident rejected.",
     "flash_generated": "Tool \"{name}\" generated — review it on the candidates page.",
-    "flash_generation_failed": "Generation failed (status: {status})."
+    "flash_generation_failed": "Generation failed (status: {status}).",
+    "flash_tool_exists": "Hypothesis confirmed: tool “{name}” already covers this capability. Incident validated — the binding gap still stands.",
+    "flash_target_gone": "The target scheduled task no longer exists — incident closed as moot."
   },
   "reversibleActions": {
     "title": "Undo history",

@@ -138,6 +138,45 @@ class PatchError(Exception):
     """Erreur métier (cible non patchable, état invalide…) — mappée en HTTP."""
 
 
+class PatchTargetGone(PatchError):
+    """La tâche planifiée visée n'existe plus. L'incident est CLASSÉ, pas juste
+    refusé.
+
+    **Le défaut qu'elle corrige (21/08).** On levait un `PatchError` sec :
+    « tâche planifiée introuvable (supprimée ?) ». L'incident restait « open »,
+    et TOUTE action sur lui rejouait la même erreur — il n'existait aucun
+    chemin pour le faire sortir de la liste. Franck en avait accumulé plusieurs,
+    dont trois identiques, qu'il ne pouvait ni traiter ni écarter honnêtement.
+
+    Le rejeter à la main aurait été faux : « rejeté » veut dire « l'hypothèse
+    est mauvaise ». Ici l'hypothèse était peut-être excellente — sa cible a
+    simplement disparu. D'où `obsolete`, posé par le service au moment où il
+    constate la disparition, et pas par l'humain.
+    """
+
+
+async def _classer_obsolete(diagnosis_id: int, motif: str) -> None:
+    """Ferme un incident dont la cible n'existe plus. Ne lève jamais : c'est
+    un rangement, il ne doit pas masquer l'erreur qu'il accompagne."""
+    try:
+        async with async_session() as db:
+            diag = (await db.execute(
+                select(ExecutionDiagnosis).where(
+                    ExecutionDiagnosis.id == diagnosis_id
+                )
+            )).scalar_one_or_none()
+            if diag is None or diag.status != "open":
+                return
+            diag.status = "obsolete"
+            diag.resolution = motif[:2000]
+            diag.processed_at = datetime.now(timezone.utc)
+            await db.commit()
+            logger.info("incident %s classé obsolete : %s", diagnosis_id, motif)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("classement obsolete impossible pour %s : %s",
+                       diagnosis_id, exc)
+
+
 async def propose_patch(diagnosis_id: int) -> ProposedPatch | None:
     """Génère un correctif de prompt pour l'incident donné. Retourne le
     ProposedPatch (status=proposed), ou lève PatchError si non applicable.
@@ -163,7 +202,14 @@ async def propose_patch(diagnosis_id: int) -> ProposedPatch | None:
             select(ScheduledTask).where(ScheduledTask.id == outcome.source_id)
         )).scalar_one_or_none()
         if task is None:
-            raise PatchError("tâche planifiée introuvable (supprimée ?)")
+            await _classer_obsolete(
+                diagnosis_id,
+                "Tâche planifiée supprimée — l'incident n'a plus de cible.",
+            )
+            raise PatchTargetGone(
+                "La tâche planifiée visée n'existe plus : l'incident est classé "
+                "sans suite (l'hypothèse n'est pas rejetée, elle est sans objet)."
+            )
         old_prompt = task.prompt or ""
         hypothesis = diag.hypothesis
         category = diag.category
@@ -235,7 +281,18 @@ async def apply_patch(patch_id: int) -> ProposedPatch:
             select(ScheduledTask).where(ScheduledTask.id == patch.target_id)
         )).scalar_one_or_none()
         if task is None:
-            raise PatchError("tâche planifiée introuvable (supprimée ?)")
+            # Même impasse, un clic plus tard : le correctif a été proposé, puis
+            # la tâche a été supprimée avant qu'on l'applique. Sans ce
+            # classement, l'incident restait « open » avec un correctif
+            # inapplicable — encore moins traitable que sans.
+            await _classer_obsolete(
+                patch.execution_diagnosis_id,
+                "Tâche planifiée supprimée avant application du correctif.",
+            )
+            raise PatchTargetGone(
+                "La tâche planifiée visée n'existe plus : le correctif est "
+                "caduc et l'incident est classé sans suite."
+            )
         # Snapshot de la valeur RÉELLE au moment d'appliquer (revert exact même
         # si la tâche a changé depuis la proposition).
         patch.old_value = task.prompt
