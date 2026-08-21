@@ -89,7 +89,14 @@ export interface WSMessage {
     // mid-conversation (rate limit, h1_hallucination, billing, …) so
     // the user sees a discreet toast instead of being confused by a
     // sudden change in latency or wording.
-    | "provider.switched";
+    | "provider.switched"
+    // Le tour est reparti sur le CLOUD parce que le modèle LOCAL n'a pas
+    // répondu (délai dépassé, erreur de chargement). Distinct de
+    // `provider.switched` : celui-là fait AVANCER la chaîne de repli et
+    // reste collant pour la conversation ; celui-ci ne décide rien, il
+    // signale. Sans lui, l'utilisateur voyait « gpt-5.6-sol » répondre à
+    // « bonjour » sans savoir pourquoi (21/08).
+    | "slm.fallback";
   tool?: string;
   image?: ToolImage;   // present on tool_end when tool produced an image
   content?: string;
@@ -115,6 +122,9 @@ export interface WSMessage {
   from?: string;
   to?: string;
   ts?: number;
+  // slm.fallback — le modèle local qui n'a pas pu répondre. `reason` (plus
+  // haut) porte le pourquoi : sans lui, « repli » n'apprend rien.
+  model?: string;
 }
 
 export interface BrowserFrame {
