@@ -503,7 +503,11 @@ function ChannelsPanel() {
     const on = !!status?.configured;
     const linked = !!status?.linked;
     let badge = "OFF";
-    let color = "var(--text-muted)";
+    // `--dot-off` et non `--text-muted` : la maquette du 21/08 donne les deux
+    // séparément, et à 6 px un point d'état a besoin de plus de présence
+    // qu'une étiquette. Le muted est descendu à #6c6f73 dans la même
+    // révision — le point y aurait disparu.
+    let color = "var(--dot-off)";
     if (on && linked) { badge = "LINK"; color = "var(--success)"; }
     else if (on) { badge = "ON"; color = "var(--info)"; }
     return (
