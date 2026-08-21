@@ -391,6 +391,36 @@ def record_response(
     return False
 
 
+def note_slm_fallback(
+    conversation_id: str, *, model: str, reason: str,
+) -> None:
+    """Signale que la voie LOCALE a échoué et que le tour repart au cloud.
+
+    **Le défaut qu'elle corrige (21/08).** Le repli SLM → LLM était journalisé
+    en WARNING et n'atteignait jamais l'utilisateur. Franck a passé une journée
+    à se demander pourquoi « GPT-5.6-sol » répondait à « bonjour » alors que
+    son modèle local était chargé et prêt — la réponse tenait en trois lignes
+    de `docker compose logs`.
+
+    C'est l'invariant « un repli doit se voir » : la bascule ENTRE FOURNISSEURS
+    émettait déjà un toast, celle du local vers le cloud non. Le même canal
+    sert donc aux deux — le chat draine cette file à la fin de chaque tour.
+
+    Volontairement SANS état : contrairement à `try_activate`, on n'avance
+    aucune chaîne et on ne retient rien. Le tour suivant retentera le local,
+    ce qui est le comportement voulu — un modèle local lent une fois ne doit
+    pas être écarté pour la conversation entière.
+    """
+    if not conversation_id:
+        return
+    _pending_events.setdefault(conversation_id, []).append({
+        "type": "slm.fallback",
+        "model": model,
+        "reason": reason,
+        "ts": time.time(),
+    })
+
+
 def drain_events(conversation_id: str) -> list[dict]:
     """Pop and return all pending WS events for a conversation."""
     return _pending_events.pop(conversation_id, [])

@@ -299,6 +299,20 @@ function ChatPageInner() {
         disarmWatchdog();
       } else if (msg.type === "browser_frame" && msg.data) {
         setBrowserFrame({ data: msg.data, url: msg.url ?? "", title: msg.title ?? "" });
+      } else if (msg.type === "slm.fallback") {
+        // Le modèle LOCAL n'a pas pu répondre — le tour est reparti sur le
+        // cloud. Ce repli n'était que journalisé : Franck a passé une journée
+        // (21/08) à se demander pourquoi GPT-5.6 répondait à « bonjour »
+        // alors que son modèle local était chargé. Un repli doit se voir.
+        if (providerToastTimer.current) clearTimeout(providerToastTimer.current);
+        setProviderToast({
+          from: msg.model ?? "modèle local",
+          to: "modèle distant",
+          reason: msg.reason ?? "le modèle local n'a pas répondu",
+        });
+        providerToastTimer.current = setTimeout(() => {
+          setProviderToast(null);
+        }, 6000);
       } else if (msg.type === "provider.switched") {
         // Backend swapped LLM provider mid-conversation. Show a discreet
         // toast so the user understands why latency / wording may shift.

@@ -140,6 +140,52 @@ def _slm_real_name(llm, settings) -> str:
     return settings.slm_model
 
 
+# Le tier A traite ce que le routeur a jugé SIMPLE — un score sous le seuil.
+# Lui livrer le registre entier (~145 schémas d'outils, plusieurs dizaines de
+# milliers de tokens) était ce qui rendait la voie rapide inutilisable : le
+# 21/08, un Nemotron 4B déjà chargé en RAM dépassait 60 s sur « bonjour », donc
+# repli cloud systématique. Le mécanisme se sabotait lui-même.
+#
+# `find_tool` reste le filet : si le modèle découvre qu'il lui faut un outil,
+# il va le chercher dans le catalogue au lieu d'abandonner — c'est exactement
+# ce pour quoi il existe. `report_missing_capability` évite qu'un manque se
+# transforme en invention.
+_SLM_TOOL_NAMES: tuple[str, ...] = ("find_tool", "report_missing_capability")
+
+
+def _slm_toolset(registry) -> list:
+    """Les quelques outils liés au SLM. Repli sur le registre entier si aucun
+    des noms attendus n'existe — mieux vaut lent que muet."""
+    try:
+        retenus = [t for t in registry.all_tools
+                   if getattr(t, "name", "") in _SLM_TOOL_NAMES]
+        if retenus:
+            return retenus
+        logger.warning(
+            "SLM : aucun de %s dans le registre — liaison du catalogue complet, "
+            "la voie locale sera lente", _SLM_TOOL_NAMES,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SLM : sélection d'outils impossible (%s)", exc)
+    return list(registry.all_tools)
+
+
+def _annoncer_repli_slm(state, model: str, raison: str) -> None:
+    """Fait remonter le repli local → cloud jusqu'à l'utilisateur.
+
+    Il n'était que journalisé. Voir `fallback_manager.note_slm_fallback`.
+    Ne lève jamais : un toast raté ne coûte pas un tour.
+    """
+    try:
+        from app.services.fallback_manager import note_slm_fallback
+
+        note_slm_fallback(
+            state.get("conversation_id", "") or "", model=model, reason=raison,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("SLM : repli non signalé à l'interface (%s)", exc)
+
+
 def create_agent_node():
     from app.skills import get_skill_registry
     from app.config import get_settings
@@ -162,7 +208,7 @@ def create_agent_node():
             # l'objet bindé rendrait « ? ». La voie cloud fait pareil — elle
             # décrit `_base_llm`, pas `_llm_with_tools`.
             _slm_base = get_slm()
-            _slm_with_tools = _slm_base.bind_tools(registry.all_tools)
+            _slm_with_tools = _slm_base.bind_tools(_slm_toolset(registry))
             _slm_version = registry.tools_version
             logger.info(
                 "SLM pre-built: model=%s (réglage SLM_MODEL=%s), threshold=%d",
@@ -237,7 +283,7 @@ def create_agent_node():
                 from app.services.llm_provider import get_slm
                 nonlocal_base = get_slm()
                 _slm_base = nonlocal_base
-                _slm_with_tools = nonlocal_base.bind_tools(registry.all_tools)
+                _slm_with_tools = nonlocal_base.bind_tools(_slm_toolset(registry))
                 _slm_version = current_version
             except Exception:
                 pass
@@ -507,10 +553,17 @@ def create_agent_node():
                     "SLM timeout after %.1fs (score=%d) — falling back to LLM",
                     settings.slm_timeout, decision.score,
                 )
+                _annoncer_repli_slm(
+                    state, _slm_real_name(_slm_base, settings),
+                    f"délai de {settings.slm_timeout:.0f} s dépassé",
+                )
             except Exception as exc:
                 logger.warning(
                     "SLM error (score=%d): %s — falling back to LLM",
                     decision.score, exc,
+                )
+                _annoncer_repli_slm(
+                    state, _slm_real_name(_slm_base, settings), str(exc)[:160],
                 )
 
         if response is None:
