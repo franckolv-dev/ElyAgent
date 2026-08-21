@@ -85,7 +85,7 @@
     "unsupportedFormat": "Unsupported format",
     "watchedFolders": {
       "title": "Watched folders",
-      "subtitle": "Automatically index the contents of one or more local folders. A scan runs every hour and picks up new files — no more manual uploads.",
+      "subtitle": "Automatically indexes the contents of one or more local folders. The scan runs hourly. ⚠️ It reads files through ELY Desktop: without the daemon running on this machine no scan is possible, and folders stay marked “offline”.",
       "addFolder": "Add a folder",
       "loading": "Loading…",
       "loadFailed": "Could not load the list",

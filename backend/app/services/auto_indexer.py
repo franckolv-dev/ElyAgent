@@ -30,9 +30,22 @@ parallel since the cron just iterates the table.
 Failure modes are recorded in WatchedFolder.last_scan_status :
   - "ok"      : full scan completed, all candidate files indexed or skipped
   - "partial" : some files failed (read error, extract error)
-  - "error"   : the scan itself crashed (daemon disconnected, …)
+  - "error"   : the scan itself crashed (walk failed, …)
+  - "offline" : ELY Desktop n'est pas connecté — rien n'a pu être tenté
   - "running" : a scan is currently in progress (mutex)
   - "pending" : never scanned yet
+
+⚠️ Cette liste était un MENSONGE jusqu'au 21/08 : les deux échecs les plus
+fréquents sortaient par `return` avant le bloc de persistance, et la ligne
+restait bloquée sur « running ». Toute sortie passe désormais par
+`_consigner`. Le contrat que cette docstring décrit est le seul que le code
+ait jamais prétendu tenir ; il le tient maintenant.
+
+⚠️ TOUT DÉPEND DU DÉMON. Ce module ne lit pas le système de fichiers du
+conteneur — il demande à ELY Desktop, sur la machine de l'utilisateur, de
+marcher dans le dossier et de lire les fichiers. Sans démon connecté, aucun
+scan n'est possible, et le registre des connexions vit EN MÉMOIRE : un
+redémarrage du backend la coupe jusqu'à ce que le démon reprenne la main.
 """
 from __future__ import annotations
 
@@ -140,11 +153,53 @@ async def _daemon_read(user_id: str, path: str) -> tuple[bytes, str]:
 # Scan one folder
 # ──────────────────────────────────────────────────────────────────────────────
 
+async def _consigner(folder_id: str, statut: str, message: str,
+                     indexes: int = 0, *, seulement_si_change: bool = False) -> None:
+    """Écrit l'issue d'un scan sur la ligne du dossier.
+
+    **Le défaut qu'elle corrige (21/08).** `scan_folder` posait
+    ``last_scan_status = "running"`` puis SORTAIT par `return` sur ses deux
+    échecs les plus fréquents — démon absent, marche impossible — sans jamais
+    atteindre le bloc de persistance, tout en bas. La ligne restait donc à
+    « running / Scan en cours… » indéfiniment.
+
+    Franck l'a vu sur un dossier surveillé depuis des mois : badge `running`,
+    « Scan en cours... », **0 fichier indexé**. L'interface annonçait un
+    travail qui n'avait jamais commencé — c'est l'invariant 5 du dépôt, une
+    fausse déclaration d'action, avec en prime la docstring de ce module qui
+    promettait que ``last_scan_status`` enregistre les modes d'échec.
+
+    ``seulement_si_change`` sert au cron horaire : réécrire la même ligne
+    toutes les heures ferait battre ``last_scan_at`` et donnerait l'illusion
+    d'un scan qui tourne. On ne touche la ligne que quand l'état bouge.
+    """
+    try:
+        async with async_session() as db:
+            folder = await db.get(WatchedFolder, folder_id)
+            if folder is None:
+                return
+            if seulement_si_change and folder.last_scan_status == statut:
+                return
+            folder.last_scan_at = datetime.now(timezone.utc)
+            folder.last_scan_status = statut
+            folder.last_scan_message = message
+            if indexes:
+                folder.files_indexed = (folder.files_indexed or 0) + indexes
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — consigner ne casse pas un scan
+        logger.warning("auto_indexer: état non consigné pour %s : %s", folder_id, exc)
+
+
 async def scan_folder(folder_id: str) -> dict:
     """Scan a single WatchedFolder and ingest new files.
 
     Returns a summary dict ``{indexed: int, skipped: int, errors: int,
     status: str, message: str}``.
+
+    ⚠️ CHAQUE sortie consigne son issue sur la ligne — voir `_consigner`. Un
+    `return` qui saute la persistance laisse le dossier bloqué sur « running »
+    pour toujours ; c'est le défaut qui a rendu cette fonctionnalité muette
+    pendant des mois.
     """
     if folder_id in _running_scans:
         return {"status": "running", "message": "Scan already in progress"}
@@ -157,7 +212,13 @@ async def scan_folder(folder_id: str) -> dict:
             folder = await db.get(WatchedFolder, folder_id)
             if folder is None:
                 summary["status"] = "error"
-                summary["message"] = "WatchedFolder not found"
+                summary["message"] = "Dossier surveillé introuvable"
+                # Rien à écrire — la ligne n'existe pas, `_consigner` le voit
+                # et ne fait rien. On l'appelle quand même : « toute sortie
+                # consigne » sans exception se vérifie et se relit ; une règle
+                # à un cas particulier se re-justifie à chaque lecture, et
+                # c'est comme ça qu'on finit par en ajouter un second.
+                await _consigner(folder_id, summary["status"], summary["message"])
                 return summary
             user_id = folder.user_id
             allowed_ext = _normalize_extensions(folder.include_extensions)
@@ -171,16 +232,26 @@ async def scan_folder(folder_id: str) -> dict:
             await db.commit()
 
         # ── 1. Daemon walk ────────────────────────────────────────────────
+        # `offline` et non `error` : rien n'a échoué, il n'y a simplement
+        # personne au bout du fil. Le geste attendu n'est pas le même — on
+        # lance ELY Desktop, on ne cherche pas une panne. Le registre des
+        # démons est EN MÉMOIRE : un redémarrage du backend suffit à couper
+        # la connexion tant que le démon n'a pas repris la main.
         if not desktop_registry.is_connected(user_id):
-            summary["status"] = "error"
-            summary["message"] = "ELY Desktop daemon not connected"
+            summary["status"] = "offline"
+            summary["message"] = (
+                "ELY Desktop n'est pas connecté — l'indexation lit les fichiers "
+                "par le démon, elle ne peut rien faire sans lui."
+            )
+            await _consigner(folder_id, summary["status"], summary["message"])
             return summary
 
         try:
             all_paths = await _daemon_walk(user_id, path, recursive)
         except Exception as exc:
             summary["status"] = "error"
-            summary["message"] = f"Daemon walk failed: {exc}"
+            summary["message"] = f"Parcours du dossier impossible : {exc}"
+            await _consigner(folder_id, summary["status"], summary["message"])
             return summary
 
         # ── 2. Filter ─────────────────────────────────────────────────────
@@ -252,15 +323,9 @@ async def scan_folder(folder_id: str) -> dict:
             f"erreurs {summary['errors']}"
         )
 
-        async with async_session() as db:
-            folder = await db.get(WatchedFolder, folder_id)
-            if folder is not None:
-                folder.last_scan_at = datetime.now(timezone.utc)
-                folder.last_scan_status = summary["status"]
-                folder.last_scan_message = summary["message"]
-                folder.files_indexed = (folder.files_indexed or 0) + summary["indexed"]
-                await db.commit()
-
+        await _consigner(
+            folder_id, summary["status"], summary["message"], summary["indexed"],
+        )
         return summary
     finally:
         _running_scans.discard(folder_id)
@@ -282,10 +347,26 @@ async def scan_all_enabled() -> dict:
         )
         folders = list(result.scalars())
 
-    overall = {"folders_scanned": 0, "total_indexed": 0, "total_errors": 0}
+    overall = {"folders_scanned": 0, "total_indexed": 0, "total_errors": 0,
+               "folders_offline": 0}
     for f in folders:
-        # Skip folders whose user's daemon is offline — no point trying.
+        # ⚠️ Ce `continue` était MUET, et c'est ce qui a rendu la
+        # fonctionnalité invisible. Le cron tournait toutes les heures,
+        # trouvait le dossier, constatait le démon absent, passait — sans une
+        # ligne de log ni un mot sur la ligne du dossier. Pendant des mois,
+        # côté écran, rien ne distinguait « ça marche » de « ça n'a jamais
+        # démarré ». Le commentaire d'origine disait « no point trying », ce
+        # qui est vrai : le défaut n'était pas de sauter, c'était de le taire.
+        #
+        # `seulement_si_change` : on ne réécrit pas la ligne à chaque heure,
+        # sinon `last_scan_at` battrait et donnerait l'illusion d'un scan.
         if not desktop_registry.is_connected(f.user_id):
+            overall["folders_offline"] += 1
+            await _consigner(
+                f.id, "offline",
+                "ELY Desktop n'est pas connecté — scan horaire sans effet.",
+                seulement_si_change=True,
+            )
             continue
         try:
             s = await scan_folder(f.id)

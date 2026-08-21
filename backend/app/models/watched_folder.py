@@ -31,7 +31,11 @@ Schema choices :
 - ``exclude_paths`` : comma-separated substrings that exclude matching
   paths (e.g. ".git,/node_modules,~/.ssh"). Defensive default.
 - ``last_scan_at`` : when the last scan completed (success or partial).
-- ``last_scan_status`` : "ok" | "partial" | "error" | "running" | "pending".
+- ``last_scan_status`` : "ok" | "partial" | "error" | "offline" | "running"
+  | "pending". ``offline`` (21/08) dit qu'ELY Desktop n'est pas connecté :
+  rien n'a échoué, il n'y avait personne pour lire les fichiers. Le geste
+  attendu diffère d'une erreur — on lance le démon, on ne cherche pas de
+  panne.
 - ``last_scan_message`` : human-readable summary ("Indexed 12 new files,
   skipped 3 unchanged, 1 error").
 - ``files_indexed`` : cumulative count of files currently in the index for

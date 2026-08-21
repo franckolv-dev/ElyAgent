@@ -85,7 +85,7 @@
     "unsupportedFormat": "Format non supporté",
     "watchedFolders": {
       "title": "Dossiers surveillés",
-      "subtitle": "Indexe automatiquement le contenu d'un ou plusieurs dossiers locaux. Le scan tourne toutes les heures et détecte les nouveaux fichiers — plus besoin d'uploader manuellement.",
+      "subtitle": "Indexe automatiquement le contenu d'un ou plusieurs dossiers locaux. Le scan tourne toutes les heures. ⚠️ Il lit les fichiers via ELY Desktop : sans le démon lancé sur cette machine, aucun scan n'est possible et les dossiers restent marqués « offline ».",
       "addFolder": "Ajouter un dossier",
       "loading": "Chargement…",
       "loadFailed": "Impossible de charger la liste",
