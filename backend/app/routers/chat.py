@@ -906,6 +906,28 @@ async def websocket_chat(websocket: WebSocket):
                 conversation_id=str(conversation_id),
             )
 
+            # ── Compteurs du tour ────────────────────────────────────────
+            # Calculés ICI, avant l'envoi, et plus dans le bloc d'analytique
+            # qui suit : le panneau SESSION les lit sur ce message. Il les
+            # lisait déjà — mais rien ne les émettait, donc « TOKENS » affichait
+            # « — » sur TOUS les tours, locaux comme distants, depuis toujours.
+            # Un compteur toujours vide finit par ne plus être lu (21/08).
+            try:
+                from app.services.usage_instrumentation import (
+                    estimate_tokens_if_missing,
+                )
+                (
+                    input_tokens_total, output_tokens_total, _tokens_estimes,
+                ) = estimate_tokens_if_missing(
+                    input_tokens=input_tokens_total,
+                    output_tokens=output_tokens_total,
+                    user_content=user_content,
+                    ai_content=ai_content,
+                )
+            except Exception as _tk_exc:  # noqa: BLE001 — jamais au prix du tour
+                logger.debug("compteurs de jetons non estimés: %s", _tk_exc)
+                _tokens_estimes = False
+
             from datetime import datetime as _dt, timezone as _tz
             payload: dict = {
                 "type": "message",
@@ -918,6 +940,12 @@ async def websocket_chat(websocket: WebSocket):
                 payload["model_used"] = model_used_out
             if routing_score_out is not None:
                 payload["routing_score"] = routing_score_out
+            if input_tokens_total or output_tokens_total:
+                payload["input_tokens"] = input_tokens_total
+                payload["output_tokens"] = output_tokens_total
+                # Une estimation qui se tait passe pour une mesure. L'interface
+                # la préfixe d'un « ~ » — cf. `estimate_tokens_if_missing`.
+                payload["tokens_estimated"] = _tokens_estimes
             # Inline attachments extracted from MEDIA:<path> sentinels — let
             # the frontend render them next to the assistant message even when
             # the LLM forgot to trigger a delivery tool.
@@ -958,18 +986,10 @@ async def websocket_chat(websocket: WebSocket):
                         _provider, _model = _rest.split("/", 1)
                     else:
                         _provider, _model = ("ollama" if _type == "slm" else "unknown"), _rest
-                    # ── Token fallback estimation ─────────────────────────
-                    # LM Studio (OpenAI-compatible local) often doesn't ship
-                    # usage_metadata in streaming responses, leaving the
-                    # totals at 0. Estimate via 4-chars-per-token heuristic
-                    # so the dashboard isn't dead — flagged as estimate via
-                    # input_tokens_total being computed AFTER, but stored
-                    # opaquely (cost calc handles 0-cost local models anyway).
-                    if input_tokens_total == 0 and user_content:
-                        _uc = user_content if isinstance(user_content, str) else str(user_content)
-                        input_tokens_total = max(1, len(_uc) // 4)
-                    if output_tokens_total == 0 and ai_content:
-                        output_tokens_total = max(1, len(ai_content) // 4)
+                    # L'estimation de repli des jetons a été REMONTÉE avant
+                    # l'envoi du message (cf. plus haut) : le panneau SESSION
+                    # les lit sur le websocket, et les calculer ici les rendait
+                    # disponibles trop tard. Les totaux sont déjà complétés.
                     # skill_used = most frequently called tool, or first if tie
                     _skill = (
                         max(set(tools_called), key=tools_called.count)

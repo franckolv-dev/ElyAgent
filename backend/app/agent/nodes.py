@@ -140,6 +140,49 @@ def _slm_real_name(llm, settings) -> str:
     return settings.slm_model
 
 
+def _slm_provider(llm) -> str:
+    """Le fournisseur qui sert la voie locale. DÉCLARÉ d'abord, déduit ensuite.
+
+    Voir `llm_provider.declared_provider_for_tier` pour le pourquoi de cet
+    ordre — c'est la remarque de Franck du 21/08, et elle vaut ici autant que
+    pour la chauffe.
+    """
+    try:
+        from app.services.llm_provider import (
+            declared_provider_for_tier, describe_llm,
+        )
+
+        declare = declared_provider_for_tier("simple")
+        if declare:
+            return declare
+        provider, _model = describe_llm(llm)
+        if provider and provider != "unknown":
+            return str(provider)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("SLM : fournisseur illisible (%s)", exc)
+    return "local"
+
+
+def _slm_label(llm, settings) -> str:
+    """L'étiquette d'usage du tour local : ``slm:<fournisseur>/<modèle>``.
+
+    **Le défaut qu'elle corrige (21/08).** Le chemin SLM émettait ``slm:<modèle>``
+    nu. Or LM Studio nomme ses modèles ``nvidia/nemotron-3-nano-4b`` : le nom
+    contient déjà un ``/``, et `split_model_used` découpe sur le premier. Le
+    tableau de bord attribuait donc les tours locaux à un fournisseur nommé
+    « nvidia », qui n'existe pas dans la configuration.
+
+    Le repli, lui, valait « ollama » en dur — un reste du temps où le SLM ne
+    pouvait être que ça. Deux façons de nommer un fournisseur au hasard : dans
+    les deux cas les chiffres avaient l'air corrects, ce qui est le pire.
+
+    ⚠️ Les lignes d'usage écrites AVANT ce correctif portent toujours
+    « nvidia » : rien ne les réécrit, et une migration de données d'analyse
+    coûterait plus que le trou qu'elle comble.
+    """
+    return f"slm:{_slm_provider(llm)}/{_slm_real_name(llm, settings)}"
+
+
 # Le tier A traite ce que le routeur a jugé SIMPLE — un score sous le seuil.
 # Lui livrer le registre entier (~145 schémas d'outils, plusieurs dizaines de
 # milliers de tokens) était ce qui rendait la voie rapide inutilisable : le
@@ -554,7 +597,7 @@ def create_agent_node():
                     ),
                     timeout=settings.slm_timeout,
                 )
-                model_used = f"slm:{_slm_real_name(_slm_base, settings)}"
+                model_used = _slm_label(_slm_base, settings)
                 logger.info(
                     "SLM answered (score=%d, model=%s, reason=%s)",
                     decision.score, _slm_real_name(_slm_base, settings),

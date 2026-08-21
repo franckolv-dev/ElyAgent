@@ -125,6 +125,17 @@ export interface WSMessage {
   // slm.fallback — le modèle local qui n'a pas pu répondre. `reason` (plus
   // haut) porte le pourquoi : sans lui, « repli » n'apprend rien.
   model?: string;
+  // Compteurs du tour, portés par le message final. Le panneau SESSION les
+  // lisait déjà — via un `as unknown as {…}` faute de les trouver ici — mais
+  // le backend ne les émettait PAS : « TOKENS » affichait « — » sur tous les
+  // tours depuis toujours. Le cast masquait exactement ce que le type aurait
+  // signalé (21/08).
+  input_tokens?: number;
+  output_tokens?: number;
+  // ⚠️ Vrai quand les compteurs sont ESTIMÉS (serveur local sans
+  // `usage_metadata`) et non mesurés. L'affichage doit le dire — un « ~ »
+  // suffit. Une estimation muette se lit comme une mesure.
+  tokens_estimated?: boolean;
 }
 
 export interface BrowserFrame {

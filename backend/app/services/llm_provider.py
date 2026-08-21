@@ -1308,6 +1308,40 @@ def _is_instance_id(value: str) -> bool:
     return value in _instance_cache
 
 
+def declared_provider_for_tier(tier_key: str) -> str:
+    """Le fournisseur du rang 1 d'un tier, tel que l'utilisateur l'a DÉCLARÉ.
+
+    **Pourquoi ça prime sur la déduction.** Remarque de Franck le 21/08 :
+    « quand j'ajoute un modèle, je définis si c'est du Ollama ou du LM Studio,
+    il faut utiliser cette info sinon pourquoi la définir ? ». `describe_llm`
+    DÉDUIT le fournisseur du `base_url` — sa docstring assume ce choix, une
+    même classe LangChain servant dix backends — mais l'instance porte le
+    choix EXPLICITE de l'utilisateur. Quand les deux existent, le déclaré
+    gagne ; la déduction reste le repli.
+
+    Rend ``""`` quand la chaîne est illisible ou vide : l'appelant retombe
+    alors sur `describe_llm`, qui vaut « au mieux ».
+
+    Une entrée de chaîne est soit un UUID d'instance (le cas normal : on lit
+    son champ ``provider``), soit un nom de fournisseur hérité, qui EST la
+    réponse.
+
+    Extrait de `slm_warmup._provider_declare` (#328) le 21/08, quand le chemin
+    d'étiquetage en a eu besoin à son tour — la seconde copie aurait dérivé.
+    """
+    try:
+        chaine = list((get_tier_config().get(tier_key) or {}).get("providers") or [])
+        if not chaine:
+            return ""
+        premier = chaine[0]
+        if not _is_instance_id(premier):
+            return str(premier)
+        return str((_instance_cache.get(premier) or {}).get("provider") or "")
+    except Exception as exc:  # noqa: BLE001 — un diagnostic ne casse rien
+        logger.debug("fournisseur déclaré illisible pour le tier %s (%s)", tier_key, exc)
+        return ""
+
+
 # ------------------------------------------------------------------ #
 # Chemin historique : résolution par NOM de fournisseur               #
 # ------------------------------------------------------------------ #
