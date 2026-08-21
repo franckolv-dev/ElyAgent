@@ -70,42 +70,56 @@
    DARK — Ardoise/anthracite étagée avec accent cyan
    ============================================ */
 [data-theme="dark"], html.dark, html:not(.light) {
-  /* Surfaces — remontées d'un cran (proposition claude.ai/design, 08/2026).
-     Avant : #0e1216 → #232b35, un quasi-noir sur lequel les sept étages se
-     séparaient d'un ou deux points de luminance — en pratique on ne voyait
-     ni la sidebar ni les cartes, seulement leurs bordures. Le ramp part
-     maintenant de L 0.33 et monte par pas lisibles. */
-  --bg-app:        oklch(0.33 0.012 255);
-  --bg-sidebar:    oklch(0.36 0.013 255);
-  --bg-surface:    oklch(0.39 0.014 255);
-  --bg-surface-2:  oklch(0.44 0.016 255);
-  --bg-surface-3:  oklch(0.48 0.016 255);
-  --bg-hover:      oklch(0.42 0.015 255);
-  --bg-active:     oklch(0.46 0.016 255);
+  /* Surfaces — valeurs de la maquette claude.ai/design, posées TELLES QUELLES
+     (21/08). Les six hex marqués « maquette » sont exactement ceux fournis ;
+     ils sont en hexadécimal et non en oklch pour rester diffables à l'œil
+     contre la spec, sans passer par une conversion.
 
-  /* Text — blanc adouci, jamais pur : sur un fond remonté à 0.33 le #fff
-     vibre.
-     ⚠️ Les trois tiers bas sont REMONTÉS par rapport à la maquette
-     (0.72 / 0.62 / 0.54). Éclaircir le fond coûte mécaniquement du contraste
-     au texte clair, et aux valeurs de la maquette le calcul WCAG donnait
-     2.64:1 pour tertiary sur --bg-surface et 1.53:1 pour muted sur
-     --bg-surface-2 — sous la barre des 3:1, et EN DESSOUS de ce que rendait
-     l'ancien thème quasi-noir (3.76 et 2.06). On ne troque pas de la
-     lisibilité contre une teinte. Aux valeurs ci-dessous chaque tier
-     retrouve au moins son niveau d'avant sur le fond où il sert. */
-  --text-primary:   oklch(0.94 0.004 255);
-  --text-secondary: oklch(0.76 0.008 255);
-  --text-tertiary:  oklch(0.68 0.008 255);
-  --text-muted:     oklch(0.61 0.008 255);
+     ⚠️ CE QUE CETTE RÉVISION CORRIGE, et c'était mon erreur. La version du
+     #324 avait les MÊMES fonds — c'est le texte que j'avais remonté de mon
+     propre chef (secondaire 0.76 au lieu de 0.72, muted 0.61 au lieu de 0.54),
+     au nom du contraste WCAG. Résultat : les tiers de texte se sont resserrés
+     entre eux ET rapprochés des fonds clairs, et Franck a vu « un voile blanc
+     sur les gris, comme du brouillard ». C'était exactement ça — de la
+     luminance tassée. Un arbitrage technique défendable ligne à ligne peut
+     détruire un rendu ; la maquette avait raison sur l'ensemble. */
+  --bg-app:        #31363c;   /* maquette — « Fond » */
+  --bg-sidebar:    #31363c;   /* la maquette ne donne qu'UN fond : la sidebar
+                                 se sépare par sa bordure, pas par un étage */
+  --bg-chat:       #282d34;   /* dérivé — le fil de conversation passe SOUS le
+                                 reste (demande du 21/08). Effet secondaire
+                                 utile : le texte long y regagne du contraste,
+                                 11.60:1 en principal, 5.60:1 en secondaire */
+  --bg-surface:    #40464d;   /* maquette — « Cartes » */
+  --bg-surface-2:  #4d535b;   /* maquette — « Pills/badges topbar » */
+  --bg-surface-3:  #5a6068;   /* dérivé, un pas au-dessus des pills */
+  --bg-hover:      #474c53;   /* dérivé */
+  --bg-active:     #51575f;   /* dérivé */
+
+  /* Text — blanc adouci, jamais pur : sur un fond à #31363c le #fff vibre. */
+  --text-primary:   #e9ebee;  /* maquette */
+  --text-secondary: #a1a5aa;  /* maquette */
+  --text-tertiary:  #86898e;  /* dérivé, entre secondaire et muted */
+  --text-muted:     #6c6f73;  /* maquette — « muted / labels » */
   --text-on-accent: #07181c;
 
-  /* Borders — OPAQUES désormais. Un blanc à 5 % donnait un trait net sur
-     #0e1216 ; sur un fond à 0.33 il disparaît, et toutes les cartes perdent
-     leur contour d'un coup — le ramp et les bordures se changent ensemble
-     ou pas du tout. */
-  --border-subtle:  oklch(0.43 0.013 255);
-  --border-default: oklch(0.47 0.014 255);
-  --border-strong:  oklch(0.55 0.014 255);
+  /* ⚠️ CONTRASTE MESURÉ, et assumé. `--text-muted` rend 2.41:1 sur le fond,
+     1.89 sur les cartes, 1.54 sur les pills — sous la barre des 3:1 partout.
+     C'est le prix du rendu voulu, et c'est un choix de Franck fait en
+     connaissance de cause après avoir vu les deux versions à l'écran. Il ne
+     sert QUE des libellés courts et des étiquettes. S'il devient illisible,
+     le levier est de le remonter LUI SEUL — pas de retoucher les fonds. */
+
+  /* Le point d'état « OFF » vit à part du texte muted : à 6 px il lui faut
+     plus de présence qu'à une étiquette. La maquette donne les deux. */
+  --dot-off: #7c8186;         /* maquette */
+
+  /* Borders — OPAQUES. Un blanc à 5 % donnait un trait net sur #0e1216 ; sur
+     un fond à #31363c il disparaît, et toutes les cartes perdent leur contour
+     d'un coup — le ramp et les bordures se changent ensemble ou pas du tout. */
+  --border-subtle:  #484e55;  /* dérivé */
+  --border-default: #565b63;  /* maquette — « Bordures » */
+  --border-strong:  #666c74;  /* dérivé */
 
   /* Le voile d'accent porte la page active : à 0.12 il se noyait sur le
      fond remonté, 0.16 tient. Le thème clair garde le 0.12 de :root. */
@@ -131,7 +145,12 @@
 
   /* Avatar wireframe — le bord du dégradé suit --bg-app ; figé sur l'ancien
      #0e1216 il aurait laissé un trou noir au milieu du panneau. */
-  --wire-bg: radial-gradient(circle at 50% 40%, oklch(0.42 0.045 200) 0%, oklch(0.33 0.012 255) 65%);
+  /* Le bord du dégradé SUIT `--bg-app` au lieu de le recopier : la valeur
+     était figée à `oklch(0.33 0.012 255)`, soit exactement #31363c — juste,
+     mais par coïncidence. Le commentaire d'origine prévenait déjà qu'une
+     copie figée laisserait « un trou noir au milieu du panneau » au prochain
+     changement de fond ; autant supprimer la copie (21/08). */
+  --wire-bg: radial-gradient(circle at 50% 40%, oklch(0.42 0.045 200) 0%, var(--bg-app) 65%);
   --wire-line: oklch(78% 0.12 var(--accent-h));
   --wire-glow: oklch(72% 0.14 var(--accent-h) / 0.5);
 
@@ -144,6 +163,12 @@
 [data-theme="light"], html.light {
   --bg-app:        #e2e8f0;
   --bg-sidebar:    #d8e0ea;
+  /* Même intention qu'en sombre — le fil de conversation se détache du reste
+     — mais dans l'autre sens : sur un thème clair, « se détacher » veut dire
+     PLUS clair. Descendre ici donnerait une bande grise au milieu de la page.
+     Le jeton existe dans les deux thèmes, sinon `.chat-thread` retomberait
+     sur rien en clair. */
+  --bg-chat:       #eef2f7;
   --bg-surface:    #f4f7fb;
   --bg-surface-2:  #e9eff6;
   --bg-surface-3:  #dde5ef;
@@ -165,6 +190,12 @@
   --text-secondary: #4b5868;
   --text-tertiary:  #6b7785;
   --text-muted:     #8a95a3;
+  /* Même rôle qu'en sombre : un point d'état de 6 px a besoin de plus de
+     présence qu'une étiquette, donc il va vers le PLUS foncé ici. Sans cette
+     ligne, `var(--dot-off)` ne résoudrait rien en thème clair et le point
+     hériterait d'une couleur au hasard — ce que le pin
+     `test_theme_tokens_exist_in_both_themes` empêche désormais. */
+  --dot-off:        #7c8794;
   /* Sur un accent à 52 % c'est le blanc qui porte (4.68:1), pas l'encre
      sombre héritée du thème sombre (3.66:1). */
   --text-on-accent: oklch(0.98 0.004 255);
@@ -867,6 +898,19 @@ button.nav-item.active {
 .badge.danger  { background: var(--danger-soft);  color: var(--danger); }
 .badge.info    { background: var(--info-soft);    color: var(--info); }
 .badge.accent  { background: var(--accent-soft);  color: var(--accent); }
+
+/* ============================================
+   Fil de conversation — la colonne centrale
+   ============================================ */
+/* Le « body » de l'interface : là où les échanges s'affichent. Il descend
+   sous le reste du châssis (sidebar, topbar, panneau de droite) plutôt que
+   de partager leur fond — demande du 21/08.
+   Posé sur le CONTENEUR de la colonne, composeur inclus : ne teinter que la
+   zone défilante laisserait une marche visible juste au-dessus du champ de
+   saisie, à l'endroit où l'œil s'attend à une continuité. */
+.chat-thread {
+  background: var(--bg-chat);
+}
 
 /* ============================================
    Chat empty state (refonte mai 2026)

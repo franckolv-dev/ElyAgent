@@ -509,7 +509,10 @@ function ChatPageInner() {
         <div className="flex flex-1 overflow-hidden">
           <Sidebar />
 
-          <div className="flex flex-col flex-1 overflow-hidden">
+          {/* `chat-thread` — le fil passe sous le reste du châssis (21/08).
+              Sur le conteneur et pas sur la zone défilante seule : sinon une
+              marche apparaît juste au-dessus du composeur. */}
+          <div className="chat-thread flex flex-col flex-1 overflow-hidden">
 
           {/* Conversation title bar */}
           {conversationId && convTitle && (
