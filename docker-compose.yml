@@ -89,7 +89,13 @@ services:
       - TTS_VOICE=${TTS_VOICE:-fr-FR-VivienneMultilingualNeural}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - SLM_ENABLED=${SLM_ENABLED:-false}
-      - SLM_MODEL=${SLM_MODEL:-qwen2.5:3b-instruct}
+      # ⚠️ PLUS DE DÉFAUT ICI (22/08). Cette ligne posait
+      # « qwen2.5:3b-instruct », donc `settings.slm_model` n'était jamais vide
+      # et ce modèle était réclamé aux serveurs locaux quel que soit ce que
+      # l'utilisateur avait installé — un 404 au moment de répondre, pas au
+      # moment de configurer. Vide = « non déclaré », et le code demande alors
+      # au serveur ce qu'il sert réellement (`resolve_local_model`).
+      - SLM_MODEL=${SLM_MODEL:-}
       - SLM_COMPLEXITY_THRESHOLD=${SLM_COMPLEXITY_THRESHOLD:-40}
       - SLM_TIMEOUT=${SLM_TIMEOUT:-25.0}
       # Couche 2 PII NER (GLiNER ONNX int8) — défaut OFF. Pré-requis si on
