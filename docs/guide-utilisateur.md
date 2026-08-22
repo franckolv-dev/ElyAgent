@@ -77,16 +77,30 @@ par confiance.
 
 Recherche web, recherche d'images, cartes et lieux.
 
-Pour naviguer, **deux familles, et le choix compte** :
+Pour naviguer, **trois familles, et le choix compte** :
 
 | | Ce que ça pilote | Sessions | Pour quoi |
 |---|---|---|---|
-| `browser_*` | un Chromium côté serveur | **aucune** | le web public |
+| `web_*` | un Chromium jetable | **aucune, et rien à ouvrir** | une URL précise, en un seul appel |
+| `browser_*` | un Chromium côté serveur | une session par utilisateur | explorer un site pas à pas |
 | `browser_tab_*` | **votre vrai Chrome** | les vôtres | tout ce qui est derrière une connexion |
+
+**`web_screenshot`, `web_to_pdf`, `web_extract`, `web_compare`** prennent
+l'adresse en argument, ouvrent la page, font leur travail et referment. C'est
+ce qu'il faut dans une **tâche planifiée** : elle tourne sans personne devant,
+parfois pendant que vous naviguez vous-même, et elle ne doit ni dépendre de la
+page que vous regardez ni vous la déplacer.
+
+`web_compare` sert la **veille** : donnez-lui le texte relevé la fois
+précédente, il vous dit ce qui a changé — un prix, une offre d'emploi, une page
+de statut.
+
+Les `browser_*` restent pour l'exploration à deux : Ely et vous regardez la
+même page, elle clique, vous voyez.
 
 Si vous voulez qu'Ely lise votre LinkedIn, vos commandes Amazon ou l'interface
 Gmail, il faut l'extension : sans elle, le serveur ne voit que la page de
-connexion.
+connexion — et les outils `web_*` non plus, ils ne s'authentifient pas.
 
 ### Machine et bureau
 
