@@ -78,7 +78,7 @@ Deux principes dans cette boucle :
 
 ## Les outils
 
-**196 outils** avec les drapeaux par défaut — le compte reproductible. Deux
+**200 outils** avec les drapeaux par défaut — le compte reproductible. Deux
 choses s'y ajoutent selon la configuration :
 
 - **+10** si le client MCP est activé (`mcp_client_v2_enabled`, éteint par
