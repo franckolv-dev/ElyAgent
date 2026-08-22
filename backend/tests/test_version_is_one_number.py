@@ -1,21 +1,29 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_version_is_one_number.py
-# @brief      Trois fichiers déclarent la version. Ils doivent dire la même.
+# @brief      Quatre fichiers déclarent la version. Ils doivent dire la même.
 # @license    Elastic License 2.0
 # =============================================================================
-"""La version d'Ely vit à TROIS endroits, et rien ne les tenait ensemble.
+"""La version d'Ely vit à QUATRE endroits, et rien ne les tenait ensemble.
 
     backend/pyproject.toml      version = "…"
     backend/app/main.py         FastAPI(version="…")   → sert /health
     frontend/package.json       "version": "…"
+    backend/uv.lock             [[package]] cyber-entity-backend
 
-Le troisième est celui qui compte pour l'utilisateur : le panneau SESSION
-affiche `VER:` en lisant `/health`, donc `main.py`. Les deux autres sont lus
+⚠️ La quatrième s'est signalée toute seule, et c'est instructif : je n'en
+connaissais que trois en écrivant ce pin, et `uv sync` a réécrit `uv.lock`
+pendant la même session pour y reporter la version de `pyproject.toml`. Une
+source de vérité qu'on ne savait pas être une source — exactement ce que ce
+fichier existe pour attraper. Elle n'aurait divergé qu'au premier `uv sync`
+oublié, c'est-à-dire longtemps après le bump.
+
+Le DEUXIÈME est celui qui compte pour l'utilisateur : le panneau SESSION
+affiche `VER:` en lisant `/health`, donc `main.py`. Les trois autres sont lus
 par les outils de build et par quiconque inspecte le dépôt.
 
 ⚠️ POURQUOI CE PIN EXISTE (22/08). Une montée de version se fait à la main, en
-trois endroits, à trois formats différents. Il suffit d'en oublier un pour que
+quatre endroits, à quatre formats différents. Il suffit d'en oublier un pour que
 `/health` annonce une version que le dépôt ne porte pas — et personne ne s'en
 aperçoit, parce qu'un numéro de version faux ne casse rien. C'est exactement le
 profil des dérives que ce dépôt traque : ça ne plante pas, ça ment.
@@ -59,12 +67,28 @@ def _depuis_package() -> str:
     return data["version"]
 
 
-def test_the_three_sources_agree():
-    """LE pin. Trois formats, trois fichiers, une seule vérité."""
+def _depuis_lock() -> str:
+    """La version que `uv.lock` attribue au paquet du dépôt lui-même.
+
+    Elle est réécrite par `uv sync`, donc elle suit `pyproject.toml` — mais
+    seulement quand quelqu'un lance la commande. Entre le bump et le premier
+    `uv sync`, le verrou annonce l'ancienne version.
+    """
+    texte = (RACINE / "backend" / "uv.lock").read_text(encoding="utf-8")
+    trouve = re.search(
+        r'name = "cyber-entity-backend"\s*\nversion = "([^"]+)"', texte,
+    )
+    assert trouve, "uv.lock ne déclare plus la version du paquet du dépôt"
+    return trouve.group(1)
+
+
+def test_the_four_sources_agree():
+    """LE pin. Quatre formats, quatre fichiers, une seule vérité."""
     sources = {
         "backend/pyproject.toml": _depuis_pyproject(),
         "backend/app/main.py": _depuis_main(),
         "frontend/package.json": _depuis_package(),
+        "backend/uv.lock": _depuis_lock(),
     }
     distinctes = set(sources.values())
     assert len(distinctes) == 1, (
@@ -107,6 +131,7 @@ def test_the_changelog_documents_the_current_version():
     "backend/pyproject.toml",
     "backend/app/main.py",
     "frontend/package.json",
+    "backend/uv.lock",
     "CHANGELOG.md",
 ])
 def test_every_source_exists(fichier):
