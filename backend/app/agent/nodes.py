@@ -137,7 +137,10 @@ def _slm_real_name(llm, settings) -> str:
             return str(_model)
     except Exception as exc:  # noqa: BLE001 — un nom de confort ne casse rien
         logger.debug("SLM : nom réel illisible (%s)", exc)
-    return settings.slm_model
+    # `slm_model` est VIDE par défaut depuis le 22/08 (cf. config.py) : rendre
+    # une chaîne vide afficherait une étiquette blanche à l'écran, ce qui se
+    # lit comme un défaut d'affichage plutôt que comme une identité inconnue.
+    return settings.slm_model or "modèle inconnu"
 
 
 def _slm_provider(llm) -> str:

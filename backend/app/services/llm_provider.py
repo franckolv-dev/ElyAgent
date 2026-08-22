@@ -360,7 +360,10 @@ def get_slm() -> BaseChatModel:
 
     settings = get_settings()
     from langchain_ollama import ChatOllama
-    return ChatOllama(model=settings.slm_model,
+    return ChatOllama(
+        model=resolve_local_model(
+            settings, settings.ollama_base_url, "qwen2.5:7b-instruct",
+        ),
         base_url=settings.ollama_base_url,
         temperature=0.7, keep_alive="24h",
         async_client_kwargs=_local_ollama_limits())
@@ -1005,9 +1008,111 @@ _LOCAL_PROBE_TTL_S = 60.0
 _local_probe_cache: dict[str, tuple[float, bool]] = {}
 
 
+# Modèles réellement servis par un serveur local, par base_url. Même logique
+# de TTL que la sonde de disponibilité juste au-dessus.
+_local_models_cache: dict[str, tuple[float, list[str]]] = {}
+
+
 def reset_local_probe_cache() -> None:
     """Vide le cache de disponibilité (tests, ou changement de configuration)."""
     _local_probe_cache.clear()
+    _local_models_cache.clear()
+
+
+def local_models_available(base_url: str | None) -> list[str]:
+    """Les modèles que le serveur local dit servir. Liste vide si on ne sait pas.
+
+    **Pourquoi cette fonction existe (22/08).** Remarque de Franck : « il ne
+    faut pas qu'un modèle soit écrit dans le code et imposé — si un
+    utilisateur n'a pas qwen2.5:3b-instruct installé, que se passe-t-il ? »
+
+    Il a raison, et la réponse était mauvaise : on construisait le client sans
+    broncher, et l'échec ne survenait qu'à l'INVOCATION, en 404 « model not
+    found ». Un nom de modèle inventé ne se voit donc qu'au moment où il est
+    trop tard pour l'expliquer.
+
+    Demander au serveur ce qu'il a est la seule source honnête. Les deux
+    serveurs locaux l'exposent : Ollama sur ``/api/tags``, LM Studio (et tout
+    OpenAI-compatible) sur ``/v1/models``.
+
+    Ne lève jamais : c'est un confort de résolution, pas un service.
+    """
+    import time
+
+    key = (base_url or "").rstrip("/")
+    if not key:
+        return []
+    cache = _local_models_cache.get(key)
+    now = time.monotonic()
+    if cache and now - cache[0] < _LOCAL_PROBE_TTL_S:
+        return cache[1]
+
+    noms: list[str] = []
+    try:
+        import httpx
+
+        # On tente les deux formats : le même serveur ne répond qu'à un seul,
+        # et deviner d'après l'URL serait une heuristique de plus à maintenir.
+        for chemin, extraire in (
+            ("/api/tags", lambda d: [m.get("name", "") for m in d.get("models", [])]),
+            ("/v1/models", lambda d: [m.get("id", "") for m in d.get("data", [])]),
+        ):
+            try:
+                r = httpx.get(f"{key}{chemin}", timeout=1.5)
+                if r.status_code == 200:
+                    noms = [n for n in extraire(r.json()) if n]
+                    if noms:
+                        break
+            except Exception:  # noqa: BLE001 — l'autre format a peut-être raison
+                continue
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("liste des modèles locaux illisible (%s) : %s", key, exc)
+
+    _local_models_cache[key] = (now, noms)
+    return noms
+
+
+def resolve_local_model(settings, base_url: str | None, defaut: str) -> str:
+    """Le nom de modèle à demander à un serveur LOCAL, par ordre d'honnêteté.
+
+    1. ``SLM_MODEL`` si l'utilisateur l'a posé — c'est une déclaration.
+    2. Sinon, le PREMIER modèle que le serveur dit servir. C'est ce que
+       l'utilisateur a réellement installé, ce qui est le seul nom dont on
+       soit sûr qu'il existe.
+    3. Sinon seulement, la constante — et on le DIT en WARNING.
+
+    ⚠️ Cet ordre corrige un défaut réel. Le chemin de résolution PAR NOM de
+    fournisseur (par opposition à l'UUID d'instance) impose un modèle codé en
+    dur — c'est ce que le gros commentaire de ce fichier condamne depuis le
+    26/07, après l'incident « openai_codex impose gpt-5.5 ». `slm_model` y
+    participait à TROIS endroits, et `docker-compose.yml` posait
+    `qwen2.5:3b-instruct` dans `environment:`, donc la valeur n'était JAMAIS
+    vide : le modèle inventé s'appliquait toujours.
+
+    Conséquence concrète : un tier A référençant « lm_studio » par nom
+    réclamait `qwen2.5:3b-instruct` à LM Studio, quel que soit le modèle
+    réellement chargé.
+    """
+    declare = (getattr(settings, "slm_model", "") or "").strip()
+    if declare:
+        return declare
+
+    disponibles = local_models_available(base_url)
+    if disponibles:
+        logger.info(
+            "Modèle local non déclaré — on prend le premier servi par %s : %s",
+            base_url, disponibles[0],
+        )
+        return disponibles[0]
+
+    logger.warning(
+        "Modèle local non déclaré et serveur %s muet sur ses modèles — repli "
+        "sur « %s ». S'il n'est pas installé, l'appel échouera en 404 au "
+        "moment de répondre. Pose SLM_MODEL dans ton .env, ou déclare une "
+        "instance pour ce tier dans Réglages → Routage.",
+        base_url, defaut,
+    )
+    return defaut
 
 
 def _tcp_reachable(host: str, port: int) -> bool:
@@ -1075,7 +1180,10 @@ def _make_llm_for_provider(
                          settings.ollama_base_url)
             return None
         from langchain_ollama import ChatOllama
-        return ChatOllama(model=settings.slm_model or "qwen2.5:7b-instruct",
+        return ChatOllama(
+            model=resolve_local_model(
+                settings, settings.ollama_base_url, "qwen2.5:7b-instruct",
+            ),
             base_url=settings.ollama_base_url,
             temperature=temperature, keep_alive="24h")
 
@@ -1087,9 +1195,12 @@ def _make_llm_for_provider(
             return None
         # No key needed — use the model currently loaded in LM Studio.
         # The model name must match what LM Studio shows in its "Local Server" tab.
-        return _make_lm_studio(model=settings.slm_model or "gemma-4-26B-A4B-it-MLX-4bit",
-                               base_url=settings.lm_studio_base_url,
-                               max_tokens=max_tokens, temperature=temperature)
+        return _make_lm_studio(
+            model=resolve_local_model(
+                settings, settings.lm_studio_base_url, "gemma-4-26B-A4B-it-MLX-4bit",
+            ),
+            base_url=settings.lm_studio_base_url,
+            max_tokens=max_tokens, temperature=temperature)
 
     if provider_id == "openai_codex":
         # Abonnement ChatGPT — pas de clé API (connexion par import des
@@ -1764,7 +1875,9 @@ def get_llm_for_tier(tier: ComplexityTier) -> BaseChatModel:
             from langchain_ollama import ChatOllama
 
             return ChatOllama(
-                model=settings.slm_model or "qwen2.5:7b-instruct",
+                model=resolve_local_model(
+                    settings, settings.ollama_base_url, "qwen2.5:7b-instruct",
+                ),
                 base_url=settings.ollama_base_url,
                 temperature=temperature, keep_alive="24h",
             )

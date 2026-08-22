@@ -133,34 +133,130 @@ def test_the_misleading_setting_says_it_is_misleading():
     """`SLM_MODEL` ne choisit pas le modèle. Le documenter sans le dire aurait
     été pire que de ne pas le documenter du tout."""
     env = _env_example()
-    debut = env.find("SLM_MODEL")
-    bloc = env[max(0, debut - 1200):debut + 200]
+    # Fenêtre ancrée sur l'EN-TÊTE de section, pas sur la première occurrence
+    # du nom : celle-ci tombe au milieu de l'avertissement, et la fenêtre
+    # coupait justement l'explication qu'on vérifie.
+    debut = env.find("Voie rapide (SLM)")
+    assert debut != -1, "la section SLM a disparu de .env.example"
+    bloc = env[debut:debut + 2500]
     assert "Routage" in bloc, (
         "la doc de SLM_MODEL doit renvoyer vers Réglages → Routage, qui est "
         "l'endroit où le modèle se choisit réellement"
     )
-    assert "repli" in bloc.lower(), (
-        "elle doit dire que ce réglage n'est qu'un repli"
+    # Deux formulations acceptées : c'est le SENS qui compte — « ce réglage
+    # n'est pas la façon de choisir le modèle ». Épingler un seul mot ferait
+    # rougir le pin sur une reformulation innocente.
+    assert any(m in bloc.lower() for m in ("repli", "dernier recours")), (
+        "elle doit dire que ce réglage n'est qu'un dernier recours"
+    )
+    assert "vide" in bloc.lower(), (
+        "elle doit dire de le laisser VIDE — c'est ce qui autorise la "
+        "résolution depuis ce que le serveur sert vraiment"
     )
 
 
-def test_the_compose_default_divergence_is_written_down():
-    """Le compose pose `qwen2.5:3b-instruct`, le code `qwen2.5:7b-instruct`.
-    Le compose gagne. Une divergence tue qui n'est jamais découverte au bon
-    moment — ce fichier prévient déjà pour TTS_VOICE, on fait pareil."""
+def test_no_layer_imposes_a_model_the_user_may_not_have():
+    """Remarque de Franck (22/08) : « il ne faut pas qu'un modèle soit écrit
+    dans le code et imposé — si un utilisateur n'a pas qwen2.5:3b-instruct
+    installé, que se passe-t-il ? »
+
+    Il se passait un 404 « model not found » À L'INVOCATION, c'est-à-dire au
+    moment où il est trop tard pour l'expliquer. Le compose posait
+    `qwen2.5:3b-instruct` dans `environment:`, donc `settings.slm_model`
+    n'était JAMAIS vide et ce nom était réclamé aux serveurs locaux quel que
+    soit ce que l'utilisateur avait installé.
+
+    Les deux couches doivent laisser le champ VIDE : vide veut dire « non
+    déclaré », et c'est ce qui autorise la résolution honnête.
+    """
     compose = (RACINE / "docker-compose.yml").read_text(encoding="utf-8")
-    depuis_compose = re.search(r"SLM_MODEL=\$\{SLM_MODEL:-([^}]+)\}", compose)
-    assert depuis_compose, "le défaut compose de SLM_MODEL a disparu"
+    pose = re.search(r"SLM_MODEL=\$\{SLM_MODEL:-([^}]*)\}", compose)
+    assert pose, "la ligne SLM_MODEL du compose a disparu"
+    assert pose.group(1) == "", (
+        f"le compose impose « {pose.group(1)} » — ce modèle sera réclamé aux "
+        f"serveurs locaux même si l'utilisateur ne l'a pas installé"
+    )
 
     from app.config import Settings
-    depuis_code = Settings.model_fields["slm_model"].default
+    assert Settings.model_fields["slm_model"].default == "", (
+        "le code impose un modèle par défaut ; vide = « non déclaré », ce qui "
+        "laisse `resolve_local_model` demander au serveur ce qu'il a"
+    )
 
-    if depuis_compose.group(1) != depuis_code:
-        env = _env_example()
-        assert "DIFFÈRE" in env or "diffère" in env, (
-            f"le compose impose « {depuis_compose.group(1)} » là où le code "
-            f"pose « {depuis_code} », et .env.example ne le signale pas"
-        )
+
+def test_an_undeclared_model_is_taken_from_the_server(monkeypatch):
+    """LE pin de la remarque. Sans nom déclaré, on demande au serveur — c'est
+    le seul nom dont on soit sûr qu'il existe chez l'utilisateur."""
+    from app.services import llm_provider
+
+    monkeypatch.setattr(
+        llm_provider, "local_models_available",
+        lambda _url: ["nvidia/nemotron-3-nano-4b", "google/gemma-4-12b"],
+    )
+    reglages = type("S", (), {"slm_model": ""})()
+    choisi = llm_provider.resolve_local_model(reglages, "http://x:1234", "constante")
+
+    assert choisi == "nvidia/nemotron-3-nano-4b", (
+        "on doit prendre un modèle RÉELLEMENT servi, pas la constante"
+    )
+
+
+def test_a_declared_model_still_wins(monkeypatch):
+    """Un réglage explicite reste une déclaration de l'utilisateur : on ne la
+    remplace pas par ce qu'on devine, même si le serveur dit autre chose."""
+    from app.services import llm_provider
+
+    monkeypatch.setattr(
+        llm_provider, "local_models_available", lambda _url: ["autre-chose"],
+    )
+    reglages = type("S", (), {"slm_model": "mon-modele"})()
+    assert llm_provider.resolve_local_model(
+        reglages, "http://x:1234", "constante",
+    ) == "mon-modele"
+
+
+def test_falling_back_to_the_constant_is_announced(monkeypatch, caplog):
+    """⚠️ La constante subsiste en tout dernier recours — la retirer ferait
+    lever là où le dépôt a choisi de rendre un client injoignable (« un Ollama
+    éteint peut être démarré dans la minute »).
+
+    Mais elle doit S'ANNONCER : c'est l'invariant 4. Sans ce WARNING, on
+    revient exactement au défaut d'origine, un nom inventé en silence.
+    """
+    import logging
+
+    from app.services import llm_provider
+
+    monkeypatch.setattr(llm_provider, "local_models_available", lambda _url: [])
+    reglages = type("S", (), {"slm_model": ""})()
+
+    with caplog.at_level(logging.WARNING):
+        choisi = llm_provider.resolve_local_model(reglages, "http://x:1234", "constante")
+
+    assert choisi == "constante"
+    assert any("404" in r.message or "SLM_MODEL" in r.message
+               for r in caplog.records), (
+        "le repli sur une constante doit dire ce qu'il risque et quoi faire"
+    )
+
+
+def test_no_local_provider_hardcodes_its_model_any_more():
+    """Les TROIS sites qui imposaient un nom passent par le résolveur.
+
+    C'est la classe de défaut que le gros commentaire de `llm_provider`
+    condamne depuis le 26/07 — « chaque fournisseur impose un modèle CODÉ EN
+    DUR », incident openai_codex/gpt-5.5. `slm_model` y participait.
+    """
+    src = (RACINE / "backend" / "app" / "services" / "llm_provider.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'slm_model or "' not in src, (
+        "un site impose encore un modèle en dur au lieu de passer par "
+        "`resolve_local_model`"
+    )
+    assert src.count("resolve_local_model(") >= 4, (
+        "les trois sites locaux + get_slm doivent tous passer par le résolveur"
+    )
 
 
 def test_the_timeout_documents_what_it_really_costs():

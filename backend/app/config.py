@@ -87,7 +87,22 @@ class Settings(BaseSettings):
     #   16 GB VPS  → qwen2.5:7b-instruct   (~5 GB)   ← VPS actuel (Hostinger 16 Go)
     #   24 GB VPS  → qwen2.5:14b-instruct  (~9 GB)   ← futur VPS (migration ~avril 2026)
     slm_enabled: bool = False
-    slm_model: str = "qwen2.5:7b-instruct"
+    # ⚠️ VIDE par défaut depuis le 22/08, et c'est le correctif.
+    #
+    # Ce champ ne choisit PAS le modèle de la voie rapide : `get_slm()` rend le
+    # tier A configuré dans Réglages → Routage. Il ne sert que de dernier
+    # recours, sur le chemin de résolution PAR NOM de fournisseur.
+    #
+    # Or il valait « qwen2.5:7b-instruct » ici et le compose posait
+    # « qwen2.5:3b-instruct » dans `environment:` — donc la valeur n'était
+    # JAMAIS vide, et ce modèle inventé était réclamé aux serveurs locaux quoi
+    # que l'utilisateur ait installé. Remarque de Franck : « si un utilisateur
+    # n'a pas qwen2.5:3b-instruct installé, que se passe-t-il ? » — un 404 à
+    # l'invocation, c'est-à-dire trop tard pour l'expliquer.
+    #
+    # Vide veut désormais dire « non déclaré », et `resolve_local_model`
+    # demande au serveur ce qu'il sert VRAIMENT.
+    slm_model: str = ""
     slm_complexity_threshold: int = 40   # 0-100 ; en-dessous → SLM, au-dessus → LLM
     slm_timeout: float = 25.0            # secondes avant fallback automatique vers LLM
 
