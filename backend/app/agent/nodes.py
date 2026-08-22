@@ -243,6 +243,17 @@ def create_agent_node():
     _slm_with_tools = None
     _slm_base = None          # le modèle NON bindé — voir `_slm_real_name`
     _slm_version = -1
+    # ⚠️ DEUXIÈME compteur, et son absence était un défaut (22/08). Le cache
+    # SLM ne suivait que `registry.tools_version` : changer le modèle du tier A
+    # dans Réglages → Routage ne le reconstruisait PAS, et Ely continuait de
+    # servir l'ancien modèle jusqu'au prochain redémarrage.
+    #
+    # C'est exactement le défaut décrit vingt lignes plus bas pour le cache des
+    # tiers LLM — « switching a model in the UI had no runtime effect » (audit
+    # C-4, corrigé le 06/05). Le site jumeau, lui, n'avait jamais été corrigé.
+    # Franck a déplacé Nemotron et Gemma entre tiers plusieurs fois le 21/08 ;
+    # ses `make down && make up` ont masqué le défaut en relançant le process.
+    _slm_cfg_version = -1
     if settings.slm_enabled:
         try:
             from app.services.llm_provider import get_slm
@@ -250,9 +261,11 @@ def create_agent_node():
             # rend un RunnableBinding qui n'expose pas `.model` : introspecter
             # l'objet bindé rendrait « ? ». La voie cloud fait pareil — elle
             # décrit `_base_llm`, pas `_llm_with_tools`.
+            from app.services.llm_provider import get_tier_config_version
             _slm_base = get_slm()
             _slm_with_tools = _slm_base.bind_tools(_slm_toolset(registry))
             _slm_version = registry.tools_version
+            _slm_cfg_version = get_tier_config_version()
             logger.info(
                 "SLM pre-built: model=%s (réglage SLM_MODEL=%s), threshold=%d",
                 _slm_real_name(_slm_base, settings), settings.slm_model,
@@ -276,7 +289,7 @@ def create_agent_node():
         import time as _t
         _gt_start = _t.monotonic()
         logger.warning("⏱ TIMING[general] starting")
-        nonlocal _slm_with_tools, _slm_base, _slm_version
+        nonlocal _slm_with_tools, _slm_base, _slm_version, _slm_cfg_version
         # _tier_llm_cache / _tier_cache_version are dicts/lists mutated in-place — no nonlocal needed
         messages = state["messages"]
         # P2 — posé plus bas quand la requête est complète. Initialisé ici pour
@@ -333,15 +346,33 @@ def create_agent_node():
                 current_version, current_cfg_version,
             )
 
-        if _slm_with_tools is not None and current_version != _slm_version:
+        # Mêmes DEUX conditions que le cache des tiers, juste au-dessus : le
+        # registre d'outils OU la configuration de routage. La seconde manquait
+        # ici, et c'est elle qui porte le changement de modèle du tier A.
+        if _slm_with_tools is not None and (
+            current_version != _slm_version
+            or current_cfg_version != _slm_cfg_version
+        ):
             try:
                 from app.services.llm_provider import get_slm
                 nonlocal_base = get_slm()
                 _slm_base = nonlocal_base
                 _slm_with_tools = nonlocal_base.bind_tools(_slm_toolset(registry))
                 _slm_version = current_version
-            except Exception:
-                pass
+                _slm_cfg_version = current_cfg_version
+                logger.info(
+                    "SLM reconstruit (tools_v=%d, tier_cfg_v=%d) : %s",
+                    current_version, current_cfg_version,
+                    _slm_real_name(_slm_base, settings),
+                )
+            except Exception as exc:  # noqa: BLE001
+                # ⚠️ Le `except: pass` d'origine avalait l'échec en silence :
+                # le SLM restait sur l'ancien modèle sans que rien ne le dise,
+                # ce qui est précisément le défaut qu'on corrige ici.
+                logger.warning(
+                    "SLM non reconstruit après changement de configuration (%s) "
+                    "— l'ancien modèle continue de servir", exc,
+                )
 
         # ── Route first — avoids loading memory for SLM requests ──────────
         routing_score = 100
