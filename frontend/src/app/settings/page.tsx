@@ -2334,6 +2334,37 @@ export default function SettingsPage() {
                   {t("desktopDescription")}
                 </p>
 
+                {/* Démon absent — ce qu'il faut faire, pas juste le constat.
+                    Un badge « non connecté » ne dit pas quoi faire, et cette
+                    fonctionnalité peut rester morte des mois sans que
+                    personne s'en aperçoive : c'est arrivé (21/08).
+
+                    ⚠️ PAS de bouton « lancer » : une page web ne peut pas
+                    démarrer un programme sur la machine de l'utilisateur, et
+                    le backend est dans un conteneur — il ne le peut pas non
+                    plus. Un bouton qui ne pourrait qu'attendre serait une
+                    action annoncée qui n'a pas lieu. On donne les deux vrais
+                    leviers à la place. */}
+                {desktopConnected === false && (
+                  <div className="text-xs border border-amber-500/30 bg-amber-500/5 rounded px-3 py-2.5 space-y-2">
+                    <p className="text-amber-400 font-medium">
+                      {t("desktopOfflineTitle")}
+                    </p>
+                    <p className="text-text-secondary">
+                      {t("desktopOfflineAutostart")}
+                    </p>
+                    <code className="block font-mono text-[11px] bg-bg-tertiary border border-border-dim rounded px-2 py-1.5 overflow-x-auto">
+                      ./install.sh
+                    </code>
+                    <p className="text-text-secondary">
+                      {t("desktopOfflineMount")}
+                    </p>
+                    <code className="block font-mono text-[11px] bg-bg-tertiary border border-border-dim rounded px-2 py-1.5 overflow-x-auto">
+                      ELY_INDEX_PATH=/chemin/vers/ton/dossier
+                    </code>
+                  </div>
+                )}
+
                 {/* Sandbox dirs */}
                 <div className="space-y-2">
                   <span className="text-xs text-text-muted uppercase tracking-wider">

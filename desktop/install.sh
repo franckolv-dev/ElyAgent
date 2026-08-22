@@ -221,7 +221,79 @@ else
   echo "✔  Configuration trouvée : $CONFIG_FILE"
 fi
 
-# ── 5. Créer un raccourci .desktop (Linux uniquement) ────────────────────────
+# ── 5. Démarrage automatique ─────────────────────────────────────────────────
+#
+# ⚠️ CE BLOC ÉTAIT « Linux uniquement », ET C'ÉTAIT LE DÉFAUT (21/08).
+#
+# Linux posait son entrée `~/.config/autostart`, Windows sa clé de registre
+# `HKCU\...\Run` — macOS n'avait RIEN. Le script se terminait par un
+# `exec "$BINARY_PATH"` au premier plan : on ferme le terminal, le démon meurt.
+#
+# Ce que ça a coûté : le dossier surveillé de Franck affichait « 0 fichier
+# indexé » depuis des MOIS. Le démon avait tourné une fois, le jour de
+# l'installation, puis plus jamais — et rien ne le disait (corrigé par #334,
+# qui rend l'état visible ; ici on corrige la cause).
+#
+# macOS a droit au meilleur des trois mécanismes : `KeepAlive` relance le
+# démon s'il plante, ce que ni l'autostart XDG ni la clé Run ne savent faire.
+_autostart_installe=0
+
+if [[ "$OS" == "Darwin" ]]; then
+  PLIST_LABEL="fr.agent-ely.desktop"
+  PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
+  LOG_PATH="$HOME/Library/Logs/ely-desktop.log"
+
+  if [[ ! -f "$PLIST_PATH" ]]; then
+    if gui_yesno "ELY Desktop — Démarrage automatique" \
+      "Voulez-vous lancer ELY Desktop automatiquement à l'ouverture de votre session ?\n\nIl se relancera aussi tout seul s'il s'arrête, et se reconnectera après chaque redémarrage d'ELY."; then
+
+      mkdir -p "$HOME/Library/LaunchAgents" "$(dirname "$LOG_PATH")"
+      # `os.Executable()` sert à trouver ely-config.json (cf. config.go), donc
+      # aucun WorkingDirectory n'est nécessaire : le démon se repère seul.
+      cat > "$PLIST_PATH" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$PLIST_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$BINARY_PATH</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$LOG_PATH</string>
+    <key>StandardErrorPath</key>
+    <string>$LOG_PATH</string>
+</dict>
+</plist>
+EOF
+      # `unload` d'abord : rend l'opération rejouable sans erreur si un
+      # agent du même label traînait déjà.
+      launchctl unload "$PLIST_PATH" 2>/dev/null || true
+      if launchctl load -w "$PLIST_PATH" 2>/dev/null; then
+        _autostart_installe=1
+        echo "✔  Démarrage automatique activé (LaunchAgent)"
+        echo "   Journal : $LOG_PATH"
+        echo "   Pour le retirer : launchctl unload -w '$PLIST_PATH' && rm '$PLIST_PATH'"
+      else
+        # On ne laisse pas un plist orphelin qui donnerait l'illusion que
+        # l'automatisme est en place alors qu'il n'est pas chargé.
+        rm -f "$PLIST_PATH"
+        echo "⚠  Démarrage automatique impossible — le démon sera lancé au premier plan."
+      fi
+    fi
+  else
+    echo "✔  Démarrage automatique déjà configuré : $PLIST_PATH"
+    _autostart_installe=1
+  fi
+fi
+
+# ── 5b. Raccourci .desktop (Linux uniquement) ────────────────────────────────
 if [[ "$OS" == "Linux" ]]; then
   DESKTOP_ENTRY="$HOME/.local/share/applications/ely-desktop.desktop"
   AUTOSTART_ENTRY="$HOME/.config/autostart/ely-desktop.desktop"
@@ -255,6 +327,23 @@ EOF
 fi
 
 # ── 6. Lancer le daemon ───────────────────────────────────────────────────────
+#
+# ⚠️ Sauf si launchd vient de le faire. Sans ce garde-fou on lancerait une
+# SECONDE instance, qui se battrait avec la première pour le même WebSocket —
+# et l'utilisateur verrait des déconnexions inexplicables juste après avoir
+# activé l'automatisme censé les supprimer.
+if [[ "$_autostart_installe" == "1" ]]; then
+  echo ""
+  echo "══  ELY Desktop tourne en arrière-plan  ═════════════════════════"
+  echo ""
+  echo "  Lancé par launchd, il redémarrera à chaque ouverture de session."
+  echo "  Rien à laisser ouvert : vous pouvez fermer ce terminal."
+  echo ""
+  echo "  Vérifier la connexion : Réglages → Intégrations → ELY Desktop"
+  echo ""
+  exit 0
+fi
+
 echo ""
 echo "══  Démarrage du daemon  ════════════════════════════════════════"
 echo ""

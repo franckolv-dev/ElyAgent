@@ -853,7 +853,10 @@
       "step7Skip": "J'ai déjà un compte connecté, sauter cette étape",
       "stepDoneTitle": "Bravo, c'est terminé !",
       "stepDoneBody": "ELY peut maintenant accéder à votre Gmail, Calendar, Drive, Docs, Sheets, Tasks et Contacts. Vos autres utilisateurs n'auront qu'à cliquer « Connecter Google » dans leurs paramètres — l'étape technique est faite, ils n'ont plus rien à configurer côté Google Cloud."
-    }
+    },
+    "desktopOfflineTitle": "ELY Desktop n'est pas connecté",
+    "desktopOfflineAutostart": "Pour qu'il démarre tout seul à chaque ouverture de session (et se relance s'il s'arrête), relancez l'installateur depuis le dossier du démon et acceptez le démarrage automatique :",
+    "desktopOfflineMount": "Pour l'indexation de dossiers uniquement, vous pouvez aussi vous passer du démon : montez le dossier en lecture seule dans le fichier .env à la racine, puis make down && make up."
   },
   "admin": {
     "title": "Administration",
