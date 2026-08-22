@@ -108,6 +108,76 @@ def _ext_of(path: str) -> str:
 # Daemon helpers (thin wrappers — the real work is in desktop_registry)
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _lisible_localement(folder: str) -> bool:
+    """Le dossier est-il visible depuis le conteneur ?
+
+    Vrai quand l'utilisateur a monté son dossier dans `docker-compose.yml`
+    (cf. `ELY_INDEX_PATH` dans `.env.example`). Le montage se fait au MÊME
+    chemin absolu des deux côtés, donc `/Users/franck/Documents` existe tel
+    quel ici — aucune traduction, et les citations RAG restent vraies.
+    """
+    try:
+        p = Path(folder)
+        return p.is_dir() and os.access(p, os.R_OK)
+    except Exception:  # noqa: BLE001 — un chemin exotique ne casse pas le scan
+        return False
+
+
+def _mode_de_lecture(user_id: str, folder: str) -> str:
+    """``"local"`` | ``"daemon"`` | ``"offline"`` — qui va lire les fichiers.
+
+    Le LOCAL prime, et pas par préférence esthétique : il ne demande aucun
+    processus à l'utilisateur, il survit aux redémarrages du backend (le
+    registre des démons vit en mémoire), et le montage est en lecture seule —
+    donc plus étroit que le démon, qui peut lire tout ce que le compte peut
+    lire.
+
+    Le démon reste le chemin des dossiers NON montés : en ajouter un ne
+    demande alors ni édition de `docker-compose.yml` ni redémarrage.
+    """
+    if _lisible_localement(folder):
+        return "local"
+    if desktop_registry.is_connected(user_id):
+        return "daemon"
+    return "offline"
+
+
+async def _local_walk(folder: str, recursive: bool) -> list[str]:
+    """Marche dans un dossier MONTÉ dans le conteneur. Chemins absolus.
+
+    ⚠️ Passe par un thread : `rglob` sur une arborescence de plusieurs
+    milliers d'entrées bloque, et bloquer ici gèlerait tout le backend —
+    le cron tourne dans la même boucle que les conversations.
+    """
+    def _marcher() -> list[str]:
+        base = Path(folder)
+        it = base.rglob("*") if recursive else base.glob("*")
+        out: list[str] = []
+        for p in it:
+            try:
+                if p.is_file():
+                    out.append(str(p))
+            except OSError:
+                continue    # lien cassé, permission refusée : on passe
+        return out
+
+    return await asyncio.to_thread(_marcher)
+
+
+async def _local_read(path: str) -> tuple[bytes, str]:
+    """Lit un fichier monté. Même contrat que `_daemon_read`."""
+    def _lire() -> bytes:
+        p = Path(path)
+        taille = p.stat().st_size
+        if taille > _MAX_FILE_BYTES_AUTO:
+            raise ValueError(
+                f"file exceeds auto-index size cap ({taille} > {_MAX_FILE_BYTES_AUTO})"
+            )
+        return p.read_bytes()
+
+    return await asyncio.to_thread(_lire), "binary"
+
+
 async def _daemon_walk(user_id: str, folder: str, recursive: bool) -> list[str]:
     """Ask the daemon to list every file in *folder*. Returns absolute paths.
 
@@ -231,23 +301,29 @@ async def scan_folder(folder_id: str) -> dict:
             folder.last_scan_message = "Scan en cours…"
             await db.commit()
 
-        # ── 1. Daemon walk ────────────────────────────────────────────────
+        # ── 1. Qui lit ? ──────────────────────────────────────────────────
+        mode = _mode_de_lecture(user_id, path)
+
         # `offline` et non `error` : rien n'a échoué, il n'y a simplement
-        # personne au bout du fil. Le geste attendu n'est pas le même — on
-        # lance ELY Desktop, on ne cherche pas une panne. Le registre des
-        # démons est EN MÉMOIRE : un redémarrage du backend suffit à couper
-        # la connexion tant que le démon n'a pas repris la main.
-        if not desktop_registry.is_connected(user_id):
+        # personne au bout du fil et le dossier n'est pas monté. Le geste
+        # attendu n'est pas le même — on lance ELY Desktop ou on monte le
+        # dossier, on ne cherche pas une panne. Le registre des démons est EN
+        # MÉMOIRE : un redémarrage du backend suffit à couper la connexion
+        # tant que le démon n'a pas repris la main.
+        if mode == "offline":
             summary["status"] = "offline"
             summary["message"] = (
-                "ELY Desktop n'est pas connecté — l'indexation lit les fichiers "
-                "par le démon, elle ne peut rien faire sans lui."
+                "Dossier illisible : ni monté dans le conteneur (ELY_INDEX_PATH) "
+                "ni servi par ELY Desktop, qui n'est pas connecté."
             )
             await _consigner(folder_id, summary["status"], summary["message"])
             return summary
 
         try:
-            all_paths = await _daemon_walk(user_id, path, recursive)
+            if mode == "local":
+                all_paths = await _local_walk(path, recursive)
+            else:
+                all_paths = await _daemon_walk(user_id, path, recursive)
         except Exception as exc:
             summary["status"] = "error"
             summary["message"] = f"Parcours du dossier impossible : {exc}"
@@ -255,11 +331,25 @@ async def scan_folder(folder_id: str) -> dict:
             return summary
 
         # ── 2. Filter ─────────────────────────────────────────────────────
-        candidates = [
+        retenus = [
             p for p in all_paths
             if _ext_of(p) in allowed_ext
             and not _file_excluded(p, excludes)
-        ][:_MAX_FILES_PER_SCAN]
+        ]
+        candidates = retenus[:_MAX_FILES_PER_SCAN]
+        # ⚠️ Une troncature muette se lit comme « tout est indexé ». Sur un
+        # `Documents` de plusieurs milliers de fichiers, le plafond mord au
+        # premier scan et l'utilisateur n'a aucun moyen de le savoir — c'est
+        # la même classe de silence que le reste de ce module. Les scans
+        # horaires suivants avancent, puisque les fichiers déjà ingérés sont
+        # ignorés à l'étape 3.
+        tronque = len(retenus) - len(candidates)
+        if tronque > 0:
+            logger.info(
+                "auto_indexer: %s — %d fichiers retenus, %d traités ce tour "
+                "(plafond %d), le reste suivra aux prochains scans",
+                path, len(retenus), len(candidates), _MAX_FILES_PER_SCAN,
+            )
 
         # ── 3. Dedup against current RAG knowledge for this user ──────────
         rag = get_rag_service()
@@ -276,7 +366,10 @@ async def scan_folder(folder_id: str) -> dict:
                 summary["skipped"] += 1
                 continue
             try:
-                raw_bytes, _enc = await _daemon_read(user_id, fpath)
+                if mode == "local":
+                    raw_bytes, _enc = await _local_read(fpath)
+                else:
+                    raw_bytes, _enc = await _daemon_read(user_id, fpath)
             except Exception as exc:
                 logger.info("auto_indexer: skip %s (read error: %s)", fpath, exc)
                 summary["errors"] += 1
@@ -318,9 +411,13 @@ async def scan_folder(folder_id: str) -> dict:
         else:
             summary["status"] = "ok"
 
+        # Le MODE figure dans le message : c'est la seule façon pour
+        # l'utilisateur de savoir si son montage sert vraiment, ou si tout
+        # passe encore par le démon sans qu'il s'en doute.
+        _source = "dossier monté" if mode == "local" else "ELY Desktop"
         summary["message"] = (
             f"Indexé {summary['indexed']}, ignoré {summary['skipped']}, "
-            f"erreurs {summary['errors']}"
+            f"erreurs {summary['errors']} — via {_source}"
         )
 
         await _consigner(
@@ -360,11 +457,18 @@ async def scan_all_enabled() -> dict:
         #
         # `seulement_si_change` : on ne réécrit pas la ligne à chaque heure,
         # sinon `last_scan_at` battrait et donnerait l'illusion d'un scan.
-        if not desktop_registry.is_connected(f.user_id):
+        #
+        # ⚠️ La condition interroge `_mode_de_lecture` et NON le seul démon.
+        # Tester `is_connected` ici écarterait les dossiers MONTÉS, qui n'ont
+        # justement pas besoin de lui — le cron horaire n'aurait alors jamais
+        # rien indexé pour eux, et on aurait remplacé une dépendance muette
+        # par une autre.
+        if _mode_de_lecture(f.user_id, f.path) == "offline":
             overall["folders_offline"] += 1
             await _consigner(
                 f.id, "offline",
-                "ELY Desktop n'est pas connecté — scan horaire sans effet.",
+                "Ni monté dans le conteneur, ni servi par ELY Desktop — "
+                "scan horaire sans effet.",
                 seulement_si_change=True,
             )
             continue

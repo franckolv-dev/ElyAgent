@@ -45,6 +45,24 @@ services:
       # l'export PyTorch fp32 pèse 2.5 Go de RSS, le cap est à 4g). Bind
       # mount host pour que l'export y écrive directement.
       - ./data/pii_ner:/app/.cache/pii_ner
+      # Dossier à indexer automatiquement, en LECTURE SEULE (21/08).
+      #
+      # Monté au MÊME chemin absolu des deux côtés — c'est le détail qui
+      # compte : `/Users/toi/Documents` existe alors tel quel dans le
+      # conteneur, aucune traduction de chemin n'est nécessaire, et les
+      # citations RAG restent vraies (« trouvé dans /Users/toi/Documents/x.pdf »
+      # désigne bien un fichier de TA machine).
+      #
+      # Sans ce montage, l'indexation passe par le démon ELY Desktop, qui doit
+      # tourner. Avec, elle n'a besoin de rien — voir `auto_indexer._mode_de_lecture`.
+      #
+      # ⚠️ Le défaut a l'air bizarre, et c'est délibéré. Quand `ELY_INDEX_PATH`
+      # est vide, on monte un dossier du dépôt (qui existe forcément) sur une
+      # cible que personne n'utilise : un no-op dont on est SÛR. Le montage de
+      # `/dev/null` sur lui-même serait plus élégant, mais je n'ai pas pu le
+      # vérifier à l'exécution — et un défaut non vérifié qui casse `make up`
+      # coûte plus cher qu'une ligne inélégante.
+      - ${ELY_INDEX_PATH:-./data/db}:${ELY_INDEX_PATH:-/app/.index-non-configure}:ro
     env_file:
       - .env
     environment:

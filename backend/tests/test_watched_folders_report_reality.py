@@ -85,16 +85,21 @@ def test_every_early_exit_records_its_outcome():
 def test_a_missing_daemon_is_not_reported_as_an_error():
     """`offline` et `error` appellent des gestes DIFFÉRENTS.
 
-    « Erreur » envoie chercher une panne ; ici il n'y en a pas, il manque
-    seulement le démon. Confondre les deux, c'est envoyer l'utilisateur
-    fouiller des logs pour un programme qu'il n'a pas lancé.
+    « Erreur » envoie chercher une panne ; ici il n'y en a pas — ni démon
+    connecté, ni dossier monté. Confondre les deux, c'est envoyer
+    l'utilisateur fouiller des logs pour un programme qu'il n'a pas lancé.
+
+    ⚠️ Ancré sur `_mode_de_lecture` depuis le 22/08, et pas sur
+    `is_connected` : le montage de dossier a ajouté une seconde voie de
+    lecture, donc « pas de démon » ne suffit plus à conclure `offline`.
+    L'invariant n'a pas bougé, sa condition oui.
     """
     from app.services import auto_indexer
 
     src = inspect.getsource(auto_indexer.scan_folder)
-    bloc = src[src.find("is_connected("):]
-    assert '"offline"' in bloc[:400], (
-        "un démon absent doit se distinguer d'un scan qui a échoué"
+    bloc = src[src.find("_mode_de_lecture("):]
+    assert '"offline"' in bloc[:900], (
+        "une source illisible doit se distinguer d'un scan qui a échoué"
     )
 
 
@@ -106,8 +111,11 @@ def test_the_hourly_cron_says_when_it_skips():
     """Un mécanisme qui ne fait rien doit le dire. Invariant 4 du dépôt."""
     from app.services import auto_indexer
 
+    # ⚠️ Ancré sur `_mode_de_lecture` depuis le 22/08 : tester `is_connected`
+    # ici écarterait les dossiers MONTÉS, qui n'ont pas besoin du démon. Le
+    # pin `test_the_cron_asks_the_same_question_as_the_scan` garde ce point.
     src = inspect.getsource(auto_indexer.scan_all_enabled)
-    pos_test = src.find("is_connected(")
+    pos_test = src.find("_mode_de_lecture(")
     pos_continue = src.find("continue", pos_test)
     pos_consigner = src.find("_consigner(", pos_test)
 
