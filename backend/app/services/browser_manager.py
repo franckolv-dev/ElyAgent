@@ -44,7 +44,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -174,6 +174,52 @@ class BrowserManager:
         if session.page.is_closed():
             session.page = await session.context.new_page()
         return session.page
+
+    @asynccontextmanager
+    async def one_shot_page(self, viewport_width: int = 1280,
+                           viewport_height: int = 900):
+        """Une page JETABLE, hors de toute session utilisateur.
+
+        **Pourquoi elle n'est pas ``get_page`` (22/08).** Les outils de session
+        agissent sur la page COURANTE d'un utilisateur : ils supposent un
+        ``browser_navigate`` préalable, et ils laissent la page où ils l'ont
+        mise. C'est ce qu'il faut pour l'exploration interactive.
+
+        Une tâche planifiée n'a rien de tout ça. Elle tourne sans personne,
+        parfois pendant que l'utilisateur navigue lui-même — réutiliser sa
+        session la lui déplacerait sous les yeux, et le résultat de la tâche
+        dépendrait de l'endroit où il l'a laissée. Deux façons de se tromper
+        pour le prix d'une.
+
+        Le contexte est créé, utilisé, fermé. Il ne partage ni cookies ni
+        stockage avec la session de qui que ce soit — ``storage_state=None``,
+        comme les sessions, mais sans la persistance.
+
+        ⚠️ Le NAVIGATEUR reste partagé : lancer un Chromium par appel coûterait
+        une seconde et des centaines de Mo. C'est le CONTEXTE qui isole.
+        """
+        if not self.is_available():
+            raise RuntimeError(
+                "Playwright non disponible. "
+                "Lance : playwright install chromium  puis redémarre le backend."
+            )
+
+        context = await self._browser.new_context(
+            viewport={"width": viewport_width, "height": viewport_height},
+            user_agent=_USER_AGENT,
+            java_script_enabled=True,
+            ignore_https_errors=False,
+            storage_state=None,
+        )
+        try:
+            page = await context.new_page()
+            yield page
+        finally:
+            # Fermé quoi qu'il arrive : un contexte oublié garde un process
+            # Chromium enfant vivant, et une tâche horaire en fuirait un par
+            # heure jusqu'à saturer la limite mémoire du conteneur.
+            with suppress(Exception):
+                await context.close()
 
     async def close_session(self, user_id: str) -> None:
         """Explicitly close the browser session for a user."""
