@@ -23,12 +23,31 @@ toutes dépassées, ce qui ne renseignait plus personne.
 | Chantier | Pourquoi il n'est pas fait | Ce qui manque, concrètement |
 |---|---|---|
 | **Photos & souvenirs** | Jamais commencé | Empreintes perceptuelles (pHash/dHash) pour les quasi-doublons, index CLIP local, scope Google Photos, page de tri par grappes. Tout doit rester **sur la machine** — c'est l'argument du chantier |
-| **Automatisation web sans navigateur** | L'extension Chrome couvre l'interactif, pas le batch | `web_screenshot`, `web_to_pdf`, `web_extract`, `web_compare`. Playwright est déjà là ; il manque la surface d'exposition. Sert les tâches planifiées, qui ne peuvent pas dépendre d'un navigateur ouvert |
 | **Graphe de connaissances personnel** | Jamais commencé | Extraction d'entités et de relations au fil des échanges, stockage SQLite, visualisation. Complète le RAG vectoriel actuel, ne le remplace pas |
 | **Approbation intelligente** | **Bute sur un invariant** | Un classifieur qui auto-approuve le bénin. Mais le dépôt **échoue fermé** sur l'autorisation humaine (46 outils sous garde), et un classifieur qui se trompe fait exactement ce que cette règle interdit. À ne pas ouvrir sans rail de mesure |
 | **Auto-réflexion en cours de mission** | Dépend de l'approbation intelligente | Un critique léger qui repère une stratégie qui tourne en rond et injecte une correction. La littérature documente des **régressions** ; sans mesure A/B et interrupteur, c'est du bricolage |
 | **Porte prédictive sur les outils** | Jamais commencé | Prédire l'utilité d'un appel coûteux avant de le faire |
 | **LoRA personnel par utilisateur** | Horizon long | Un adaptateur entraîné sur les traces de l'utilisateur, téléchargeable. Suppose un jeu de traces qualifiées que seule l'auto-réflexion produirait |
+
+---
+
+## Livré depuis
+
+- **Automatisation web sans navigateur** — livré le 22/08 (v2.4.0).
+  `web_screenshot`, `web_to_pdf`, `web_extract`, `web_compare` : une URL entre,
+  un résultat sort, sans session de navigation.
+
+  ⚠️ **Cette ligne de roadmap était inexacte, et le vérifier a évité d'écrire
+  deux outils en double.** Elle disait « l'extension Chrome couvre l'interactif,
+  pas le batch » ; en réalité `browser_skill` exposait déjà une capture et une
+  extraction côté serveur, via Playwright. Le manque réel était plus étroit :
+  ces outils travaillent sur la page **courante d'une session**, ce qu'une tâche
+  planifiée n'a pas. C'est l'isolement qui manquait, pas Playwright.
+
+  La leçon vaut pour les lignes qui restent : **une entrée de roadmap est une
+  hypothèse sur l'état du code, pas un constat.** Celle-ci avait été écrite le
+  02/08 en vérifiant l'absence des noms `web_*`, ce qui était vrai — et
+  insuffisant.
 
 ---
 

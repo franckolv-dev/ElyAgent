@@ -68,7 +68,7 @@ directory task, two of them scored 4/4 — one in 1.1 s, the other in 8.9 s.
 
 ## What it can do
 
-**196 built-in tools** with default feature flags. Enabling the MCP client
+**200 built-in tools** with default feature flags. Enabling the MCP client
 (`mcp_client_v2_enabled`, off by default) adds **10** MCP management tools, and
 every MCP server you connect contributes its own on top, as
 `mcp__server__tool`.
@@ -79,9 +79,11 @@ The larger families:
 - **Documents** — read PDFs, vision analysis, and PDF → Word rebuilt from page
   geometry (the text never passes through the model, so integrity is structural)
 - **Web** — search, images, maps (see below)
-- **Browser** — two families, deliberately: a server-side headless Chromium with
-  **no cookies**, and your **real Chrome** through the extension, which is the
-  only way to reach anything behind a login
+- **Browser** — three families, deliberately: **one-shot** tools that take a URL
+  and return a result (screenshot, PDF, text, diff) without any open session —
+  what scheduled tasks need; a **session** on a server-side headless Chromium
+  with **no cookies**, for exploring a site step by step; and your **real
+  Chrome** through the extension, the only way to reach anything behind a login
 - **Machine** — files, screenshots, desktop control, SSH
 - **Memory** — typed recall, vector search, full-text search over past
   conversations

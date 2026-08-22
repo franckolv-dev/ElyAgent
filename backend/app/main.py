@@ -586,7 +586,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Cyber-Entity Agent API",
-    version="2.3.0",
+    version="2.4.0",
     lifespan=lifespan,
 )
 
