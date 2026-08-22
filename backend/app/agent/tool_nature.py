@@ -325,6 +325,20 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     # ── agent/tools/search_tool ─────────────────────────────────
     "web_search": _N("LECTURE"),
     "web_search_news": _N("LECTURE"),
+    # ── agent/tools/web_tool (automatisation « un coup », 22/08) ─
+    # Aucun n'arbitre : le modèle choisit l'URL et le sélecteur, jamais la
+    # FORME du résultat. Une capture est ce que la page montre ; deux
+    # personnes compétentes n'en feraient pas deux versions différentes.
+    #
+    # ⚠️ ECRITURE et non LECTURE pour les deux premiers : ils déposent un
+    # fichier sur le disque du conteneur. C'est réversible et privé — donc
+    # ECRITURE, comme `qrcode_generate`. Ne pas les classer LECTURE sous
+    # prétexte qu'ils « ne font que lire le web » : l'effet qu'on classe est
+    # celui de l'outil sur le système, pas son intention.
+    "web_screenshot": _N("ECRITURE"),
+    "web_to_pdf": _N("ECRITURE"),
+    "web_extract": _N("LECTURE"),
+    "web_compare": _N("LECTURE"),
     # ── agent/tools/session_search_tool ─────────────────────────
     "search_past_conversations_tool": _N("LECTURE", arbitrates=True),
     # ── agent/tools/sheets_tool ─────────────────────────────────

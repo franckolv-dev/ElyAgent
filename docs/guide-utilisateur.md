@@ -52,7 +52,7 @@ C'est ce qui a permis, sur une conversion de 395 pages, de retirer 347 folios su
 
 ## Ce qu'Ely sait faire
 
-**196 outils** avec les réglages par défaut. Activer le client MCP en ajoute 10,
+**200 outils** avec les réglages par défaut. Activer le client MCP en ajoute 10,
 et chaque serveur MCP connecté apporte les siens. Les grandes familles :
 
 ### Google
