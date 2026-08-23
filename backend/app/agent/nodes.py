@@ -310,6 +310,78 @@ def _slm_discovered_extras(registry, conversation_id: str) -> list:
         return []
 
 
+def _contenu_texte(message) -> str:
+    """Le texte d'un message, qu'il soit objet LangChain ou dict sérialisé."""
+    brut = message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
+    if isinstance(brut, list):  # contenu multi-blocs
+        return " ".join(
+            b.get("text", "") if isinstance(b, dict) else str(b) for b in brut
+        )
+    return brut or ""
+
+
+def _index_derniere_humaine(messages) -> int:
+    """L'indice du dernier message utilisateur, ou ``-1``.
+
+    Sert uniquement à la trace : `depuis=0` au premier tour, puis 1, 2… Sans
+    ce chiffre, deux notes `[routing]` identiques ne disent pas si le tour a
+    avancé ou si l'utilisateur a reposé la même question.
+    """
+    liste = list(messages or ())
+    for i in range(len(liste) - 1, -1, -1):
+        m = liste[i]
+        role = (
+            m.get("role") or m.get("type")
+            if isinstance(m, dict)
+            else getattr(m, "type", "")
+        )
+        if role in ("human", "user"):
+            return i
+    return -1
+
+
+def _derniere_demande_humaine(messages, defaut: str = "") -> str:
+    """Ce que L'UTILISATEUR a demandé, pas ce que le dernier outil a répondu.
+
+    ⚠️ LE DÉFAUT QUE ÇA CORRIGE (23/08), et c'est celui qui vidait la voie
+    locale de son sens.
+
+    Le routeur notait `messages[-1]`. Au premier tour c'est bien la demande ;
+    dès le second, c'est le RETOUR D'OUTIL. Un résultat de `find_tool` ou de
+    `web_search` est long (> 150 caractères : +20) et contient des URL
+    (`_URL_RE` : +15). Le score passait donc de 55 à 90-100, et le tour
+    repartait au cloud **exactement au moment où le modèle local allait se
+    servir de l'outil qu'il venait de trouver**.
+
+    Mesuré sur le fil du 23/08, conversation 26556c11 :
+
+        [routing] slm=slm   score=55    ← la demande part en local
+        [routing] slm=cloud score=100   ← le retour d'outil la fait fuir
+        [routing] turn=complex …        ← six tours, 223 693 tokens
+
+    La voie locale faisait donc le travail le moins utile — comprendre la
+    demande — et cédait la main juste avant celui qui compte. Le comportement
+    attendu, mot pour mot de Franck : « Gemma interroge Ely via find_tool, Ely
+    renvoie le ou les outils utiles, Gemma fait la demande avec le bon outil et
+    renvoie la réponse. »
+
+    Un tour, une demande, un score : la complexité d'une requête ne change pas
+    parce qu'un outil y a répondu longuement. Ce que le retour d'outil apporte,
+    c'est de la MATIÈRE, pas de la difficulté.
+    """
+    for message in reversed(list(messages or ())):
+        role = (
+            message.get("role") or message.get("type")
+            if isinstance(message, dict)
+            else getattr(message, "type", "")
+        )
+        if role in ("human", "user"):
+            texte = _contenu_texte(message)
+            if texte:
+                return texte
+    return defaut
+
+
 def _premier_parametre_de(registry):
     """``nom d'outil -> nom de son premier paramètre``, lu sur le schéma réel.
 
@@ -592,7 +664,12 @@ def create_agent_node():
         # local SLM is too weak for unattended multi-tool prompts and would
         # also bypass the named-tool binding below.
         if _slm_with_tools is not None and not state.get("automated_task"):
-            decision = intent_router.route(user_query, history=messages[:-1])
+            # ⚠️ LA DEMANDE, PAS LE DERNIER MESSAGE. Voir
+            # `_derniere_demande_humaine` : noter `messages[-1]` faisait fuir
+            # le tour au cloud dès qu'un outil avait répondu — c'est-à-dire
+            # juste avant que le modèle local s'en serve.
+            _a_router = _derniere_demande_humaine(messages, user_query)
+            decision = intent_router.route(_a_router, history=messages[:-1])
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
             # C3d-4 — décision SLM-vs-cloud tracée (aspect "slm").
@@ -601,6 +678,10 @@ def create_agent_node():
                 user_id=state.get("user_id", ""),
                 decision="slm" if use_slm else "cloud",
                 score=decision.score,
+                # Combien de messages depuis la demande notée : 0 au premier
+                # tour, puis 1, 2… Rend lisible dans la trace qu'un tour long
+                # continue de suivre LA MÊME demande.
+                depuis=len(messages) - 1 - _index_derniere_humaine(messages),
             )
         else:
             # ⚠️ LE TROU DU 23/08 : la voie locale ABSENTE ne laissait aucune

@@ -59,6 +59,125 @@ import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────
+# 0 — Le routeur note LA DEMANDE, pas le dernier retour d'outil
+# ─────────────────────────────────────────────────────────────────────
+
+def test_the_router_scores_the_request_not_the_tool_output():
+    """⚠️ LE DÉFAUT QUE LA TRACE A RÉVÉLÉ, et le plus coûteux des trois.
+
+        [routing] slm=slm   score=55    ← la demande part en local
+        [routing] slm=cloud score=100   ← le retour d'outil la fait fuir
+        [routing] turn=complex …        ← six tours, 223 693 tokens
+
+    Le routeur notait `messages[-1]`. Au premier tour c'est la demande ; dès le
+    second, c'est le RETOUR D'OUTIL — long (> 150 caractères : +20) et truffé
+    d'URL (+15). Le score passait de 55 à 85-100 et le tour repartait au cloud
+    **exactement au moment où le modèle local allait se servir de l'outil qu'il
+    venait de trouver**.
+
+    La voie locale faisait donc le travail le moins utile — comprendre la
+    demande — et cédait la main juste avant celui qui compte.
+
+    Le comportement attendu, mot pour mot de Franck : « Gemma interroge Ely via
+    find_tool, Ely renvoie le ou les outils utiles, Gemma fait la demande avec
+    le bon outil et renvoie la réponse. »
+    """
+    from types import SimpleNamespace
+
+    import app.config as config
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    from app.agent.nodes import _derniere_demande_humaine
+    from app.services.intent_router import ModelTier, get_intent_router
+
+    demande = (
+        "Trouve moi des sites, dans le style babelio, où les lecteurs peuvent "
+        "mettre des critiques aux livres qu'ils ont lus et recommander des livres"
+    )
+    retour = (
+        "Outils disponibles pour « sites de critiques de livres » (utilise-les "
+        "directement maintenant) :\n  • web_search — Search the web via "
+        "SearXNG, https://exemple.fr"
+    )
+    messages = [
+        HumanMessage(content=demande),
+        AIMessage(content="", tool_calls=[
+            {"name": "find_tool", "args": {}, "id": "1"},
+        ]),
+        ToolMessage(content=retour, tool_call_id="1"),
+    ]
+
+    # Seuil imposé : ce pin mesure le code, pas le `.env` de la machine.
+    original = config.get_settings
+    config.get_settings = lambda: SimpleNamespace(
+        slm_enabled=True, slm_complexity_threshold=55,
+    )
+    try:
+        routeur = get_intent_router()
+        # Ce que voyait l'ancien code : le retour d'outil.
+        assert routeur.route(messages[-1].content).tier == ModelTier.LLM, (
+            "le retour d'outil ne fait plus fuir le score — ce pin ne mesure "
+            "alors plus rien, vérifier `_COMPLEX_PATTERNS`"
+        )
+        # Ce que voit le nouveau : la demande.
+        assert routeur.route(
+            _derniere_demande_humaine(messages)
+        ).tier == ModelTier.SLM, (
+            "le tour repart au cloud après un appel d'outil — la voie locale "
+            "cède la main juste avant de se servir de ce qu'elle a trouvé"
+        )
+    finally:
+        config.get_settings = original
+
+
+def test_the_request_is_found_through_dicts_and_multiblock_content():
+    """LangGraph passe parfois les messages sérialisés en dict, et un contenu
+    multimodal est une liste de blocs. Rater la demande dans ces deux cas
+    ferait retomber sur `messages[-1]` — le défaut qu'on corrige."""
+    from app.agent.nodes import _derniere_demande_humaine
+
+    assert _derniere_demande_humaine([
+        {"role": "user", "content": "ma demande"},
+        {"role": "tool", "content": "un très long retour d'outil"},
+    ]) == "ma demande"
+
+    assert _derniere_demande_humaine([
+        {"type": "human", "content": [{"text": "avec"}, {"text": "des blocs"}]},
+    ]) == "avec des blocs"
+
+
+def test_no_human_message_falls_back_instead_of_emptying_the_query():
+    """Un appel d'API sans message utilisateur ne doit pas router sur une
+    chaîne vide : le score d'un texte vide est bas, donc tout partirait en
+    local sans que ce soit une décision."""
+    from app.agent.nodes import _derniere_demande_humaine
+
+    assert _derniere_demande_humaine([], "repli") == "repli"
+    assert _derniere_demande_humaine(
+        [{"role": "assistant", "content": "sans demande"}], "repli",
+    ) == "repli"
+
+
+def test_the_routing_note_says_how_far_the_turn_has_gone():
+    """Deux notes `[routing]` identiques ne disent pas si le tour a avancé ou
+    si l'utilisateur a reposé la même question. `depuis=` les sépare : 0 au
+    premier tour, puis 1, 2… tout en suivant LA MÊME demande."""
+    import inspect
+
+    from app.agent import nodes
+    from app.agent.nodes import _index_derniere_humaine
+
+    assert _index_derniere_humaine([{"role": "user", "content": "x"}]) == 0
+    assert _index_derniere_humaine([
+        {"role": "user", "content": "x"}, {"role": "tool", "content": "y"},
+    ]) == 0
+    assert _index_derniere_humaine([{"role": "tool", "content": "y"}]) == -1
+
+    src = inspect.getsource(nodes.create_agent_node)
+    assert "depuis=" in src, "la trace ne dit pas où en est le tour"
+
+
+# ─────────────────────────────────────────────────────────────────────
 # 1 — Chaque tour laisse une trace, voie locale ou pas
 # ─────────────────────────────────────────────────────────────────────
 
