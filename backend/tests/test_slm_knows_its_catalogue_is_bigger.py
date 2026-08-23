@@ -341,6 +341,109 @@ def test_the_local_tier_can_serve_what_the_router_sends_it():
     )
 
 
+def test_only_the_tools_the_request_calls_for_are_bound():
+    """⚠️ CE QUE FRANCK A VU PASSER DANS LM STUDIO (24/08).
+
+        « J'hallucine… à quoi sert le dernier outil `qrcode_generate` ? Quel
+          intérêt d'envoyer un tel outil ? idem pour `maps_directions` ? »
+
+    Il regardait la charge réelle envoyée à gemma pour « trouve des sites comme
+    Babelio ». Elle contenait un générateur de QR codes et un calculateur
+    d'itinéraires. C'était un défaut du correctif précédent : j'avais lié une
+    liste FIXE de onze outils du quotidien, donc tous les tours les recevaient
+    tous.
+
+    Sur un modèle de 4 milliards de paramètres, un outil hors-sujet n'est pas
+    neutre : c'est une option de plus dans un choix qu'il fait mal, et du
+    prompt processing payé pour rien.
+    """
+    from app.agent import nodes
+
+    registry = _Registry(list(nodes._SLM_TOOL_NAMES))
+
+    # La demande exacte de Franck.
+    babelio = nodes._slm_toolset(
+        registry,
+        "Trouve des sites, comme babelio, où les lecteurs peuvent recommander "
+        "et mettre des critiques aux livres qu'ils ont lus",
+    )
+    noms = {t.name for t in babelio}
+    assert "qrcode_generate" not in noms, (
+        "un générateur de QR codes est lié pour une question sur des sites de "
+        "critiques littéraires"
+    )
+    assert "maps_directions" not in noms, "un calculateur d'itinéraires aussi"
+    assert noms == set(nodes._SLM_CORE_TOOLS), (
+        f"la demande ne réclame que le socle, or {sorted(noms)} est lié"
+    )
+
+
+@pytest.mark.parametrize("demande,attendu", [
+    ("Quelle météo à Paris demain ?", "weather_get"),
+    ("Rappelle-moi chaque lundi de faire le point", "scheduler_create_task"),
+    ("Traduis ce texte en anglais", "translate_text"),
+    ("Génère un qr code pour mon site", "qrcode_generate"),
+    ("Quel itinéraire pour aller à Lyon ?", "maps_directions"),
+    ("Qu'y a-t-il dans mon agenda ?", "calendar_list_events"),
+    ("Montre mes mails", "gmail_list_emails"),
+    ("Quelles sont les actualités ?", "news_get_headlines"),
+])
+def test_the_tool_the_request_calls_for_is_bound(demande, attendu):
+    """L'inverse du pin précédent : restreindre ne doit pas priver.
+
+    Chaque intention que le routeur envoie en local doit trouver son outil
+    lié — sinon on a remplacé « trop d'outils » par « pas le bon », ce qui
+    rouvre le détour par `find_tool` qu'on cherche à supprimer.
+    """
+    from app.agent import nodes
+
+    registry = _Registry(list(nodes._SLM_TOOL_NAMES))
+    noms = {t.name for t in nodes._slm_toolset(registry, demande)}
+    assert attendu in noms, (
+        f"« {demande} » ne lie pas {attendu} — la voie locale devra passer par "
+        f"`find_tool` pour une capacité qu'elle possède"
+    )
+
+
+def test_web_search_is_always_bound():
+    """⚠️ IL EST DANS LE SOCLE, ET C'EST LE POINT LE PLUS FIN DE CE DÉCOUPAGE.
+
+    « Trouve des sites comme Babelio » ne déclenche AUCUN motif : ni météo, ni
+    agenda, ni traduction. Sans `web_search` au socle, cette demande — celle de
+    l'incident — retomberait sur le détour par `find_tool`.
+
+    Une demande ouverte (« trouve », « cherche », « quels sont », « c'est
+    quoi ») ne s'attrape pas par mot-clé sans faux positifs. On la couvre par
+    construction, pas par motif.
+    """
+    from app.agent import nodes
+
+    assert "web_search" in nodes._SLM_CORE_TOOLS
+    registry = _Registry(list(nodes._SLM_TOOL_NAMES))
+    for demande in ("Bonjour", "Trouve-moi un truc", "", "C'est quoi Babelio ?"):
+        noms = {t.name for t in nodes._slm_toolset(registry, demande)}
+        assert "web_search" in noms, f"« {demande} » perd la recherche web"
+
+
+def test_selecting_per_request_costs_no_inference():
+    """⚠️ Le sélecteur par modèle (`tool_selector.select_tools`) aurait été plus
+    fin — et il aurait ajouté un appel local SÉRIALISÉ de plus par tour, sur un
+    serveur qui n'en sert qu'un à la fois (`LOCAL_LLM_MAX_CONCURRENCY=1`).
+
+    C'est exactement la latence que la voie rapide existe pour éviter. Des
+    expressions régulières sur le vocabulaire du routeur coûtent zéro.
+    """
+    import inspect
+
+    from app.agent import nodes
+
+    src = inspect.getsource(nodes._outils_reclames) + inspect.getsource(nodes._slm_toolset)
+    assert "select_tools" not in src and "ainvoke" not in src, (
+        "la sélection par demande appelle un modèle — elle doit rester "
+        "purement lexicale"
+    )
+
+
 def test_the_local_toolset_stays_a_fraction_of_the_catalogue():
     """⚠️ LE VRAI INVARIANT DU 21/08, et il se compte en TOKENS.
 

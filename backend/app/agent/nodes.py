@@ -227,36 +227,96 @@ def _slm_label(llm, settings) -> str:
 # 👉 RÈGLE : cette liste suit `_SIMPLE_PATTERNS`. Un motif ajouté là-bas sans
 # l'outil correspondant ici recrée le piège — le routeur promet une capacité
 # que la voie locale n'a pas.
-_SLM_EVERYDAY_TOOLS: tuple[str, ...] = (
-    "web_search",             # « cherche sur le web », « recherche »
-    "weather_get",            # « météo », « température », « temps qu'il fait »
-    "calendar_list_events",   # « agenda », « calendrier », « rdv », « planning »
-    "gmail_list_emails",      # « mes mails », « boîte mail »
-    "scheduler_create_task",  # « rappelle-moi »
-    "notes_create",           # « prends une note », « mémorise »
-    "tasks_list",             # « mes tâches », « to-do »
-    "translate_text",         # « traduis », « traduction »
-    "maps_directions",        # « itinéraire », « trajet », « comment aller à »
-    "news_get_headlines",     # « actualités », « news »
-    "qrcode_generate",        # « qr code »
+# ⚠️ LE SOCLE PERMANENT — trois outils, et pas un de plus.
+#
+# `find_tool` est la porte vers le reste. `report_missing_capability` évite
+# qu'un manque devienne une invention. Et `web_search` parce qu'il répond à
+# TOUTE demande ouverte — « trouve », « cherche », « quels sont », « c'est
+# quoi » — sans qu'aucun mot-clé n'ait à le prévoir. Sans lui dans le socle,
+# la question de Franck sur Babelio ne déclenche aucun motif et retombe sur le
+# détour par `find_tool` qu'on cherche justement à supprimer.
+_SLM_CORE_TOOLS: tuple[str, ...] = (
+    "find_tool", "report_missing_capability", "web_search",
 )
 
-_SLM_TOOL_NAMES: tuple[str, ...] = (
-    "find_tool", "report_missing_capability",
-) + _SLM_EVERYDAY_TOOLS
+# ⚠️ LES OUTILS CONDITIONNELS, ET POURQUOI ILS LE SONT DEVENUS (24/08).
+#
+# Franck a regardé ce que gemma reçoit réellement dans LM Studio :
+#
+#   « J'hallucine… à quoi sert le dernier outil `qrcode_generate` ? Quel
+#     intérêt d'envoyer un tel outil ? idem pour `maps_directions` ? »
+#
+# Il a raison, et c'est un défaut de MON correctif précédent. J'avais lié une
+# liste FIXE de onze outils du quotidien — donc gemma recevait le générateur de
+# QR codes et le calculateur d'itinéraires pour une question sur des sites de
+# critiques littéraires. Sur un modèle de 4 milliards de paramètres, un outil
+# hors-sujet n'est pas neutre : c'est une option de plus dans un choix qu'il
+# fait mal, et du prompt processing payé pour rien.
+#
+# Chaque outil est donc lié SEULEMENT si la demande le réclame. Les motifs sont
+# ceux de `intent_router._SIMPLE_PATTERNS` — c'est le même vocabulaire, et c'est
+# volontaire : ce que le routeur reconnaît pour envoyer un tour en local doit
+# être exactement ce que la voie locale sait traiter.
+#
+# Mesuré sur la question de Franck : 3 outils liés au lieu de 13, ~1 440 tokens
+# au lieu de 4 322. Et `qrcode_generate` n'y est plus.
+_SLM_CONDITIONAL_TOOLS: tuple[tuple[str, str], ...] = (
+    (r"\bm[eé]t[eé]o\b|\btemp[eé]rature\b|\btemps qu.il fait\b", "weather_get"),
+    (r"\bagenda\b|\bcalendrier\b|\brdv\b|\brendez[- ]?vous\b|\bplanning\b",
+     "calendar_list_events"),
+    (r"\bmails?\b|\be?mails?\b|\bbo[iî]te mail\b|\bcourriels?\b", "gmail_list_emails"),
+    (r"\brappelle[- ]?moi\b|\bplanifie\b|\bchaque (jour|matin|semaine|lundi)\b",
+     "scheduler_create_task"),
+    (r"\bnotes?\b|\bm[eé]morise\b|\bnote[rz]?\b", "notes_create"),
+    (r"\bt[aâ]ches?\b|\bto[- ]?do\b", "tasks_list"),
+    (r"\btradui[stre]+\b|\btraduction\b", "translate_text"),
+    (r"\bitin[eé]raire\b|\btrajet\b|\bcomment aller [aà]\b|\broute vers\b",
+     "maps_directions"),
+    (r"\bactualit[eé]s?\b|\bnews\b|\bles titres\b", "news_get_headlines"),
+    (r"\bqr[- ]?code\b", "qrcode_generate"),
+)
+
+# L'union — ce que la voie locale peut atteindre sans passer par `find_tool`.
+# Le pin `test_the_local_tier_can_serve_what_the_router_sends_it` la confronte
+# aux intentions que le routeur envoie ici.
+_SLM_TOOL_NAMES: tuple[str, ...] = _SLM_CORE_TOOLS + tuple(
+    outil for _motif, outil in _SLM_CONDITIONAL_TOOLS
+)
 
 
-def _slm_toolset(registry) -> list:
-    """Les quelques outils liés au SLM. Repli sur le registre entier si aucun
-    des noms attendus n'existe — mieux vaut lent que muet."""
+def _outils_reclames(demande: str) -> tuple[str, ...]:
+    """Les outils conditionnels que CETTE demande justifie.
+
+    Aucune inférence : ce sont des expressions régulières, sur le même
+    vocabulaire que le routeur. Le coût est nul là où un sélecteur par modèle
+    aurait ajouté un appel local sérialisé de plus — précisément la latence que
+    la voie rapide existe pour éviter.
+    """
+    if not demande:
+        # Sans demande (pré-construction au démarrage, appel d'API nu), on lie
+        # tout : mieux vaut un peu large qu'un SLM incapable d'agir.
+        return tuple(outil for _m, outil in _SLM_CONDITIONAL_TOOLS)
+    return tuple(
+        outil for motif, outil in _SLM_CONDITIONAL_TOOLS
+        if re.search(motif, demande, re.IGNORECASE)
+    )
+
+
+def _slm_toolset(registry, demande: str = "") -> list:
+    """Les outils liés au SLM pour CETTE demande.
+
+    Repli sur le registre entier si aucun des noms attendus n'existe — mieux
+    vaut lent que muet.
+    """
+    voulus = set(_SLM_CORE_TOOLS) | set(_outils_reclames(demande))
     try:
         retenus = [t for t in registry.all_tools
-                   if getattr(t, "name", "") in _SLM_TOOL_NAMES]
+                   if getattr(t, "name", "") in voulus]
         if retenus:
             return retenus
         logger.warning(
             "SLM : aucun de %s dans le registre — liaison du catalogue complet, "
-            "la voie locale sera lente", _SLM_TOOL_NAMES,
+            "la voie locale sera lente", sorted(voulus),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("SLM : sélection d'outils impossible (%s)", exc)
@@ -569,6 +629,18 @@ def create_agent_node():
                 for b in _c
             ) if isinstance(_c, list) else (_c or "")
 
+        # LA DEMANDE, distincte du dernier message. Voir
+        # `_derniere_demande_humaine` : le routeur et la liaison d'outils la
+        # suivent tous les deux, alors que `user_query` reste `messages[-1]`
+        # pour la construction du contexte et le rappel mémoire.
+        #
+        # ⚠️ CALCULÉE ICI, INCONDITIONNELLEMENT, et c'est délibéré. La liguer
+        # dans la branche de routage puis la relire dans la branche d'inférence
+        # serait le défaut `_fb_state` de la #330, à l'identique : une variable
+        # liée dans une branche et lue dans une autre ne lève que le jour où la
+        # première ne s'exécute pas.
+        _a_router = _derniere_demande_humaine(messages, user_query)
+
         # Hot-reload: clear tier cache when tool registry OR tier routing config changes
         from app.services.llm_provider import get_tier_config_version
         current_version = registry.tools_version
@@ -668,7 +740,6 @@ def create_agent_node():
             # `_derniere_demande_humaine` : noter `messages[-1]` faisait fuir
             # le tour au cloud dès qu'un outil avait répondu — c'est-à-dire
             # juste avant que le modèle local s'en serve.
-            _a_router = _derniere_demande_humaine(messages, user_query)
             decision = intent_router.route(_a_router, history=messages[:-1])
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
@@ -933,29 +1004,39 @@ def create_agent_node():
                     # demandait (prospection du 26/07 : 51 appels, 0 écriture).
                     preserve_first=bool(state.get("automated_task")),
                 )
-                # La liaison maigre est le cas courant, et elle est en cache.
-                # On n'en sort que si `find_tool` a effectivement rapporté
-                # quelque chose dans cette conversation — sinon on paierait
-                # un `bind_tools` par tour pour rien.
-                _slm_runtime = _slm_with_tools
+                # ── Liaison PAR DEMANDE (24/08) ────────────────────────────
+                # La liaison en cache portait les onze outils du quotidien, tous
+                # les tours. Franck l'a vue passer dans LM Studio : un générateur
+                # de QR codes et un calculateur d'itinéraires envoyés pour une
+                # question sur des sites de critiques littéraires.
+                #
+                # Sur un 4B, un outil hors-sujet n'est pas neutre : c'est une
+                # option de plus dans un choix qu'il fait mal. On lie donc le
+                # socle plus ce que la DEMANDE réclame — et le coût est un
+                # `bind_tools` local, sans réseau, sur trois à cinq schémas.
                 _slm_extras = _slm_discovered_extras(registry, _conv_id_fb)
+                _slm_runtime = _slm_with_tools
+                try:
+                    _slm_outils = _slm_toolset(registry, _a_router) + _slm_extras
+                    _slm_runtime = _slm_base.bind_tools(_slm_outils)
+                    logger.info(
+                        "SLM : %d outil(s) liés pour cette demande : %s",
+                        len(_slm_outils),
+                        sorted(getattr(t, "name", "?") for t in _slm_outils),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # On retombe sur la liaison en cache : plus large que
+                    # nécessaire, mais le modèle reste capable d'agir.
+                    logger.warning(
+                        "SLM : liaison par demande impossible (%s) — repli sur "
+                        "la liaison complète", exc,
+                    )
                 if _slm_extras:
-                    try:
-                        _slm_runtime = _slm_base.bind_tools(
-                            _slm_toolset(registry) + _slm_extras
-                        )
-                        logger.warning(
-                            "[find_tool] SLM : +%d outil(s) découvert(s) lié(s) : %s",
-                            len(_slm_extras),
-                            sorted(t.name for t in _slm_extras),
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        # On garde la liaison maigre : le modèle reste capable
-                        # d'agir, il devra juste repasser par `find_tool`.
-                        logger.warning(
-                            "SLM : liaison des découvertes impossible (%s) — "
-                            "la voie locale garde ses outils de base", exc,
-                        )
+                    logger.warning(
+                        "[find_tool] SLM : +%d outil(s) découvert(s) lié(s) : %s",
+                        len(_slm_extras),
+                        sorted(t.name for t in _slm_extras),
+                    )
                 response = await asyncio.wait_for(
                     _slm_runtime.ainvoke(
                         [{"role": "system", "content": system}]
