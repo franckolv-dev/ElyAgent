@@ -409,12 +409,131 @@ def detect_empty_promise(content: str) -> bool:
     return bool(_PROMISE_VERBS.search(content) and _DELIVERY_TARGETS.search(content))
 
 
-def recover_tool_calls_into_response(response: Any, real_tool_names: set[str]) -> int:
+# ── L'appel « nu », à la python ────────────────────────────────────────
+#
+# ⚠️ 23/08 — LA FORME QU'AUCUN MOTIF NE COUVRAIT. Les quatre motifs
+# ci-dessus viennent de modèles cloud (Kimi, Qwen, DeepSeek) qui émettent du
+# JSON balisé. Un petit modèle local, lui, écrit ce qu'il a vu dans son
+# prompt — l'appel tel qu'on le lui a décrit :
+#
+#     find_tool("sites de critiques de livres en ligne")
+#
+# Pas de balise, pas de JSON, pas de clé "name". Le message partait tel quel
+# à l'utilisateur, qui lisait un appel de fonction en guise de réponse.
+#
+# La ligne ENTIÈRE doit être l'appel. C'est ce qui empêche d'attraper une
+# mention en prose (« appelle `find_tool` pour ça ») — celle-là est une
+# explication, pas une tentative d'appel.
+_BARE_CALL_RE = re.compile(
+    r"(?m)^[\s>*\-•]*`?([a-z][a-z0-9_]{2,63})`?\s*\(\s*(.{0,2000}?)\s*\)\s*[.…:!]*\s*$"
+)
+
+# Un nom d'outil suivi d'une parenthèse, N'IMPORTE OÙ dans le texte. Plus
+# large que `_BARE_CALL_RE` à dessein : sert uniquement à constater un échec,
+# jamais à fabriquer un appel.
+_MENTION_APPEL_RE = re.compile(r"`?([a-z][a-z0-9_]{2,63})`?\s*\(")
+
+
+def _arguments_dun_appel_nu(
+    brut: str, nom: str, premier_parametre: Any,
+) -> dict[str, Any] | None:
+    """Les arguments d'un appel nu, ou ``None`` si on ne sait pas les lier.
+
+    ⚠️ ``None`` plutôt qu'un dict vide, et c'est délibéré : appeler un outil
+    avec de mauvais arguments est pire que ne pas l'appeler. Un appel raté se
+    voit ; un appel qui part avec le mauvais paramètre produit un résultat
+    plausible et faux.
+    """
+    if not brut:
+        return {}
+
+    if brut.startswith("{"):
+        try:
+            return json.loads(brut)
+        except json.JSONDecodeError:
+            try:
+                obj = json.loads(_cleanup_loose_json(brut))
+                return obj if isinstance(obj, dict) else None
+            except json.JSONDecodeError:
+                return None
+
+    # `capability="…"` — la forme nommée, sans ambiguïté.
+    nommes = re.findall(r'(\w+)\s*=\s*["\']([^"\']*)["\']', brut)
+    if nommes:
+        return {cle: valeur for cle, valeur in nommes}
+
+    # `"…"` seul — positionnel. Il faut le nom du paramètre, et lui seul
+    # peut venir du schéma réel de l'outil.
+    positionnel = re.fullmatch(r'["\'](.*)["\']', brut, re.DOTALL)
+    if positionnel:
+        param = premier_parametre(nom) if callable(premier_parametre) else None
+        return {param: positionnel.group(1)} if param else None
+
+    return None
+
+
+def parse_bare_tool_calls(
+    content: str, real_tool_names: set[str], premier_parametre: Any = None,
+) -> list[dict[str, Any]]:
+    """Les appels écrits « à la python » sur une ligne à eux.
+
+    ⚠️ AUCUN rapprochement flou ici, contrairement aux motifs JSON. Une ligne
+    de texte ordinaire ressemble bien plus à un appel qu'un bloc balisé : le
+    nom doit exister TEL QUEL dans le registre, sinon on laisse passer.
+    """
+    if not content or not isinstance(content, str):
+        return []
+
+    trouves: list[dict[str, Any]] = []
+    for m in _BARE_CALL_RE.finditer(content):
+        nom = m.group(1)
+        if nom not in real_tool_names:
+            continue
+        args = _arguments_dun_appel_nu(m.group(2).strip(), nom, premier_parametre)
+        if args is None:
+            logger.warning(
+                "tool_call_recovery : « %s(…) » reconnu mais arguments non "
+                "liables — on n'invente pas de paramètre", nom,
+            )
+            continue
+        trouves.append({"name": nom, "arguments": args})
+    return trouves
+
+
+def looks_like_an_unexecuted_tool_call(
+    content: str, real_tool_names: set[str],
+) -> str | None:
+    """Le nom de l'outil qu'un texte semble appeler — ou ``None``.
+
+    ⚠️ À N'UTILISER QU'APRÈS avoir constaté ``tool_calls == []``. Sous cette
+    condition, une mention d'appel ne peut plus être une explication de ce que
+    le modèle VIENT de faire : c'est une tentative qui n'a pas abouti.
+
+    Sert à décider d'un ÉCHEC, jamais à fabriquer un appel — d'où sa largeur.
+    Rien ne part vers un outil sur la foi de cette fonction.
+    """
+    if not content or not isinstance(content, str):
+        return None
+    for m in _MENTION_APPEL_RE.finditer(content):
+        if m.group(1) in real_tool_names:
+            return m.group(1)
+    return None
+
+
+def recover_tool_calls_into_response(
+    response: Any,
+    real_tool_names: set[str],
+    premier_parametre: Any = None,
+) -> int:
     """If response has empty tool_calls but content embeds tool calls as text,
     parse them and inject into response.tool_calls.
 
     Mutates `response` in place (sets `tool_calls` attribute) and returns
     the number of recovered calls.
+
+    ``premier_parametre`` : appelable ``nom d'outil -> nom du 1er paramètre``,
+    nécessaire pour lier un appel nu positionnel (`find_tool("…")`). Absent,
+    ces appels-là sont ignorés plutôt que devinés.
     """
     existing_tool_calls = getattr(response, "tool_calls", None) or []
     if existing_tool_calls:
@@ -425,6 +544,10 @@ def recover_tool_calls_into_response(response: Any, real_tool_names: set[str]) -
         return 0  # multimodal content, leave alone
 
     parsed = parse_text_tool_calls(content)
+    if not parsed:
+        # Dernier recours : la forme nue. En dernier parce qu'elle est la
+        # plus permissive — un motif balisé est une intention explicite.
+        parsed = parse_bare_tool_calls(content, real_tool_names, premier_parametre)
     if not parsed:
         return 0
 

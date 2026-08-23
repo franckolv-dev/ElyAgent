@@ -196,7 +196,54 @@ def _slm_label(llm, settings) -> str:
 # il va le chercher dans le catalogue au lieu d'abandonner — c'est exactement
 # ce pour quoi il existe. `report_missing_capability` évite qu'un manque se
 # transforme en invention.
-_SLM_TOOL_NAMES: tuple[str, ...] = ("find_tool", "report_missing_capability")
+#
+# ⚠️ MAIS DEUX OUTILS SEULEMENT ÉTAIT UNE ERREUR DE CONCEPTION (23/08).
+#
+# Regarde ce que le routeur envoie ICI. Les motifs qui font BAISSER le score —
+# donc qui poussent vers le local — sont, dans `intent_router._SIMPLE_PATTERNS` :
+# météo −15, agenda −15, mes mails −15, recherche −10, itinéraire −15,
+# traduis −15, rappelle-moi −15, qr code −15, actualités −10, mes tâches −10.
+#
+# **Ce sont TOUS des besoins d'outils.** Et la voie locale n'en avait aucun.
+# Le routeur envoyait systématiquement au modèle local exactement ce qu'il ne
+# pouvait pas faire. La description de poste du tier A disait « les tâches
+# simples du quotidien » ; son coffre à outils disait « rien ».
+#
+# Ce que ça coûtait, mesuré sur le fil du 23/08 : « trouve-moi des sites comme
+# Babelio » demandait `find_tool` → un SECOND modèle local pour choisir →
+# retour des noms → re-liaison → nouvel appel. Trois inférences sérialisées
+# (`LOCAL_LLM_MAX_CONCURRENCY=1`) et deux tours, sur un 4B, pour une recherche
+# web. Franck a vu la boucle de l'extérieur : « on a plein d'outils mais on
+# dirait qu'elle ne sait pas quoi en faire ». Elle savait — le chemin pour y
+# arriver était juste trop long pour elle.
+#
+# ⚠️ LE COÛT RÉEL, MESURÉ, PAS ESTIMÉ. Le catalogue entier pèse ~60 900 tokens
+# de schémas (200 outils, ~304 chacun). Cette liste en pèse ~4 300, soit **7 %**
+# — un vingtième du désastre du 21/08. Le pin `test_the_local_tier_can_serve_
+# what_the_router_sends_it` tient ce budget : c'est LUI l'invariant, pas un
+# nombre d'outils. Compter les outils était un raccourci ; ce qui a fait
+# dépasser les 60 s, c'est le prompt processing des schémas.
+#
+# 👉 RÈGLE : cette liste suit `_SIMPLE_PATTERNS`. Un motif ajouté là-bas sans
+# l'outil correspondant ici recrée le piège — le routeur promet une capacité
+# que la voie locale n'a pas.
+_SLM_EVERYDAY_TOOLS: tuple[str, ...] = (
+    "web_search",             # « cherche sur le web », « recherche »
+    "weather_get",            # « météo », « température », « temps qu'il fait »
+    "calendar_list_events",   # « agenda », « calendrier », « rdv », « planning »
+    "gmail_list_emails",      # « mes mails », « boîte mail »
+    "scheduler_create_task",  # « rappelle-moi »
+    "notes_create",           # « prends une note », « mémorise »
+    "tasks_list",             # « mes tâches », « to-do »
+    "translate_text",         # « traduis », « traduction »
+    "maps_directions",        # « itinéraire », « trajet », « comment aller à »
+    "news_get_headlines",     # « actualités », « news »
+    "qrcode_generate",        # « qr code »
+)
+
+_SLM_TOOL_NAMES: tuple[str, ...] = (
+    "find_tool", "report_missing_capability",
+) + _SLM_EVERYDAY_TOOLS
 
 
 def _slm_toolset(registry) -> list:
@@ -261,6 +308,35 @@ def _slm_discovered_extras(registry, conversation_id: str) -> list:
     except Exception as exc:  # noqa: BLE001 — un confort ne casse pas un tour
         logger.warning("SLM : découvertes non liées (%s)", exc)
         return []
+
+
+def _premier_parametre_de(registry):
+    """``nom d'outil -> nom de son premier paramètre``, lu sur le schéma réel.
+
+    Sert à lier un appel écrit à la main par le modèle — `find_tool("…")` n'a
+    pas de nom de paramètre, et le deviner produirait un appel plausible et
+    faux. Paresseux : le schéma n'est lu que pour l'outil effectivement
+    reconnu, jamais pour les ~200 du catalogue.
+    """
+    def _resoudre(nom: str) -> str | None:
+        try:
+            for t in registry.all_tools:
+                if getattr(t, "name", "") != nom:
+                    continue
+                schema = getattr(t, "args_schema", None)
+                if schema is None:
+                    return None
+                js = schema.model_json_schema()
+                requis = js.get("required") or []
+                if requis:
+                    return str(requis[0])
+                props = list((js.get("properties") or {}).keys())
+                return str(props[0]) if props else None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("premier paramètre de %s introuvable (%s)", nom, exc)
+        return None
+
+    return _resoudre
 
 
 def _annoncer_repli_slm(state, model: str, raison: str) -> None:
@@ -707,6 +783,65 @@ def create_agent_node():
                     decision.score, _slm_real_name(_slm_base, settings),
                     decision.reason,
                 )
+
+                # ── L'appel d'outil écrit en TEXTE (23/08) ─────────────────
+                # ⚠️ TROISIÈME FILET CÂBLÉ SUR UNE SEULE VOIE. La récupération
+                # d'appels textuels existe depuis le 06/05 et vit dans la
+                # branche cloud ; la voie SLM ne l'a jamais eue. Le 23/08,
+                # gemma-4-E4B a répondu, littéralement :
+                #
+                #     find_tool("sites de critiques de livres en ligne")
+                #
+                # Le texte partait tel quel à l'écran. L'utilisateur lisait un
+                # appel de fonction en guise de réponse, et rien ne rougissait
+                # — le tour était un SUCCÈS : pas d'exception, pas de délai
+                # dépassé, une réponse rendue.
+                #
+                # ⚠️ C'est une conséquence directe du correctif précédent. Lui
+                # dire « appelle find_tool » sans lui dire « par le
+                # tool-calling natif » déplace le défaut au lieu de le régler :
+                # le modèle obéit, en écrivant. La consigne manquante est dans
+                # `_SYSTEM_PROMPT_SLM`, mais une consigne n'est pas un verrou.
+                _tc_slm = getattr(response, "tool_calls", None) or []
+                if not _tc_slm:
+                    _noms_reels = {t.name for t in registry.all_tools}
+                    from app.agent.tool_call_recovery import (
+                        looks_like_an_unexecuted_tool_call,
+                        recover_tool_calls_into_response,
+                    )
+                    _rec = recover_tool_calls_into_response(
+                        response,
+                        real_tool_names=_noms_reels,
+                        premier_parametre=_premier_parametre_de(registry),
+                    )
+                    if _rec:
+                        logger.warning(
+                            "[recovery] SLM — %d appel(s) récupéré(s) du texte", _rec,
+                        )
+                    else:
+                        # Rien à récupérer, mais le texte SENT l'appel manqué.
+                        # Alors la voie locale a échoué : elle a rendu une
+                        # réponse qui n'en est pas une.
+                        #
+                        # 👉 On repasse au cloud EN L'ANNONÇANT. C'est ce que
+                        # Franck a perdu en changeant de modèle : le précédent
+                        # dépassait son délai et la main partait vite au cloud.
+                        # Celui-ci « réussit » et boucle en local. Un échec
+                        # rapide et visible vaut mieux qu'un succès apparent.
+                        _contenu = getattr(response, "content", "") or ""
+                        _contenu = _contenu if isinstance(_contenu, str) else str(_contenu)
+                        _rate = looks_like_an_unexecuted_tool_call(_contenu, _noms_reels)
+                        if _rate:
+                            logger.warning(
+                                "SLM : « %s(…) » écrit en texte, jamais exécuté "
+                                "— repli cloud", _rate,
+                            )
+                            _annoncer_repli_slm(
+                                state, _slm_real_name(_slm_base, settings),
+                                f"appel à {_rate} écrit en texte au lieu d'être exécuté",
+                            )
+                            response = None
+                            model_used = "llm:tier-routed"
             except asyncio.TimeoutError:
                 logger.warning(
                     "SLM timeout after %.1fs (score=%d) — falling back to LLM",

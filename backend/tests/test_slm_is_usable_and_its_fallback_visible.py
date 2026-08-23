@@ -60,15 +60,26 @@ class _Registry:
 # ─────────────────────────────────────────────────────────────────────
 
 def test_the_slm_gets_a_handful_of_tools_not_the_whole_catalogue():
-    """LE pin de l'incident. 145 schémas à un 4B pour dire « bonjour »."""
+    """LE pin de l'incident. 145 schémas à un 4B pour dire « bonjour ».
+
+    ⚠️ CE PIN COMPTAIT LES OUTILS ; IL COMPTE MAINTENANT LES TOKENS (23/08).
+    Le nombre était un raccourci — ce qui a fait dépasser les 60 s, c'est le
+    *prompt processing* des schémas, pas leur cardinalité. Le raccourci est
+    devenu faux le jour où la voie locale a reçu les outils du quotidien : onze
+    schémas courts coûtent moins que trois longs.
+
+    Le budget réel est tenu par `test_the_local_tier_can_serve_what_the_router_
+    sends_it`, qui mesure les tokens sur le VRAI registre. Ici on garde la
+    borne grossière : le catalogue entier ne doit jamais revenir.
+    """
     from app.agent import nodes
 
     registry = _Registry(
-        ["find_tool", "report_missing_capability"] + [f"outil_{i}" for i in range(143)]
+        list(nodes._SLM_TOOL_NAMES) + [f"outil_{i}" for i in range(180)]
     )
     retenus = nodes._slm_toolset(registry)
 
-    assert len(retenus) <= 5, (
+    assert len(retenus) <= 20, (
         f"{len(retenus)} outils liés au SLM — c'est le prompt processing de ces "
         f"schémas qui faisait dépasser les 60 s sur un modèle déjà chaud"
     )
@@ -76,6 +87,10 @@ def test_the_slm_gets_a_handful_of_tools_not_the_whole_catalogue():
     assert "find_tool" in noms, (
         "find_tool est le filet : sans lui, un modèle qui découvre qu'il a "
         "besoin d'un outil abandonne au lieu d'aller le chercher"
+    )
+    assert "web_search" in noms, (
+        "la voie locale doit pouvoir chercher sur le web sans détour : c'est "
+        "l'intention que `_SIMPLE_PATTERNS` lui envoie le plus souvent"
     )
 
 
