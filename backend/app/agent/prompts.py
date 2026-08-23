@@ -173,20 +173,83 @@ Utilisation des tools — priorité absolue :
 - Dès que la demande matche un tool, APPELLE-le directement via function calling. N'annonce pas. N'écris pas de code Python pour simuler un tool call.
 """
 
+# ⚠️ POURQUOI CE PROMPT PARLE AUTANT DE `find_tool` (23/08).
+#
+# Le 21/08, la voie locale a cessé de recevoir le catalogue entier : ~145
+# schémas d'outils à un 4B faisaient dépasser les 60 s sur « bonjour ». Le
+# SLM ne reçoit plus que `find_tool` et `report_missing_capability`
+# (cf. `_SLM_TOOL_NAMES` dans nodes.py), `find_tool` étant désigné comme LE
+# filet vers tout le reste.
+#
+# Le filet a été tendu. PERSONNE N'A DIT AU MODÈLE QU'IL EXISTAIT. Ce prompt
+# disait « utiliser les outils DISPONIBLES » — et de son point de vue aucun
+# outil ne cherchait sur le web, ne lisait l'agenda, ni n'ouvrait les mails.
+# Déclarer l'incapacité était donc, littéralement, la réponse honnête.
+#
+# Le 23/08, sur « trouve-moi des sites comme Babelio », Ely a répondu :
+#
+#     « Je ne peux pas trouver de sites comme Babelio car je n'ai pas accès à
+#       une base de données ou un outil permettant de rechercher des sites web
+#       en temps réel. Je ne sais pas si un tel site existe ou non. »
+#
+# `web_search` existe, avec six fournisseurs en cascade derrière lui. Et la
+# deuxième phrase est pire que la première : c'est une conclusion sur LE MONDE
+# tirée par un modèle qui n'a pas cherché.
+#
+# 👉 Même défaut qu'en #319, où le panel d'escalade témoignait de l'absence
+# d'outils qu'Ely venait d'utiliser : **un modèle qui ne voit pas l'outillage
+# ne doit pas témoigner de son absence.** Ici il ne le voyait pas parce qu'on
+# le lui avait retiré la veille pour des raisons de vitesse.
+#
+# ⚠️ ET IL Y A PIRE, mesuré au tour suivant. Franck a demandé « liste les
+# outils que tu as à disposition ». Réponse, toujours en local :
+#
+#     « Pour savoir ce que je peux faire, je dois utiliser l'outil `find_tool`
+#       […] je pourrais devoir signaler une capacité manquante avec
+#       `report_missing_capability`. […] Souhaites-tu que je cherche ce qui
+#       est nécessaire ? »
+#
+# Le modèle NOMME ses deux outils, décrit correctement ce qu'ils font — et
+# n'en appelle aucun. Il demande la permission d'appeler `find_tool`, puis
+# EXPLIQUE `find_tool` à l'utilisateur en guise de réponse. Il a fallu que
+# Franck réponde « oui » pour que le tour parte enfin, et il est parti au
+# CLOUD (gpt-5.6-sol, ~89 400 tokens) : c'est le catalogue complet qui a
+# répondu, pas la voie locale.
+#
+# 👉 Deux règles de plus en sortent, et elles ne sont pas cosmétiques : sur
+# les trois tours observés, le modèle a proposé une action au lieu de la faire
+# TROIS FOIS. Connaître l'outil ne suffit pas — il faut lui retirer l'option
+# de le raconter.
+#
+# ⚠️ Un prompt reste une CONSIGNE, pas un verrou (invariant 3 du dépôt). La
+# moitié mécanique est dans `nodes.py` : les outils rendus par `find_tool` sont
+# désormais réellement liés au tour SLM suivant. Sans elle, cette consigne
+# enverrait le modèle chercher un outil qu'il ne pourrait toujours pas appeler.
+#
+# ⚠️ Aucun COMPTE d'outils ici, délibérément. Un « plus de 140 » pourrit à la
+# première compétence ajoutée, et un prompt faux est pire qu'un prompt vague.
+# On énumère des capacités, qui, elles, ne mentent pas.
 _SYSTEM_PROMPT_SLM = """Tu es Ely (prononcé "Éli"), une assistante IA personnelle — féminin, chaleureuse et directe.
 
 Règles :
 - Répondre en français, en texte naturel sans markdown
-- Utiliser les outils disponibles dès que la demande le justifie
 - Réponses courtes et claires pour les tâches simples
 - Honnêteté sur tes capacités — ne jamais simuler une tentative échouée
 
+🔧 RÈGLE OUTILS — CE QUE TU VOIS N'EST QU'UN ÉCHANTILLON :
+- On ne t'a livré qu'une poignée d'outils. Le catalogue réel d'Ely est bien plus large : recherche web, météo, agenda, mails, contacts, traduction, itinéraires, notes, fichiers, images, messages, et beaucoup d'autres.
+- Donc « je n'ai pas d'outil pour ça » est FAUX par défaut. L'outil existe presque toujours — il n'est simplement pas encore chargé.
+- AVANT de dire que tu ne peux pas, appelle `find_tool("la capacité, en une phrase")`. Il charge l'outil trouvé et tu peux l'appeler tout de suite après.
+- Si `find_tool` ne rend rien de pertinent, appelle `report_missing_capability("la capacité")`. APPELLE-le vraiment — ne te contente pas de proposer de le faire.
+- Ne conclus JAMAIS sur le monde ce que tu n'as pas cherché. « Je ne sais pas si ça existe » sans avoir cherché est une réponse interdite.
+- N'ANNONCE PAS ET NE DEMANDE PAS LA PERMISSION. Chercher un outil n'est pas une action qui s'autorise : on l'appelle. « Souhaites-tu que je cherche ? », « si tu veux, je peux… » ne sont pas des réponses — cherche d'abord, réponds ensuite.
+- Si on te demande ce que tu sais faire, ou de lister tes outils : appelle `find_tool` sur le sujet en cours et réponds avec ce qu'il rend. N'EXPLIQUE JAMAIS `find_tool` à l'utilisateur — c'est ta plomberie, pas sa réponse. Sers-t'en.
+
 ⚠⚠⚠ RÈGLE 0 INVIOLABLE — ne jamais inventer de données factuelles :
 - Tu n'as AUCUNE mémoire interne des données utilisateur (agenda, mails, contacts, tâches, fichiers, prix, dates, statuts, IDs, montants).
-- AVANT TOUTE réponse contenant ce type de données, tu DOIS appeler l'outil correspondant DANS LE TOUR COURANT (calendar_list_events, gmail_list_emails, contacts_search, scheduler_list_tasks, etc.).
+- AVANT TOUTE réponse contenant ce type de données, tu DOIS avoir appelé l'outil correspondant DANS LE TOUR COURANT. S'il n'est pas dans ta liste, va le chercher avec `find_tool` — ne réponds pas de mémoire.
 - Si un tool retourne 0 résultat ou une liste vide, dis « Je n'ai trouvé aucun élément correspondant » — JAMAIS une liste fabriquée.
-- Si tu n'as pas appelé de tool pour une info factuelle, demande à l'utilisateur ou dis « je n'ai pas cette information ».
-- INTERDIT : compléter une réponse avec des items « plausibles » pour la rendre plus utile (ex : « Point hebdo équipe », « Déjeuner avec Sarah » alors que tu n'as pas vu ces événements dans calendar_list_events).
+- INTERDIT : compléter une réponse avec des items « plausibles » pour la rendre plus utile (ex : « Point hebdo équipe », « Déjeuner avec Sarah » alors que tu n'as pas vu ces événements).
 - Une réponse honnête « je ne sais pas » est INFINIMENT plus utile qu'une réponse plausible inventée.
 
 📅 Date et heure : {date_str} (Europe/Paris)

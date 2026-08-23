@@ -216,6 +216,53 @@ def _slm_toolset(registry) -> list:
     return list(registry.all_tools)
 
 
+def _slm_discovered_extras(registry, conversation_id: str) -> list:
+    """Les outils que `find_tool` a surfacés dans CETTE conversation.
+
+    ⚠️ LE TROU QUE ÇA BOUCHE (23/08). La voie cloud unionne déjà les
+    découvertes dans sa liaison (cf. `get_discovered` plus bas dans ce
+    fichier) ; la voie SLM, elle, gardait sa liaison à deux outils, figée
+    dans la fermeture. `find_tool` répond pourtant « utilise-les directement
+    maintenant » — une promesse que le chemin local ne tenait pas.
+
+    Ça ne se voyait pas, et voici pourquoi : au tour suivant, `user_query`
+    vaut ``messages[-1]``, donc le RETOUR de l'outil, pas la demande de
+    l'utilisateur. La réponse de `find_tool` fait plus de 80 caractères,
+    ce qui vaut +10 au score de complexité et repasse la barre — le tour
+    repartait au cloud, où la liaison est complète. Le filet ne marchait
+    que par cet accident de scoring. Raccourcir le message de `find_tool`
+    l'aurait cassé sans que rien ne rougisse.
+
+    ⚠️ ET LE CAS INVERSE EST LE PLUS IMPORTANT : quand `find_tool` ne
+    trouve RIEN, sa réponse est courte, le score reste bas, et le tour
+    reste local — exactement là où le modèle doit appeler
+    `report_missing_capability`. Le chemin local n'est donc pas une
+    curiosité théorique : c'est celui du gap réel.
+
+    Pas de plafond sur le nombre d'ajouts, délibérément. Un plafond sur un
+    `set` non ordonné écarterait des outils au hasard, en silence — la
+    troncature muette que ce dépôt traque. Le garde-fou existe déjà et il
+    s'annonce : si la liaison enfle au point de ralentir le modèle, le délai
+    de `slm_timeout` expire et le repli local → cloud remonte à l'interface
+    (21/08). Mieux vaut un repli visible qu'un écrêtage discret.
+    """
+    if not conversation_id:
+        return []
+    try:
+        from app.agent.discovered_tools import get_discovered
+
+        noms = get_discovered(conversation_id)
+        if not noms:
+            return []
+        deja = set(_SLM_TOOL_NAMES)
+        return [t for t in registry.all_tools
+                if getattr(t, "name", "") in noms
+                and getattr(t, "name", "") not in deja]
+    except Exception as exc:  # noqa: BLE001 — un confort ne casse pas un tour
+        logger.warning("SLM : découvertes non liées (%s)", exc)
+        return []
+
+
 def _annoncer_repli_slm(state, model: str, raison: str) -> None:
     """Fait remonter le repli local → cloud jusqu'à l'utilisateur.
 
@@ -624,8 +671,31 @@ def create_agent_node():
                     # demandait (prospection du 26/07 : 51 appels, 0 écriture).
                     preserve_first=bool(state.get("automated_task")),
                 )
+                # La liaison maigre est le cas courant, et elle est en cache.
+                # On n'en sort que si `find_tool` a effectivement rapporté
+                # quelque chose dans cette conversation — sinon on paierait
+                # un `bind_tools` par tour pour rien.
+                _slm_runtime = _slm_with_tools
+                _slm_extras = _slm_discovered_extras(registry, _conv_id_fb)
+                if _slm_extras:
+                    try:
+                        _slm_runtime = _slm_base.bind_tools(
+                            _slm_toolset(registry) + _slm_extras
+                        )
+                        logger.warning(
+                            "[find_tool] SLM : +%d outil(s) découvert(s) lié(s) : %s",
+                            len(_slm_extras),
+                            sorted(t.name for t in _slm_extras),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        # On garde la liaison maigre : le modèle reste capable
+                        # d'agir, il devra juste repasser par `find_tool`.
+                        logger.warning(
+                            "SLM : liaison des découvertes impossible (%s) — "
+                            "la voie locale garde ses outils de base", exc,
+                        )
                 response = await asyncio.wait_for(
-                    _slm_with_tools.ainvoke(
+                    _slm_runtime.ainvoke(
                         [{"role": "system", "content": system}]
                         + _slm_fitted
                     ),

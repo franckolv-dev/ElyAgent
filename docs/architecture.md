@@ -244,6 +244,27 @@ la demande part à deux ou trois modèles, et la meilleure réponse est retenue,
 avec sa provenance et son coût annoncés. Le panel améliore une **réponse**, pas
 le résultat d'un outil : il n'a pas d'outils.
 
+### La voie locale, et son unique porte
+
+Quand `SLM_ENABLED` est vrai, un routeur note la demande de 0 à 100 et envoie
+au modèle **local** tout ce qui passe sous `SLM_COMPLEXITY_THRESHOLD`.
+
+⚠️ **Cette voie ne reçoit pas le catalogue** — seulement `find_tool` et
+`report_missing_capability` (`_SLM_TOOL_NAMES`). Ce n'est pas un oubli : livrer
+le catalogue entier à un modèle de 4 milliards de paramètres faisait dépasser
+60 s sur « bonjour », donc repli cloud systématique. La voie rapide s'annulait
+elle-même.
+
+👉 Conséquence à connaître avant de toucher au prompt local : **`find_tool` est
+la seule porte** entre le modèle local et tout le reste — la météo, l'agenda,
+les mails, la recherche web. Un prompt qui ne l'annonce pas laisse le modèle
+conclure de bonne foi qu'il ne sait rien faire, puisque de son point de vue
+c'est vrai. Les outils qu'il découvre ainsi sont liés au tour suivant, comme
+sur la voie cloud.
+
+Et si le local dépasse son délai, le repli vers le cloud **s'affiche** — c'est
+l'invariant « un repli doit se voir ».
+
 ---
 
 ## Surfaces
