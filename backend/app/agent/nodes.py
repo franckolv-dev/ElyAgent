@@ -340,19 +340,35 @@ def _premier_parametre_de(registry):
 
 
 def _annoncer_repli_slm(state, model: str, raison: str) -> None:
-    """Fait remonter le repli local → cloud jusqu'à l'utilisateur.
+    """Fait remonter le repli local → cloud jusqu'à l'utilisateur, ET à la trace.
 
     Il n'était que journalisé. Voir `fallback_manager.note_slm_fallback`.
     Ne lève jamais : un toast raté ne coûte pas un tour.
+
+    ⚠️ LA TRACE EST LA SECONDE MOITIÉ, ajoutée le 23/08. Le toast est éphémère :
+    il vit le temps d'un tour dans l'interface, et personne ne peut le
+    retrouver le lendemain. Or `usage_logs` n'enregistre que le modèle qui a
+    RENDU la réponse — une tentative locale abandonnée n'y laisse rien.
+
+    Conséquence vécue : « GPT-5.6 a répondu, est-ce gemma qui a passé la
+    main ? » était une question sans réponse. Les deux scénarios — le local a
+    essayé puis abandonné, le local n'a jamais été consulté — produisaient
+    exactement les mêmes lignes en base. La note `[routing]` les sépare.
     """
+    conv = state.get("conversation_id", "") or ""
     try:
         from app.services.fallback_manager import note_slm_fallback
 
-        note_slm_fallback(
-            state.get("conversation_id", "") or "", model=model, reason=raison,
-        )
+        note_slm_fallback(conv, model=model, reason=raison)
     except Exception as exc:  # noqa: BLE001
         logger.debug("SLM : repli non signalé à l'interface (%s)", exc)
+    try:
+        routing_note(
+            conv, "slm", user_id=state.get("user_id", ""),
+            decision="cloud_apres_local", modele=model, raison=raison,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("SLM : repli non tracé (%s)", exc)
 
 
 def create_agent_node():
@@ -380,6 +396,28 @@ def create_agent_node():
     # Franck a déplacé Nemotron et Gemma entre tiers plusieurs fois le 21/08 ;
     # ses `make down && make up` ont masqué le défaut en relançant le process.
     _slm_cfg_version = -1
+    # ⚠️ TROISIÈME COMPTEUR, ET C'EST UN DÉFAUT DIFFÉRENT (23/08).
+    #
+    # Les deux au-dessus disent QUAND reconstruire un SLM qui existe. Celui-ci
+    # dit quand RETENTER une construction qui a échoué — ce que rien ne faisait.
+    #
+    # La reconstruction plus bas est gardée par `if _slm_with_tools is not None`.
+    # Donc si `get_slm()` lève au démarrage — serveur local pas encore levé,
+    # instance mal configurée, modèle absent au boot — la voie locale reste
+    # morte pour TOUTE LA VIE DU PROCESS. Un `WARNING` unique part au boot,
+    # défile, et plus rien ensuite : Ely répond au cloud pour tout, sans que
+    # personne puisse deviner pourquoi.
+    #
+    # Le cas est banal en pratique : `docker compose up` démarre le backend
+    # avant que LM Studio soit prêt sur la machine hôte. Il fallait un
+    # redémarrage manuel, décidé sans aucun signal pour le motiver.
+    #
+    # Deux déclencheurs de reprise, et ils sont complémentaires : la
+    # temporisation (le serveur local a pu se lever entre-temps) et le
+    # changement de configuration (l'administrateur vient de désigner un autre
+    # modèle — c'est un signal fort qu'il attend un effet).
+    _SLM_REPRISE_S = 120.0
+    _slm_echec_a: list[float] = [-1.0]   # -1 = pas d'échec ; 0 = retenter tout de suite
     if settings.slm_enabled:
         try:
             from app.services.llm_provider import get_slm
@@ -399,6 +437,7 @@ def create_agent_node():
             )
         except Exception as exc:
             logger.warning("SLM init failed: %s — all requests will use LLM", exc)
+            _slm_echec_a[0] = 0.0   # 0 = « jamais retenté » → retente au 1er tour
 
     # Tier-based LLM cache: { tier_value → llm_with_tools }
     # Invalidated on EITHER:
@@ -472,6 +511,47 @@ def create_agent_node():
                 current_version, current_cfg_version,
             )
 
+        # ── Reprise après un échec de construction (23/08) ─────────────────
+        # Le bloc juste en dessous ne reconstruit QUE ce qui existe déjà. Sans
+        # celui-ci, un `get_slm()` qui lève au démarrage tue la voie locale
+        # pour toute la vie du process — cas banal quand le backend démarre
+        # avant que LM Studio soit prêt sur la machine hôte.
+        if (
+            settings.slm_enabled
+            and _slm_with_tools is None
+            and _slm_echec_a[0] >= 0.0
+            and (
+                _slm_echec_a[0] == 0.0
+                or current_cfg_version != _slm_cfg_version
+                or (_t.monotonic() - _slm_echec_a[0]) >= _SLM_REPRISE_S
+            )
+        ):
+            try:
+                from app.services.llm_provider import get_slm
+
+                _reprise_base = get_slm()
+                _slm_with_tools = _reprise_base.bind_tools(_slm_toolset(registry))
+                _slm_base = _reprise_base
+                _slm_version = current_version
+                _slm_cfg_version = current_cfg_version
+                _slm_echec_a[0] = -1.0
+                logger.warning(
+                    "SLM reconstruit après un échec de démarrage : %s — la voie "
+                    "locale redevient disponible",
+                    _slm_real_name(_slm_base, settings),
+                )
+            except Exception as exc:  # noqa: BLE001
+                # On retentera. Le journal reste en `info` : à raison d'une
+                # tentative toutes les deux minutes, un WARNING par essai
+                # noierait le reste quand le serveur local est éteint pour de
+                # bon — et l'absence de voie locale est déjà tracée à chaque
+                # tour par la note `[routing] slm=cloud raison=slm_indisponible`.
+                _slm_echec_a[0] = _t.monotonic()
+                logger.info(
+                    "SLM toujours indisponible (%s) — nouvelle tentative dans "
+                    "%.0f s", exc, _SLM_REPRISE_S,
+                )
+
         # Mêmes DEUX conditions que le cache des tiers, juste au-dessus : le
         # registre d'outils OU la configuration de routage. La seconde manquait
         # ici, et c'est elle qui porte le changement de modèle du tier A.
@@ -521,6 +601,31 @@ def create_agent_node():
                 user_id=state.get("user_id", ""),
                 decision="slm" if use_slm else "cloud",
                 score=decision.score,
+            )
+        else:
+            # ⚠️ LE TROU DU 23/08 : la voie locale ABSENTE ne laissait aucune
+            # trace, tour après tour.
+            #
+            # Cette note était à l'INTÉRIEUR du garde ci-dessus. Quand le SLM
+            # n'existe pas — désactivé, construction échouée, tâche planifiée —
+            # aucune ligne `[routing]` n'était émise. La conséquence était
+            # exactement la question à laquelle on ne pouvait pas répondre :
+            # « GPT-5.6 a répondu, est-ce que le local a essayé ? » Les logs
+            # étaient muets, `usage_logs` ne portait que la ligne cloud, et
+            # rien nulle part ne disait si le local avait été consulté.
+            #
+            # Un tour qui ne consulte pas la voie locale est une DÉCISION. Une
+            # décision non tracée est indiscernable d'une panne.
+            routing_note(
+                state.get("conversation_id", ""), "slm",
+                user_id=state.get("user_id", ""),
+                decision="cloud",
+                score=100,
+                raison=(
+                    "tache_planifiee" if state.get("automated_task")
+                    else ("slm_desactive" if not settings.slm_enabled
+                          else "slm_indisponible")
+                ),
             )
 
         # Refactor 2026-05-25 Phase 4.2 — date / language / IMPORTANT note
