@@ -193,12 +193,32 @@ DEFAULT_TIER_CONFIG: dict[str, dict] = {
 
 _tier_config: dict[str, dict] = {}   # empty = use DEFAULT_TIER_CONFIG
 
-# Bumped every time `set_tier_config()` runs. Downstream caches (notably
-# `_tier_llm_cache` in `app/agent/nodes.py` and any per-tier client cache
-# in sub-agent factories) MUST check this version and invalidate when it
-# changes. Without this, swapping a model in Settings → Routing has no
-# runtime effect — the previous client object stays in cache and continues
-# to be served on every agent_node call. (Audit C-4, fixed 2026-05-06.)
+# Compteur d'invalidation du ROUTAGE À L'EXÉCUTION. Les caches en aval
+# (`_tier_llm_cache` et `_slm_with_tools` dans `app/agent/nodes.py`, les
+# fabriques de sous-agents) le relisent pour savoir quand reconstruire leurs
+# clients. Sans lui, changer un modèle dans Réglages → Routage n'a aucun effet :
+# l'objet client précédent reste en cache et continue de servir à chaque tour.
+# (Audit C-4, corrigé le 06/05/2026.)
+#
+# ⚠️ RÈGLE — TOUT CE QUI CHANGE LE MODÈLE SERVANT UN TIER DOIT L'INCRÉMENTER.
+# Il n'y a que trois portes : `set_tier_config`, `register_instance_cache` et
+# `unregister_instance_cache`. Une quatrième qui oublierait le compteur
+# recréerait le défaut, et c'est le SEUL invariant de ce fichier qu'on ne peut
+# pas constater à l'usage — la base est juste, l'écran est juste, Ely sert
+# l'ancien modèle. Épinglé par `test_the_runtime_follows_the_screen.py`.
+#
+# ⚠️ TROIS FOIS LE MÊME DÉFAUT, TROIS PORTES DIFFÉRENTES :
+#   #272  — fenêtre de contexte et tarifs saisis, jamais relus → troncature à
+#           8 192 tokens jusqu'au redémarrage.
+#   #336  — modèle du tier A changé dans l'onglet Routage, sans effet : le
+#           compteur ne couvrait pas la config de tier côté SLM.
+#   23/08 — modèle d'une INSTANCE changé (nemotron → gemma) : la base a pris,
+#           l'écran affichait le bon, et LM Studio chargeait toujours nemotron
+#           à chaque tour. `register_instance_cache` mettait à jour
+#           `_instance_cache` sans toucher au compteur, donc la fermeture de
+#           `create_agent_node` gardait son client construit sur l'ancien nom.
+#           Nemotron n'était nulle part dans le `.env` : il ne vivait plus que
+#           dans un objet Python.
 _tier_config_version: int = 0
 
 
@@ -248,10 +268,17 @@ def get_tier_config() -> dict[str, dict]:
 
 
 def get_tier_config_version() -> int:
-    """Monotonic version counter — bumped on every `set_tier_config()`.
+    """Compteur monotone du routage à l'exécution.
 
-    Caches downstream (see `app/agent/nodes.py:_tier_llm_cache`) check this
-    to know when to invalidate their precomputed `bind_tools()` clients.
+    ⚠️ LE NOM EST PLUS ÉTROIT QUE LA CHOSE, et ça a coûté un défaut. Il ne
+    suit pas que `set_tier_config()` : il suit **tout ce qui change le modèle
+    servant un tier**, donc aussi l'édition et la suppression d'une instance
+    nommée. Un tier peut désigner une instance par UUID ; changer le modèle de
+    cette instance change le tier sans toucher à sa chaîne.
+
+    Les caches en aval (`app/agent/nodes.py` : `_tier_llm_cache` et
+    `_slm_with_tools`) le relisent pour savoir quand reconstruire leurs clients
+    `bind_tools()`.
     """
     return _tier_config_version
 
@@ -1326,13 +1353,44 @@ _instance_cache: dict[str, dict] = {}
 
 
 def register_instance_cache(instance_id: str, provider: str, model: str, api_key: Optional[str]) -> None:
-    """Add or update an instance in the in-memory cache."""
+    """Ajoute ou met à jour une instance dans le cache mémoire.
+
+    ⚠️ INCRÉMENTE LE COMPTEUR DE ROUTAGE, et c'est le correctif du 23/08.
+    Une instance porte le NOM DU MODÈLE (`inst["model"]`, lu par
+    `_make_llm_for_instance`). L'éditer change donc quel modèle sert un tier,
+    exactement comme réécrire la chaîne du tier — mais seule la seconde
+    incrémentait, alors que les deux passent par les mêmes caches.
+
+    Le symptôme, tel que Franck l'a vécu : tier A basculé de
+    `nemotron-3-nano-4b` vers `gemma-4-E4B`, enregistré, réaffiché correctement
+    dans Réglages → Routage… et LM Studio chargeait toujours nemotron à chaque
+    question. Le nom n'était ni dans le `.env` ni en base : il survivait
+    uniquement dans le client construit au démarrage, que rien n'invalidait.
+
+    C'est la classe de défaut la plus coûteuse à diagnostiquer du dépôt, parce
+    que les trois surfaces d'observation — base, écran, API — sont justes.
+    Seul le comportement ment.
+
+    ⚠️ Le démarrage appelle ceci une fois par instance, donc le compteur bondit
+    au boot. Sans effet : les caches sont froids et la reconstruction est un
+    `bind_tools` local, sans réseau.
+    """
+    global _tier_config_version
     _instance_cache[instance_id] = {"provider": provider, "model": model, "api_key": api_key}
+    _tier_config_version += 1
 
 
 def unregister_instance_cache(instance_id: str) -> None:
-    """Remove an instance from the in-memory cache."""
+    """Retire une instance du cache mémoire.
+
+    Incrémente aussi : un tier qui pointait sur l'instance supprimée doit
+    reconstruire, sinon il continue de servir un modèle que l'administrateur
+    croit avoir retiré — un repli invisible, et de la dépense sur un
+    fournisseur qu'on pensait débranché.
+    """
+    global _tier_config_version
     _instance_cache.pop(instance_id, None)
+    _tier_config_version += 1
 
 
 def _apply_instance_overrides(instances) -> None:
