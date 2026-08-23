@@ -20,7 +20,31 @@
 Endpoints
 ---------
 GET  /skills/              List all skills with enabled status for the current user
+GET  /skills/catalog       Same, plus what each tool COÛTE et SERT réellement
 PUT  /skills/{skill_name}  Enable/disable a skill (or save its config)
+
+⚠️ POURQUOI `/catalog` EXISTE (24/08). `GET /skills/` dit ce qui est branché ;
+il ne dit pas ce que ça coûte. Or la question de Franck était : « à quoi sert
+le dernier outil `qrcode_generate` ? Quel intérêt d'envoyer un tel outil ? »
+
+Sans chiffres, on y répond à l'intuition. Avec, la décision se prend seule :
+
+    qrcode_generate   235 tokens à chaque tour   0 appel depuis 8 mois
+
+Deux mesures, donc, et elles viennent de sources différentes :
+
+- **le coût** — longueur description + schéma JSON, divisée par 4. C'est une
+  APPROXIMATION, annoncée comme telle jusque dans le nom du champ
+  (`approx_tokens`) : le vrai découpage dépend du tokenizer de chaque modèle.
+  Un chiffre faux présenté comme exact ferait prendre des décisions sur du
+  vent ; à ±20 %, il suffit largement à trier 200 outils.
+- **l'usage** — `usage_logs.skill_used`, la seule trace durable de ce qui a
+  été réellement appelé.
+
+⚠️ « 0 appel » ne veut PAS dire « inutile ». Un outil peut n'avoir jamais servi
+parce que personne n'en a eu besoin, ou parce que le modèle ne l'a jamais
+trouvé. La réponse est rendue avec la date du plus ancien enregistrement
+(`since`), pour qu'on sache sur quelle fenêtre on juge.
 """
 from __future__ import annotations
 
@@ -91,6 +115,109 @@ async def list_skills(
     ]
 
 
+def _approx_tokens(tool) -> int:
+    """Ce que le schéma d'un outil pèse dans le prompt, à la louche.
+
+    Description + schéma JSON, divisé par 4. Approximation assumée : le vrai
+    découpage dépend du tokenizer. Le champ s'appelle `approx_tokens` pour que
+    personne ne le prenne pour une mesure.
+    """
+    desc = getattr(tool, "description", "") or ""
+    brut = ""
+    try:
+        if getattr(tool, "args_schema", None) is not None:
+            brut = json.dumps(tool.args_schema.model_json_schema())
+    except Exception:  # noqa: BLE001 — un schéma illisible vaut 0, pas une 500
+        brut = ""
+    return (len(desc) + len(brut)) // 4
+
+
+async def _usage_par_outil(db: AsyncSession) -> tuple[dict[str, int], str | None]:
+    """``({nom d'outil: nombre d'appels}, date du plus ancien enregistrement)``.
+
+    Échoue ouvert : sans table d'usage, on rend des compteurs vides plutôt
+    qu'une erreur. Un catalogue sans chiffres reste utile ; un catalogue qui
+    ne s'affiche pas, non.
+    """
+    try:
+        from sqlalchemy import func
+
+        from app.models.usage_log import UsageLog
+
+        lignes = (await db.execute(
+            select(UsageLog.skill_used, func.count())
+            .where(UsageLog.skill_used.isnot(None))
+            .group_by(UsageLog.skill_used)
+        )).all()
+        depuis = (await db.execute(select(func.min(UsageLog.timestamp)))).scalar()
+        return (
+            {nom: int(n) for nom, n in lignes if nom},
+            depuis.isoformat() if depuis else None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("catalogue : usage illisible (%s) — compteurs absents", exc)
+        return {}, None
+
+
+@router.get("/catalog")
+async def tool_catalog(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Le catalogue outil par outil : ce qu'il coûte, ce qu'il a servi.
+
+    ⚠️ La route est déclarée AVANT `PUT /{skill_name}` mais surtout avant tout
+    `GET /{…}` : FastAPI apparie dans l'ordre de déclaration, et une route
+    paramétrée placée avant avalerait « catalog » comme un nom de compétence.
+    """
+    result = await db.execute(
+        select(SkillPreference).where(SkillPreference.user_id == current_user.id)
+    )
+    prefs = {p.skill_name: p.enabled for p in result.scalars().all()}
+    appels, depuis = await _usage_par_outil(db)
+
+    registry = get_skill_registry()
+    competences = []
+    total_outils = 0
+    total_tokens = 0
+    for s in registry.list_skills():
+        actif = prefs.get(s.name, s.enabled_by_default)
+        outils = []
+        for t in s.tools:
+            cout = _approx_tokens(t)
+            total_outils += 1
+            if actif:
+                total_tokens += cout
+            outils.append({
+                "name": t.name,
+                "description": (getattr(t, "description", "") or "").split("\n")[0][:200],
+                "approx_tokens": cout,
+                "calls": appels.get(t.name, 0),
+            })
+        competences.append({
+            "name": s.name,
+            "display_name": s.display_name,
+            "icon": s.icon,
+            "enabled": actif,
+            "enabled_by_default": s.enabled_by_default,
+            "tool_count": len(s.tools),
+            "approx_tokens": sum(o["approx_tokens"] for o in outils),
+            "calls": sum(o["calls"] for o in outils),
+            "tools": sorted(outils, key=lambda o: -o["approx_tokens"]),
+        })
+
+    return {
+        # `enabled_*` = ce qui part réellement au modèle. C'est le chiffre qui
+        # bouge quand on actionne un interrupteur, donc le seul qui compte
+        # pour décider.
+        "enabled_tool_count": sum(c["tool_count"] for c in competences if c["enabled"]),
+        "enabled_approx_tokens": total_tokens,
+        "total_tool_count": total_outils,
+        "usage_since": depuis,
+        "skills": sorted(competences, key=lambda c: -c["approx_tokens"]),
+    }
+
+
 @router.put("/{skill_name}")
 async def update_skill(
     skill_name: str,
@@ -127,6 +254,15 @@ async def update_skill(
 
     await db.commit()
     await db.refresh(pref)
+
+    # ⚠️ LE FIL ENTRE L'INTERRUPTEUR ET LE MODÈLE (24/08). Sans cette ligne,
+    # la préférence est en base, l'écran l'affiche, et le cache de
+    # `preferences_runtime` continue de servir l'ancien état jusqu'au
+    # redémarrage — le défaut même que ce câblage corrige, reproduit un cran
+    # plus loin. Même motif que `llm_provider._tier_config_version` (#342).
+    from app.skills.preferences_runtime import bump_preferences_version
+
+    bump_preferences_version()
 
     logger.info(
         "Skill '%s' %s for user %s",

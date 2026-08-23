@@ -567,6 +567,42 @@ export const api = {
       status: string;
     }>,
 
+  // ── Catalogue d'outils (Paramètres → Outils, 24/08) ─────────────────────
+  /** Le catalogue outil par outil : ce que chacun coûte en tokens à chaque
+   *  tour, et combien de fois il a réellement été appelé. Sert à décider quoi
+   *  couper — 200 outils pèsent ~60 900 tokens de schémas. */
+  getToolCatalog: () =>
+    fetchAPI("/skills/catalog") as Promise<{
+      enabled_tool_count: number;
+      enabled_approx_tokens: number;
+      total_tool_count: number;
+      usage_since: string | null;
+      skills: Array<{
+        name: string;
+        display_name: string;
+        icon: string;
+        enabled: boolean;
+        enabled_by_default: boolean;
+        tool_count: number;
+        approx_tokens: number;
+        calls: number;
+        tools: Array<{
+          name: string;
+          description: string;
+          approx_tokens: number;
+          calls: number;
+        }>;
+      }>;
+    }>,
+
+  /** Activer ou désactiver une compétence. Les outils d'une compétence coupée
+   *  cessent d'être envoyés au modèle dès le tour suivant. */
+  updateSkill: (skillName: string, body: { enabled?: boolean; config?: unknown }) =>
+    fetchAPI(`/skills/${encodeURIComponent(skillName)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   // ── My learned skills (Sprint 4b Phase 5.b) ─────────────────────────────
   /** List every LearnedSkill the caller owns, across all statuses. The
    *  backend orders by status then use_count so the UI can render the

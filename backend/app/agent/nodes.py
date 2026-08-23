@@ -27,6 +27,10 @@ from app.agent.state import AgentState
 from app.services.background_tasks import spawn
 from app.services.llm_deadline import ainvoke_with_deadline
 from app.services.routing_trace import note as routing_note
+from app.skills.preferences_runtime import (
+    appliquer as appliquer_preferences,
+    disabled_tool_names,
+)
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_llm, get_fallback_llms
@@ -1017,7 +1021,14 @@ def create_agent_node():
                 _slm_extras = _slm_discovered_extras(registry, _conv_id_fb)
                 _slm_runtime = _slm_with_tools
                 try:
-                    _slm_outils = _slm_toolset(registry, _a_router) + _slm_extras
+                    # Les préférences valent AUSSI ici. Une compétence coupée
+                    # dans l'interface ne doit pas revenir par la voie locale
+                    # — ce serait un demi-interrupteur, pire qu'aucun.
+                    _slm_outils = appliquer_preferences(
+                        _slm_toolset(registry, _a_router) + _slm_extras,
+                        await disabled_tool_names(user_id),
+                        contexte="slm",
+                    )
                     _slm_runtime = _slm_base.bind_tools(_slm_outils)
                     logger.info(
                         "SLM : %d outil(s) liés pour cette demande : %s",
@@ -1503,6 +1514,25 @@ def create_agent_node():
                     append_learned_tools,
                 )
                 _filtered_tools = await append_learned_tools(_filtered_tools, user_id)
+
+                # ── L'interrupteur de Paramètres → Outils (24/08) ──────────
+                # `GET /skills/` et `PUT /skills/{nom}` existaient, la table
+                # `SkillPreference` se remplissait, `get_user_active_tools()`
+                # savait lire — et personne ne l'appelait. Désactiver une
+                # compétence n'avait aucun effet sur ce qui partait au modèle.
+                #
+                # Quatrième occurrence de ce motif ce mois-ci : une écriture
+                # qui atteint la base sans atteindre le runtime (#272, #336,
+                # #342). Preuve la plus parlante : `fibonacci`, un outil de
+                # test, est marqué `enabled_by_default=False` depuis toujours
+                # et partait quand même dans chaque prompt.
+                #
+                # APRÈS les outils appris, délibérément : l'utilisateur doit
+                # pouvoir couper aussi ce qu'Ely s'est créé.
+                _desactives = await disabled_tool_names(user_id)
+                _filtered_tools = appliquer_preferences(
+                    _filtered_tools, _desactives, contexte=f"tier-{_tier_key}",
+                )
 
                 # find_tool discovery — union the tools the model surfaced via
                 # find_tool earlier in THIS conversation (sticky), so it can

@@ -27,13 +27,14 @@ import { GoogleAccountsSection } from "@/components/settings/GoogleAccountsSecti
 import { HitlPreferencesSection } from "@/components/settings/HitlPreferencesSection";
 import { SovereigntySection } from "@/components/settings/SovereigntySection";
 import { LicenceSection } from "@/components/settings/LicenceSection";
+import { ToolCatalogSection } from "@/components/settings/ToolCatalogSection";
 import { api } from "@/lib/api";
 import {
   Cpu, Key, Server, ShieldCheck, Mail, Calendar, HardDrive,
   CheckCircle, XCircle, ExternalLink, Check, AlertCircle, Languages,
   Monitor, Download, Plus, Trash2, Pencil, Wifi, WifiOff, Lock, Eye, EyeOff,
   GitBranch, ChevronUp, ChevronDown, Info, ToggleLeft, ToggleRight, User,
-  Plug, Sparkles, Zap, KeyRound,
+  Plug, Sparkles, Zap, KeyRound, Wrench,
 } from "lucide-react";
 import { authFetch, isAdmin } from "@/lib/auth";
 import { useTranslations, useLocale } from "next-intl";
@@ -588,7 +589,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const a = isAdmin();
     let nextTab: string = a ? "modeles" : "integrations";
-    const allowed = ["modeles", "routage", "integrations", "channels", "hitl", "licence", "compte"];
+    const allowed = ["modeles", "routage", "outils", "integrations", "channels", "hitl", "licence", "compte"];
     const requested = searchParams?.get("tab");
     if (requested && allowed.includes(requested)) {
       nextTab = requested;
@@ -1252,6 +1253,7 @@ export default function SettingsPage() {
       { id: "modeles",      label: t("tabModels"),         icon: Cpu        },
       { id: "routage",      label: t("tabRouting"),        icon: GitBranch  },
     ] : []),
+    { id: "outils",       label: "Outils",               icon: Wrench     },
     { id: "integrations", label: t("tabIntegrations"),  icon: Plug       },
     { id: "channels",     label: t("tabChannels"),       icon: Mail       },
     { id: "hitl",         label: t("tabHitl"),           icon: ShieldCheck },
@@ -1737,6 +1739,22 @@ export default function SettingsPage() {
             {/* ================================================================
                 TAB: Intégrations
             ================================================================ */}
+            {activeTab === "outils" && (
+              <section className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                    Outils envoyés au modèle
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    Chaque outil actif part dans le prompt à chaque tour. Couper
+                    une compétence dont vous ne vous servez pas allège toutes les
+                    conversations.
+                  </p>
+                </div>
+                <ToolCatalogSection />
+              </section>
+            )}
+
             {activeTab === "integrations" && (
             <section className="vstack" style={{ gap: 16 }}>
               {/* ── Services Google ── */}
