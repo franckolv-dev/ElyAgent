@@ -227,36 +227,96 @@ def _slm_label(llm, settings) -> str:
 # 👉 RÈGLE : cette liste suit `_SIMPLE_PATTERNS`. Un motif ajouté là-bas sans
 # l'outil correspondant ici recrée le piège — le routeur promet une capacité
 # que la voie locale n'a pas.
-_SLM_EVERYDAY_TOOLS: tuple[str, ...] = (
-    "web_search",             # « cherche sur le web », « recherche »
-    "weather_get",            # « météo », « température », « temps qu'il fait »
-    "calendar_list_events",   # « agenda », « calendrier », « rdv », « planning »
-    "gmail_list_emails",      # « mes mails », « boîte mail »
-    "scheduler_create_task",  # « rappelle-moi »
-    "notes_create",           # « prends une note », « mémorise »
-    "tasks_list",             # « mes tâches », « to-do »
-    "translate_text",         # « traduis », « traduction »
-    "maps_directions",        # « itinéraire », « trajet », « comment aller à »
-    "news_get_headlines",     # « actualités », « news »
-    "qrcode_generate",        # « qr code »
+# ⚠️ LE SOCLE PERMANENT — trois outils, et pas un de plus.
+#
+# `find_tool` est la porte vers le reste. `report_missing_capability` évite
+# qu'un manque devienne une invention. Et `web_search` parce qu'il répond à
+# TOUTE demande ouverte — « trouve », « cherche », « quels sont », « c'est
+# quoi » — sans qu'aucun mot-clé n'ait à le prévoir. Sans lui dans le socle,
+# la question de Franck sur Babelio ne déclenche aucun motif et retombe sur le
+# détour par `find_tool` qu'on cherche justement à supprimer.
+_SLM_CORE_TOOLS: tuple[str, ...] = (
+    "find_tool", "report_missing_capability", "web_search",
 )
 
-_SLM_TOOL_NAMES: tuple[str, ...] = (
-    "find_tool", "report_missing_capability",
-) + _SLM_EVERYDAY_TOOLS
+# ⚠️ LES OUTILS CONDITIONNELS, ET POURQUOI ILS LE SONT DEVENUS (24/08).
+#
+# Franck a regardé ce que gemma reçoit réellement dans LM Studio :
+#
+#   « J'hallucine… à quoi sert le dernier outil `qrcode_generate` ? Quel
+#     intérêt d'envoyer un tel outil ? idem pour `maps_directions` ? »
+#
+# Il a raison, et c'est un défaut de MON correctif précédent. J'avais lié une
+# liste FIXE de onze outils du quotidien — donc gemma recevait le générateur de
+# QR codes et le calculateur d'itinéraires pour une question sur des sites de
+# critiques littéraires. Sur un modèle de 4 milliards de paramètres, un outil
+# hors-sujet n'est pas neutre : c'est une option de plus dans un choix qu'il
+# fait mal, et du prompt processing payé pour rien.
+#
+# Chaque outil est donc lié SEULEMENT si la demande le réclame. Les motifs sont
+# ceux de `intent_router._SIMPLE_PATTERNS` — c'est le même vocabulaire, et c'est
+# volontaire : ce que le routeur reconnaît pour envoyer un tour en local doit
+# être exactement ce que la voie locale sait traiter.
+#
+# Mesuré sur la question de Franck : 3 outils liés au lieu de 13, ~1 440 tokens
+# au lieu de 4 322. Et `qrcode_generate` n'y est plus.
+_SLM_CONDITIONAL_TOOLS: tuple[tuple[str, str], ...] = (
+    (r"\bm[eé]t[eé]o\b|\btemp[eé]rature\b|\btemps qu.il fait\b", "weather_get"),
+    (r"\bagenda\b|\bcalendrier\b|\brdv\b|\brendez[- ]?vous\b|\bplanning\b",
+     "calendar_list_events"),
+    (r"\bmails?\b|\be?mails?\b|\bbo[iî]te mail\b|\bcourriels?\b", "gmail_list_emails"),
+    (r"\brappelle[- ]?moi\b|\bplanifie\b|\bchaque (jour|matin|semaine|lundi)\b",
+     "scheduler_create_task"),
+    (r"\bnotes?\b|\bm[eé]morise\b|\bnote[rz]?\b", "notes_create"),
+    (r"\bt[aâ]ches?\b|\bto[- ]?do\b", "tasks_list"),
+    (r"\btradui[stre]+\b|\btraduction\b", "translate_text"),
+    (r"\bitin[eé]raire\b|\btrajet\b|\bcomment aller [aà]\b|\broute vers\b",
+     "maps_directions"),
+    (r"\bactualit[eé]s?\b|\bnews\b|\bles titres\b", "news_get_headlines"),
+    (r"\bqr[- ]?code\b", "qrcode_generate"),
+)
+
+# L'union — ce que la voie locale peut atteindre sans passer par `find_tool`.
+# Le pin `test_the_local_tier_can_serve_what_the_router_sends_it` la confronte
+# aux intentions que le routeur envoie ici.
+_SLM_TOOL_NAMES: tuple[str, ...] = _SLM_CORE_TOOLS + tuple(
+    outil for _motif, outil in _SLM_CONDITIONAL_TOOLS
+)
 
 
-def _slm_toolset(registry) -> list:
-    """Les quelques outils liés au SLM. Repli sur le registre entier si aucun
-    des noms attendus n'existe — mieux vaut lent que muet."""
+def _outils_reclames(demande: str) -> tuple[str, ...]:
+    """Les outils conditionnels que CETTE demande justifie.
+
+    Aucune inférence : ce sont des expressions régulières, sur le même
+    vocabulaire que le routeur. Le coût est nul là où un sélecteur par modèle
+    aurait ajouté un appel local sérialisé de plus — précisément la latence que
+    la voie rapide existe pour éviter.
+    """
+    if not demande:
+        # Sans demande (pré-construction au démarrage, appel d'API nu), on lie
+        # tout : mieux vaut un peu large qu'un SLM incapable d'agir.
+        return tuple(outil for _m, outil in _SLM_CONDITIONAL_TOOLS)
+    return tuple(
+        outil for motif, outil in _SLM_CONDITIONAL_TOOLS
+        if re.search(motif, demande, re.IGNORECASE)
+    )
+
+
+def _slm_toolset(registry, demande: str = "") -> list:
+    """Les outils liés au SLM pour CETTE demande.
+
+    Repli sur le registre entier si aucun des noms attendus n'existe — mieux
+    vaut lent que muet.
+    """
+    voulus = set(_SLM_CORE_TOOLS) | set(_outils_reclames(demande))
     try:
         retenus = [t for t in registry.all_tools
-                   if getattr(t, "name", "") in _SLM_TOOL_NAMES]
+                   if getattr(t, "name", "") in voulus]
         if retenus:
             return retenus
         logger.warning(
             "SLM : aucun de %s dans le registre — liaison du catalogue complet, "
-            "la voie locale sera lente", _SLM_TOOL_NAMES,
+            "la voie locale sera lente", sorted(voulus),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("SLM : sélection d'outils impossible (%s)", exc)
@@ -310,6 +370,78 @@ def _slm_discovered_extras(registry, conversation_id: str) -> list:
         return []
 
 
+def _contenu_texte(message) -> str:
+    """Le texte d'un message, qu'il soit objet LangChain ou dict sérialisé."""
+    brut = message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
+    if isinstance(brut, list):  # contenu multi-blocs
+        return " ".join(
+            b.get("text", "") if isinstance(b, dict) else str(b) for b in brut
+        )
+    return brut or ""
+
+
+def _index_derniere_humaine(messages) -> int:
+    """L'indice du dernier message utilisateur, ou ``-1``.
+
+    Sert uniquement à la trace : `depuis=0` au premier tour, puis 1, 2… Sans
+    ce chiffre, deux notes `[routing]` identiques ne disent pas si le tour a
+    avancé ou si l'utilisateur a reposé la même question.
+    """
+    liste = list(messages or ())
+    for i in range(len(liste) - 1, -1, -1):
+        m = liste[i]
+        role = (
+            m.get("role") or m.get("type")
+            if isinstance(m, dict)
+            else getattr(m, "type", "")
+        )
+        if role in ("human", "user"):
+            return i
+    return -1
+
+
+def _derniere_demande_humaine(messages, defaut: str = "") -> str:
+    """Ce que L'UTILISATEUR a demandé, pas ce que le dernier outil a répondu.
+
+    ⚠️ LE DÉFAUT QUE ÇA CORRIGE (23/08), et c'est celui qui vidait la voie
+    locale de son sens.
+
+    Le routeur notait `messages[-1]`. Au premier tour c'est bien la demande ;
+    dès le second, c'est le RETOUR D'OUTIL. Un résultat de `find_tool` ou de
+    `web_search` est long (> 150 caractères : +20) et contient des URL
+    (`_URL_RE` : +15). Le score passait donc de 55 à 90-100, et le tour
+    repartait au cloud **exactement au moment où le modèle local allait se
+    servir de l'outil qu'il venait de trouver**.
+
+    Mesuré sur le fil du 23/08, conversation 26556c11 :
+
+        [routing] slm=slm   score=55    ← la demande part en local
+        [routing] slm=cloud score=100   ← le retour d'outil la fait fuir
+        [routing] turn=complex …        ← six tours, 223 693 tokens
+
+    La voie locale faisait donc le travail le moins utile — comprendre la
+    demande — et cédait la main juste avant celui qui compte. Le comportement
+    attendu, mot pour mot de Franck : « Gemma interroge Ely via find_tool, Ely
+    renvoie le ou les outils utiles, Gemma fait la demande avec le bon outil et
+    renvoie la réponse. »
+
+    Un tour, une demande, un score : la complexité d'une requête ne change pas
+    parce qu'un outil y a répondu longuement. Ce que le retour d'outil apporte,
+    c'est de la MATIÈRE, pas de la difficulté.
+    """
+    for message in reversed(list(messages or ())):
+        role = (
+            message.get("role") or message.get("type")
+            if isinstance(message, dict)
+            else getattr(message, "type", "")
+        )
+        if role in ("human", "user"):
+            texte = _contenu_texte(message)
+            if texte:
+                return texte
+    return defaut
+
+
 def _premier_parametre_de(registry):
     """``nom d'outil -> nom de son premier paramètre``, lu sur le schéma réel.
 
@@ -340,19 +472,35 @@ def _premier_parametre_de(registry):
 
 
 def _annoncer_repli_slm(state, model: str, raison: str) -> None:
-    """Fait remonter le repli local → cloud jusqu'à l'utilisateur.
+    """Fait remonter le repli local → cloud jusqu'à l'utilisateur, ET à la trace.
 
     Il n'était que journalisé. Voir `fallback_manager.note_slm_fallback`.
     Ne lève jamais : un toast raté ne coûte pas un tour.
+
+    ⚠️ LA TRACE EST LA SECONDE MOITIÉ, ajoutée le 23/08. Le toast est éphémère :
+    il vit le temps d'un tour dans l'interface, et personne ne peut le
+    retrouver le lendemain. Or `usage_logs` n'enregistre que le modèle qui a
+    RENDU la réponse — une tentative locale abandonnée n'y laisse rien.
+
+    Conséquence vécue : « GPT-5.6 a répondu, est-ce gemma qui a passé la
+    main ? » était une question sans réponse. Les deux scénarios — le local a
+    essayé puis abandonné, le local n'a jamais été consulté — produisaient
+    exactement les mêmes lignes en base. La note `[routing]` les sépare.
     """
+    conv = state.get("conversation_id", "") or ""
     try:
         from app.services.fallback_manager import note_slm_fallback
 
-        note_slm_fallback(
-            state.get("conversation_id", "") or "", model=model, reason=raison,
-        )
+        note_slm_fallback(conv, model=model, reason=raison)
     except Exception as exc:  # noqa: BLE001
         logger.debug("SLM : repli non signalé à l'interface (%s)", exc)
+    try:
+        routing_note(
+            conv, "slm", user_id=state.get("user_id", ""),
+            decision="cloud_apres_local", modele=model, raison=raison,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("SLM : repli non tracé (%s)", exc)
 
 
 def create_agent_node():
@@ -380,6 +528,28 @@ def create_agent_node():
     # Franck a déplacé Nemotron et Gemma entre tiers plusieurs fois le 21/08 ;
     # ses `make down && make up` ont masqué le défaut en relançant le process.
     _slm_cfg_version = -1
+    # ⚠️ TROISIÈME COMPTEUR, ET C'EST UN DÉFAUT DIFFÉRENT (23/08).
+    #
+    # Les deux au-dessus disent QUAND reconstruire un SLM qui existe. Celui-ci
+    # dit quand RETENTER une construction qui a échoué — ce que rien ne faisait.
+    #
+    # La reconstruction plus bas est gardée par `if _slm_with_tools is not None`.
+    # Donc si `get_slm()` lève au démarrage — serveur local pas encore levé,
+    # instance mal configurée, modèle absent au boot — la voie locale reste
+    # morte pour TOUTE LA VIE DU PROCESS. Un `WARNING` unique part au boot,
+    # défile, et plus rien ensuite : Ely répond au cloud pour tout, sans que
+    # personne puisse deviner pourquoi.
+    #
+    # Le cas est banal en pratique : `docker compose up` démarre le backend
+    # avant que LM Studio soit prêt sur la machine hôte. Il fallait un
+    # redémarrage manuel, décidé sans aucun signal pour le motiver.
+    #
+    # Deux déclencheurs de reprise, et ils sont complémentaires : la
+    # temporisation (le serveur local a pu se lever entre-temps) et le
+    # changement de configuration (l'administrateur vient de désigner un autre
+    # modèle — c'est un signal fort qu'il attend un effet).
+    _SLM_REPRISE_S = 120.0
+    _slm_echec_a: list[float] = [-1.0]   # -1 = pas d'échec ; 0 = retenter tout de suite
     if settings.slm_enabled:
         try:
             from app.services.llm_provider import get_slm
@@ -399,6 +569,7 @@ def create_agent_node():
             )
         except Exception as exc:
             logger.warning("SLM init failed: %s — all requests will use LLM", exc)
+            _slm_echec_a[0] = 0.0   # 0 = « jamais retenté » → retente au 1er tour
 
     # Tier-based LLM cache: { tier_value → llm_with_tools }
     # Invalidated on EITHER:
@@ -458,6 +629,18 @@ def create_agent_node():
                 for b in _c
             ) if isinstance(_c, list) else (_c or "")
 
+        # LA DEMANDE, distincte du dernier message. Voir
+        # `_derniere_demande_humaine` : le routeur et la liaison d'outils la
+        # suivent tous les deux, alors que `user_query` reste `messages[-1]`
+        # pour la construction du contexte et le rappel mémoire.
+        #
+        # ⚠️ CALCULÉE ICI, INCONDITIONNELLEMENT, et c'est délibéré. La liguer
+        # dans la branche de routage puis la relire dans la branche d'inférence
+        # serait le défaut `_fb_state` de la #330, à l'identique : une variable
+        # liée dans une branche et lue dans une autre ne lève que le jour où la
+        # première ne s'exécute pas.
+        _a_router = _derniere_demande_humaine(messages, user_query)
+
         # Hot-reload: clear tier cache when tool registry OR tier routing config changes
         from app.services.llm_provider import get_tier_config_version
         current_version = registry.tools_version
@@ -471,6 +654,47 @@ def create_agent_node():
                 "Tier LLM cache invalidated (tools_v=%d, tier_cfg_v=%d)",
                 current_version, current_cfg_version,
             )
+
+        # ── Reprise après un échec de construction (23/08) ─────────────────
+        # Le bloc juste en dessous ne reconstruit QUE ce qui existe déjà. Sans
+        # celui-ci, un `get_slm()` qui lève au démarrage tue la voie locale
+        # pour toute la vie du process — cas banal quand le backend démarre
+        # avant que LM Studio soit prêt sur la machine hôte.
+        if (
+            settings.slm_enabled
+            and _slm_with_tools is None
+            and _slm_echec_a[0] >= 0.0
+            and (
+                _slm_echec_a[0] == 0.0
+                or current_cfg_version != _slm_cfg_version
+                or (_t.monotonic() - _slm_echec_a[0]) >= _SLM_REPRISE_S
+            )
+        ):
+            try:
+                from app.services.llm_provider import get_slm
+
+                _reprise_base = get_slm()
+                _slm_with_tools = _reprise_base.bind_tools(_slm_toolset(registry))
+                _slm_base = _reprise_base
+                _slm_version = current_version
+                _slm_cfg_version = current_cfg_version
+                _slm_echec_a[0] = -1.0
+                logger.warning(
+                    "SLM reconstruit après un échec de démarrage : %s — la voie "
+                    "locale redevient disponible",
+                    _slm_real_name(_slm_base, settings),
+                )
+            except Exception as exc:  # noqa: BLE001
+                # On retentera. Le journal reste en `info` : à raison d'une
+                # tentative toutes les deux minutes, un WARNING par essai
+                # noierait le reste quand le serveur local est éteint pour de
+                # bon — et l'absence de voie locale est déjà tracée à chaque
+                # tour par la note `[routing] slm=cloud raison=slm_indisponible`.
+                _slm_echec_a[0] = _t.monotonic()
+                logger.info(
+                    "SLM toujours indisponible (%s) — nouvelle tentative dans "
+                    "%.0f s", exc, _SLM_REPRISE_S,
+                )
 
         # Mêmes DEUX conditions que le cache des tiers, juste au-dessus : le
         # registre d'outils OU la configuration de routage. La seconde manquait
@@ -512,7 +736,11 @@ def create_agent_node():
         # local SLM is too weak for unattended multi-tool prompts and would
         # also bypass the named-tool binding below.
         if _slm_with_tools is not None and not state.get("automated_task"):
-            decision = intent_router.route(user_query, history=messages[:-1])
+            # ⚠️ LA DEMANDE, PAS LE DERNIER MESSAGE. Voir
+            # `_derniere_demande_humaine` : noter `messages[-1]` faisait fuir
+            # le tour au cloud dès qu'un outil avait répondu — c'est-à-dire
+            # juste avant que le modèle local s'en serve.
+            decision = intent_router.route(_a_router, history=messages[:-1])
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
             # C3d-4 — décision SLM-vs-cloud tracée (aspect "slm").
@@ -521,6 +749,35 @@ def create_agent_node():
                 user_id=state.get("user_id", ""),
                 decision="slm" if use_slm else "cloud",
                 score=decision.score,
+                # Combien de messages depuis la demande notée : 0 au premier
+                # tour, puis 1, 2… Rend lisible dans la trace qu'un tour long
+                # continue de suivre LA MÊME demande.
+                depuis=len(messages) - 1 - _index_derniere_humaine(messages),
+            )
+        else:
+            # ⚠️ LE TROU DU 23/08 : la voie locale ABSENTE ne laissait aucune
+            # trace, tour après tour.
+            #
+            # Cette note était à l'INTÉRIEUR du garde ci-dessus. Quand le SLM
+            # n'existe pas — désactivé, construction échouée, tâche planifiée —
+            # aucune ligne `[routing]` n'était émise. La conséquence était
+            # exactement la question à laquelle on ne pouvait pas répondre :
+            # « GPT-5.6 a répondu, est-ce que le local a essayé ? » Les logs
+            # étaient muets, `usage_logs` ne portait que la ligne cloud, et
+            # rien nulle part ne disait si le local avait été consulté.
+            #
+            # Un tour qui ne consulte pas la voie locale est une DÉCISION. Une
+            # décision non tracée est indiscernable d'une panne.
+            routing_note(
+                state.get("conversation_id", ""), "slm",
+                user_id=state.get("user_id", ""),
+                decision="cloud",
+                score=100,
+                raison=(
+                    "tache_planifiee" if state.get("automated_task")
+                    else ("slm_desactive" if not settings.slm_enabled
+                          else "slm_indisponible")
+                ),
             )
 
         # Refactor 2026-05-25 Phase 4.2 — date / language / IMPORTANT note
@@ -747,29 +1004,39 @@ def create_agent_node():
                     # demandait (prospection du 26/07 : 51 appels, 0 écriture).
                     preserve_first=bool(state.get("automated_task")),
                 )
-                # La liaison maigre est le cas courant, et elle est en cache.
-                # On n'en sort que si `find_tool` a effectivement rapporté
-                # quelque chose dans cette conversation — sinon on paierait
-                # un `bind_tools` par tour pour rien.
-                _slm_runtime = _slm_with_tools
+                # ── Liaison PAR DEMANDE (24/08) ────────────────────────────
+                # La liaison en cache portait les onze outils du quotidien, tous
+                # les tours. Franck l'a vue passer dans LM Studio : un générateur
+                # de QR codes et un calculateur d'itinéraires envoyés pour une
+                # question sur des sites de critiques littéraires.
+                #
+                # Sur un 4B, un outil hors-sujet n'est pas neutre : c'est une
+                # option de plus dans un choix qu'il fait mal. On lie donc le
+                # socle plus ce que la DEMANDE réclame — et le coût est un
+                # `bind_tools` local, sans réseau, sur trois à cinq schémas.
                 _slm_extras = _slm_discovered_extras(registry, _conv_id_fb)
+                _slm_runtime = _slm_with_tools
+                try:
+                    _slm_outils = _slm_toolset(registry, _a_router) + _slm_extras
+                    _slm_runtime = _slm_base.bind_tools(_slm_outils)
+                    logger.info(
+                        "SLM : %d outil(s) liés pour cette demande : %s",
+                        len(_slm_outils),
+                        sorted(getattr(t, "name", "?") for t in _slm_outils),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # On retombe sur la liaison en cache : plus large que
+                    # nécessaire, mais le modèle reste capable d'agir.
+                    logger.warning(
+                        "SLM : liaison par demande impossible (%s) — repli sur "
+                        "la liaison complète", exc,
+                    )
                 if _slm_extras:
-                    try:
-                        _slm_runtime = _slm_base.bind_tools(
-                            _slm_toolset(registry) + _slm_extras
-                        )
-                        logger.warning(
-                            "[find_tool] SLM : +%d outil(s) découvert(s) lié(s) : %s",
-                            len(_slm_extras),
-                            sorted(t.name for t in _slm_extras),
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        # On garde la liaison maigre : le modèle reste capable
-                        # d'agir, il devra juste repasser par `find_tool`.
-                        logger.warning(
-                            "SLM : liaison des découvertes impossible (%s) — "
-                            "la voie locale garde ses outils de base", exc,
-                        )
+                    logger.warning(
+                        "[find_tool] SLM : +%d outil(s) découvert(s) lié(s) : %s",
+                        len(_slm_extras),
+                        sorted(t.name for t in _slm_extras),
+                    )
                 response = await asyncio.wait_for(
                     _slm_runtime.ainvoke(
                         [{"role": "system", "content": system}]

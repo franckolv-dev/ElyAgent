@@ -55,11 +55,24 @@ RACINE = Path(__file__).resolve().parents[2]
 
 def test_the_slm_cache_follows_the_routing_config():
     """LE pin de l'incident. Sans ça, changer le tier A ne change rien
-    jusqu'au prochain redémarrage."""
+    jusqu'au prochain redémarrage.
+
+    ⚠️ L'ANCRE A ÉTÉ DURCIE (23/08). Elle cherchait `if _slm_with_tools is not
+    None` — une phrase qui s'est mise à apparaître dans un COMMENTAIRE décrivant
+    ce même garde, plus haut dans la fonction. `find()` tombait alors sur la
+    prose et le pin rougissait alors que l'invariant tenait.
+
+    Un pin qui lit du code source doit s'ancrer sur ce qui ne peut être que du
+    code : ici la parenthèse ouvrante de la condition composée. Le faux positif
+    coûte moins cher qu'un faux négatif, mais il coûte quand même — c'est ce qui
+    apprend à ignorer un test rouge.
+    """
     from app.agent import nodes
 
     src = inspect.getsource(nodes.create_agent_node)
-    bloc = src[src.find("if _slm_with_tools is not None"):]
+    ancre = "if _slm_with_tools is not None and ("
+    assert ancre in src, "le garde de reconstruction a changé de forme"
+    bloc = src[src.find(ancre):]
     tete = bloc[:400]
 
     assert "_slm_cfg_version" in tete, (
