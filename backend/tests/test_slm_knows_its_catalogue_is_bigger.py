@@ -45,6 +45,24 @@ qui n'était pas encore empruntable à l'époque.
 déplacerait la frontière sans rien réparer : « quelle météo ? » a exactement le
 même profil, et la voie locale n'a pas non plus d'outil météo.
 
+CONNAÎTRE L'OUTIL NE SUFFIT PAS — le tour suivant le prouve
+------------------------------------------------------------
+Franck a demandé « liste les outils que tu as à disposition ». Toujours en
+local, Ely a répondu qu'elle devait « utiliser l'outil `find_tool` », a nommé
+`report_missing_capability`, a décrit correctement les deux — et n'en a appelé
+aucun. Elle a fini par « Souhaites-tu que je cherche ce qui est nécessaire ? ».
+
+Le modèle connaissait donc ses outils. Il a quand même choisi de les RACONTER :
+il a demandé la permission d'appeler un outil de lecture, puis servi sa
+plomberie en guise de réponse. Sur les trois tours observés, il a proposé une
+action au lieu de la faire **trois fois**.
+
+⚠️ Et le tour qui a fini par marcher — après le « oui » de Franck — est parti
+au CLOUD : `gpt-5.6-sol`, ~89 400 tokens, c'est-à-dire le catalogue complet. Le
+contournement n'a pas fait fonctionner la voie locale, il l'a fait quitter.
+D'où deux règles de plus dans le prompt : ne pas demander la permission de
+chercher, et traiter une question sur les capacités comme une recherche.
+
 LES DEUX MOITIÉS DE LA RÉPARATION
 ----------------------------------
 1. **La consigne** — le prompt dit désormais que la liste d'outils est un
@@ -128,6 +146,56 @@ def test_the_slm_prompt_forbids_concluding_about_the_world_without_looking():
     assert "ne conclus jamais sur le monde ce que tu n'as pas cherché" in bas, (
         "rien n'interdit au modèle de trancher sur l'existence d'une chose "
         "qu'il n'a pas cherchée"
+    )
+
+
+def test_the_slm_prompt_forbids_asking_permission_to_search():
+    """⚠️ MESURÉ AU TOUR SUIVANT, et c'est le plus instructif des trois.
+
+    Franck : « liste les outils que tu as à disposition ». Ely, toujours en
+    local, a répondu qu'elle devait « utiliser l'outil `find_tool` », a nommé
+    `report_missing_capability`, décrit correctement les deux — et n'en a
+    appelé aucun. Elle a terminé par « Souhaites-tu que je cherche ce qui est
+    nécessaire ? ».
+
+    Sur les trois tours observés, le modèle a PROPOSÉ une action au lieu de la
+    faire trois fois. Connaître l'outil ne suffit donc pas : il faut lui
+    retirer l'option de le raconter.
+
+    ⚠️ Et ce n'est pas une garde d'autorisation qu'on contourne : la garde
+    humaine s'applique aux outils ENGAGEANTS, par leur nom, dans le code.
+    `find_tool` est en lecture — demander la permission de chercher n'a jamais
+    protégé personne, ça a juste coûté un aller-retour.
+    """
+    from app.agent.prompts import _SYSTEM_PROMPT_SLM
+
+    bas = _SYSTEM_PROMPT_SLM.lower()
+    assert "ne demande pas la permission" in bas, (
+        "rien n'interdit au modèle de demander l'autorisation d'appeler un "
+        "outil de lecture — c'est ce qui a bloqué le tour du 23/08"
+    )
+    assert "souhaites-tu que je cherche" in bas, (
+        "la formule exacte observée doit être citée comme contre-exemple : un "
+        "4B suit bien mieux une interdiction nommée qu'une règle abstraite"
+    )
+
+
+def test_the_slm_prompt_turns_a_capability_question_into_a_search():
+    """« Liste les outils que tu as » a produit un cours sur `find_tool`.
+
+    La plomberie est devenue la réponse. Une question sur les capacités doit
+    déclencher une RECHERCHE, dont le résultat est la réponse — l'utilisateur
+    n'a pas à connaître le nom des rouages pour obtenir ce qu'il demande.
+    """
+    from app.agent.prompts import _SYSTEM_PROMPT_SLM
+
+    bas = _SYSTEM_PROMPT_SLM.lower()
+    assert "ce que tu sais faire" in bas and "lister tes outils" in bas, (
+        "la question méta n'est pas traitée — elle retombe alors sur « je "
+        "n'ai pas accès à la liste de mes outils »"
+    )
+    assert "n'explique jamais `find_tool` à l'utilisateur" in bas, (
+        "rien n'empêche le modèle de servir sa plomberie en guise de réponse"
     )
 
 

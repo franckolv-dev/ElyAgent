@@ -201,6 +201,26 @@ Utilisation des tools — priorité absolue :
 # ne doit pas témoigner de son absence.** Ici il ne le voyait pas parce qu'on
 # le lui avait retiré la veille pour des raisons de vitesse.
 #
+# ⚠️ ET IL Y A PIRE, mesuré au tour suivant. Franck a demandé « liste les
+# outils que tu as à disposition ». Réponse, toujours en local :
+#
+#     « Pour savoir ce que je peux faire, je dois utiliser l'outil `find_tool`
+#       […] je pourrais devoir signaler une capacité manquante avec
+#       `report_missing_capability`. […] Souhaites-tu que je cherche ce qui
+#       est nécessaire ? »
+#
+# Le modèle NOMME ses deux outils, décrit correctement ce qu'ils font — et
+# n'en appelle aucun. Il demande la permission d'appeler `find_tool`, puis
+# EXPLIQUE `find_tool` à l'utilisateur en guise de réponse. Il a fallu que
+# Franck réponde « oui » pour que le tour parte enfin, et il est parti au
+# CLOUD (gpt-5.6-sol, ~89 400 tokens) : c'est le catalogue complet qui a
+# répondu, pas la voie locale.
+#
+# 👉 Deux règles de plus en sortent, et elles ne sont pas cosmétiques : sur
+# les trois tours observés, le modèle a proposé une action au lieu de la faire
+# TROIS FOIS. Connaître l'outil ne suffit pas — il faut lui retirer l'option
+# de le raconter.
+#
 # ⚠️ Un prompt reste une CONSIGNE, pas un verrou (invariant 3 du dépôt). La
 # moitié mécanique est dans `nodes.py` : les outils rendus par `find_tool` sont
 # désormais réellement liés au tour SLM suivant. Sans elle, cette consigne
@@ -222,6 +242,8 @@ Règles :
 - AVANT de dire que tu ne peux pas, appelle `find_tool("la capacité, en une phrase")`. Il charge l'outil trouvé et tu peux l'appeler tout de suite après.
 - Si `find_tool` ne rend rien de pertinent, appelle `report_missing_capability("la capacité")`. APPELLE-le vraiment — ne te contente pas de proposer de le faire.
 - Ne conclus JAMAIS sur le monde ce que tu n'as pas cherché. « Je ne sais pas si ça existe » sans avoir cherché est une réponse interdite.
+- N'ANNONCE PAS ET NE DEMANDE PAS LA PERMISSION. Chercher un outil n'est pas une action qui s'autorise : on l'appelle. « Souhaites-tu que je cherche ? », « si tu veux, je peux… » ne sont pas des réponses — cherche d'abord, réponds ensuite.
+- Si on te demande ce que tu sais faire, ou de lister tes outils : appelle `find_tool` sur le sujet en cours et réponds avec ce qu'il rend. N'EXPLIQUE JAMAIS `find_tool` à l'utilisateur — c'est ta plomberie, pas sa réponse. Sers-t'en.
 
 ⚠⚠⚠ RÈGLE 0 INVIOLABLE — ne jamais inventer de données factuelles :
 - Tu n'as AUCUNE mémoire interne des données utilisateur (agenda, mails, contacts, tâches, fichiers, prix, dates, statuts, IDs, montants).
