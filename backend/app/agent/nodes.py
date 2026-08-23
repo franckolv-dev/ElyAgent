@@ -196,7 +196,54 @@ def _slm_label(llm, settings) -> str:
 # il va le chercher dans le catalogue au lieu d'abandonner — c'est exactement
 # ce pour quoi il existe. `report_missing_capability` évite qu'un manque se
 # transforme en invention.
-_SLM_TOOL_NAMES: tuple[str, ...] = ("find_tool", "report_missing_capability")
+#
+# ⚠️ MAIS DEUX OUTILS SEULEMENT ÉTAIT UNE ERREUR DE CONCEPTION (23/08).
+#
+# Regarde ce que le routeur envoie ICI. Les motifs qui font BAISSER le score —
+# donc qui poussent vers le local — sont, dans `intent_router._SIMPLE_PATTERNS` :
+# météo −15, agenda −15, mes mails −15, recherche −10, itinéraire −15,
+# traduis −15, rappelle-moi −15, qr code −15, actualités −10, mes tâches −10.
+#
+# **Ce sont TOUS des besoins d'outils.** Et la voie locale n'en avait aucun.
+# Le routeur envoyait systématiquement au modèle local exactement ce qu'il ne
+# pouvait pas faire. La description de poste du tier A disait « les tâches
+# simples du quotidien » ; son coffre à outils disait « rien ».
+#
+# Ce que ça coûtait, mesuré sur le fil du 23/08 : « trouve-moi des sites comme
+# Babelio » demandait `find_tool` → un SECOND modèle local pour choisir →
+# retour des noms → re-liaison → nouvel appel. Trois inférences sérialisées
+# (`LOCAL_LLM_MAX_CONCURRENCY=1`) et deux tours, sur un 4B, pour une recherche
+# web. Franck a vu la boucle de l'extérieur : « on a plein d'outils mais on
+# dirait qu'elle ne sait pas quoi en faire ». Elle savait — le chemin pour y
+# arriver était juste trop long pour elle.
+#
+# ⚠️ LE COÛT RÉEL, MESURÉ, PAS ESTIMÉ. Le catalogue entier pèse ~60 900 tokens
+# de schémas (200 outils, ~304 chacun). Cette liste en pèse ~4 300, soit **7 %**
+# — un vingtième du désastre du 21/08. Le pin `test_the_local_tier_can_serve_
+# what_the_router_sends_it` tient ce budget : c'est LUI l'invariant, pas un
+# nombre d'outils. Compter les outils était un raccourci ; ce qui a fait
+# dépasser les 60 s, c'est le prompt processing des schémas.
+#
+# 👉 RÈGLE : cette liste suit `_SIMPLE_PATTERNS`. Un motif ajouté là-bas sans
+# l'outil correspondant ici recrée le piège — le routeur promet une capacité
+# que la voie locale n'a pas.
+_SLM_EVERYDAY_TOOLS: tuple[str, ...] = (
+    "web_search",             # « cherche sur le web », « recherche »
+    "weather_get",            # « météo », « température », « temps qu'il fait »
+    "calendar_list_events",   # « agenda », « calendrier », « rdv », « planning »
+    "gmail_list_emails",      # « mes mails », « boîte mail »
+    "scheduler_create_task",  # « rappelle-moi »
+    "notes_create",           # « prends une note », « mémorise »
+    "tasks_list",             # « mes tâches », « to-do »
+    "translate_text",         # « traduis », « traduction »
+    "maps_directions",        # « itinéraire », « trajet », « comment aller à »
+    "news_get_headlines",     # « actualités », « news »
+    "qrcode_generate",        # « qr code »
+)
+
+_SLM_TOOL_NAMES: tuple[str, ...] = (
+    "find_tool", "report_missing_capability",
+) + _SLM_EVERYDAY_TOOLS
 
 
 def _slm_toolset(registry) -> list:

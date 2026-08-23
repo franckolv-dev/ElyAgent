@@ -63,16 +63,42 @@ contournement n'a pas fait fonctionner la voie locale, il l'a fait quitter.
 D'où deux règles de plus dans le prompt : ne pas demander la permission de
 chercher, et traiter une question sur les capacités comme une recherche.
 
-LES DEUX MOITIÉS DE LA RÉPARATION
+LES TROIS VOLETS DE LA RÉPARATION
 ----------------------------------
-1. **La consigne** — le prompt dit désormais que la liste d'outils est un
-   échantillon, et que « je n'ai pas d'outil pour ça » est faux par défaut.
+1. **La consigne** — le prompt dit que le catalogue dépasse la liste chargée,
+   et que « je n'ai pas d'outil pour ça » est faux par défaut.
 2. **Le mécanisme** — les outils rendus par `find_tool` sont réellement liés au
-   tour SLM suivant. Sans cette moitié, la consigne enverrait le modèle
-   chercher un outil qu'il ne pourrait toujours pas appeler.
+   tour SLM suivant. Sans ce volet, la consigne enverrait le modèle chercher un
+   outil qu'il ne pourrait toujours pas appeler.
+3. **LA TROUSSE** — et c'est le volet qui rend les deux autres rarement
+   nécessaires.
+
+⚠️ POURQUOI LES DEUX PREMIERS NE SUFFISAIENT PAS. Le lendemain, Franck a vu la
+boucle de l'extérieur :
+
+    Franck : que te renvoie find_tool ?
+    Ely    : find_tool a renvoyé des outils liés à la recherche […] mais aucun
+             outil spécifique n'a été chargé.
+    Franck : find_tool te renvoie les outils à disposition. Utilise-en un.
+    Ely    : find_tool("recherche web pour trouver des plateformes…")
+
+    « Dialogue de sourd ! […] on a plein d'outils mais on dirait qu'elle ne
+      sait pas quoi en faire. »
+
+Le diagnostic est juste, et il ne porte pas sur le modèle. Le ROUTEUR envoie à
+la voie locale, par construction, les intentions qui demandent un outil —
+météo −15, agenda −15, mes mails −15, recherche −10, itinéraire −15, traduis
+−15, rappelle-moi −15, qr code −15. **La voie locale n'en avait aucun.** Chaque
+demande du quotidien payait donc `find_tool` → un second modèle local pour
+choisir → re-liaison → nouvel appel : trois inférences sérialisées
+(`LOCAL_LLM_MAX_CONCURRENCY=1`) et deux tours, sur un 4B, pour une recherche
+web. La description de poste du tier A et son coffre à outils se
+contredisaient.
+
+Elle sait quoi en faire. Le chemin pour y arriver était trop long pour elle.
 
 Un prompt reste une consigne, pas un verrou (invariant 3). C'est pour ça qu'il
-en faut deux.
+en faut trois.
 
 Run with:  cd backend && python -m pytest tests/test_slm_knows_its_catalogue_is_bigger.py -v
 """
@@ -113,22 +139,60 @@ def test_the_slm_prompt_names_the_only_road_out():
     )
 
 
-def test_the_slm_prompt_says_the_toolbox_is_a_sample():
+def test_the_slm_prompt_says_the_catalogue_is_bigger_than_the_list():
     """Nommer `find_tool` ne suffit pas : il faut dire POURQUOI s'en servir.
 
-    Un modèle qui voit deux outils et qu'on n'a pas prévenu croit qu'il en a
-    deux. La phrase qui compte est celle qui invalide sa propre observation.
+    Un modèle qui voit sa liste et qu'on n'a pas prévenu croit qu'elle est
+    complète. La phrase qui compte est celle qui invalide sa propre
+    observation.
+
+    ⚠️ Ce pin cherchait « échantillon » — le mot du premier correctif, quand la
+    voie locale n'avait que deux outils. Depuis qu'elle porte la trousse du
+    quotidien, la formule juste a changé : sa liste est vraie et utile, le
+    catalogue est simplement plus large. Le pin suit la CONSIGNE, pas la
+    tournure.
     """
     from app.agent.prompts import _SYSTEM_PROMPT_SLM
 
     bas = _SYSTEM_PROMPT_SLM.lower()
-    assert "échantillon" in bas, (
-        "le prompt ne dit pas que la liste d'outils est partielle"
+    assert "bien plus large que ta liste" in bas, (
+        "le prompt ne dit pas que le catalogue dépasse la liste chargée"
     )
     assert "faux par défaut" in bas, (
         "le prompt ne renverse pas la conclusion « je n'ai pas d'outil » — "
         "c'est elle, et pas l'absence de `find_tool`, qui a produit la réponse "
         "du 23/08"
+    )
+
+
+def test_the_slm_prompt_stops_the_find_tool_loop():
+    """⚠️ LA BOUCLE OBSERVÉE LE 23/08, et c'est elle qui a fait dire à Franck
+    « on dirait qu'elle ne sait pas quoi en faire ».
+
+        Franck : que te renvoie find_tool ?
+        Ely    : find_tool a renvoyé des outils liés à la recherche […] mais
+                 aucun outil spécifique n'a été chargé.
+        Franck : find_tool te renvoie les outils à disposition. Utilise-en un.
+        Ely    : find_tool("recherche web pour trouver des plateformes…")
+
+    Le modèle traite `find_tool` comme L'ACTION au lieu d'une étape vers
+    l'action. Deux consignes cassent la boucle : `web_search` se prend
+    directement pour une recherche, et le retour de `find_tool` est un NOM
+    d'outil — pas une réponse à servir à l'utilisateur.
+    """
+    from app.agent.prompts import _SYSTEM_PROMPT_SLM
+
+    bas = _SYSTEM_PROMPT_SLM.lower()
+    assert "ne passe pas par `find_tool`" in bas, (
+        "rien ne dit au modèle d'appeler directement l'outil qu'il a déjà"
+    )
+    assert "se traite avec `web_search`" in bas, (
+        "« trouve-moi… » doit être nommé comme une recherche, pas comme une "
+        "capacité manquante — c'est la confusion exacte du 23/08"
+    )
+    assert "n'est pas une réponse à la question" in bas, (
+        "rien n'empêche le modèle de servir le retour de `find_tool` comme "
+        "réponse finale, ce qu'il a fait deux fois"
     )
 
 
@@ -230,6 +294,100 @@ def test_the_slm_prompt_never_names_a_tool_the_slm_cannot_call():
 
 
 # ─────────────────────────────────────────────────────────────────────
+# 1 bis — Ce que le routeur promet, la voie locale doit pouvoir le servir
+# ─────────────────────────────────────────────────────────────────────
+
+def test_the_local_tier_can_serve_what_the_router_sends_it():
+    """⚠️ L'ERREUR DE CONCEPTION, corrigée le 23/08.
+
+    Les motifs de `_SIMPLE_PATTERNS` font BAISSER le score de complexité, donc
+    ils poussent vers la voie locale : météo −15, agenda −15, mes mails −15,
+    recherche −10, itinéraire −15, traduis −15, rappelle-moi −15, qr code −15.
+
+    **Ce sont tous des besoins d'outils.** Et la voie locale n'en avait aucun.
+    Le routeur lui envoyait systématiquement ce qu'elle ne pouvait pas faire.
+
+    Ce pin vérifie l'accord entre les deux. Un motif ajouté dans le routeur
+    sans son outil ici recrée le piège — silencieusement, comme la première
+    fois.
+    """
+    from app.agent.nodes import _SLM_TOOL_NAMES
+    from app.services.intent_router import _SIMPLE_PATTERNS
+
+    lies = set(_SLM_TOOL_NAMES)
+    # Chaque famille d'intention « simple » et l'outil qui la sert.
+    couverture = {
+        "météo": "weather_get",
+        "agenda": "calendar_list_events",
+        "mails": "gmail_list_emails",
+        "recherche": "web_search",
+        "note": "notes_create",
+        "rappel": "scheduler_create_task",
+        "traduction": "translate_text",
+        "itinéraire": "maps_directions",
+        "tâches": "tasks_list",
+        "actualités": "news_get_headlines",
+        "qr code": "qrcode_generate",
+    }
+    manquants = sorted(o for o in couverture.values() if o not in lies)
+    assert not manquants, (
+        f"le routeur envoie ces intentions en local, mais {manquants} n'y "
+        f"sont pas liés — la voie locale devra passer par `find_tool` pour "
+        f"une capacité que le routeur lui a promise"
+    )
+    assert len(_SIMPLE_PATTERNS) >= 20, (
+        "la liste des intentions « simples » a fondu — vérifier que la "
+        "correspondance ci-dessus a toujours un sens"
+    )
+
+
+def test_the_local_toolset_stays_a_fraction_of_the_catalogue():
+    """⚠️ LE VRAI INVARIANT DU 21/08, et il se compte en TOKENS.
+
+    Ce n'est pas le nombre d'outils qui a fait dépasser les 60 s sur
+    « bonjour », c'est le *prompt processing* de leurs schémas. Un pin qui
+    compte les outils laisserait passer trois schémas géants et refuserait
+    onze schémas courts.
+
+    Mesuré sur le registre réel : le catalogue entier pèse ~60 900 tokens, la
+    trousse locale ~4 300, soit 7 %. Le plafond est posé bien au-dessus de la
+    valeur courante — il attrape une dérive d'un ordre de grandeur, pas
+    l'ajout réfléchi d'un outil.
+    """
+    import json
+
+    from app.agent.nodes import _SLM_TOOL_NAMES
+    from app.skills import get_skill_registry
+    from app.skills.builtin import register_all
+
+    register_all()
+    tools = get_skill_registry().all_tools
+
+    def _tokens(t) -> int:
+        desc = getattr(t, "description", "") or ""
+        try:
+            schema = t.args_schema.model_json_schema() if getattr(t, "args_schema", None) else {}
+            brut = json.dumps(schema)
+        except Exception:  # noqa: BLE001 — un schéma illisible ne fait pas rougir
+            brut = ""
+        return (len(desc) + len(brut)) // 4
+
+    total = sum(_tokens(t) for t in tools)
+    locale = sum(_tokens(t) for t in tools if t.name in set(_SLM_TOOL_NAMES))
+
+    assert locale <= 8000, (
+        f"la trousse locale pèse {locale} tokens de schémas. C'est le prompt "
+        f"processing de ces schémas qui a rendu la voie rapide inutilisable le "
+        f"21/08 — à ce niveau elle cesse d'être rapide."
+    )
+    assert locale < total * 0.20, (
+        f"{locale} tokens sur {total} — la trousse locale n'est plus une "
+        f"trousse. Si un outil de plus est vraiment nécessaire, `find_tool` "
+        f"est là pour ça."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
 # 2 — Le mécanisme : ce que `find_tool` promet doit être vrai
 # ─────────────────────────────────────────────────────────────────────
 
@@ -243,12 +401,11 @@ def test_a_discovered_tool_becomes_callable_on_the_local_path():
 
     conv = "conv-test-decouverte"
     discovered_tools.discard_discovered(conv)
-    discovered_tools.add_discovered(conv, ["web_search"])
+    discovered_tools.add_discovered(conv, ["sheets_read"])
     try:
-        registry = _Registry(["find_tool", "report_missing_capability",
-                              "web_search", "weather_get"])
+        registry = _Registry(list(nodes._SLM_TOOL_NAMES) + ["sheets_read"])
         extras = nodes._slm_discovered_extras(registry, conv)
-        assert [t.name for t in extras] == ["web_search"], (
+        assert [t.name for t in extras] == ["sheets_read"], (
             "l'outil découvert n'est pas rendu liable au tour local suivant"
         )
     finally:
@@ -263,11 +420,11 @@ def test_a_base_tool_is_never_bound_twice():
 
     conv = "conv-test-doublon"
     discovered_tools.discard_discovered(conv)
-    discovered_tools.add_discovered(conv, ["find_tool", "web_search"])
+    discovered_tools.add_discovered(conv, ["find_tool", "web_search", "sheets_read"])
     try:
-        registry = _Registry(["find_tool", "report_missing_capability", "web_search"])
+        registry = _Registry(list(nodes._SLM_TOOL_NAMES) + ["sheets_read"])
         noms = [t.name for t in nodes._slm_discovered_extras(registry, conv)]
-        assert noms == ["web_search"], f"doublon lié : {noms}"
+        assert noms == ["sheets_read"], f"doublon lié : {noms}"
     finally:
         discovered_tools.discard_discovered(conv)
 
@@ -281,7 +438,7 @@ def test_nothing_discovered_means_the_cached_lean_binding_is_reused(conv):
     """
     from app.agent import nodes
 
-    registry = _Registry(["find_tool", "report_missing_capability", "web_search"])
+    registry = _Registry(list(nodes._SLM_TOOL_NAMES) + ["sheets_read"])
     assert nodes._slm_discovered_extras(registry, conv) == []
 
 
@@ -301,7 +458,7 @@ def test_a_broken_registry_does_not_kill_the_turn():
 
     conv = "conv-test-casse"
     discovered_tools.discard_discovered(conv)
-    discovered_tools.add_discovered(conv, ["web_search"])
+    discovered_tools.add_discovered(conv, ["sheets_read"])
     try:
         assert nodes._slm_discovered_extras(_Casse(), conv) == []
     finally:
