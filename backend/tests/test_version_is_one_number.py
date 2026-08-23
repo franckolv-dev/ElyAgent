@@ -32,6 +32,22 @@ profil des dérives que ce dépôt traque : ça ne plante pas, ça ment.
 une version dont personne ne peut dire ce qu'elle contient. Le pin l'exige
 aussi — la ligne du haut du CHANGELOG doit nommer la version courante.
 
+⚠️ IL Y A UNE CINQUIÈME SOURCE, ET C'EST LA SEULE QUE GITHUB AFFICHE (23/08).
+Le **tag git**. Les quatre fichiers ci-dessus sont passés à 2.4.0 et mergés, et
+la page d'accueil du dépôt a continué d'annoncer **v2.3.0** — parce que la
+barre latérale « Releases » lit les tags, pas `pyproject.toml`. Franck l'a
+signalé deux fois ; la deuxième, la cause n'était plus le bump, c'était le tag
+absent.
+
+    git tag -a vX.Y.Z <sha du commit de release> -F -   # message = le lot
+    git push origin vX.Y.Z
+
+**Elle n'est délibérément PAS épinglée ici**, et la raison vaut d'être écrite :
+le commit qui bumpe précède forcément le tag qui le désigne. Un test exigeant
+le tag serait rouge sur *toutes* les PR de version, par construction — un pin
+qui rougit quand tout va bien apprend à ignorer les pins. La garde est donc
+procédurale, pas mécanique : c'est la dernière ligne de la montée de version.
+
 Run with:  cd backend && python -m pytest tests/test_version_is_one_number.py -v
 """
 from __future__ import annotations
