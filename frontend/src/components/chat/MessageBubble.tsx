@@ -158,10 +158,27 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
   }, [feedbackSent, conversationId, lastUserMessage, message.model_used, message.routing_score]);
 
   // Derive a short label for the model badge
-  const modelLabel = message.model_used?.startsWith("slm:")
+  // ⚠️ LE BADGE S'AFFICHE MAINTENANT DANS LES DEUX CAS (24/08).
+  //
+  // Il ne marquait que la voie locale ; le cloud n'avait AUCUN badge, au motif
+  // qu'il était « le défaut, l'attendu ». Conséquence : « pas de badge » voulait
+  // dire « cloud », mais se lisait comme « pas d'information ».
+  //
+  // Franck a passé deux tours d'enquête à croire que seul le local répondait,
+  // parce que ses réponses cloud n'affichaient rien et que le panneau SESSION
+  // montrait encore le modèle du tour local précédent. Vérifié après coup : le
+  // routage était juste — 95 caractères → score 55 → local ; 276 caractères →
+  // score 80 → cloud. C'est l'AFFICHAGE qui n'a rien dit.
+  //
+  // 👉 Un signal négatif qu'il faut savoir interpréter n'est pas un signal. On
+  // nomme donc le modèle des deux côtés.
+  const _mu = message.model_used ?? "";
+  const modelLabel = _mu.startsWith("slm:")
     ? "local"
-    : message.model_used?.startsWith("llm:")
-    ? null  // don't show badge for LLM (default, expected)
+    : _mu.startsWith("llm:")
+    // `llm:openai-compat/gpt-5.6-sol+tools` → `gpt-5.6-sol`. Le fournisseur est
+    // dans le panneau SESSION ; ici c'est le MODÈLE qui informe.
+    ? _mu.replace(/^llm:/, "").split("+")[0].split("/").pop() || null
     : null;
 
   const timestamp = formatTimestamp(message.created_at);
