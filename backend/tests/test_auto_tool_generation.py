@@ -209,14 +209,30 @@ async def test_notify_is_noop_without_ntfy_url(monkeypatch):
 
 
 def test_find_tool_spawns_generation_on_gap():
+    """⚠️ LA SECONDE ASSERTION A ÉTÉ RECENTRÉE (24/08), pas affaiblie.
+
+    Elle cherchait la formule exacte « démarre automatiquement ». Le message a
+    dû changer : depuis que la branche « compétence » de l'aiguillage écrit un
+    playbook au lieu de ne rien faire, promettre « un outil candidat » est
+    devenu FAUX — c'est une procédure OU un outil, et c'est `needs_a_tool` qui
+    tranche, après ce message.
+
+    L'invariant que ce pin défend n'est pas une tournure : c'est que
+    l'utilisateur soit prévenu qu'une rédaction démarre toute seule. On vise
+    donc ça, et on interdit explicitement la promesse trop étroite.
+    """
     src = (_REPO / "app/skills/builtin/find_tool_skill.py").read_text(encoding="utf-8")
     assert "maybe_generate_for_gap" in src, (
         "Le no-match de find_tool doit déclencher l'auto-génération — "
         "c'est LE déclencheur du funnel (vision validée 19/07)."
     )
-    assert "démarre automatiquement" in src, (
-        "Le message utilisateur doit annoncer la génération automatique "
-        "quand le flag est actif."
+    assert "en cours de rédaction" in src, (
+        "Le message utilisateur doit annoncer qu'une rédaction démarre "
+        "d'elle-même quand le flag est actif."
+    )
+    assert "d'un outil candidat démarre" not in src, (
+        "le message promet un OUTIL alors qu'une procédure peut arriver — "
+        "le modèle attendrait une capacité appelable qui ne viendra pas"
     )
 
 
