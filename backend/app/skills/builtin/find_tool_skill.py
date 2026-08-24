@@ -158,23 +158,89 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     # description de `calendar_create_event`, et l'embedding classait mal.
     # `gemma-4-E4B` répond 4/4 en ~1,1 s, à coût nul.
     top = await _select_with_model(capability, k) or await _rank_capability(capability, k)
-    if not top:
-        # Nothing matched the FULL catalog → genuine capability gap (not a
-        # binding gap): record + (C4-2) auto-generate via the shared path.
+
+    # Les PROCÉDURES apprises comptent autant que les outils. Cherchées même
+    # quand des outils ont matché : un playbook dit souvent COMMENT les
+    # combiner, ce qu'aucune description d'outil ne porte.
+    _utilisateur = ""
+    try:
+        from app.services.learning.learned_tool_dispatch import LEARNED_TOOL_USER_ID
+
+        _utilisateur = LEARNED_TOOL_USER_ID.get() or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("find_tool: utilisateur inconnu (%s)", exc)
+    playbooks = await _playbooks_for_capability(capability, _utilisateur)
+
+    if not top and not playbooks:
+        # Rien dans le catalogue COMPLET ni dans les procédures → capacité
+        # réellement absente (pas un trou de liaison) : on consigne et on
+        # lance la fabrique par le chemin partagé.
         return await _record_gap_and_trigger(capability)
 
     # Record discoveries so agent_node binds them on the next turn (sticky).
-    try:
-        from app.agent.discovered_tools import add_discovered
-        from app.agent.tool_context import CURRENT_CONVERSATION_ID
+    if top:
+        try:
+            from app.agent.discovered_tools import add_discovered
+            from app.agent.tool_context import CURRENT_CONVERSATION_ID
 
-        add_discovered(CURRENT_CONVERSATION_ID.get(), top)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("find_tool: could not record discovery: %s", exc)
+            add_discovered(CURRENT_CONVERSATION_ID.get(), top)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("find_tool: could not record discovery: %s", exc)
 
-    lines = [f"Outils disponibles pour « {capability} » (utilise-les directement maintenant) :"]
-    lines += [f"  • {name} — {_tool_first_sentence.get(name, '')}" for name in top]
+    lines: list[str] = []
+    if top:
+        lines.append(
+            f"Outils disponibles pour « {capability} » "
+            f"(utilise-les directement maintenant) :"
+        )
+        lines += [f"  • {name} — {_tool_first_sentence.get(name, '')}" for name in top]
+    if playbooks:
+        # ⚠️ Nommer la différence, sinon le modèle tente d'APPELER la
+        # procédure comme un outil — elle n'a ni schéma ni exécuteur.
+        if top:
+            lines.append("")
+        lines.append(
+            "Procédures apprises qui couvrent ce besoin — ce ne sont PAS des "
+            "outils appelables : lis-les et applique-les avec les outils "
+            "ci-dessus."
+        )
+        lines += [_rendre_playbook(nom, desc, contenu) for _id, nom, desc, contenu in playbooks]
+        # Le curateur archive ce qui ne sert pas. Sans ce compteur, une
+        # procédure servie par `find_tool` passerait pour inutilisée et
+        # finirait archivée alors qu'elle travaille.
+        await _marquer_playbooks_utilises([pid for pid, _n, _d, _c in playbooks])
     return "\n".join(lines)
+
+
+async def _marquer_playbooks_utilises(ids: list[int]) -> None:
+    """`use_count` et `last_used_at` — la matière du curateur.
+
+    ⚠️ Sans ça, `skill_curator` verrait `use_count=0` sur une procédure servie
+    à chaque tour et la ferait passer `active → stale → archived`. On aurait
+    construit un chemin de découverte qui condamne ce qu'il découvre.
+    """
+    if not ids:
+        return
+    try:
+        from datetime import datetime, timezone
+
+        from sqlalchemy import update
+
+        from app.database import async_session
+        from app.models.learned_skill import LearnedSkill
+
+        async with async_session() as db:
+            await db.execute(
+                update(LearnedSkill)
+                .where(LearnedSkill.id.in_(ids))
+                .values(
+                    use_count=LearnedSkill.use_count + 1,
+                    last_used_at=datetime.now(timezone.utc),
+                )
+            )
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — un compteur ne casse pas un tour
+        logger.debug("find_tool: usage playbook non consigné (%s)", exc)
 
 
 async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False) -> str:
@@ -229,12 +295,20 @@ async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False
             logger.debug("find_tool: auto-generation skipped: %s", exc)
             _auto_gen = False
     if _auto_gen:
+        # ⚠️ « un outil candidat » était devenu FAUX (24/08). Depuis que la
+        # branche « compétence » de l'aiguillage écrit un playbook au lieu de
+        # ne rien faire, ce qui démarre est l'un OU l'autre — et c'est le juge
+        # `needs_a_tool` qui tranche, en tâche de fond, après ce message.
+        #
+        # Promettre « un outil » quand c'est une procédure qui arrive ferait
+        # attendre au modèle une capacité appelable qui ne viendra pas. On
+        # nomme donc les deux issues plutôt qu'une seule.
         return (
             f"Aucun outil existant ne couvre « {capability} ». "
             "Capacité réellement absente — consignée dans "
-            "les « Capacités manquantes », et la génération d'un outil "
-            "candidat démarre automatiquement : il sera soumis à "
-            "validation humaine avant d'être utilisable."
+            "les « Capacités manquantes ». Une procédure ou un outil candidat "
+            "est en cours de rédaction selon ce que la demande réclame ; il "
+            "sera soumis à validation humaine avant d'être utilisable."
         )
     return (
         f"Aucun outil existant ne couvre « {capability} ». "
@@ -385,6 +459,96 @@ def _best_lexical_match(q_tokens: list[str], candidates: dict[str, str]) -> tupl
         if lex > best_score:
             best_score, best_name = lex, name
     return best_score, best_name
+
+
+# Ce qu'un playbook peut occuper dans un retour de `find_tool`. Le budget de
+# prompt des playbooks vaut 8 000 caractères pour TOUS ceux injectés ; ici on
+# en rend un ou deux, en pleine conversation, à un modèle qui peut être local.
+_PLAYBOOK_EXTRAIT_CHARS = 2_000
+
+
+async def _playbooks_for_capability(
+    capability: str, user_id: str, k: int = 2,
+) -> list[tuple[int, str, str, str]]:
+    """Les procédures apprises qui couvrent *capability* — ``(id, nom, description, contenu)``.
+
+    ⚠️ POURQUOI `find_tool` REGARDE ICI (24/08).
+
+    Il ne balayait que le catalogue d'OUTILS. Une capacité couverte par un
+    playbook — le format `SKILL.md` d'Hermes, déjà porté ici — était donc
+    déclarée « réellement absente », et la fabrique repartait écrire ce qui
+    existait déjà.
+
+    C'est aussi ce qui rend la croissance soutenable. Un playbook ne coûte
+    aucun schéma d'outil : il ne pèse que le jour où on le rend, et seulement
+    ce qu'on en cite. Le rendre trouvable étend la portée d'Ely **sans
+    alourdir un seul tour** — c'est exactement l'inverse d'un outil de plus.
+
+    Classement lexical seulement, et c'est assumé : on compare une phrase à
+    quelques dizaines de titres, pas à 200 descriptions. Le sélecteur par
+    modèle coûterait une inférence de plus sur un chemin déjà chargé.
+    """
+    if not user_id:
+        return []
+    try:
+        from sqlalchemy import select
+
+        from app.database import async_session
+        from app.models.learned_skill import (
+            LearnedSkill, SkillContentFormat, SkillStatus,
+        )
+
+        async with async_session() as db:
+            rows = (await db.execute(
+                select(
+                    LearnedSkill.id, LearnedSkill.name,
+                    LearnedSkill.description, LearnedSkill.content,
+                ).where(
+                    LearnedSkill.user_id == user_id,
+                    LearnedSkill.status == SkillStatus.ACTIVE,
+                    LearnedSkill.content_format == SkillContentFormat.MARKDOWN_PLAYBOOK,
+                )
+            )).all()
+    except Exception as exc:  # noqa: BLE001 — une source absente n'est pas fatale
+        logger.debug("find_tool: playbooks illisibles (%s)", exc)
+        return []
+
+    if not rows:
+        return []
+
+    q_tokens = _norm(capability).split()
+    notes: list[tuple[float, tuple[int, str, str, str]]] = []
+    for pid, nom, desc, contenu in rows:
+        texte = _norm(f"{nom} {desc or ''}")
+        score, _ = _best_lexical_match(q_tokens, {nom: texte})
+        if score >= _PRECHECK_MIN_SCORE:
+            notes.append((score, (pid, nom, desc or "", contenu or "")))
+    notes.sort(key=lambda n: -n[0])
+    return [p for _s, p in notes[:k]]
+
+
+def _rendre_playbook(nom: str, description: str, contenu: str) -> str:
+    """Un playbook prêt à lire par le modèle, tronqué en l'annonçant.
+
+    ⚠️ Le contenu est rendu ICI plutôt que derrière un second appel. Mesuré
+    dans ce dépôt (`active_skills.py`) : **0 appel à `skill_view` depuis
+    toujours**, pour 26 playbooks actifs. L'outil EST lié — le modèle le voit
+    et ne l'appelle jamais. On a arrêté de parier sur cette décision, et ce
+    chemin-ci suit la même conclusion.
+    """
+    corps = (contenu or "").strip()
+    coupe = len(corps) > _PLAYBOOK_EXTRAIT_CHARS
+    if coupe:
+        corps = corps[:_PLAYBOOK_EXTRAIT_CHARS].rstrip()
+    bloc = f"  ▸ Procédure « {nom} » — {description}\n{corps}"
+    if coupe:
+        # Une troncature muette ferait suivre une procédure sur sa première
+        # moitié en croyant l'avoir lue entière.
+        bloc += (
+            f"\n[…procédure tronquée à {_PLAYBOOK_EXTRAIT_CHARS} caractères — "
+            f"appelle `skill_view(\"{nom}\")` pour la suite]"
+        )
+    return bloc
 
 
 async def _learned_tool_for_capability(q_tokens: list[str], user_id: str) -> str | None:

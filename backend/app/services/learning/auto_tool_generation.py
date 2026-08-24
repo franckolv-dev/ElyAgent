@@ -113,12 +113,27 @@ async def maybe_generate_for_gap(
         # ligne d'usage n'est pas écrivable (clé étrangère) et ce chemin
         # redeviendrait invisible.
         if not await needs_a_tool(capability, user_id=user_id):
+            # ⚠️ CETTE BRANCHE NE MENAIT NULLE PART (corrigé le 24/08).
+            #
+            # Le juge tranchait bien, et on faisait `return None` : le manque
+            # restait consigné dans « Capacités manquantes » et personne
+            # n'écrivait la procédure qui l'aurait comblé. La moitié « outil »
+            # de l'aiguillage était branchée, la moitié « compétence » non.
+            #
+            # C'est le modèle d'Hermes appliqué ici : une capacité nouvelle
+            # devient un DOCUMENT (`markdown_playbook`, format `SKILL.md`), pas
+            # un outil. Un playbook coûte des caractères de prompt, plafonnés ;
+            # un outil coûte un schéma JSON à chaque tour, pour toujours. C'est
+            # la différence entre une croissance bornée et une croissance
+            # linéaire — la crainte de Franck, et sa réponse.
+            from app.services.learning.skill_creator import draft_playbook_for_gap
+
+            resultat = await draft_playbook_for_gap(case_id, user_id)
             logger.info(
-                "auto_tool_gen: gap #%s « %.60s » relève d'une COMPÉTENCE, pas "
-                "d'un outil — pas de génération. Le gap reste consigné dans "
-                "« Capacités manquantes ».", case_id, capability,
+                "auto_tool_gen: gap #%s « %.60s » relève d'une COMPÉTENCE — "
+                "playbook : %s", case_id, capability, resultat.get("status"),
             )
-            return None
+            return resultat
 
         logger.info(
             "auto_tool_gen: génération candidate pour gap #%s « %.80s »",

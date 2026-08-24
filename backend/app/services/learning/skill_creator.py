@@ -441,6 +441,93 @@ async def _draft_skill_for_cluster(
     return skill, info
 
 
+async def draft_playbook_for_gap(case_id: int, user_id: str) -> dict[str, Any]:
+    """Un playbook pour CE manque précis, tout de suite.
+
+    ⚠️ LA BRANCHE MORTE DE L'AIGUILLAGE (24/08).
+
+    `auto_tool_generation` pose la bonne question depuis le 29/07 — règle de
+    Franck : « soit la demande peut être réglée par un modèle et dans ce cas
+    ce n'est pas un outil qu'il faut mais une skill ; soit elle nécessite une
+    ou plusieurs ACTIONS et là il faut un outil. » Le juge `needs_a_tool`
+    tranche correctement.
+
+    Mais quand il répondait « compétence », la fonction faisait `return None`.
+    **Elle ne créait rien.** Le manque restait consigné dans « Capacités
+    manquantes » et personne n'écrivait la procédure qui l'aurait comblé. La
+    moitié « outil » de l'aiguillage était branchée ; la moitié « compétence »
+    ne menait nulle part.
+
+    C'est précisément le modèle d'Hermes appliqué à Ely : une capacité
+    nouvelle devient un **document** (`markdown_playbook`, format `SKILL.md`),
+    pas un outil. Un playbook coûte des caractères de prompt, plafonnés par
+    `PLAYBOOK_CONTENT_BUDGET_CHARS` ; un outil coûte un schéma JSON à CHAQUE
+    tour, pour toujours. C'est la différence entre une croissance bornée et
+    une croissance linéaire.
+
+    ⚠️ Chemin distinct de `run_skill_creator_batch`, qui regroupe les cas par
+    `pattern_hash` et tourne en lot. Ici on tient un cas unique et fraîchement
+    consigné : on le traite en grappe de un, avec le MÊME rédacteur et la même
+    persistance — pas un second prompt qui dériverait du premier.
+
+    Ne lève jamais : un playbook non écrit ne doit pas casser le tour qui l'a
+    révélé.
+    """
+    info: dict[str, Any] = {"case_id": case_id, "status": "pending"}
+    if not case_id or not user_id:
+        info["status"] = "invalid_input"
+        return info
+
+    try:
+        async with async_session() as db:
+            fc = (await db.execute(
+                select(FailureCase).where(
+                    FailureCase.id == case_id,
+                    FailureCase.user_id == user_id,
+                )
+            )).scalar_one_or_none()
+
+        if fc is None:
+            info["status"] = "case_not_found"
+            return info
+        if fc.processed_at is not None:
+            # Déjà couvert par le lot nocturne ou par un tour précédent.
+            # Réécrire produirait un doublon que le curateur devrait trier.
+            info["status"] = "already_processed"
+            return info
+
+        skill, draft = await _draft_skill_for_cluster([fc], user_id)
+        info.update(draft)
+        if skill is None:
+            return info
+
+        now = datetime.now(timezone.utc)
+        async with async_session() as db:
+            db.add(skill)
+            await db.flush()
+            await db.execute(
+                update(FailureCase)
+                .where(FailureCase.id == case_id)
+                .values(processed_at=now, learned_skill_id=skill.id)
+            )
+            await db.commit()
+            info["learned_skill_id"] = skill.id
+            info["skill_name"] = skill.name
+            info["status"] = "drafted"
+            logger.info(
+                "skill_creator: playbook candidate %s (%s) écrit pour le manque #%s",
+                skill.id, skill.name, case_id,
+            )
+        return info
+    except Exception as exc:  # noqa: BLE001 — jamais bloquant
+        logger.warning(
+            "skill_creator: playbook non écrit pour le manque #%s (%s)", case_id, exc,
+        )
+        info["status"] = "error"
+        info["error"] = str(exc)[:200]
+        return info
+
+
 async def run_skill_creator_batch(
     *,
     user_id: str,
