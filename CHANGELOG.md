@@ -15,6 +15,42 @@ Categories used:
 
 ---
 
+## [2.5.0] — 2026-08-24
+
+> **La voie locale devient empruntable.** Sur une même question — « trouve des sites comme Babelio » — mesuré avant et après :
+>
+> ```
+> avant   223 693 tokens   72,6 s   gpt-5.6-sol   catalogue de 200 outils
+> après     2 017 tokens    5,0 s   gemma-4-E4B   3 outils
+> ```
+>
+> Le tier A existait depuis des semaines. Il n'avait jamais servi : le routeur lui envoyait, par construction, exactement ce qu'il ne pouvait pas faire.
+
+### Added
+- **La voie locale reçoit les outils que le routeur lui envoie** (`ca144c4`, PR #344) : un socle de trois outils — `find_tool`, `report_missing_capability`, `web_search` — plus ceux que la demande réclame, choisis par expressions régulières sur le vocabulaire de `_SIMPLE_PATTERNS`. ⚠️ **C'était une erreur de conception**, pas un réglage : les motifs qui font BAISSER le score de complexité (météo −15, agenda −15, mes mails −15, recherche −10, itinéraire −15, traduis −15, rappelle-moi −15) sont **tous des besoins d'outils**, et la voie locale n'en avait aucun depuis le 21/08. Chaque demande du quotidien payait `find_tool` → un second modèle local pour choisir → re-liaison → nouvel appel : trois inférences sérialisées (`LOCAL_LLM_MAX_CONCURRENCY=1`) et deux tours, sur un 4B, pour une recherche web. ⚠️ La sélection est **lexicale, pas par modèle** : `tool_selector` aurait été plus fin et aurait ajouté un appel local sérialisé de plus — précisément la latence que la voie rapide existe pour éviter. Mesuré : 3 outils / ~1 440 tokens pour une recherche, 4 / ~1 600 pour la météo, contre 200 / 60 941 au catalogue complet.
+- **Paramètres → Outils** (`4189a27`, PR #346) : 45 compétences, 200 outils, leur coût approximatif en tokens et leur nombre d'appels réels (`usage_logs.skill_used`), avec un interrupteur par compétence. Le bandeau affiche ce qui part **réellement** au modèle — le seul chiffre qui bouge quand on coupe quelque chose. ⚠️ Le coût est annoncé comme une **approximation** (champ `approx_tokens`, « ≈ » partout) : le découpage exact dépend du tokenizer, et un chiffre faux présenté comme exact ferait supprimer des outils sur du vent. ⚠️ « 0 appel » ne veut pas dire « inutile » — la fenêtre d'observation est affichée sous le total.
+- **`find_tool` cherche aussi dans les procédures apprises** (`f457f7b`, PR #347) : un playbook (`markdown_playbook`, format `SKILL.md` porté d'Hermes) qui couvre le besoin est rendu avec son contenu, tronqué en l'annonçant. ⚠️ Le contenu est servi **directement**, pas derrière un second appel : mesuré dans ce dépôt, **0 appel à `skill_view` depuis toujours** pour 26 playbooks actifs — l'outil est lié, le modèle le voit et ne l'appelle jamais. ⚠️ La réponse **nomme la différence** (« ce ne sont PAS des outils appelables ») ; sans ça le modèle tente d'appeler une procédure qui n'a ni schéma ni exécuteur.
+
+### Fixed
+- **Un appel d'outil écrit en texte n'est pas une réponse** (`ca144c4`, PR #344) : sur « trouve-moi des sites », Ely a répondu `find_tool("sites de critiques de livres en ligne")` — le texte partait tel quel à l'écran. Aucune erreur, aucun délai dépassé : le tour était un **succès** pour tout le système. ⚠️ **Régression introduite par le correctif précédent** : la #341 disait au modèle d'appeler `find_tool` sans lui dire PAR QUEL CANAL ; il a obéi, en écrivant. La récupération d'appels textuels existait depuis le 06/05 — câblée sur la seule voie cloud. Troisième filet dans ce cas ce mois-ci. Un appel écrit et non exécuté est désormais traité comme un **échec** de la voie locale, annoncé, et le tour repart au cloud : un échec rapide et visible vaut mieux qu'un succès apparent.
+- **Le routeur notait le retour d'outil, pas la demande** (`7298c19`, PR #345) : au premier tour `messages[-1]` est la demande ; dès le second, c'est le résultat de l'outil — long (+20) et truffé d'URL (+15). Le score passait de 55 à 100 et le tour repartait au cloud **exactement au moment où le modèle local allait se servir de l'outil qu'il venait de trouver**. La voie locale faisait donc le travail le moins utile — comprendre la demande — et cédait la main juste avant celui qui compte. Trace à l'appui : `slm=slm score=55` puis `slm=cloud score=100` puis `turn=complex`, six tours, 223 693 tokens.
+- **Un tour sans voie locale ne laissait aucune trace** (`7298c19`, PR #345) : `routing_note` vivait à l'intérieur de `if _slm_with_tools is not None`. Quand la voie locale est éteinte ou cassée : ni trace, ni ligne d'usage, ni toast. La question « GPT-5.6 a répondu, est-ce que le local a essayé ? » était **sans réponse** — les deux scénarios produisaient les mêmes lignes en base. La note part désormais dans tous les cas, avec la raison (`slm_desactive`, `slm_indisponible`, `tache_planifiee`), et un repli abandonné est tracé durablement, pas seulement toasté.
+- **Un échec de construction du SLM était définitif** (`7298c19`, PR #345) : la reconstruction est gardée par `is not None` — elle répare un SLM qui existe, elle ne ressuscite pas celui qui n'a jamais été construit. Un `docker compose up` plus rapide que LM Studio tuait la voie locale pour toute la vie du process, avec un unique WARNING au boot pour tout signal. Reprise temporisée (120 s) ou immédiate sur changement de configuration.
+- **L'interrupteur de compétences n'était branché sur rien** (`4189a27`, PR #346) : `GET /skills/`, `PUT /skills/{nom}`, la table `SkillPreference` et `registry.get_user_active_tools()` existaient tous — et cette dernière avait **zéro appelant**. Désactiver une compétence écrivait en base, s'affichait à l'écran, et ne changeait rien à ce que le modèle recevait. **Quatrième occurrence de ce motif ce mois-ci** après #272, #336 et #342 : une écriture qui atteint la base sans atteindre le runtime. Preuve la plus parlante : `fibonacci`, un outil de test, était `enabled_by_default=False` depuis toujours et partait quand même dans chaque prompt. ⚠️ On **échoue ouvert** — base illisible, aucun outil retiré — et un filtre qui viderait le catalogue renonce **bruyamment** : c'est la leçon d'Hermes #38798, où une migration de config a fait disparaître tous les outils en silence.
+- **La branche « compétence » de l'aiguillage ne créait rien** (`f457f7b`, PR #347) : `auto_tool_generation` pose la bonne question depuis le 29/07 — « une skill ou un outil ? » — et le juge `needs_a_tool` tranche correctement. Mais quand il répondait « compétence », la fonction faisait `return None`. La moitié « outil » était branchée, la moitié « compétence » ne menait nulle part : chaque manque relevant d'une procédure restait un manque. Elle écrit désormais le playbook, avec le **même rédacteur** que le lot nocturne. ⚠️ Servir une procédure compte comme un usage — sans `use_count`, `skill_curator` archiverait ce que `find_tool` vient de faire découvrir.
+
+### Changed
+- **Le message de capacité absente ne promet plus « un outil »** (`f457f7b`, PR #347) : c'est une procédure OU un outil selon ce que le juge décide, après ce message. Promettre un outil ferait attendre au modèle une capacité appelable qui ne viendra pas.
+
+### Docs
+- **`docs/architecture.md` gagne « La voie locale, et son unique porte »** (`ca144c4`, PR #344) : que le tier A ne reçoit pas le catalogue, et que `find_tool` est par conséquent la seule route vers le reste. Le fait qui a rendu toute cette série possible n'était écrit nulle part.
+
+### Ce qui n'a PAS été fait, et pourquoi
+- **Les 200 outils intégrés ne migrent pas vers des playbooks.** La garde humaine d'Ely est **par nom d'outil** — 46 outils, invariant 2, échec fermé. Un playbook qui dirait « exécute ce code pour envoyer le mail » n'a aucun nom à garder : la table de sécurité s'effondrerait. Hermes peut se le permettre, leur modèle de sûreté n'est pas bâti là-dessus. Un pin de contrat verrouille ce choix.
+- **La voie cloud lie toujours le catalogue entier**, ~60 900 tokens par itération. Lui appliquer la discipline de la voie locale diviserait la facture — mais la #323 a **mesuré** que brancher tout le catalogue faisait passer les cas hors d'atteinte de 0 % à 86,7 %. Défaire ça sans banc d'essai serait prendre une hypothèse pour un constat.
+
+---
+
 ## [2.4.1] — 2026-08-23
 
 > Deux correctifs, un même motif : **le système savait, et ne le disait pas.** Dans un cas au modèle, dans l'autre à lui-même. Aucun des deux ne plantait — ils rendaient simplement faux ce que tout le monde croyait vrai.
