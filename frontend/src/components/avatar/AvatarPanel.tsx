@@ -120,6 +120,17 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   // Last known model — persisted across WS messages so SESSION panel keeps
   // the value visible after the streaming ends (wsMessage drops to null).
   const [lastModel,   setLastModel]   = useState<string>("");
+  // ⚠️ TOUR EN COURS (24/08). Sans lui, MODEL et LATENCY affichent les chiffres
+  // du tour PRÉCÉDENT pendant qu'un nouveau tourne — avec la même assurance
+  // que s'ils décrivaient celui-ci. Franck a lu « gemma / 25 325 ms » pendant
+  // qu'un tour cloud de plusieurs minutes travaillait, et en a conclu que seul
+  // le local répondait. Le panneau ne mentait pas : il était en retard, et rien
+  // ne le disait.
+  //
+  // ⚠️ `avatarState` ne pouvait pas servir : la synthèse vocale le met aussi à
+  // « thinking » quand elle charge son audio. Il faut un signal qui ne décrive
+  // QUE le tour.
+  const [enVol,       setEnVol]       = useState<boolean>(false);
   const [tokensUsed,  setTokensUsed]  = useState<{ input: number; output: number }>({ input: 0, output: 0 });
   // Les serveurs locaux ne renvoient pas toujours d'`usage_metadata` : le
   // backend estime alors, et le dit. Cf. `estimate_tokens_if_missing`.
@@ -188,6 +199,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
 
     if (wsMessage.type === "start") {
       messageStartTime.current = performance.now();
+      setEnVol(true);
       setAvatarState("thinking");
       return;
     }
@@ -208,6 +220,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
     if (wsMessage.type === "message" && wsMessage.role === "assistant") {
       // LAT — real end-to-end response time
       const lat = Math.round(performance.now() - messageStartTime.current);
+      setEnVol(false);
       setLatencyMs(lat);
 
       // SYNC — rolling success rate over last 10 exchanges
@@ -216,11 +229,14 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       setSyncPercent(parseFloat((rate * 100).toFixed(1)));
 
       // NEURAL — capability tier of the active model
+      //
+      // ⚠️ LE GARDE `if (modelUsed)` GARDAIT L'ANCIENNE VALEUR (corrigé le
+      // 24/08). Un tour terminé sans `model_used` laissait le panneau afficher
+      // le modèle du tour PRÉCÉDENT, avec la même assurance. Un indicateur qui
+      // ment est pire qu'un indicateur vide : on écrit « — ».
       const modelUsed = wsMessage.model_used ?? "";
-      if (modelUsed) {
-        setNeuralScore(neuralScoreForModel(modelUsed));
-        setLastModel(modelUsed);
-      }
+      setLastModel(modelUsed);
+      if (modelUsed) setNeuralScore(neuralScoreForModel(modelUsed));
       // Tokens cumulés sur la session (incrément par message).
       // Le `as unknown as {…}` qui vivait ici a été retiré le 21/08 : les
       // champs sont déclarés dans `WSMessage`. Il masquait le vrai défaut —
@@ -240,6 +256,9 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       else setAvatarState("idle");
     }
     if (wsMessage.type === "error") {
+      // Un tour qui échoue est un tour TERMINÉ : sans ça le panneau resterait
+      // en attente jusqu'au prochain message, donc muet sur le tour d'avant.
+      setEnVol(false);
       // Count errors in SYNC rate
       recentOutcomes.current = [...recentOutcomes.current.slice(-9), 0];
       const rate = recentOutcomes.current.reduce((a, b) => a + b, 0) / recentOutcomes.current.length;
@@ -419,13 +438,15 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
         <div className="kv">
           <span className="k">MODEL</span>
           <span className="v" style={{ fontSize: 10, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {lastModel ? lastModel.replace(/^(llm|slm):/, "").split("+")[0].split("/").pop() : "—"}
+            {enVol || !lastModel
+              ? "—"
+              : lastModel.replace(/^(llm|slm):/, "").split("+")[0].split("/").pop()}
           </span>
         </div>
         <div className="kv">
           <span className="k">LATENCY</span>
           <span className="v">
-            {latencyMs !== undefined ? `${latencyMs}ms` : "—"}
+            {enVol || latencyMs === undefined ? "—" : `${latencyMs}ms`}
           </span>
         </div>
         <div className="kv">
