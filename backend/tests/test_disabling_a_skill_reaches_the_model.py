@@ -272,3 +272,95 @@ def test_an_unreadable_schema_costs_zero_not_a_crash():
             raise RuntimeError("schéma illisible")
 
     assert _approx_tokens(_Casse()) == 1
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 5 — La granularité par OUTIL (24/08)
+# ─────────────────────────────────────────────────────────────────────
+
+def test_a_tool_can_be_cut_inside_an_active_skill():
+    """⚠️ CE PIN CORRIGE UN ARGUMENT DE LA #346.
+
+    J'y avais écrit que la compétence était la bonne unité et que « 200
+    interrupteurs seraient ingérables ». Le catalogue réel l'a réfuté :
+
+        Gmail   21 outils   7 453 tk   234 appels   ← indispensable
+                dont 9 jamais appelés : 2 433 tk à chaque tour
+
+    Le poids mort ne se répartit pas par compétence — il se niche DANS les
+    plus utilisées, parce que ce sont elles qui ont le plus d'outils. Aucun
+    interrupteur par compétence ne peut l'atteindre.
+    """
+    import json
+
+    from app.skills.preferences_runtime import _outils_coupes
+
+    lignes = [SimpleNamespace(
+        skill_name="google_gmail",
+        config_json=json.dumps({"disabled_tools": ["gmail_update_settings"]}),
+    )]
+    assert _outils_coupes(lignes) == {
+        "google_gmail": frozenset({"gmail_update_settings"}),
+    }
+
+
+@pytest.mark.parametrize("brut", [
+    None, "", "{ pas du json", '{"disabled_tools": "pas une liste"}', "[]",
+])
+def test_a_corrupt_config_cuts_nothing(brut):
+    """⚠️ Un JSON corrompu sur UNE compétence ne doit pas emporter les
+    préférences des 44 autres, et surtout pas faire retirer des outils au
+    hasard. On ignore l'entrée fautive et on la signale."""
+    from app.skills.preferences_runtime import _outils_coupes
+
+    lignes = [SimpleNamespace(skill_name="x", config_json=brut)]
+    assert _outils_coupes(lignes).get("x", frozenset()) == frozenset()
+
+
+def test_unknown_tool_names_are_refused_not_ignored():
+    """⚠️ Une faute de frappe qui ne coupe rien EN SILENCE ferait croire à un
+    réglage appliqué — la classe de défaut corrigée quatre fois ce mois-ci
+    (#272, #336, #342, #346)."""
+    from app.routers import skills as routeur
+
+    src = inspect.getsource(routeur.update_skill_tools)
+    assert "status_code=400" in src and "Outils inconnus" in src, (
+        "un nom d'outil inconnu passe en silence"
+    )
+
+
+def test_the_per_tool_write_merges_instead_of_replacing():
+    """⚠️ `PUT /{skill_name}` écrase `config_json` ENTIER. Laisser le frontend
+    faire un lire-modifier-écrire ouvrirait une course entre deux onglets et
+    perdrait toute autre clé de configuration au passage."""
+    from app.routers import skills as routeur
+
+    src = inspect.getsource(routeur.update_skill_tools)
+    assert "json.loads(pref.config_json)" in src, (
+        "la configuration existante n'est pas relue avant écriture"
+    )
+    assert 'conf["disabled_tools"] =' in src
+
+
+def test_the_per_tool_write_also_bumps_the_counter():
+    """Même invariant que l'interrupteur de compétence : sans incrément, le
+    cache sert l'ancien état jusqu'au redémarrage."""
+    from app.routers import skills as routeur
+
+    assert "bump_preferences_version()" in inspect.getsource(routeur.update_skill_tools)
+
+
+def test_the_catalog_reports_the_real_weight_of_a_skill():
+    """Afficher le poids BRUT d'une compétence dont des outils sont coupés
+    ferait croire que le réglage n'a rien changé. Le champ dédié existe."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "app" / "routers" / "skills.py").read_text(
+        encoding="utf-8",
+    )
+    assert '"enabled_approx_tokens": sum(' in src, (
+        "le catalogue ne rend pas le poids réel, coupures comprises"
+    )
+    assert '"never_called_count"' in src, (
+        "sans ce compte, l'écran ne peut pas proposer de couper le poids mort"
+    )

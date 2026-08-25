@@ -70,6 +70,38 @@ _cache: dict[str, tuple[int, frozenset[str]]] = {}
 _MAXSIZE = 500
 
 
+def _outils_coupes(lignes) -> dict[str, frozenset[str]]:
+    """``{nom de compétence: outils coupés un par un}``, lu dans `config_json`.
+
+    Forme stockée : ``{"disabled_tools": ["gmail_update_settings", …]}``.
+
+    ⚠️ Ne lève JAMAIS sur une configuration illisible. Un JSON corrompu sur
+    une compétence ne doit pas emporter les préférences des 44 autres, et
+    surtout pas faire retirer des outils au hasard — on ignore l'entrée
+    fautive et on la signale.
+    """
+    import json
+
+    out: dict[str, frozenset[str]] = {}
+    for ligne in lignes:
+        brut = getattr(ligne, "config_json", None)
+        if not brut:
+            continue
+        try:
+            conf = json.loads(brut)
+            coupes = conf.get("disabled_tools") if isinstance(conf, dict) else None
+            if isinstance(coupes, list):
+                out[ligne.skill_name] = frozenset(
+                    str(n) for n in coupes if isinstance(n, str)
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "préférences de %s illisibles (%s) — outils tous conservés",
+                ligne.skill_name, exc,
+            )
+    return out
+
+
 def bump_preferences_version() -> None:
     """À appeler après TOUTE écriture de `SkillPreference`.
 
@@ -114,11 +146,34 @@ async def disabled_tool_names(user_id: str) -> frozenset[str]:
                 select(SkillPreference).where(SkillPreference.user_id == user_id)
             )).scalars().all()
         prefs = {p.skill_name: p.enabled for p in lignes}
+        # ⚠️ LA GRANULARITÉ PAR OUTIL (24/08), et elle corrige un argument que
+        # j'avais avancé dans la #346 : « la compétence est l'unité qui a un
+        # sens fonctionnel, 200 interrupteurs seraient ingérables ».
+        #
+        # Le catalogue de Franck l'a réfuté en une capture. Gmail : 21 outils,
+        # 234 appels, indispensable — et NEUF de ses outils n'ont jamais servi
+        # (`gmail_update_settings` 583 tk, `gmail_trash_by_query` 535,
+        # `gmail_batch_modify` 399…), soit 2 433 tokens envoyés à chaque tour,
+        # hors d'atteinte d'un interrupteur par compétence.
+        #
+        # Le poids mort ne se répartit pas par compétence : il se niche DANS
+        # les compétences les plus utilisées, parce que ce sont elles qui ont
+        # le plus d'outils.
+        #
+        # ⚠️ Stocké dans `config_json`, PAS dans une nouvelle table. La colonne
+        # existe, elle est libre, et l'invariant 1 du dépôt dit qu'Alembic seul
+        # fait foi sur le schéma — une migration pour une liste de chaînes
+        # serait un coût sans contrepartie.
+        par_outil = _outils_coupes(lignes)
 
         noms: set[str] = set()
         for skill in get_skill_registry().list_skills():
             if not prefs.get(skill.name, skill.enabled_by_default):
                 noms.update(t.name for t in skill.tools)
+            else:
+                # Compétence active : on ne retire que ses outils coupés un
+                # par un. Une compétence coupée les emporte déjà tous.
+                noms.update(par_outil.get(skill.name, frozenset()))
         resultat = frozenset(noms)
     except Exception as exc:  # noqa: BLE001 — voir « on échoue ouvert »
         logger.warning(

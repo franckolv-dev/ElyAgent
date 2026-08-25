@@ -586,14 +586,28 @@ export const api = {
         tool_count: number;
         approx_tokens: number;
         calls: number;
+        enabled_approx_tokens: number;
+        never_called_count: number;
+        disabled_tools: string[];
         tools: Array<{
           name: string;
           description: string;
           approx_tokens: number;
           calls: number;
+          enabled: boolean;
         }>;
       }>;
     }>,
+
+  /** Couper ou rétablir des outils À L'INTÉRIEUR d'une compétence active.
+   *  Le poids mort se niche dans les compétences les plus utilisées — Gmail
+   *  a 234 appels et neuf outils jamais appelés, 2 433 tk à chaque tour.
+   *  Fusionné côté serveur : pas de lire-modifier-écrire depuis l'onglet. */
+  updateSkillTools: (skillName: string, disabled_tools: string[]) =>
+    fetchAPI(`/skills/${encodeURIComponent(skillName)}/tools`, {
+      method: "PUT",
+      body: JSON.stringify({ disabled_tools }),
+    }) as Promise<{ skill: string; disabled_tools: string[] }>,
 
   /** Activer ou désactiver une compétence. Les outils d'une compétence coupée
    *  cessent d'être envoyés au modèle dès le tour suivant. */

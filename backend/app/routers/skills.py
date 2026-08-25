@@ -173,26 +173,40 @@ async def tool_catalog(
     result = await db.execute(
         select(SkillPreference).where(SkillPreference.user_id == current_user.id)
     )
-    prefs = {p.skill_name: p.enabled for p in result.scalars().all()}
+    lignes = list(result.scalars().all())
+    prefs = {p.skill_name: p.enabled for p in lignes}
+    # ⚠️ Coupures OUTIL PAR OUTIL (24/08). Le poids mort ne se répartit pas par
+    # compétence : il se niche DANS les plus utilisées, parce que ce sont
+    # elles qui ont le plus d'outils. Gmail : 234 appels, indispensable — et
+    # neuf de ses vingt-et-un outils jamais appelés, 2 433 tokens à chaque
+    # tour, hors d'atteinte d'un interrupteur par compétence.
+    from app.skills.preferences_runtime import _outils_coupes
+
+    coupes = _outils_coupes(lignes)
     appels, depuis = await _usage_par_outil(db)
 
     registry = get_skill_registry()
     competences = []
     total_outils = 0
     total_tokens = 0
+    total_actifs = 0
     for s in registry.list_skills():
         actif = prefs.get(s.name, s.enabled_by_default)
+        coupes_ici = coupes.get(s.name, frozenset())
         outils = []
         for t in s.tools:
             cout = _approx_tokens(t)
             total_outils += 1
-            if actif:
+            outil_actif = actif and t.name not in coupes_ici
+            if outil_actif:
                 total_tokens += cout
+                total_actifs += 1
             outils.append({
                 "name": t.name,
                 "description": (getattr(t, "description", "") or "").split("\n")[0][:200],
                 "approx_tokens": cout,
                 "calls": appels.get(t.name, 0),
+                "enabled": outil_actif,
             })
         competences.append({
             "name": s.name,
@@ -202,7 +216,14 @@ async def tool_catalog(
             "enabled_by_default": s.enabled_by_default,
             "tool_count": len(s.tools),
             "approx_tokens": sum(o["approx_tokens"] for o in outils),
+            # Ce que la compétence pèse RÉELLEMENT une fois ses coupures
+            # appliquées — c'est ce chiffre qui doit bouger sous les doigts.
+            "enabled_approx_tokens": sum(
+                o["approx_tokens"] for o in outils if o["enabled"]
+            ),
             "calls": sum(o["calls"] for o in outils),
+            "never_called_count": sum(1 for o in outils if o["calls"] == 0),
+            "disabled_tools": sorted(coupes_ici),
             "tools": sorted(outils, key=lambda o: -o["approx_tokens"]),
         })
 
@@ -210,12 +231,95 @@ async def tool_catalog(
         # `enabled_*` = ce qui part réellement au modèle. C'est le chiffre qui
         # bouge quand on actionne un interrupteur, donc le seul qui compte
         # pour décider.
-        "enabled_tool_count": sum(c["tool_count"] for c in competences if c["enabled"]),
+        "enabled_tool_count": total_actifs,
         "enabled_approx_tokens": total_tokens,
         "total_tool_count": total_outils,
         "usage_since": depuis,
         "skills": sorted(competences, key=lambda c: -c["approx_tokens"]),
     }
+
+
+class ToolsUpdate(BaseModel):
+    disabled_tools: list[str]
+
+
+@router.put("/{skill_name}/tools")
+async def update_skill_tools(
+    skill_name: str,
+    body: ToolsUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Couper ou rétablir des outils À L'INTÉRIEUR d'une compétence active.
+
+    ⚠️ POURQUOI CETTE GRANULARITÉ EXISTE (24/08), alors que la #346 avait
+    argumenté le contraire. J'y avais écrit que la compétence était la bonne
+    unité et que « 200 interrupteurs seraient ingérables ». Le catalogue réel
+    l'a réfuté :
+
+        Gmail   21 outils   7 453 tk   234 appels   ← indispensable
+                dont 9 jamais appelés : 2 433 tk envoyés à chaque tour
+
+    Le poids mort ne se répartit pas par compétence — il se niche DANS les
+    plus utilisées, parce que ce sont elles qui ont le plus d'outils. Aucun
+    interrupteur par compétence ne peut l'atteindre.
+
+    ⚠️ Écrit dans `config_json` par FUSION, jamais par remplacement.
+    `PUT /{skill_name}` écrase `config_json` entier ; laisser le frontend
+    faire un lire-modifier-écrire ouvrirait une course entre deux onglets, et
+    perdrait toute autre clé de configuration au passage.
+
+    ⚠️ Les noms inconnus sont REFUSÉS, pas ignorés. Une faute de frappe qui
+    ne coupe rien en silence ferait croire à un réglage appliqué — c'est la
+    classe de défaut que ce dépôt a corrigée quatre fois ce mois-ci.
+    """
+    registry = get_skill_registry()
+    skill = registry.get_skill(skill_name)
+    if not skill:
+        raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+    connus = {t.name for t in skill.tools}
+    inconnus = sorted(set(body.disabled_tools) - connus)
+    if inconnus:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Outils inconnus dans « {skill_name} » : {', '.join(inconnus)}",
+        )
+
+    result = await db.execute(
+        select(SkillPreference).where(
+            SkillPreference.user_id == current_user.id,
+            SkillPreference.skill_name == skill_name,
+        )
+    )
+    pref = result.scalar_one_or_none()
+    if pref is None:
+        pref = SkillPreference(
+            user_id=current_user.id,
+            skill_name=skill_name,
+            enabled=skill.enabled_by_default,
+        )
+        db.add(pref)
+
+    try:
+        conf = json.loads(pref.config_json) if pref.config_json else {}
+        if not isinstance(conf, dict):
+            conf = {}
+    except Exception:  # noqa: BLE001 — une config corrompue ne bloque pas un réglage
+        conf = {}
+    conf["disabled_tools"] = sorted(set(body.disabled_tools))
+    pref.config_json = json.dumps(conf)
+
+    await db.commit()
+
+    from app.skills.preferences_runtime import bump_preferences_version
+
+    bump_preferences_version()
+    logger.info(
+        "outils coupés dans %s pour %s… : %d",
+        skill_name, current_user.id[:8], len(conf["disabled_tools"]),
+    )
+    return {"skill": skill_name, "disabled_tools": conf["disabled_tools"]}
 
 
 @router.put("/{skill_name}")
