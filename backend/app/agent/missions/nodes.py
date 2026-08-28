@@ -45,6 +45,20 @@ from app.services import mission_service
 
 logger = logging.getLogger(__name__)
 
+# Tentatives accordées à UNE étape de mission libre avant abandon : un essai,
+# un rejeu. Le droit à l'erreur couvre le refus circonstanciel — service lent
+# à démarrer, page pas encore chargée — pas l'étape qui ne passera jamais.
+#
+# Sans cette borne, `_next_pending_step` ignore `done`/`skipped` mais PAS
+# `failed` : une étape refusée revient à chaque tick, indéfiniment. Mesuré le
+# 26/08/2026 (mission « Prospection Print LinkedIn ») : drive_upload_local_file
+# rejoué 3×, sheets_create_spreadsheet 2×, budget épuisé (103 041/100 000)
+# sans que la mission avance d'un pas.
+#
+# Le chemin spec borne déjà pareil (`AUTO_SKIP_ATTEMPTS`) — les deux valeurs
+# disent la même règle et sont tenues ensemble par un test.
+MAX_STEP_ATTEMPTS: int = 2
+
 
 def _extract_provider_model(llm: Any) -> tuple[str, str]:
     """Best-effort extraction of (provider, model) from a LangChain LLM.
@@ -1315,12 +1329,36 @@ async def act_node(state: MissionState) -> dict:
 
     current_step = _next_pending_step(plan_json)
     if not current_step:
-        # No pending steps → nothing to do, treat as done
-        logger.info("[mission %s] act: no pending step — marking done", mission_id)
+        # No pending steps → nothing to do, treat as done.
+        #
+        # « Terminées » ne veut pas dire « réussies » : une étape abandonnée
+        # après MAX_STEP_ATTEMPTS est terminale elle aussi. Les taire ici
+        # ferait remonter un succès de façade jusqu'à la notification finale
+        # — l'utilisateur croirait le livrable produit.
+        _abandoned = [
+            s for s in plan_json.get("steps", [])
+            if s.get("status") == "skipped"
+        ]
+        if _abandoned:
+            _details = "\n".join(
+                f"- {s.get('description', '?')}"
+                + (f" — {s['abandon_reason']}" if s.get("abandon_reason") else "")
+                for s in _abandoned
+            )
+            summary = (
+                f"Plan terminé, mais {len(_abandoned)} étape(s) abandonnée(s) "
+                f"après {MAX_STEP_ATTEMPTS} tentatives :\n{_details}"
+            )
+        else:
+            summary = "Toutes les étapes du plan sont terminées."
+        logger.info(
+            "[mission %s] act: no pending step — marking done (%d abandonnée(s))",
+            mission_id, len(_abandoned),
+        )
         return {
             "last_eval_success": True,
             "done": True,
-            "final_summary": "Toutes les étapes du plan sont terminées.",
+            "final_summary": summary,
         }
 
     current_step_id = current_step.get("id", "?")
@@ -1961,15 +1999,38 @@ async def eval_node(state: MissionState) -> dict:
         )
         return out
 
-    # Mutate plan_json to mark step done/failed
+    # Mutate plan_json to mark step done/failed/skipped.
+    #
+    # Un échec n'est PAS terminal du premier coup : l'étape garde son droit à
+    # l'erreur (statut `failed` → `_next_pending_step` la rend au tick
+    # suivant). Au-delà de MAX_STEP_ATTEMPTS elle passe `skipped`, le seul
+    # statut — avec `done` — que `_next_pending_step` saute : la mission
+    # avance au lieu de rejouer la même étape jusqu'à épuisement du budget.
     new_plan_json = dict(plan_json)
     new_steps = []
+    abandoned_step = False
     for s in new_plan_json.get("steps", []):
         if s.get("id") == current_step_id:
             s = dict(s)
-            s["status"] = "done" if success else "failed"
+            if success:
+                s["status"] = "done"
+            else:
+                attempts = int(s.get("attempts") or 0) + 1
+                s["attempts"] = attempts
+                if attempts >= MAX_STEP_ATTEMPTS:
+                    s["status"] = "skipped"
+                    s["abandon_reason"] = reason
+                    abandoned_step = True
+                else:
+                    s["status"] = "failed"
         new_steps.append(s)
     new_plan_json["steps"] = new_steps
+
+    if abandoned_step:
+        logger.warning(
+            "[mission %s] eval: étape %s abandonnée après %d tentative(s) — %s",
+            mission_id, current_step_id, MAX_STEP_ATTEMPTS, reason,
+        )
 
     # Persist
     await mission_service.add_step(
