@@ -63,6 +63,16 @@ def _verdict_llm(success: bool, reason: str):
     return _FakeLLM()
 
 
+def _verdict_llm_all_done(reason: str):
+    """Faux évaluateur qui conclut que la mission entière est terminée."""
+    class _FakeLLM:
+        async def ainvoke(self, _payload, **_kw):
+            return types.SimpleNamespace(content=(
+                '{"success": true, "reason": "%s", "all_done": true}' % reason
+            ))
+    return _FakeLLM()
+
+
 def _plan_two_steps() -> dict:
     return {
         "steps": [
@@ -219,6 +229,51 @@ async def test_final_summary_names_the_abandoned_steps(free_mission) -> None:
     assert "fichier absent du Drive" in summary, (
         "le résumé doit donner la raison de l'abandon"
     )
+
+
+@pytest.mark.asyncio
+async def test_all_done_ne_tait_pas_les_etapes_abandonnees(
+    free_mission, monkeypatch,
+) -> None:
+    """Le verdict `all_done` de l'évaluateur ne blanchit pas un abandon.
+
+    Vécu le 27/08 21h06 (mission « Prospection Print LinkedIn ») : l'étape
+    de création du tableur avait été abandonnée après 2 échecs, l'export
+    d'après a réussi — sur un tableur VIDE — et l'évaluateur a conclu
+    `all_done`. Résumé livré : « Mission accomplie. » Le garde-fou posé
+    dans `act_node` ne couvrait pas ce chemin-là.
+    """
+    import app.agent.missions.nodes as mn
+
+    uid, mid = free_mission
+    monkeypatch.setattr(
+        mn, "_get_evaluator_llm",
+        lambda **_kw: _verdict_llm_all_done("export XLSX créé avec succès"),
+    )
+
+    plan_json = {
+        "steps": [
+            {"id": "1", "description": "Écris les contacts dans le tableur",
+             "status": "skipped", "attempts": 2,
+             "abandon_reason": "HTTP 400 : plage Sheet1!A1 invalide"},
+            {"id": "2", "description": "Exporte le tableur sur le Drive"},
+        ],
+    }
+    out = await mn.eval_node({
+        "mission_id": mid, "user_id": uid, "goal": "déposer le fichier",
+        "plan_json": plan_json, "current_step_id": "2",
+        "last_tool_name": "drive_export_file",
+        "last_tool_output": "✓ Export xlsx créé",
+    })
+
+    assert out["done"] is True
+    summary = out["final_summary"]
+    assert "abandonn" in summary.lower(), (
+        "une mission qui a abandonné une étape ne s'annonce pas simplement "
+        "« accomplie » — c'est ainsi qu'un fichier vide passe pour un livrable"
+    )
+    assert "Écris les contacts dans le tableur" in summary
+    assert "HTTP 400" in summary, "la raison de l'abandon doit rester lisible"
 
 
 @pytest.mark.asyncio

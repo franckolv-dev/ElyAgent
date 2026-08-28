@@ -38,6 +38,58 @@ async def _get_sheets_service(user_google_credentials_json: str | None):
     return build("sheets", "v4", credentials=creds)
 
 
+# ⚠️ LE NOM DU PREMIER ONGLET NE SE DEVINE PAS (incident du 27/08/2026).
+#
+# `range="Sheet1!A1"` était codé en dur à la création. Sur un compte Google en
+# français, le premier onglet s'appelle « Feuille 1 » — l'API répond alors
+# HTTP 400 « Unable to parse range: Sheet1!A1 ». Le tableur, lui, EST créé :
+# seule l'écriture des valeurs échoue. On laisse donc un tableur VIDE derrière
+# soi, et l'appelant qui l'exporte livre un fichier vide.
+#
+# Mesuré sur la mission « Prospection Print LinkedIn » : deux tentatives, deux
+# HTTP 400, puis un export XLSX « réussi » d'un tableur vide déposé sur le
+# Drive de l'utilisateur.
+#
+# Le titre se LIT donc dans la réponse de l'API, et il se QUOTE : « Feuille 1 »
+# contient une espace, et `Feuille 1!A1` échoue exactement comme `Sheet1!A1`.
+_DEFAULT_TAB_TITLE = "Sheet1"
+
+
+def _quote_tab(title: str) -> str:
+    """Rend un titre d'onglet utilisable dans un range A1.
+
+    La notation A1 exige des apostrophes autour d'un titre qui contient une
+    espace ou de la ponctuation, et le doublement des apostrophes internes
+    (« Ventes d'été » → ``'Ventes d''été'``). Quoter systématiquement est
+    valide pour TOUS les titres — un cas de moins à distinguer.
+    """
+    return "'" + (title or _DEFAULT_TAB_TITLE).replace("'", "''") + "'"
+
+
+def _first_tab_title(spreadsheet: dict) -> str:
+    """Titre du premier onglet d'une réponse `spreadsheets().create/get`.
+
+    Repli sur ``Sheet1`` si la réponse ne porte pas la liste des onglets :
+    c'est l'ancien comportement, et il vaut mieux une écriture qui tente sa
+    chance qu'une exception sur une clé absente.
+    """
+    sheets = (spreadsheet or {}).get("sheets") or []
+    if not sheets:
+        return _DEFAULT_TAB_TITLE
+    return (sheets[0].get("properties") or {}).get("title") or _DEFAULT_TAB_TITLE
+
+
+async def _resolve_tab(service, spreadsheet_id: str) -> str:
+    """Titre du premier onglet d'un tableur existant (best-effort)."""
+    try:
+        meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        return _first_tab_title(meta)
+    except Exception as exc:  # noqa: BLE001 — le repli reste utilisable
+        logger.debug("Onglet par défaut non résolu (%s) — repli %s",
+                     exc, _DEFAULT_TAB_TITLE)
+        return _DEFAULT_TAB_TITLE
+
+
 @tool
 async def sheets_create_spreadsheet(
     title: str,
@@ -73,7 +125,7 @@ async def sheets_create_spreadsheet(
         if values:
             service.spreadsheets().values().update(
                 spreadsheetId=ss_id,
-                range="Sheet1!A1",
+                range=f"{_quote_tab(_first_tab_title(spreadsheet))}!A1",
                 valueInputOption="USER_ENTERED",
                 body={"values": values},
             ).execute()
@@ -92,7 +144,7 @@ async def sheets_create_spreadsheet(
 @tool
 async def sheets_read_spreadsheet(
     spreadsheet_id: str,
-    sheet_range: str = "Sheet1",
+    sheet_range: str | None = None,
     max_rows: int = 100,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
@@ -101,7 +153,9 @@ async def sheets_read_spreadsheet(
 
     Args:
         spreadsheet_id: The spreadsheet ID (from the URL or sheets_create_spreadsheet)
-        sheet_range: Range to read, e.g. 'Sheet1', 'Sheet1!A1:E20', 'Feuille 1'
+        sheet_range: Range to read, e.g. 'Feuille 1!A1:E20'. Omit it to read
+            the whole first tab, whatever its name is in the user's locale —
+            do NOT pass "Sheet1" as a guess.
         max_rows: Maximum number of rows to return (default 100)
     """
     service = await _get_sheets_service(user_google_credentials_json)
@@ -109,6 +163,10 @@ async def sheets_read_spreadsheet(
         return "Google non connecté."
 
     try:
+        # Une plage explicite fait autorité ; sinon on vise le vrai premier
+        # onglet — « Sheet1 » n'existe pas sur un compte non anglophone.
+        if not sheet_range:
+            sheet_range = _quote_tab(await _resolve_tab(service, spreadsheet_id))
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
             range=sheet_range,
@@ -134,7 +192,7 @@ async def sheets_read_spreadsheet(
 async def sheets_append_rows(
     spreadsheet_id: str,
     rows: list[list[str]],
-    sheet_name: str = "Sheet1",
+    sheet_name: str | None = None,
     user_google_credentials_json: Annotated[str, InjectedToolArg] = "",
     account: Annotated[str, InjectedToolArg] = "",
 ) -> str:
@@ -143,16 +201,21 @@ async def sheets_append_rows(
     Args:
         spreadsheet_id: The spreadsheet ID
         rows: Rows to append as list of lists (e.g. [["Alice", "2025-06-01", 150]])
-        sheet_name: Name of the sheet tab (default: Sheet1)
+        sheet_name: Name of the sheet tab. Omit it to target the first tab of
+            the spreadsheet, whatever its name is in the user's locale
+            ("Feuille 1" in French) — do NOT pass "Sheet1" as a guess.
     """
     service = await _get_sheets_service(user_google_credentials_json)
     if not service:
         return "Google non connecté."
 
     try:
+        # Un `sheet_name` explicite fait autorité ; sinon on lit le vrai
+        # premier onglet plutôt que de parier sur « Sheet1 ».
+        sheet_name = sheet_name or await _resolve_tab(service, spreadsheet_id)
         result = service.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
-            range=f"{sheet_name}!A1",
+            range=f"{_quote_tab(sheet_name)}!A1",
             valueInputOption="USER_ENTERED",
             insertDataOption="INSERT_ROWS",
             body={"values": rows},
