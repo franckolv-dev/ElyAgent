@@ -609,14 +609,31 @@ async def delete(
     except Exception:
         pass
 
-    # Delete cascades : MissionPlan + MissionStep rows have FK on mission_id.
-    # We do explicit deletes in case CASCADE isn't declared on every relation.
+    # ⚠️ TOUTES les tables filles, pas seulement celles qu'on a en tête.
+    #
+    # Cinq tables portent une FK vers `missions`. Quatre déclarent
+    # ON DELETE CASCADE, `mission_daily_counters` non — et c'est justement
+    # celle qui manquait ici. Résultat (28/08/2026) : « FOREIGN KEY
+    # constraint failed », HTTP 500, mission impossible à supprimer depuis
+    # l'interface dès qu'elle avait consommé un quota journalier.
+    #
+    # On les supprime explicitement plutôt que de s'en remettre au CASCADE :
+    # il dépend de `PRAGMA foreign_keys`, qui n'est pas garanti sur tous les
+    # chemins d'accès. Une suppression explicite ne dépend, elle, de rien.
     from app.database import async_session
-    from app.models.mission import Mission, MissionPlan, MissionStep
+    from app.models.mission import (
+        Mission, MissionDailyCounter, MissionPlan, MissionStep, MissionStepRun,
+    )
+    from app.models.mission_critique import MissionCritique
     from sqlalchemy import delete as _sqldel
     async with async_session() as db:
-        await db.execute(_sqldel(MissionStep).where(MissionStep.mission_id == mission_id))
-        await db.execute(_sqldel(MissionPlan).where(MissionPlan.mission_id == mission_id))
+        for _modele in (
+            MissionStep, MissionPlan, MissionStepRun,
+            MissionCritique, MissionDailyCounter,
+        ):
+            await db.execute(
+                _sqldel(_modele).where(_modele.mission_id == mission_id)
+            )
         await db.execute(_sqldel(Mission).where(Mission.id == mission_id))
         await db.commit()
     return None  # 204 No Content
