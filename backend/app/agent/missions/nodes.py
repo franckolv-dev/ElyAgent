@@ -878,6 +878,7 @@ async def _filter_tools_for_step(
     goal: str,
     current_step_desc: str = "",
     mission_id: str = "",
+    step_tools: tuple[str, ...] = (),
 ) -> list:
     """Reduce the tool inventory to a manageable subset for this iteration.
 
@@ -913,7 +914,26 @@ async def _filter_tools_for_step(
             candidates.append(t)
             seen.add(t.name)
 
-    # ── 0. Les découvertes de `find_tool`, en TÊTE ──────────────────
+    # ── 0a. Les outils que la SPEC nomme, avant tout le reste ───────
+    # L'auteur de la spec a dit explicitement quoi employer : aucune
+    # heuristique ne doit passer devant une intention écrite à la main.
+    if step_tools:
+        _voulus = set(step_tools)
+        for t in all_tools:
+            if t.name in _voulus:
+                _add(t)
+        _absents = _voulus - seen
+        if _absents:
+            # La spec est validée à la création : un outil absent ici
+            # signale un registre partiel (MCP pas encore chargé, skill
+            # désactivée), pas une faute de frappe. On le dit plutôt que
+            # de laisser l'étape échouer sans explication.
+            logger.warning(
+                "act: outil(s) nommé(s) par la spec introuvable(s) dans le "
+                "registre : %s", sorted(_absents),
+            )
+
+    # ── 0b. Les découvertes de `find_tool`, en TÊTE ─────────────────
     # Elles priment sur toute heuristique : le modèle a explicitement
     # demandé « quel outil pour cette capacité ? » et `find_tool` a
     # répondu. Les reléguer derrière un score sémantique reviendrait à
@@ -1027,7 +1047,7 @@ async def _filter_tools_for_step(
     return candidates[:_TOOL_CAP] if candidates else all_tools[:_TOOL_CAP]
 
 
-async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "", tier=None, mission_id: str = "") -> tuple[Any, list[tuple[str, Any]], list[Any]]:
+async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "", tier=None, mission_id: str = "", step_tools: tuple[str, ...] = ()) -> tuple[Any, list[tuple[str, Any]], list[Any]]:
     """Return (primary_llm_bound, [(label, fallback_llm_bound)], raw_tools).
 
     `primary` is the local model (xLAM-2-8B or Gemma 4 21B REAP) — fast
@@ -1050,6 +1070,7 @@ async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", curre
     all_tools = get_skill_registry().all_tools
     tools = await _filter_tools_for_step(
         all_tools, tool_hint, goal, current_step_desc, mission_id=mission_id,
+        step_tools=step_tools,
     )
     # Sprint 4b V2 J7b.2 — append the user's promoted python_tool skills so
     # missions see them too (parity with the chat path). No-op unless
@@ -1626,6 +1647,7 @@ async def act_node(state: MissionState) -> dict:
         user_id=user_id,
         tier=await _mission_llm_tier(mission_id),
         mission_id=mission_id,
+        step_tools=tuple(current_step.get("tools") or ()),
     )
 
     # Load outputs of previous successful tool invocations so the LLM can
@@ -2246,7 +2268,15 @@ async def eval_node(state: MissionState) -> dict:
         }
         if _all_terminal:
             out["done"] = True
+            # « done/skipped » est exact et muet. Une spec dont l'étape clé a
+            # été sautée se terminait sur cette phrase, et l'utilisateur
+            # découvrait le livrable manquant sur son Drive. Troisième et
+            # dernier chemin de terminaison à dire la vérité (les deux autres
+            # : plus d'étape en attente, et le verdict `all_done`).
+            _aveu_spec = _abandon_notice(new_plan_json)
             out["final_summary"] = (
+                f"Mission structurée terminée, mais {_aveu_spec}"
+                if _aveu_spec else
                 "Mission structurée terminée — tous les steps de la spec "
                 "sont done/skipped."
             )
