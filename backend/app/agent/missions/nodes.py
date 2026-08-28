@@ -78,6 +78,24 @@ MAX_STEP_ATTEMPTS: int = 2
 # fonctionné, pas si la MISSION a avancé. Personne ne tenait ce second rôle.
 MAX_IDENTICAL_ACTIONS: int = 2
 
+# Outils de DÉCOUVERTE : ils renseignent l'agent, ils ne produisent aucun
+# effet. Une étape ne peut donc pas être accomplie par eux, quelle que soit
+# la qualité de leur réponse — c'est un fait de nature, tranché sans appeler
+# le modèle.
+#
+# Mesuré le 28/08/2026, mission structurée « Prospection Calameo-LinkedIn »,
+# étape `tableur` (« Crée un Google Sheet nommé … ») :
+#
+#     it6  ACT   find_tool("create a new Google Sheet with specific headers")
+#     it7  EVAL  ok=1 — « find_tool a correctement identifié les outils »
+#
+# L'étape est passée `done`, aucun tableur n'a été créé, et le reste du plan
+# a travaillé sur un fichier inexistant. L'évaluateur avait raison sur ce
+# qu'il juge (l'outil A fonctionné) ; c'est la question qui manquait.
+DISCOVERY_ONLY_TOOLS: frozenset[str] = frozenset({
+    "find_tool",
+})
+
 
 def _extract_provider_model(llm: Any) -> tuple[str, str]:
     """Best-effort extraction of (provider, model) from a LangChain LLM.
@@ -1987,6 +2005,34 @@ async def eval_node(state: MissionState) -> dict:
     # No action was taken — nothing to evaluate
     if not state.get("last_tool_name"):
         return {"last_eval_success": True, "last_eval_reason": "no-op iteration"}
+
+    # ── Un outil de découverte n'accomplit rien ────────────────────────
+    # Verdict rendu SANS appel au modèle : `find_tool` renseigne, il ne
+    # produit pas d'effet. L'étape garde son droit à l'erreur et sera
+    # rejouée — avec, cette fois, les outils que la découverte a surfacés.
+    if str(state.get("last_tool_name")) in DISCOVERY_ONLY_TOOLS:
+        raison = (
+            f"« {state.get('last_tool_name')} » est un outil de découverte : "
+            f"il indique quel outil employer, il n'accomplit pas l'étape. "
+            f"Appelle maintenant l'outil qu'il a désigné."
+        )
+        logger.warning(
+            "[mission %s] eval: étape %s non accomplie — %s ne produit aucun "
+            "effet", mission_id, current_step_id, state.get("last_tool_name"),
+        )
+        await mission_service.add_step(
+            mission_id, phase="eval", evaluation=raison, success=False,
+            duration_ms=0, model_used="garde-fou-decouverte",
+        )
+        _plan_apres, _ = _mark_step_attempt(
+            plan_json, current_step_id, success=False, reason=raison,
+        )
+        return {
+            "last_eval_success": False,
+            "last_eval_reason": raison,
+            "consecutive_failures": state.get("consecutive_failures", 0) + 1,
+            "plan_json": _plan_apres,
+        }
 
     # ── Action déjà jouée à l'identique ────────────────────────────────
     # Verdict rendu SANS appel au modèle : payer l'évaluation d'une action
