@@ -273,7 +273,58 @@ async def test_all_done_ne_tait_pas_les_etapes_abandonnees(
         "« accomplie » — c'est ainsi qu'un fichier vide passe pour un livrable"
     )
     assert "Écris les contacts dans le tableur" in summary
-    assert "HTTP 400" in summary, "la raison de l'abandon doit rester lisible"
+    assert "plage Sheet1!A1 invalide" in summary, (
+        "la raison de l'abandon doit rester lisible"
+    )
+    assert "Écris les contacts dans le tableur" in summary
+    assert "plage Sheet1!A1 invalide" in summary
+
+
+@pytest.mark.asyncio
+async def test_le_resume_d_une_mission_structuree_avoue_aussi(
+    free_mission, monkeypatch,
+) -> None:
+    """Le TROISIÈME chemin de terminaison doit dire la même vérité.
+
+    Une mission a trois façons de finir : plus d'étape en attente
+    (`act_node`), le verdict `all_done` de l'évaluateur, et la terminaison
+    déterministe d'une spec. Vécu le 28/08 : la mission structurée
+    « Prospection Calameo-LinkedIn » a rendu « tous les steps de la spec sont
+    done/skipped » — exact, et parfaitement muet sur le fait que RIEN n'avait
+    été produit.
+    """
+    import app.agent.missions.nodes as mn
+
+    uid, mid = free_mission
+    monkeypatch.setattr(
+        mn, "_get_evaluator_llm", lambda **_kw: _verdict_llm(True, "export fait"),
+    )
+
+    plan_json = {
+        "from_spec": True,
+        "steps": [
+            {"id": "tableur", "description": "Crée le Google Sheet",
+             "status": "skipped", "abandon_reason": "HTTP 400 sur la plage"},
+            {"id": "memoire", "description": "Mets à jour l'historique",
+             "handlers": {}},
+        ],
+    }
+    out = await mn.eval_node({
+        "mission_id": mid, "user_id": uid, "goal": "prospecter",
+        "plan_json": plan_json, "current_step_id": "memoire",
+        "current_item_index": 0,
+        "last_tool_name": "drive_update_file",
+        "last_tool_output": "ok",
+    })
+
+    assert out.get("done") is True
+    resume = out["final_summary"]
+    assert "abandonn" in resume.lower(), (
+        "« done/skipped » est exact et muet — le résumé doit nommer ce qui a "
+        "été sauté, sinon un livrable absent passe pour un succès"
+    )
+    assert "Crée le Google Sheet" in resume
+    assert "HTTP 400" in resume
 
 
 @pytest.mark.asyncio
