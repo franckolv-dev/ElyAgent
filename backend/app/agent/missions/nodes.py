@@ -1301,6 +1301,33 @@ def _mark_plan_step(plan_json: dict, step_id: str, status: str) -> dict:
     return out
 
 
+def _abandon_notice(plan_json: Optional[dict]) -> str:
+    """Aveu des étapes abandonnées, ou chaîne vide s'il n'y en a aucune.
+
+    Une mission peut se terminer par DEUX chemins : « plus aucune étape en
+    attente » (act_node) et le verdict `all_done` de l'évaluateur (eval_node).
+    Les deux doivent dire la même vérité — le 27/08, seul le premier l'était,
+    et la mission « Prospection Print LinkedIn » s'est annoncée « accomplie »
+    alors que l'étape d'écriture du tableur avait été abandonnée : le fichier
+    livré sur le Drive était vide.
+    """
+    abandonnees = [
+        s for s in (plan_json or {}).get("steps", [])
+        if s.get("status") == "skipped"
+    ]
+    if not abandonnees:
+        return ""
+    details = "\n".join(
+        f"- {s.get('description', '?')}"
+        + (f" — {s['abandon_reason']}" if s.get("abandon_reason") else "")
+        for s in abandonnees
+    )
+    return (
+        f"{len(abandonnees)} étape(s) abandonnée(s) après "
+        f"{MAX_STEP_ATTEMPTS} tentatives :\n{details}"
+    )
+
+
 def _next_pending_step(plan_json: Optional[dict]) -> Optional[dict]:
     """Return the first step with status != 'done' (or no status)."""
     if not plan_json:
@@ -1335,25 +1362,14 @@ async def act_node(state: MissionState) -> dict:
         # après MAX_STEP_ATTEMPTS est terminale elle aussi. Les taire ici
         # ferait remonter un succès de façade jusqu'à la notification finale
         # — l'utilisateur croirait le livrable produit.
-        _abandoned = [
-            s for s in plan_json.get("steps", [])
-            if s.get("status") == "skipped"
-        ]
-        if _abandoned:
-            _details = "\n".join(
-                f"- {s.get('description', '?')}"
-                + (f" — {s['abandon_reason']}" if s.get("abandon_reason") else "")
-                for s in _abandoned
-            )
-            summary = (
-                f"Plan terminé, mais {len(_abandoned)} étape(s) abandonnée(s) "
-                f"après {MAX_STEP_ATTEMPTS} tentatives :\n{_details}"
-            )
-        else:
-            summary = "Toutes les étapes du plan sont terminées."
+        _aveu = _abandon_notice(plan_json)
+        summary = (
+            f"Plan terminé, mais {_aveu}" if _aveu
+            else "Toutes les étapes du plan sont terminées."
+        )
         logger.info(
-            "[mission %s] act: no pending step — marking done (%d abandonnée(s))",
-            mission_id, len(_abandoned),
+            "[mission %s] act: no pending step — marking done (%s)",
+            mission_id, _aveu or "aucun abandon",
         )
         return {
             "last_eval_success": True,
@@ -2063,7 +2079,15 @@ async def eval_node(state: MissionState) -> dict:
     }
     if is_done:
         out["done"] = True
-        out["final_summary"] = f"Mission accomplie. Dernière étape : {reason}"
+        # Le verdict `all_done` porte sur la DERNIÈRE action, pas sur le
+        # chemin parcouru : il peut conclure « accompli » juste après qu'une
+        # étape ait été abandonnée. Le 27/08, l'export d'un tableur vide a
+        # ainsi cloturé une mission dont l'écriture des données avait échoué.
+        _aveu = _abandon_notice(new_plan_json)
+        out["final_summary"] = (
+            f"Mission accomplie. Dernière étape : {reason}"
+            + (f"\n\n⚠️ Mais {_aveu}" if _aveu else "")
+        )
 
     logger.info(
         "[mission %s] eval: success=%s done=%s consec_failures=%d",
