@@ -59,6 +59,25 @@ logger = logging.getLogger(__name__)
 # disent la même règle et sont tenues ensemble par un test.
 MAX_STEP_ATTEMPTS: int = 2
 
+# Combien de fois une MÊME action (même outil, mêmes arguments) peut être
+# jouée dans une mission avant d'être refusée. La deuxième reste tolérée —
+# une action peut légitimement être rejouée après un échec, c'est le droit à
+# l'erreur ci-dessus. La troisième n'apprend plus rien.
+#
+# Mesuré le 28/08/2026 sur « Prospection Print LinkedIn », 2 sociétés
+# demandées et 1 livrée :
+#
+#     it6   web_search  "LinkedIn CEO … PUBLIGIFTS"  -> eval ok
+#     it8   web_search  "LinkedIn CEO … PUBLIGIFTS"  -> eval ok  (identique)
+#     it10  web_search  "LinkedIn CEO … PUBLIGIFTS"  -> eval ok  (identique)
+#
+# Les étapes 4 et 5 du plan visaient la DEUXIÈME société : elles ont été
+# consommées à refaire la recherche de la première. L'évaluateur a validé les
+# trois fois, et il avait raison sur ce qu'il juge — « l'outil a renvoyé des
+# résultats pertinents » est vrai à chaque appel. Il juge si l'OUTIL a
+# fonctionné, pas si la MISSION a avancé. Personne ne tenait ce second rôle.
+MAX_IDENTICAL_ACTIONS: int = 2
+
 
 def _extract_provider_model(llm: Any) -> tuple[str, str]:
     """Best-effort extraction of (provider, model) from a LangChain LLM.
@@ -1301,6 +1320,99 @@ def _mark_plan_step(plan_json: dict, step_id: str, status: str) -> dict:
     return out
 
 
+def _action_fingerprint(tool_name: str, tool_input: Any) -> str:
+    """Empreinte stable d'une action : même outil, mêmes arguments.
+
+    Le tri des clés rend l'empreinte insensible à l'ordre dans lequel le
+    modèle a émis ses arguments — deux appels identiques au désordre près
+    doivent se reconnaître. Les arguments injectés (identité, jetons Google)
+    sont retirés : ils ne font pas partie de l'INTENTION, et ils varient.
+    """
+    args = tool_input if isinstance(tool_input, dict) else {"_": tool_input}
+    propre = {
+        k: v for k, v in args.items()
+        if k not in {"user_google_credentials_json", "user_id", "account"}
+    }
+    try:
+        rendu = json.dumps(propre, sort_keys=True, ensure_ascii=False, default=str)
+    except Exception:  # noqa: BLE001 — une empreinte ne casse jamais un tick
+        rendu = str(sorted(propre.items(), key=lambda kv: kv[0]))
+    return f"{tool_name}::{rendu}"
+
+
+async def _count_identical_actions(mission_id: str, fingerprint: str) -> int:
+    """Combien de fois cette action exacte a déjà été jouée dans la mission.
+
+    On lit la BASE et non l'état du graphe : l'historique doit survivre aux
+    ticks, et `act_node` y a déjà écrit l'action courante — elle est donc
+    comptée dans le total.
+    """
+    from sqlalchemy import select
+
+    from app.database import async_session
+    from app.models.mission import MissionStep
+    try:
+        async with async_session() as db:
+            lignes = await db.execute(
+                select(MissionStep.tool_name, MissionStep.tool_input)
+                .where(MissionStep.mission_id == mission_id)
+                .where(MissionStep.phase == "act")
+                .where(MissionStep.tool_name.is_not(None))
+            )
+            return sum(
+                1 for nom, entree in lignes
+                if _action_fingerprint(nom, entree) == fingerprint
+            )
+    except Exception as exc:  # noqa: BLE001 — le garde-fou n'arrête pas la mission
+        logger.debug("Comptage d'actions répétées indisponible (%s)", exc)
+        return 0
+
+
+def _mark_step_attempt(
+    plan_json: Optional[dict],
+    step_id: Optional[str],
+    *,
+    success: bool,
+    reason: str,
+) -> tuple[dict, bool]:
+    """Applique le verdict d'un tour à l'étape courante du plan.
+
+    Un échec n'est PAS terminal du premier coup : l'étape garde son droit à
+    l'erreur (statut ``failed`` → ``_next_pending_step`` la rend au tick
+    suivant). Au-delà de ``MAX_STEP_ATTEMPTS`` elle passe ``skipped``, le seul
+    statut — avec ``done`` — que ``_next_pending_step`` saute : la mission
+    avance au lieu de rejouer la même étape jusqu'à épuisement du budget.
+
+    Deux appelants : le verdict du modèle, et le refus d'action répétée. Les
+    deux doivent compter les tentatives de la même façon, sinon le garde-fou
+    de répétition offrirait un nombre d'essais différent de celui de l'échec
+    ordinaire.
+
+    Returns:
+        Le plan mis à jour, et si CE tour a abandonné l'étape.
+    """
+    nouveau = dict(plan_json or {})
+    etapes = []
+    abandonnee = False
+    for s in nouveau.get("steps", []):
+        if s.get("id") == step_id:
+            s = dict(s)
+            if success:
+                s["status"] = "done"
+            else:
+                tentatives = int(s.get("attempts") or 0) + 1
+                s["attempts"] = tentatives
+                if tentatives >= MAX_STEP_ATTEMPTS:
+                    s["status"] = "skipped"
+                    s["abandon_reason"] = reason
+                    abandonnee = True
+                else:
+                    s["status"] = "failed"
+        etapes.append(s)
+    nouveau["steps"] = etapes
+    return nouveau, abandonnee
+
+
 def _abandon_notice(plan_json: Optional[dict]) -> str:
     """Aveu des étapes abandonnées, ou chaîne vide s'il n'y en a aucune.
 
@@ -1876,6 +1988,43 @@ async def eval_node(state: MissionState) -> dict:
     if not state.get("last_tool_name"):
         return {"last_eval_success": True, "last_eval_reason": "no-op iteration"}
 
+    # ── Action déjà jouée à l'identique ────────────────────────────────
+    # Verdict rendu SANS appel au modèle : payer l'évaluation d'une action
+    # dont on sait qu'elle n'apprend rien serait doublement perdant. Le
+    # refus emprunte la mécanique de tentatives existante — l'étape garde
+    # son droit à l'erreur, puis elle est abandonnée et la mission avance.
+    _empreinte = _action_fingerprint(
+        str(state.get("last_tool_name")), state.get("last_tool_input"),
+    )
+    _deja = await _count_identical_actions(mission_id, _empreinte)
+    if _deja > MAX_IDENTICAL_ACTIONS:
+        raison = (
+            f"Action identique déjà jouée {_deja - 1} fois dans cette mission "
+            f"({state.get('last_tool_name')}) — refaire le même appel "
+            f"n'apprend rien de neuf. Change de cible ou d'approche."
+        )
+        logger.warning(
+            "[mission %s] eval: action répétée (%d× %s) — refusée sans "
+            "appel au modèle", mission_id, _deja, state.get("last_tool_name"),
+        )
+        await mission_service.add_step(
+            mission_id, phase="eval",
+            evaluation=raison,
+            success=False,
+            duration_ms=0,
+            model_used="garde-fou-repetition",
+        )
+        _failures = state.get("consecutive_failures", 0) + 1
+        _plan_apres, _abandonnee = _mark_step_attempt(
+            plan_json, current_step_id, success=False, reason=raison,
+        )
+        return {
+            "last_eval_success": False,
+            "last_eval_reason": raison,
+            "consecutive_failures": _failures,
+            "plan_json": _plan_apres,
+        }
+
     t0 = time.monotonic()
     llm = _get_evaluator_llm(tier=await _mission_llm_tier(mission_id))
     current_step = next(
@@ -2022,25 +2171,9 @@ async def eval_node(state: MissionState) -> dict:
     # suivant). Au-delà de MAX_STEP_ATTEMPTS elle passe `skipped`, le seul
     # statut — avec `done` — que `_next_pending_step` saute : la mission
     # avance au lieu de rejouer la même étape jusqu'à épuisement du budget.
-    new_plan_json = dict(plan_json)
-    new_steps = []
-    abandoned_step = False
-    for s in new_plan_json.get("steps", []):
-        if s.get("id") == current_step_id:
-            s = dict(s)
-            if success:
-                s["status"] = "done"
-            else:
-                attempts = int(s.get("attempts") or 0) + 1
-                s["attempts"] = attempts
-                if attempts >= MAX_STEP_ATTEMPTS:
-                    s["status"] = "skipped"
-                    s["abandon_reason"] = reason
-                    abandoned_step = True
-                else:
-                    s["status"] = "failed"
-        new_steps.append(s)
-    new_plan_json["steps"] = new_steps
+    new_plan_json, abandoned_step = _mark_step_attempt(
+        plan_json, current_step_id, success=success, reason=reason,
+    )
 
     if abandoned_step:
         logger.warning(
