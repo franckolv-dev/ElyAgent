@@ -82,7 +82,12 @@ async def mission():
 
 
 async def _etape_terminee(mid: str, step_id: str, sortie: str) -> None:
-    """Reproduit ce que `eval_node` archive à la fin d'une étape de spec."""
+    """Reproduit ce que `eval_node` archive à la fin d'une étape de spec.
+
+    Même chaîne d'appels que la production — `ensure_step_run` puis
+    `set_step_run_status` sans coupe côté appelant — pour que ces tests
+    exercent le chemin réel et non un raccourci qui n'existe qu'ici.
+    """
     from app.services import mission_spec_runtime as msr
 
     await msr.ensure_step_run(mid, step_id, 0, None)
@@ -177,7 +182,7 @@ async def test_l_archive_d_une_etape_n_est_plus_amputee(mission) -> None:
     monkeypatched_len = len(_SOCIETES)
     assert monkeypatched_len > 1500, "le cas testé doit dépasser l'ancien plafond"
 
-    await mn._archive_step_output(mid, "societes", 0, _SOCIETES)
+    await _etape_terminee(mid, "societes", _SOCIETES)
     source = await mn._foreach_source(
         mid, {"id": "contacts", "foreach": "{{ societes.output }}"},
     )
@@ -189,10 +194,10 @@ async def test_l_archive_d_une_etape_n_est_plus_amputee(mission) -> None:
 async def test_une_seule_troncature_gouverne_l_archive(mission) -> None:
     """Pas de second plafond qui rabote derrière le premier.
 
-    `_archive_step_output` coupe à `STEP_OUTPUT_ARCHIVE_CHARS`, puis
-    `set_step_run_status` recoupait à 5 000 : la valeur annoncée n'était pas
-    la valeur obtenue. Deux constantes pour la même règle finissent par
-    diverger — ce pin les tient ensemble.
+    L'archive était coupée deux fois : `[:1500]` côté appelant, `[:5000]`
+    côté écriture. La valeur annoncée n'était donc pas la valeur obtenue.
+    `set_step_run_status` est désormais l'unique tronqueur — ce pin le
+    vérifie de bout en bout, écriture puis relecture.
     """
     import app.agent.missions.nodes as mn
 
@@ -200,7 +205,7 @@ async def test_une_seule_troncature_gouverne_l_archive(mission) -> None:
     taille = mn.STEP_OUTPUT_ARCHIVE_CHARS
     long_texte = "DEBUT " + ("x" * (taille - 12)) + " FIN"
 
-    await mn._archive_step_output(mid, "societes", 0, long_texte)
+    await _etape_terminee(mid, "societes", long_texte)
     source = await mn._foreach_source(
         mid, {"id": "contacts", "foreach": "{{ societes.output }}"},
     )
@@ -248,6 +253,54 @@ async def test_le_prompt_d_expansion_nomme_l_etape_pas_le_gabarit(
     assert vus, "le modèle doit être interrogé"
     assert "« societes »" in vus[0], (
         "le prompt doit nommer l'étape résolue, pas répéter le gabarit"
+    )
+
+
+@pytest.mark.asyncio
+async def test_la_source_n_est_chargee_qu_a_l_expansion_a_froid(
+    mission, monkeypatch,
+) -> None:
+    """Une fois le foreach étendu, plus besoin de relire la source.
+
+    `expand_foreach` est idempotent : dès qu'il existe des items, il rend
+    tout de suite. Charger la source avant lui fait donc relire l'archive
+    de l'étape — jusqu'à `STEP_OUTPUT_ARCHIVE_CHARS` de texte — à chaque
+    tick, pour un résultat jeté. Sur un foreach de N items, N-1 lectures
+    pour rien.
+    """
+    import app.agent.missions.nodes as mn
+    from app.services import mission_spec_runtime as msr
+
+    uid, mid = mission
+    await _etape_terminee(mid, "societes", _SOCIETES)
+    # Le foreach a DÉJÀ été étendu : deux items attendent leur tour.
+    await msr.ensure_step_run(mid, "contacts", 0, "SOCIETE_1")
+    await msr.ensure_step_run(mid, "contacts", 1, "SOCIETE_2")
+
+    charges: list[str] = []
+    _vrai_source = mn._foreach_source
+
+    async def _compte(mission_id, step):
+        charges.append(step.get("id", "?"))
+        return await _vrai_source(mission_id, step)
+
+    monkeypatch.setattr(mn, "_foreach_source", _compte)
+
+    plan_json = {
+        "from_spec": True,
+        "steps": [
+            {"id": "societes", "description": "Cherche", "status": "done"},
+            {"id": "contacts", "description": "Traite {{ item }}",
+             "foreach": "{{ societes.output }}", "handlers": {}},
+        ],
+    }
+    await mn.act_node({
+        "mission_id": mid, "user_id": uid, "goal": "trouver des sociétés",
+        "plan_json": plan_json, "plan_text": "",
+    })
+
+    assert charges == [], (
+        "les items existent déjà : la source ne doit plus être relue"
     )
 
 

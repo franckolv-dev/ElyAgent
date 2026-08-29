@@ -256,7 +256,7 @@ async def expand_foreach(
     _brut = step.get("foreach") or "?"
     prompt = _EXPAND_PROMPT.format(
         source_ref=foreach_ref_of(_brut) or _brut,
-        source_output=(source_output or "(vide)")[:6000],
+        source_output=(source_output or "(vide)")[:STEP_OUTPUT_ARCHIVE_CHARS],
         do=(step.get("description") or "")[:400],
         foreach=step.get("foreach") or "?",
         max_items=MAX_FOREACH_ITEMS,
