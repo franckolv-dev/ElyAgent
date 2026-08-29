@@ -78,8 +78,16 @@ class MemoryRecallService:
     ) -> list[MemoryHit]:
         """Recall memories of `memory_type` matching `query` for `user_id`.
 
-        Always returns a list (possibly empty). Never raises — recall is
-        best-effort, callers should not need defensive try/except.
+        Best-effort sur ce qui SE LIT : une recherche infructueuse rend une
+        liste vide, jamais une exception — l'appelant n'a pas à se défendre
+        contre un magasin qui n'a rien trouvé.
+
+        UNE exception, et une seule : ``UnreadableMemoryType``, levée quand
+        le type demandé n'a aucune lecture derrière lui (``ERROR``). Rendre
+        ``[]`` dans ce cas ferait lire au modèle « je n'ai jamais échoué
+        là-dessus » — une absence de lecture présentée comme un fait
+        constaté. Un appelant qui interroge un type non lisible a un bug,
+        et il doit l'apprendre.
         """
         if not user_id:
             logger.warning("memory_recall refused: empty user_id")
