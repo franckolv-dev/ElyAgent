@@ -286,6 +286,14 @@ async def test_la_source_n_est_chargee_qu_a_l_expansion_a_froid(
 
     monkeypatch.setattr(mn, "_foreach_source", _compte)
 
+    # Le tour s'arrête avant l'acteur : ce test porte sur ce qui est LU
+    # avant l'expansion, pas sur l'exécution de l'étape. Sans ça il
+    # dépendrait d'un modèle joignable — vert en local, rouge en CI.
+    async def _pas_d_acteur(**_kwargs):
+        raise RuntimeError("acteur non sollicité par ce test")
+
+    monkeypatch.setattr(mn, "_get_actor_llms", _pas_d_acteur)
+
     plan_json = {
         "from_spec": True,
         "steps": [
@@ -294,10 +302,11 @@ async def test_la_source_n_est_chargee_qu_a_l_expansion_a_froid(
              "foreach": "{{ societes.output }}", "handlers": {}},
         ],
     }
-    await mn.act_node({
-        "mission_id": mid, "user_id": uid, "goal": "trouver des sociétés",
-        "plan_json": plan_json, "plan_text": "",
-    })
+    with pytest.raises(RuntimeError, match="acteur non sollicité"):
+        await mn.act_node({
+            "mission_id": mid, "user_id": uid, "goal": "trouver des sociétés",
+            "plan_json": plan_json, "plan_text": "",
+        })
 
     assert charges == [], (
         "les items existent déjà : la source ne doit plus être relue"
