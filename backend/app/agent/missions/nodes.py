@@ -1330,7 +1330,11 @@ par les tools précédents (visibles dans le contexte ci-dessous).
 N'écris JAMAIS de placeholders comme [meteo_data], [email_summary],
 [INSERT_X_HERE], <data>, {{value}}, etc. dans les arguments du tool.
 Lis le contexte « OUTPUTS DES ÉTAPES PRÉCÉDENTES » et copie/résume les vraies
-données dedans avant de remplir les arguments."""
+données dedans avant de remplir les arguments.
+
+📅 Date du jour : {date_str} (Europe/Paris)
+Toute date que tu écris — nom de fichier, titre, contenu — vient de CETTE
+ligne. N'en invente jamais une autre."""
 
 
 # Plafond de l'archive d'une sortie d'étape — défini avec la fonction qui
@@ -1745,7 +1749,19 @@ async def act_node(state: MissionState) -> dict:
 
     _mandate_block = _strict_autonomy_directives(_mandate) if _mandate is not None else ""
     messages: list[BaseMessage] = [
-        SystemMessage(content=_ACT_SYSTEM.format(plan_text=plan_text, current_step_desc=current_step_desc) + _edge_block + _mandate_block),
+        # ⚠️ LA DATE N'ÉTAIT DONNÉE À PERSONNE SUR UNE SPEC (29/08/2026).
+        # Elle est injectée au planificateur et au replanificateur. Une
+        # mission LIBRE s'en sortait : le planificateur connaît la date et
+        # l'écrit dans la description de l'étape, l'acteur recopie. Mais une
+        # spec COURT-CIRCUITE le planificateur — l'acteur devait donc
+        # l'inventer, et il a livré « prospection_catalogue-2025_05_22 », la
+        # même hallucination qu'au tour précédent. Plus la mission était
+        # cadrée, moins elle savait quel jour on est.
+        SystemMessage(content=_ACT_SYSTEM.format(
+            plan_text=plan_text,
+            current_step_desc=current_step_desc,
+            date_str=_current_date_paris_str(),
+        ) + _edge_block + _mandate_block),
         HumanMessage(content=f"Goal : {state.get('goal','?')}"),
     ]
     if prev_context:

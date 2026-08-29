@@ -261,7 +261,19 @@ async def expand_foreach(
         foreach=step.get("foreach") or "?",
         max_items=MAX_FOREACH_ITEMS,
     )
+    # ⚠️ CE CHEMIN DÉCIDAIT EN SILENCE (29/08/2026). L'étape `contacts` d'une
+    # mission réelle a été sautée sur « Aucun item identifiable (résultat
+    # source vide ?) » — écrit en base, nulle part dans les logs, et avec un
+    # point d'interrogation en guise de diagnostic. La source faisait 2 277
+    # caractères. Sauter l'étape la plus importante d'une mission est une
+    # décision : elle doit dire ce qu'elle a reçu et ce que le modèle a
+    # répondu, sinon on ne peut que deviner.
     items: list[str] = []
+    raw = ""
+    logger.info(
+        "mission %s : foreach %s — expansion depuis %d car de source",
+        mission_id, step_id, len(source_output or ""),
+    )
     try:
         response = await llm.ainvoke([{"role": "user", "content": prompt}])
         # content_to_text : sur tier codex (Responses API), content est une
@@ -281,10 +293,24 @@ async def expand_foreach(
     if not items:
         # Pas d'items identifiables : une seule ligne porte la note — le
         # step sera skippé proprement au lieu de bloquer la mission.
+        #
+        # On DIT pourquoi : taille de la source reçue et réponse brute du
+        # modèle. « résultat source vide ? » n'était pas un diagnostic mais
+        # une question posée aux logs — qui, eux, n'avaient rien.
+        logger.warning(
+            "mission %s : foreach %s SAUTÉ — aucun item extrait de %d car "
+            "de source ; réponse du modèle : %.200s",
+            mission_id, step_id, len(source_output or ""),
+            raw if raw else "(vide)",
+        )
         run = await ensure_step_run(mission_id, step_id, 0, None)
         await set_step_run_status(
             mission_id, step_id, 0, status="skipped",
-            note="Aucun item identifiable pour l'itération (résultat source vide ?)",
+            note=(
+                f"Aucun item identifiable — source de "
+                f"{len(source_output or '')} car, réponse du modèle : "
+                f"{(raw or '(vide)')[:200]}"
+            ),
         )
         return await list_step_runs(mission_id, step_id)
 
