@@ -53,6 +53,12 @@ logger = logging.getLogger(__name__)
 
 EDGE_MARKER = "EDGE_CASE:"
 MAX_FOREACH_ITEMS = 200
+# Plafond de l'archive d'une sortie d'etape (`MissionStepRun.output`).
+# C'est elle que relit un `foreach` pour construire ses items : la couper
+# trop court, c'est perdre des items en silence. Constante UNIQUE — elle
+# etait doublee d'un `[:1500]` cote appelant, et la valeur annoncee n'etait
+# donc pas la valeur obtenue.
+STEP_OUTPUT_ARCHIVE_CHARS = 6000
 # Au-delà de N tentatives sur un item sans handler on_error : skip
 # automatique avec note — garantit la vivacité de la mission.
 AUTO_SKIP_ATTEMPTS = 2
@@ -165,7 +171,7 @@ async def set_step_run_status(
     if note is not None:
         values["note"] = note[:2000]
     if output is not None:
-        values["output"] = output[:5000]
+        values["output"] = output[:STEP_OUTPUT_ARCHIVE_CHARS]
     async with async_session() as db:
         if bump_attempts:
             values["attempts"] = MissionStepRun.attempts + 1
@@ -240,8 +246,16 @@ async def expand_foreach(
     from app.services.llm_provider import ComplexityTier, get_llm_for_tier
 
     llm = get_llm_for_tier(ComplexityTier.MEDIUM)
+    # `source_ref` doit NOMMER l'étape d'où vient `source_output`. On y
+    # recopiait le gabarit : le prompt annonçait « Étape source
+    # « {{ societes.output }} » », qui n'est le nom de rien. La forme texte
+    # libre n'a pas d'étape à nommer — on la laisse telle quelle, c'est
+    # bien ce que l'auteur a écrit.
+    from app.services.mission_spec import foreach_ref_of
+
+    _brut = step.get("foreach") or "?"
     prompt = _EXPAND_PROMPT.format(
-        source_ref=step.get("foreach") or "?",
+        source_ref=foreach_ref_of(_brut) or _brut,
         source_output=(source_output or "(vide)")[:6000],
         do=(step.get("description") or "")[:400],
         foreach=step.get("foreach") or "?",

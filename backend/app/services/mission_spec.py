@@ -117,6 +117,19 @@ MANDATE_LLM_TIERS: Final[frozenset[str]] = frozenset({"simple", "medium", "compl
 # ── Modèle ───────────────────────────────────────────────────────────────────
 
 
+def foreach_ref_of(foreach: str | None) -> str | None:
+    """Step id référencé par un ``foreach``, ou None pour la forme libre.
+
+    Même règle que ``SpecStep.foreach_ref``, exposée en fonction pour les
+    appelants qui manipulent le plan sérialisé (dict) plutôt que le modèle
+    — c'est le cas d'``act_node``, qui travaille sur ``plan_json``.
+    """
+    if not foreach:
+        return None
+    m = _FOREACH_REF_RE.match(foreach.strip())
+    return m.group(1) if m else None
+
+
 def _tool_exists(name: str) -> bool:
     """L'outil est-il enregistré ? Permissif quand le registre est muet.
 

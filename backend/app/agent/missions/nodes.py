@@ -1333,6 +1333,89 @@ Lis le contexte « OUTPUTS DES ÉTAPES PRÉCÉDENTES » et copie/résume les vra
 données dedans avant de remplir les arguments."""
 
 
+# Plafond de l'archive d'une sortie d'étape — défini avec la fonction qui
+# écrit (`mission_spec_runtime.set_step_run_status`), réexporté ici pour les
+# appelants de ce module. UNE seule vérité : il était doublé d'un `[:1500]`
+# côté appelant et d'un `[:5000]` côté écriture, si bien que la valeur
+# annoncée n'était pas la valeur obtenue. Une recherche web de 2 400
+# caractères y perdait la moitié de ses sociétés, et le foreach concluait
+# « résultat source vide ».
+from app.services.mission_spec_runtime import (  # noqa: E402
+    STEP_OUTPUT_ARCHIVE_CHARS,
+)
+
+
+async def _archive_step_output(
+    mission_id: str, step_id: str, item_index: int, output: str,
+) -> None:
+    """Archive la sortie d'une étape, en gardant de quoi la réexploiter."""
+    from app.services import mission_spec_runtime as msr
+
+    await msr.ensure_step_run(mission_id, step_id, item_index, None)
+    await msr.set_step_run_status(
+        mission_id, step_id, item_index, status="done",
+        output=(output or "")[:STEP_OUTPUT_ARCHIVE_CHARS],
+    )
+
+
+async def _foreach_source(mission_id: str, step: dict) -> str:
+    """Le texte source d'un `foreach`, pour en extraire les items.
+
+    ⚠️ CE QUE ÇA CORRIGE (29/08/2026). `act_node` passait à
+    ``expand_foreach`` le contexte général — les 8 dernières sorties
+    d'outils MÉLANGÉES, chacune coupée à 1 200 caractères. Pour résoudre
+    ``{{ societes.output }}``, le modèle recevait donc la sortie de
+    `drive_list_files`, celle de `web_search` amputée de moitié et celle de
+    `sheets_create_spreadsheet`, en vrac. Verdict : « Aucun item
+    identifiable pour l'itération (résultat source vide ?) », alors que la
+    recherche avait bien ramené huit sociétés.
+
+    Quand le `foreach` NOMME une étape (forme ``{{ etape.output }}``), on
+    lit donc la sortie archivée de CETTE étape, et elle seule.
+
+    Le repli reste le contexte général : la forme texte libre
+    (``foreach: "les sociétés citées"``) n'a aucune étape à cibler, et une
+    référence qui ne résout rien vaut mieux large que vide — c'est la
+    source vide qui faisait skipper le step sans explication.
+    """
+    from app.services.mission_spec import foreach_ref_of
+
+    ref = foreach_ref_of(step.get("foreach"))
+    if ref:
+        from sqlalchemy import select
+
+        from app.database import async_session
+        from app.models.mission import MissionStepRun
+        try:
+            async with async_session() as db:
+                sorties = (await db.execute(
+                    select(MissionStepRun.output)
+                    .where(MissionStepRun.mission_id == mission_id)
+                    .where(MissionStepRun.step_id == ref)
+                    .where(MissionStepRun.output.isnot(None))
+                    .order_by(MissionStepRun.item_index)
+                )).scalars().all()
+            texte = "\n".join(s for s in sorties if s and s.strip()).strip()
+            if texte:
+                logger.info(
+                    "[mission %s] foreach : source = sortie de l'étape « %s » "
+                    "(%d caractères)", mission_id, ref, len(texte),
+                )
+                return texte
+            logger.warning(
+                "[mission %s] foreach : l'étape « %s » n'a pas de sortie "
+                "archivée — repli sur le contexte général",
+                mission_id, ref,
+            )
+        except Exception as exc:  # noqa: BLE001 — le repli reste utilisable
+            logger.warning(
+                "[mission %s] foreach : lecture de « %s » impossible (%s) — "
+                "repli sur le contexte général", mission_id, ref, exc,
+            )
+
+    return await _load_recent_step_outputs(mission_id)
+
+
 async def _load_recent_step_outputs(mission_id: str, max_steps: int = 8, max_chars: int = 1200) -> str:
     """Render the last N successful tool outputs as a context block.
 
@@ -1586,7 +1669,9 @@ async def act_node(state: MissionState) -> dict:
     if _is_spec:
         from app.services import mission_spec_runtime as msr
         if current_step.get("foreach"):
-            _expand_ctx = await _load_recent_step_outputs(mission_id)
+            # La source d'un foreach est l'étape qu'il NOMME, pas le
+            # contexte général (cf. `_foreach_source`).
+            _expand_ctx = await _foreach_source(mission_id, current_step)
             _runs = await msr.expand_foreach(
                 mission_id, user_id, current_step, _expand_ctx,
             )
@@ -2183,7 +2268,7 @@ async def eval_node(state: MissionState) -> dict:
             await msr.set_step_run_status(
                 mission_id, current_step_id or "?", _idx,
                 status="done",
-                output=(state.get("last_tool_output") or "")[:1500],
+                output=(state.get("last_tool_output") or "")[:STEP_OUTPUT_ARCHIVE_CHARS],
                 note=reason[:500] if reason else None,
             )
             _step = next(
