@@ -4,7 +4,8 @@
 # @brief      Sprint 3.7.3 J4 — structural regression : Sprint 2.5 cognitive
 #             memory typing. The 5 typed memories exist, parse leniently, and
 #             MemoryRecallService routes per-type (SEMANTIC_USER returns typed
-#             hits ; ERROR is write-only → []) and never raises.
+#             hits ; ERROR refuse d'etre lu — il n'a aucune lecture derriere
+#             lui, cf. #246 du 25/07/2026).
 # @license    Elastic License 2.0
 # =============================================================================
 """Canonical scenario V — typed memory enum + per-type recall routing."""
@@ -17,13 +18,16 @@ NAME = "V — memory 5-types + recall routing"
 DESCRIPTION = (
     "MemoryType holds the 5 typed memories + AUTO, parse() is lenient, and "
     "recall routes per-type: SEMANTIC_USER returns SEMANTIC_USER-typed hits "
-    "(Qdrant patched), ERROR is write-only (→ []), and recall never raises."
+    "(Qdrant patched) while ERROR, qui n'a aucune lecture derrière lui, "
+    "REFUSE d'être lu (UnreadableMemoryType) au lieu de rendre une liste "
+    "vide qui se lirait « je n'ai jamais échoué »."
 )
 TAGS = ["shallow"]
 
 
 async def run() -> dict:
     from app.services.memory import MemoryType, get_memory_recall_service
+    from app.services.memory.recall_service import UnreadableMemoryType
     from app.services.memory.semantic_user_store import SemanticUserStore
     from bench.scenarios._base import from_checks
 
@@ -75,11 +79,21 @@ async def run() -> dict:
             memory_type=MemoryType.SEMANTIC_USER, query="projet ?",
             user_id=uid, limit=5,
         )
-        # ERROR is write-only in V1 → recall must return [] (no store call).
-        error_hits = await svc.recall(
-            memory_type=MemoryType.ERROR, query="boom", user_id=uid, limit=5,
-        )
-        # Never raises, even on an empty query.
+        # ERROR n'a AUCUNE lecture derrière lui : `recall` LÈVE plutôt que
+        # de rendre []. Rendre une liste vide ferait lire au modèle « je
+        # n'ai jamais échoué là-dessus » — une absence de lecture présentée
+        # comme un fait constaté (contrat posé en #246, 25/07/2026 :
+        # « cesser de promettre au modèle une mémoire qui ne se lit pas »).
+        error_raises = False
+        try:
+            await svc.recall(
+                memory_type=MemoryType.ERROR, query="boom", user_id=uid,
+                limit=5,
+            )
+        except UnreadableMemoryType:
+            error_raises = True
+        # Une requête vide, elle, rend bien [] : rien n'a été demandé, donc
+        # rien n'est affirmé.
         empty_hits = await svc.recall(
             memory_type=MemoryType.SEMANTIC_USER, query="   ",
             user_id=uid, limit=5,
@@ -95,7 +109,7 @@ async def run() -> dict:
         "parse_rejects_junk": parse_rejects_junk,
         "semantic_user_routed_typed": bool(semantic_hits)
         and all(h.type == MemoryType.SEMANTIC_USER for h in semantic_hits),
-        "error_is_write_only": error_hits == [],
-        "recall_never_raises_on_empty": empty_hits == [],
+        "error_refuses_to_be_read": error_raises,
+        "empty_query_returns_empty": empty_hits == [],
     }
     return from_checks(checks, semantic_hits=len(semantic_hits))
