@@ -1526,6 +1526,27 @@ async def _count_identical_actions(mission_id: str, fingerprint: str) -> int:
         return 0
 
 
+def _echecs_consecutifs(state: dict, is_spec: bool) -> int:
+    """Le compteur d'échecs après un refus, selon le type de mission.
+
+    ⚠️ UNE MISSION STRUCTURÉE NE REPLANIFIE JAMAIS — la spec EST le contrat
+    (cf. `mission_spec_runtime`). Or `decide_after_eval` envoie en replan dès
+    trois échecs consécutifs : laisser un garde-fou incrémenter ce compteur
+    sur une spec la ferait replanifier par la bande.
+
+    Régression introduite les 28-29/08 par les garde-fous d'action répétée
+    et d'outil de découverte, tous deux placés AVANT la branche `_is_spec`
+    d'``eval_node``. Trouvée par le scénario de bench « mission structurée
+    de bout en bout » : la mission partait en `replan_node` et y plantait.
+
+    Les missions LIBRES, elles, gardent le compteur : c'est leur seul moyen
+    de changer de stratégie quand une approche ne passe pas.
+    """
+    if is_spec:
+        return 0
+    return int(state.get("consecutive_failures", 0)) + 1
+
+
 def _mark_step_attempt(
     plan_json: Optional[dict],
     step_id: Optional[str],
@@ -2196,7 +2217,7 @@ async def eval_node(state: MissionState) -> dict:
         return {
             "last_eval_success": False,
             "last_eval_reason": raison,
-            "consecutive_failures": state.get("consecutive_failures", 0) + 1,
+            "consecutive_failures": _echecs_consecutifs(state, _is_spec),
             "plan_json": _plan_apres,
         }
 
@@ -2226,14 +2247,13 @@ async def eval_node(state: MissionState) -> dict:
             duration_ms=0,
             model_used="garde-fou-repetition",
         )
-        _failures = state.get("consecutive_failures", 0) + 1
         _plan_apres, _abandonnee = _mark_step_attempt(
             plan_json, current_step_id, success=False, reason=raison,
         )
         return {
             "last_eval_success": False,
             "last_eval_reason": raison,
-            "consecutive_failures": _failures,
+            "consecutive_failures": _echecs_consecutifs(state, _is_spec),
             "plan_json": _plan_apres,
         }
 
@@ -2522,6 +2542,12 @@ async def replan_node(state: MissionState) -> dict:
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     raw = deanonymize_any(_sf, content_to_text(getattr(response, "content", "")))
 
+    # `new_plan` est initialisé AVANT le try : il est relu plus bas, hors du
+    # bloc. Sans ça, une réponse non-JSON du planificateur levait
+    # `UnboundLocalError` — que le heartbeat traduit en « graph crashed » et
+    # qui TUE la mission, alors que le repli (conserver les étapes
+    # précédentes) était déjà écrit juste ici.
+    new_plan: dict = {}
     try:
         new_plan = json.loads(_strip_json_fence(raw))
         steps = new_plan.get("steps", [])
