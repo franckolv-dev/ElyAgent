@@ -92,7 +92,12 @@ def build_plan_from_spec(spec: MissionSpec) -> tuple[str, dict]:
         steps.append({
             "id": s.id,
             "description": s.do,
-            "tool_hint": None,
+            # `tool_hint` porte le PREMIER outil nommé (la machinerie
+            # existante n'en attend qu'un) ; `tools` porte la liste
+            # complète, que la sélection lie en entier. Sans ce report, une
+            # spec pourrait nommer un outil que personne ne lirait.
+            "tool_hint": s.tools[0] if s.tools else None,
+            "tools": list(s.tools),
             "foreach": s.foreach,
             "handlers": {
                 name: {"action": c.action, "message": c.message}

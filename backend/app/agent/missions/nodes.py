@@ -78,6 +78,24 @@ MAX_STEP_ATTEMPTS: int = 2
 # fonctionné, pas si la MISSION a avancé. Personne ne tenait ce second rôle.
 MAX_IDENTICAL_ACTIONS: int = 2
 
+# Outils de DÉCOUVERTE : ils renseignent l'agent, ils ne produisent aucun
+# effet. Une étape ne peut donc pas être accomplie par eux, quelle que soit
+# la qualité de leur réponse — c'est un fait de nature, tranché sans appeler
+# le modèle.
+#
+# Mesuré le 28/08/2026, mission structurée « Prospection Calameo-LinkedIn »,
+# étape `tableur` (« Crée un Google Sheet nommé … ») :
+#
+#     it6  ACT   find_tool("create a new Google Sheet with specific headers")
+#     it7  EVAL  ok=1 — « find_tool a correctement identifié les outils »
+#
+# L'étape est passée `done`, aucun tableur n'a été créé, et le reste du plan
+# a travaillé sur un fichier inexistant. L'évaluateur avait raison sur ce
+# qu'il juge (l'outil A fonctionné) ; c'est la question qui manquait.
+DISCOVERY_ONLY_TOOLS: frozenset[str] = frozenset({
+    "find_tool",
+})
+
 
 def _extract_provider_model(llm: Any) -> tuple[str, str]:
     """Best-effort extraction of (provider, model) from a LangChain LLM.
@@ -295,6 +313,20 @@ async def dispatch_tool(
     )
     from app.services.hitl_manager import get_hitl_manager
     from app.services.memory_manager import get_memory_manager
+
+    # ⚠️ L'IDENTITÉ DE LA MISSION DOIT PORTER JUSQU'AUX OUTILS (28/08/2026).
+    # `find_tool` consigne ses trouvailles sous `CURRENT_CONVERSATION_ID`
+    # pour que le tour suivant les lie — mais seul `tool_node` (le chemin du
+    # chat) posait cette variable. En mission, `find_tool` répondait
+    # « utilise-les directement maintenant » et n'enregistrait RIEN : la
+    # promesse ne pouvait pas être tenue. Ici la mission tient lieu de
+    # conversation.
+    if mission_id:
+        try:
+            from app.agent.tool_context import CURRENT_CONVERSATION_ID
+            CURRENT_CONVERSATION_ID.set(mission_id)
+        except Exception as _ctx_exc:  # noqa: BLE001 — jamais bloquant
+            logger.debug("contexte de mission non posé : %s", _ctx_exc)
 
     tool_map = {t.name: t for t in get_skill_registry().all_tools}
     # Sprint 4b V2 J7b.2 — make the user's promoted python_tool skills
@@ -840,7 +872,14 @@ async def _ensure_tool_embeddings(all_tools: list) -> None:
         _tool_vec_version = version
 
 
-async def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal: str, current_step_desc: str = "") -> list:
+async def _filter_tools_for_step(
+    all_tools: list,
+    tool_hint: Optional[str],
+    goal: str,
+    current_step_desc: str = "",
+    mission_id: str = "",
+    step_tools: tuple[str, ...] = (),
+) -> list:
     """Reduce the tool inventory to a manageable subset for this iteration.
 
     With ~150 tools binded simultaneously, smaller models (xLAM-2-8B,
@@ -874,6 +913,48 @@ async def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal
         if t.name not in seen:
             candidates.append(t)
             seen.add(t.name)
+
+    # ── 0a. Les outils que la SPEC nomme, avant tout le reste ───────
+    # L'auteur de la spec a dit explicitement quoi employer : aucune
+    # heuristique ne doit passer devant une intention écrite à la main.
+    if step_tools:
+        _voulus = set(step_tools)
+        for t in all_tools:
+            if t.name in _voulus:
+                _add(t)
+        _absents = _voulus - seen
+        if _absents:
+            # La spec est validée à la création : un outil absent ici
+            # signale un registre partiel (MCP pas encore chargé, skill
+            # désactivée), pas une faute de frappe. On le dit plutôt que
+            # de laisser l'étape échouer sans explication.
+            logger.warning(
+                "act: outil(s) nommé(s) par la spec introuvable(s) dans le "
+                "registre : %s", sorted(_absents),
+            )
+
+    # ── 0b. Les découvertes de `find_tool`, en TÊTE ─────────────────
+    # Elles priment sur toute heuristique : le modèle a explicitement
+    # demandé « quel outil pour cette capacité ? » et `find_tool` a
+    # répondu. Les reléguer derrière un score sémantique reviendrait à
+    # préférer une devinette à une réponse. Mesuré le 28/08 : la sélection
+    # proposait `sheets_batch_update` là où `find_tool` avait nommé
+    # `sheets_create_spreadsheet`.
+    if mission_id:
+        try:
+            from app.agent.discovered_tools import get_discovered
+
+            _decouverts = get_discovered(mission_id)
+            if _decouverts:
+                for t in all_tools:
+                    if t.name in _decouverts:
+                        _add(t)
+                logger.info(
+                    "act: %d outil(s) découvert(s) lié(s) : %s",
+                    len(candidates), [t.name for t in candidates],
+                )
+        except Exception as exc:  # noqa: BLE001 — un confort ne casse pas un tick
+            logger.debug("act: découvertes non liées (%s)", exc)
 
     # ── 1. ACTION_KEYWORDS boost (highest priority — adds in head) ──
     boost_text = f"{goal} {current_step_desc}".strip()
@@ -966,7 +1047,7 @@ async def _filter_tools_for_step(all_tools: list, tool_hint: Optional[str], goal
     return candidates[:_TOOL_CAP] if candidates else all_tools[:_TOOL_CAP]
 
 
-async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "", tier=None) -> tuple[Any, list[tuple[str, Any]], list[Any]]:
+async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "", tier=None, mission_id: str = "", step_tools: tuple[str, ...] = ()) -> tuple[Any, list[tuple[str, Any]], list[Any]]:
     """Return (primary_llm_bound, [(label, fallback_llm_bound)], raw_tools).
 
     `primary` is the local model (xLAM-2-8B or Gemma 4 21B REAP) — fast
@@ -987,7 +1068,10 @@ async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", curre
     from app.skills import get_skill_registry
 
     all_tools = get_skill_registry().all_tools
-    tools = await _filter_tools_for_step(all_tools, tool_hint, goal, current_step_desc)
+    tools = await _filter_tools_for_step(
+        all_tools, tool_hint, goal, current_step_desc, mission_id=mission_id,
+        step_tools=step_tools,
+    )
     # Sprint 4b V2 J7b.2 — append the user's promoted python_tool skills so
     # missions see them too (parity with the chat path). No-op unless
     # LEARNED_PYTHON_TOOLS_ENABLED is on; never shadows a builtin.
@@ -1562,6 +1646,8 @@ async def act_node(state: MissionState) -> dict:
         current_step_desc=current_step_desc,
         user_id=user_id,
         tier=await _mission_llm_tier(mission_id),
+        mission_id=mission_id,
+        step_tools=tuple(current_step.get("tools") or ()),
     )
 
     # Load outputs of previous successful tool invocations so the LLM can
@@ -1988,6 +2074,34 @@ async def eval_node(state: MissionState) -> dict:
     if not state.get("last_tool_name"):
         return {"last_eval_success": True, "last_eval_reason": "no-op iteration"}
 
+    # ── Un outil de découverte n'accomplit rien ────────────────────────
+    # Verdict rendu SANS appel au modèle : `find_tool` renseigne, il ne
+    # produit pas d'effet. L'étape garde son droit à l'erreur et sera
+    # rejouée — avec, cette fois, les outils que la découverte a surfacés.
+    if str(state.get("last_tool_name")) in DISCOVERY_ONLY_TOOLS:
+        raison = (
+            f"« {state.get('last_tool_name')} » est un outil de découverte : "
+            f"il indique quel outil employer, il n'accomplit pas l'étape. "
+            f"Appelle maintenant l'outil qu'il a désigné."
+        )
+        logger.warning(
+            "[mission %s] eval: étape %s non accomplie — %s ne produit aucun "
+            "effet", mission_id, current_step_id, state.get("last_tool_name"),
+        )
+        await mission_service.add_step(
+            mission_id, phase="eval", evaluation=raison, success=False,
+            duration_ms=0, model_used="garde-fou-decouverte",
+        )
+        _plan_apres, _ = _mark_step_attempt(
+            plan_json, current_step_id, success=False, reason=raison,
+        )
+        return {
+            "last_eval_success": False,
+            "last_eval_reason": raison,
+            "consecutive_failures": state.get("consecutive_failures", 0) + 1,
+            "plan_json": _plan_apres,
+        }
+
     # ── Action déjà jouée à l'identique ────────────────────────────────
     # Verdict rendu SANS appel au modèle : payer l'évaluation d'une action
     # dont on sait qu'elle n'apprend rien serait doublement perdant. Le
@@ -2154,7 +2268,15 @@ async def eval_node(state: MissionState) -> dict:
         }
         if _all_terminal:
             out["done"] = True
+            # « done/skipped » est exact et muet. Une spec dont l'étape clé a
+            # été sautée se terminait sur cette phrase, et l'utilisateur
+            # découvrait le livrable manquant sur son Drive. Troisième et
+            # dernier chemin de terminaison à dire la vérité (les deux autres
+            # : plus d'étape en attente, et le verdict `all_done`).
+            _aveu_spec = _abandon_notice(new_plan_json)
             out["final_summary"] = (
+                f"Mission structurée terminée, mais {_aveu_spec}"
+                if _aveu_spec else
                 "Mission structurée terminée — tous les steps de la spec "
                 "sont done/skipped."
             )

@@ -200,7 +200,7 @@ async def test_actor_getter_passes_tier(monkeypatch):
         def bind_tools(self, _tools):
             return "BOUND"
 
-    async def _no_filter(_tools, _hint, _goal, _desc):
+    async def _no_filter(_tools, _hint, _goal, _desc, mission_id="", step_tools=()):
         return []
 
     async def _no_learned(tools, _uid):

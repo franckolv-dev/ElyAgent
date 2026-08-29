@@ -117,6 +117,24 @@ MANDATE_LLM_TIERS: Final[frozenset[str]] = frozenset({"simple", "medium", "compl
 # ── Modèle ───────────────────────────────────────────────────────────────────
 
 
+def _tool_exists(name: str) -> bool:
+    """L'outil est-il enregistré ? Permissif quand le registre est muet.
+
+    La validation d'une spec ne doit pas dépendre de l'ordre de démarrage :
+    si le registre n'est pas encore peuplé (import isolé, tâche hors app),
+    on ACCEPTE plutôt que de refuser une spec correcte. Le prix d'un faux
+    négatif — une spec valide rejetée — est plus élevé que celui d'un nom
+    d'outil qui passe et se signalera à l'exécution.
+    """
+    try:
+        from app.skills import get_skill_registry
+
+        connus = get_skill_registry().all_tool_names()
+    except Exception:  # noqa: BLE001 — la validation ne casse jamais
+        return True
+    return True if not connus else name in connus
+
+
 @dataclass(frozen=True)
 class HandlerCall:
     """Une action de handler parsée : ``ask_user("…")`` → action + message."""
@@ -152,6 +170,9 @@ class SpecStep:
     id: str
     do: str
     foreach: str | None = None
+    # Outils que l'étape doit employer, nommés par l'auteur de la spec.
+    # Vide = on s'en remet aux heuristiques de sélection, comme avant.
+    tools: tuple[str, ...] = ()
     # Clé = nom du cas SANS le préfixe on_ (ex. "ambiguous", "error",
     # "in_liquidation"). Libre : les edge-cases sont métier par nature.
     handlers: dict[str, HandlerCall] = field(default_factory=dict)
@@ -443,8 +464,41 @@ def parse_mission_spec(text: str, *, allow_mandate: bool = True) -> MissionSpec:
             errors.append(f"{where} : 'foreach' doit être une chaîne non vide")
             foreach = None
 
+        # ── `tools` : l'étape nomme ses outils ──────────────────────
+        # Sans ce champ, `build_plan_from_spec` posait `tool_hint: None` et
+        # une mission structurée perdait le signal le plus précis de la
+        # sélection — celui dont les missions libres disposent via le
+        # planificateur. Mesuré le 28/08 : pour « Crée un Google Sheet », la
+        # sélection proposait `sheets_batch_update` et PAS
+        # `sheets_create_spreadsheet`. Plus la mission était structurée,
+        # moins elle savait quoi appeler.
+        tools: tuple[str, ...] = ()
+        raw_tools = raw.get("tools")
+        if raw_tools is not None:
+            if isinstance(raw_tools, str):
+                raw_tools = [raw_tools]
+            if not isinstance(raw_tools, list) or not all(
+                isinstance(x, str) and x.strip() for x in raw_tools
+            ):
+                errors.append(
+                    f"{where} : 'tools' doit être un nom d'outil ou une "
+                    f"liste de noms d'outils"
+                )
+            else:
+                noms = tuple(x.strip() for x in raw_tools)
+                # Un nom d'outil faux part en silence à l'exécution : la
+                # sélection ne le trouve pas, l'agent improvise. Mieux vaut
+                # refuser à la création, quand l'auteur est là pour corriger.
+                inconnus = [n for n in noms if not _tool_exists(n)]
+                if inconnus:
+                    errors.append(
+                        f"{where} : outil(s) inconnu(s) dans 'tools' : "
+                        f"{', '.join(inconnus)}"
+                    )
+                tools = noms
+
         handlers: dict[str, HandlerCall] = {}
-        known_keys = {"id", "do", "foreach"}
+        known_keys = {"id", "do", "foreach", "tools"}
         for key, value in raw.items():
             if key in known_keys:
                 continue
@@ -462,6 +516,7 @@ def parse_mission_spec(text: str, *, allow_mandate: bool = True) -> MissionSpec:
             id=step_id or f"_invalid_{idx}",
             do=(do or "").strip(),
             foreach=(foreach or None) and foreach.strip(),
+            tools=tools,
             handlers=handlers,
         ))
 
