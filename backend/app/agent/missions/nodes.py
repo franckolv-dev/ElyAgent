@@ -1345,19 +1345,6 @@ from app.services.mission_spec_runtime import (  # noqa: E402
 )
 
 
-async def _archive_step_output(
-    mission_id: str, step_id: str, item_index: int, output: str,
-) -> None:
-    """Archive la sortie d'une étape, en gardant de quoi la réexploiter."""
-    from app.services import mission_spec_runtime as msr
-
-    await msr.ensure_step_run(mission_id, step_id, item_index, None)
-    await msr.set_step_run_status(
-        mission_id, step_id, item_index, status="done",
-        output=(output or "")[:STEP_OUTPUT_ARCHIVE_CHARS],
-    )
-
-
 async def _foreach_source(mission_id: str, step: dict) -> str:
     """Le texte source d'un `foreach`, pour en extraire les items.
 
@@ -1671,7 +1658,17 @@ async def act_node(state: MissionState) -> dict:
         if current_step.get("foreach"):
             # La source d'un foreach est l'étape qu'il NOMME, pas le
             # contexte général (cf. `_foreach_source`).
-            _expand_ctx = await _foreach_source(mission_id, current_step)
+            #
+            # Elle n'est lue qu'à l'expansion À FROID : `expand_foreach` est
+            # idempotent et rend tout de suite dès qu'il existe des items.
+            # La charger avant lui ferait relire l'archive de l'étape source
+            # — jusqu'à STEP_OUTPUT_ARCHIVE_CHARS de texte — à chaque tick,
+            # pour un résultat aussitôt jeté : N-1 lectures pour rien sur un
+            # foreach de N items.
+            _deja_etendu = await msr.list_step_runs(mission_id, current_step_id)
+            _expand_ctx = "" if _deja_etendu else await _foreach_source(
+                mission_id, current_step,
+            )
             _runs = await msr.expand_foreach(
                 mission_id, user_id, current_step, _expand_ctx,
             )
@@ -2268,7 +2265,11 @@ async def eval_node(state: MissionState) -> dict:
             await msr.set_step_run_status(
                 mission_id, current_step_id or "?", _idx,
                 status="done",
-                output=(state.get("last_tool_output") or "")[:STEP_OUTPUT_ARCHIVE_CHARS],
+                # Pas de coupe ici : `set_step_run_status` est l'unique
+                # tronqueur de l'archive. Deux tranches pour une règle, même
+                # avec la même constante, c'est la dérive qu'on vient de
+                # retirer (un `[:1500]` appelant sur un `[:5000]` écrivain).
+                output=state.get("last_tool_output") or "",
                 note=reason[:500] if reason else None,
             )
             _step = next(

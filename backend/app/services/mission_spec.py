@@ -192,13 +192,15 @@ class SpecStep:
 
     @property
     def foreach_ref(self) -> str | None:
-        """Step id référencé par ``foreach`` quand il utilise la forme
-        ``{{ step.output }}`` ; None pour la forme texte libre (interprétée
-        par le LLM à l'exécution)."""
-        if not self.foreach:
-            return None
-        m = _FOREACH_REF_RE.match(self.foreach.strip())
-        return m.group(1) if m else None
+        """Step id référencé par ``foreach``, ou None pour la forme libre.
+
+        Adaptateur sur ``foreach_ref_of`` : la règle d'extraction vit à UN
+        seul endroit. Dupliquée, elle divergerait entre le chemin dataclass
+        (validation) et le chemin dict (``act_node``) — et une validation
+        qui dit « la référence pointe vers l'étape X » pendant que
+        l'exécution en cherche une autre est un silence, pas une erreur.
+        """
+        return foreach_ref_of(self.foreach)
 
 
 @dataclass(frozen=True)
