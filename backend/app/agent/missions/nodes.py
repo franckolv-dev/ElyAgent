@@ -2120,6 +2120,7 @@ Tu réponds STRICTEMENT en JSON :
   "success": true|false,
   "progress": true|false,
   "reason": "<une phrase max>",
+  "step_result": "<ce que l'étape SUIVANTE doit voir, ou \\"\\">",
   "all_done": true|false
 }}
 
@@ -2144,6 +2145,30 @@ DÉFINITIONS PRÉCISES (lis-les avant de répondre) :
   Mets progress=false quand l'appel n'a rien apporté : erreur technique,
   hors sujet, ou simple répétition de ce qui était déjà connu.
   Quand success=true, "progress" est ignoré.
+
+- "step_result" = LE RÉSULTAT DE L'ÉTAPE, tel que l'étape suivante doit le
+  lire. C'est lui qui sera archivé et repris par `{{{{ <étape>.output }}}}`.
+
+  Beaucoup d'étapes demandent un travail SUR la sortie de l'outil : extraire,
+  filtrer, mettre en forme, ne garder que N éléments. L'outil, lui, rend ce
+  qu'il rend. Ce champ est le seul endroit où cette moitié-là de l'étape peut
+  exister — il n'y a pas d'outil « extrais » ni d'outil « résume ».
+
+  Laisse-le à "" quand la sortie brute de l'outil EST déjà la réponse
+  (c'est le cas courant : ne recopie jamais l'outil pour le plaisir).
+  Remplis-le quand l'étape demandait une forme précise.
+
+  Exemple, l'étape qui a tout fait rater le 30/08/2026 :
+    Étape : « Cherche des catalogues de sociétés de négoce. Rends une liste
+             de 5 noms de sociétés, une par ligne. »
+    Sortie de web_search : 10 titres de catalogues avec leurs URL.
+    → step_result = les 5 noms de sociétés, un par ligne, et RIEN d'autre.
+    Archivée telle quelle, la liste de titres a fait rendre [] à l'étape
+    suivante, qui devait itérer dessus.
+
+  N'invente jamais : ce champ se dérive de la sortie de l'outil, il ne
+  s'imagine pas. Si l'étape demandait 5 éléments et que la sortie n'en
+  contient que 2, mets-en 2.
 
   La cohérence outil ↔ étape aide à trancher. On distingue 3 types :
 
@@ -2392,12 +2417,20 @@ async def eval_node(state: MissionState) -> dict:
         (s for s in plan_json.get("steps", []) if s.get("id") == current_step_id),
         {"description": "?"},
     )
+    from app.services.mission_spec_runtime import STEP_OUTPUT_ARCHIVE_CHARS
 
     prompt = _EVAL_SYSTEM.format(
         goal=state.get("goal", "?"),
         step_desc=current_step.get("description", "?"),
         tool_name=state.get("last_tool_name", "?"),
-        tool_output=(state.get("last_tool_output", "") or "")[:2000],
+        # Aligné sur ce qui sera ARCHIVÉ : l'évaluateur doit maintenant
+        # dériver `step_result` de cette sortie, et on ne résume pas
+        # fidèlement ce qu'on ne nous a pas montré. La coupe à 2 000
+        # caractères cachait le dernier quart de la sortie de `societes`
+        # (2 691 car) le 30/08/2026.
+        tool_output=(state.get("last_tool_output", "") or "")[
+            :STEP_OUTPUT_ARCHIVE_CHARS
+        ],
     )
     # Cycle PII missions — l'évaluateur voit des placeholders, son verdict
     # (reason, final_summary) est dé-anonymisé avant parse/persist.
@@ -2418,9 +2451,21 @@ async def eval_node(state: MissionState) -> dict:
         # Absent par défaut : un modèle qui ignore le champ se comporte
         # exactement comme avant — l'échec reste un échec.
         progress = bool(verdict.get("progress", False))
+        # Le résultat de l'étape, quand il diffère de la sortie de l'outil.
+        # Vide = la sortie brute est déjà la réponse (cas courant).
+        step_result = str(verdict.get("step_result") or "").strip()
     except Exception as exc:
         logger.warning("[mission %s] eval: JSON parse failed (%s) — assuming success", mission_id, exc)
         success, reason, all_done, progress = True, "Parse failed, assumed success", False, False
+        step_result = ""
+
+    if step_result:
+        logger.info(
+            "[mission %s] eval: résultat d'étape %s retenu (%d car) à la "
+            "place de la sortie brute de %s (%d car)",
+            mission_id, current_step_id, len(step_result),
+            state.get("last_tool_name"), len(state.get("last_tool_output") or ""),
+        )
 
     # ── L'étape avance, elle n'est pas finie ────────────────────────────
     # Une étape peut demander plusieurs actes : « ajoute au fichier X »
@@ -2483,11 +2528,18 @@ async def eval_node(state: MissionState) -> dict:
             await msr.set_step_run_status(
                 mission_id, current_step_id or "?", _idx,
                 status="done",
+                # LE RÉSULTAT DE L'ÉTAPE, pas la sortie de son outil.
+                # `{{ <étape>.output }}` lit cette colonne : y archiver le
+                # dump brut condamnait toute étape qui demande un travail
+                # SUR la sortie (« rends une liste de 5 noms ») — l'étape
+                # `contacts` recevait 10 titres de catalogues Calaméo et
+                # rendait [] (30/08/2026).
+                #
                 # Pas de coupe ici : `set_step_run_status` est l'unique
                 # tronqueur de l'archive. Deux tranches pour une règle, même
                 # avec la même constante, c'est la dérive qu'on vient de
                 # retirer (un `[:1500]` appelant sur un `[:5000]` écrivain).
-                output=state.get("last_tool_output") or "",
+                output=step_result or state.get("last_tool_output") or "",
                 note=reason[:500] if reason else None,
             )
             _step = next(

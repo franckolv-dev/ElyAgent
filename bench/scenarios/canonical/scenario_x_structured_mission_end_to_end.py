@@ -67,7 +67,7 @@ steps:
     tools: [drive_list_files, drive_create_file]
 
   - id: societes
-    do: "Cherche des sociétés et rends leurs noms, un par ligne."
+    do: "Cherche des catalogues et rends les noms des sociétés, un par ligne."
     tools: [web_search]
 
   - id: tableur
@@ -85,8 +85,19 @@ steps:
     tools: [drive_update_file]
 """.strip()
 
-# Ce que la recherche « rend » — deux sociétés, une par ligne.
-_SOURCE_SOCIETES = "Résultats :\nACME Négoce\nGamma Distribution"
+# Ce que l'outil de recherche rend VRAIMENT : des titres de pages et des
+# URL, pas des noms de sociétés. C'est le dump qui, archivé tel quel comme
+# sortie de l'étape, a fait rendre `[]` au foreach le 30/08/2026.
+_SOURCE_SOCIETES = (
+    "Résultats Google [SearXNG] (10 résultats) :\n"
+    "1. CATALOGUE PARTICULIERS ACME CCB 2026 - Calaméo\n"
+    "   https://www.calameo.com/books/0061304688673e9209636\n"
+    "2. Catalogue Gamma 2026 Prix Publics - Calaméo\n"
+    "   https://www.calameo.com/books/0028948002c9665ec3cb1\n"
+)
+
+# Ce que l'ÉTAPE rend, une fois son « rends une liste de noms » honoré.
+_RESULTAT_SOCIETES = "ACME Négoce\nGamma Distribution"
 
 
 def _jour_et_annee() -> tuple[str, str]:
@@ -115,7 +126,8 @@ class _FakeLLM:
 
         # 1. Extraction des items d'un foreach.
         if "Extrais la LISTE des items" in texte:
-            self._j["expand_source_len"] = _source_len(texte)
+            self._j["expand_source"] = _source_text(texte)
+            self._j["expand_source_len"] = len(self._j["expand_source"])
             return types.SimpleNamespace(
                 content=json.dumps(["ACME Négoce", "Gamma Distribution"])
             )
@@ -134,11 +146,17 @@ class _FakeLLM:
                     "all_done": False,
                 }))
             echec = dernier == "drive_update_file"
-            return types.SimpleNamespace(content=json.dumps({
+            verdict = {
                 "success": not echec,
                 "reason": "consignation impossible" if echec else "fait",
                 "all_done": False,
-            }))
+            }
+            # L'étape demandait « rends les noms » : son résultat n'est pas
+            # le dump de l'outil. C'est ce champ qui doit être archivé, et
+            # que le foreach doit lire.
+            if dernier == "web_search":
+                verdict["step_result"] = _RESULTAT_SOCIETES
+            return types.SimpleNamespace(content=json.dumps(verdict))
 
         # 3. Acteur : il choisit un outil. On note ce qu'il a REÇU.
         self._j.setdefault("prompts_acteur", []).append(texte)
@@ -161,13 +179,13 @@ def _prompt_text(messages) -> str:
     return "\n".join(morceaux)
 
 
-def _source_len(prompt: str) -> int:
-    """Taille du bloc « son résultat » du prompt d'expansion."""
+def _source_text(prompt: str) -> str:
+    """Le bloc « son résultat » du prompt d'expansion, tel que reçu."""
     debut = prompt.find("son résultat :")
     if debut < 0:
-        return 0
+        return ""
     fin = prompt.find("Étape à itérer", debut)
-    return len(prompt[debut + len("son résultat :"):fin].strip())
+    return prompt[debut + len("son résultat :"):fin].strip()
 
 
 def _etape_courante(prompt: str) -> str:
@@ -199,7 +217,7 @@ def _tool_call_for(prompt: str, journal: dict) -> list[dict]:
             return _call("drive_list_files", {"query": "historique.md"})
         return _call("drive_create_file", {"name": "historique.md",
                                            "content": ""})
-    if "rends leurs noms" in etape:
+    if "rends les noms" in etape:
         return _call("web_search", {"query": "sociétés de négoce"})
     if "Crée le Google Sheet" in etape:
         # La date vient du prompt — c'est le défaut 6 qu'on vérifie.
@@ -352,6 +370,15 @@ async def run() -> dict:
         # Défaut 5 : le foreach s'étend depuis la sortie de l'étape nommée.
         "foreach_etendu_en_items": len(items_contacts) == 2,
         "source_du_foreach_non_vide": journal.get("expand_source_len", 0) > 0,
+        # Défaut 8 (30/08) : ce que le foreach reçoit est le RÉSULTAT de
+        # l'étape, pas le dump de son outil. Archivé brut, le dump de
+        # titres Calaméo faisait rendre `[]` à l'expansion.
+        "foreach_recoit_le_resultat_pas_le_dump": (
+            journal.get("expand_source", "").strip() == _RESULTAT_SOCIETES
+        ),
+        "le_dump_de_l_outil_ne_fuit_pas": "SearXNG" not in journal.get(
+            "expand_source", ""
+        ),
         # La chaîne produit le livrable : une ligne par item.
         "une_ligne_par_item": len(journal["lignes_ecrites"]) == 2,
         "lignes_portent_les_items": {r[0] for r in journal["lignes_ecrites"]}
