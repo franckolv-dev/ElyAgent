@@ -1468,11 +1468,21 @@ async def _load_recent_step_outputs(mission_id: str, max_steps: int = 8, max_cha
     )
 
 
-def _mark_plan_step(plan_json: dict, step_id: str, status: str) -> dict:
-    """Copie de plan_json avec le statut d'un step mis à jour (Sprint 4c)."""
+def _mark_plan_step(
+    plan_json: dict, step_id: str, status: str, reason: str = "",
+) -> dict:
+    """Copie de plan_json avec le statut d'un step mis à jour (Sprint 4c).
+
+    `reason` accompagne un abandon : c'est ce que `_abandon_notice` affiche
+    sous l'étape. Une étape marquée ``skipped`` sans raison s'avoue sans
+    dire pourquoi, ce qui ne vaut guère mieux que de se taire.
+    """
+    marque = {"status": status}
+    if reason:
+        marque["abandon_reason"] = reason
     out = dict(plan_json)
     out["steps"] = [
-        {**s, "status": status} if s.get("id") == step_id else s
+        {**s, **marque} if s.get("id") == step_id else s
         for s in out.get("steps", [])
     ]
     return out
@@ -1613,10 +1623,11 @@ def _abandon_notice(plan_json: Optional[dict]) -> str:
         + (f" — {s['abandon_reason']}" if s.get("abandon_reason") else "")
         for s in abandonnees
     )
-    return (
-        f"{len(abandonnees)} étape(s) abandonnée(s) après "
-        f"{MAX_STEP_ATTEMPTS} tentatives :\n{details}"
-    )
+    # L'en-tête n'annonce plus « après N tentatives » : toutes les étapes
+    # abandonnées ne le sont pas pour cette raison. Un `foreach` dont aucun
+    # item n'aboutit est abandonné sans avoir été rejoué — la raison propre
+    # à chaque étape la dit, l'en-tête n'a pas à la deviner.
+    return f"{len(abandonnees)} étape(s) abandonnée(s) :\n{details}"
 
 
 def _next_pending_step(plan_json: Optional[dict]) -> Optional[dict]:
@@ -1715,13 +1726,38 @@ async def act_node(state: MissionState) -> dict:
                             f"{_waiting_n} item(s) en attente de réponse utilisateur"
                         ),
                     }
-                # Tous les items terminaux → le step foreach est terminé.
+                # Tous les items sont terminaux. « Terminal » n'est pas
+                # « réussi » : `step_progress` compte aussi `skipped` et
+                # `failed`, et un foreach dont tout a été sauté se concluait
+                # « foreach terminé (1/1 items) » — statut `done` sur le plan,
+                # donc invisible pour `_abandon_notice`, donc une mission qui
+                # s'annonce accomplie sans rien avoir produit (30/08/2026).
+                _ok_n = sum(1 for r in _runs if r.status == "done")
+                _fini = (
+                    f"foreach terminé ({_ok_n}/{_total_n} item(s) aboutis)"
+                    if _ok_n
+                    else f"aucun des {_total_n} item(s) n'a abouti"
+                )
+                logger.info(
+                    "[mission %s] act: foreach %s — %s",
+                    mission_id, current_step_id, _fini,
+                )
+                # Pas de droit à l'erreur ici : les items sont DÉJÀ terminaux,
+                # il n'y a rien à rejouer. L'étape est abandonnée tout de
+                # suite, avec sa raison.
+                _plan_suite = (
+                    _mark_plan_step(plan_json, current_step_id, "done")
+                    if _ok_n
+                    else _mark_plan_step(
+                        plan_json, current_step_id, "skipped", _fini,
+                    )
+                )
                 return {
-                    "plan_json": _mark_plan_step(plan_json, current_step_id, "done"),
+                    "plan_json": _plan_suite,
                     "current_step_id": current_step_id,
                     "last_tool_name": None,
-                    "last_eval_success": True,
-                    "last_eval_reason": f"foreach terminé ({_done_n}/{_total_n} items)",
+                    "last_eval_success": bool(_ok_n),
+                    "last_eval_reason": _fini,
                 }
             await msr.set_step_run_status(
                 mission_id, current_step_id, _run.item_index,

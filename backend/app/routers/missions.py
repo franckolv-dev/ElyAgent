@@ -666,7 +666,7 @@ async def restart(
     m = await _own_or_404(mission_id, current_user)
 
     from app.database import async_session
-    from app.models.mission import Mission, MissionPlan, MissionStep
+    from app.models.mission import Mission, MissionPlan, MissionStep, MissionStepRun
     from sqlalchemy import delete as _sqldel
     from datetime import datetime, timezone
 
@@ -674,6 +674,16 @@ async def restart(
         if not body.keep_history:
             await db.execute(_sqldel(MissionStep).where(MissionStep.mission_id == mission_id))
             await db.execute(_sqldel(MissionPlan).where(MissionPlan.mission_id == mission_id))
+            # `mission_step_runs` porte l'état par ITEM : statut terminal,
+            # note, sortie archivée, compteur de tentatives. L'oublier ici
+            # faisait hériter une mission relancée des verdicts de la
+            # précédente (30/08/2026) — un `foreach` dont l'unique item avait
+            # été `skipped` la veille était rendu tel quel par
+            # `expand_foreach`, idempotent et silencieux : l'étape sautait en
+            # 0,1 s, sans action ni ligne de journal.
+            await db.execute(
+                _sqldel(MissionStepRun).where(MissionStepRun.mission_id == mission_id)
+            )
 
         fresh = await db.get(Mission, mission_id)
         if fresh is None:
