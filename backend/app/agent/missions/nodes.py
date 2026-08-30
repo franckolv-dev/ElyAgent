@@ -812,7 +812,15 @@ def _boost_by_action_keywords(text: str, all_tools: list) -> list:
 _SEM_WEIGHT = 0.5   # le sémantique affine, le lexical mène (leçon find_tool)
 _SEM_FLOOR = 0.15   # score hybride en dessous = bruit, on ne bind pas
 _TOOL_CAP = 15      # ~15 outils max par step (payload + focus des petits modèles)
-_GENERIC_TOOLS = {"web_search", "web_browse", "smart_knowledge_query"}
+# `web_browse` y figurait — il n'existe nulle part ailleurs dans le dépôt.
+# Le filet annonçait trois outils et n'en livrait que deux, en silence :
+# un nom qui ne correspond à rien ne lève pas, il ne s'ajoute simplement
+# jamais. Le lecteur de page réellement enregistré est `web_extract`.
+_GENERIC_TOOLS = {"web_search", "web_extract", "smart_knowledge_query"}
+
+# Ce qui est lié quoi qu'il arrive : le filet de repli, plus `find_tool`.
+# Réclamer un outil absent ne doit pas dépendre d'un tirage sémantique.
+_RESERVES = _GENERIC_TOOLS | {"find_tool"}
 
 # Cache module-level des embeddings du catalogue — invalidé sur tools_version
 # (bumpé à chaque register/unregister, y compris hot-reload MCP).
@@ -899,9 +907,10 @@ async def _filter_tools_for_step(
        telegram_send_message). Best-effort : degrades to 1-3 only when the
        encoder is unavailable ; kill-switch MISSION_SEMANTIC_TOOLS_DISABLED.
 
-    The generic safety net (web_search, web_browse, smart_knowledge_query)
+    The generic safety net (web_search, web_extract, smart_knowledge_query)
     keeps reserved slots so a wrong semantic guess never starves the step
-    of a fallback.
+    of a fallback. `find_tool` y est joint : réclamer un outil absent de la
+    sélection ne doit dépendre d'aucune heuristique.
     """
     if not all_tools:
         return all_tools
@@ -955,6 +964,10 @@ async def _filter_tools_for_step(
                 )
         except Exception as exc:  # noqa: BLE001 — un confort ne casse pas un tick
             logger.debug("act: découvertes non liées (%s)", exc)
+
+    # Tête incompressible : ce que la spec nomme et ce que `find_tool` a
+    # trouvé. Le cap peut rogner les heuristiques, jamais ces deux-là.
+    _tete = len(candidates)
 
     # ── 1. ACTION_KEYWORDS boost (highest priority — adds in head) ──
     boost_text = f"{goal} {current_step_desc}".strip()
@@ -1038,13 +1051,25 @@ async def _filter_tools_for_step(
         except Exception as exc:  # noqa: BLE001 — le ranking ne doit jamais casser le tick
             logger.warning("act: semantic re-rank skipped: %s", exc)
 
-    # Top up with generic must-haves so we always have a safety net
-    for t in all_tools:
-        if t.name in _GENERIC_TOOLS:
-            _add(t)
-
-    # Cap to avoid payload bloat (~15 tools handles 99% of cases)
-    return candidates[:_TOOL_CAP] if candidates else all_tools[:_TOOL_CAP]
+    # ── 5. Le filet, et de quoi RÉCLAMER ────────────────────────────
+    # `find_tool` en fait partie : c'est le seul moyen qu'a le modèle de
+    # dire « il me manque telle capacité » et de se voir lier l'outil au
+    # tick suivant (cf. 0b). Il n'y était pas — il n'arrivait que si le
+    # re-rank sémantique le pêchait au passage. Sur l'étape `memoire` de
+    # la mission « Prospection Print LinkedIn » (30/08/2026), le préfixe
+    # `drive` a rempli les 15 places à lui seul : ni `find_tool`, ni un
+    # seul outil du filet. Ely ne pouvait ni faire autrement, ni le dire.
+    #
+    # Et la réservation n'en était pas une : `fill_budget` gardait des
+    # places face au remplissage sémantique, mais la troncature finale les
+    # reprenait. On tronque donc AVANT d'ajouter le filet, sans jamais
+    # descendre sous la tête incompressible — les outils que la spec nomme
+    # et les découvertes de `find_tool` sont les deux seuls signaux du lot
+    # qui ne soient pas des heuristiques.
+    _filet = [t for t in all_tools if t.name in _RESERVES and t.name not in seen]
+    _place = max(_tete, _TOOL_CAP - len(_filet))
+    candidates = candidates[:_place] + _filet
+    return candidates if candidates else all_tools[:_TOOL_CAP]
 
 
 async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", current_step_desc: str = "", user_id: str = "", tier=None, mission_id: str = "", step_tools: tuple[str, ...] = ()) -> tuple[Any, list[tuple[str, Any]], list[Any]]:

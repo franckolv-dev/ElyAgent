@@ -39,8 +39,9 @@ def _catalog() -> list[_T]:
         _T("gmail_send_email", "Envoyer un e-mail via Gmail."),
         _T("drive_list_files", "Lister les fichiers Google Drive."),
         _T("web_search", "Recherche internet."),
-        _T("web_browse", "Ouvrir une page internet."),
+        _T("web_extract", "Lire le texte visible d'une page internet."),
         _T("smart_knowledge_query", "Interroger la base documentaire."),
+        _T("find_tool", "Trouver un outil ELY pour une capacite manquante."),
     ]
 
 
@@ -113,8 +114,9 @@ async def test_kill_switch_skips_semantic_stage(monkeypatch):
     tools = await mn._filter_tools_for_step(
         _catalog(), tool_hint=None, goal="objectif sans aucun mot-cle connu",
     )
-    # Aucun signal lexical → seul le filet générique reste.
-    assert {t.name for t in tools} == mn._GENERIC_TOOLS
+    # Aucun signal lexical → il reste le filet générique, et `find_tool`
+    # pour réclamer ce qui manque (30/08/2026).
+    assert {t.name for t in tools} == mn._RESERVES
 
 
 # ── re-rank sémantique hybride ───────────────────────────────────────────────
@@ -189,8 +191,9 @@ async def test_cap_respected_and_generic_net_reserved(monkeypatch):
     fillers = [_T(f"filler_{i:02d}", "outil de remplissage") for i in range(40)]
     catalog = fillers + [
         _T("web_search", "Recherche internet."),
-        _T("web_browse", "Ouvrir une page internet."),
+        _T("web_extract", "Lire le texte visible d'une page internet."),
         _T("smart_knowledge_query", "Interroger la base documentaire."),
+        _T("find_tool", "Trouver un outil ELY pour une capacite manquante."),
     ]
     _mock_semantic(
         monkeypatch,
