@@ -62,6 +62,10 @@ TAGS = ["medium"]
 _SPEC = """
 version: 1
 steps:
+  - id: historique
+    do: "Cherche le fichier historique.md et lis-le. S'il n'existe pas, crée-le vide."
+    tools: [drive_list_files, drive_create_file]
+
   - id: societes
     do: "Cherche des sociétés et rends leurs noms, un par ligne."
     tools: [web_search]
@@ -118,7 +122,18 @@ class _FakeLLM:
 
         # 2. Évaluation d'une action.
         if "success" in texte and "all_done" in texte:
-            echec = self._j.get("dernier_outil") == "drive_update_file"
+            dernier = self._j.get("dernier_outil")
+            # L'étape composée : chercher ne l'accomplit pas, mais fait
+            # avancer. C'est le verdict que l'évaluateur ne savait pas
+            # rendre — il validait la recherche et le fichier n'était
+            # jamais créé (30/08/2026).
+            if dernier == "drive_list_files":
+                return types.SimpleNamespace(content=json.dumps({
+                    "success": False, "progress": True,
+                    "reason": "fichier absent, il reste à le créer",
+                    "all_done": False,
+                }))
+            echec = dernier == "drive_update_file"
             return types.SimpleNamespace(content=json.dumps({
                 "success": not echec,
                 "reason": "consignation impossible" if echec else "fait",
@@ -175,6 +190,15 @@ def _tool_call_for(prompt: str, journal: dict) -> list[dict]:
         journal["dernier_outil"] = nom
         return [{"name": nom, "args": args, "id": f"call_{nom}"}]
 
+    if "historique.md" in etape:
+        # Deux actes, comme dans la vraie mission : on cherche, on ne
+        # trouve pas, puis on crée. Le second n'arrive que si le premier
+        # n'a pas consommé le droit à l'erreur de l'étape.
+        if not journal.get("historique_cherche"):
+            journal["historique_cherche"] = True
+            return _call("drive_list_files", {"query": "historique.md"})
+        return _call("drive_create_file", {"name": "historique.md",
+                                           "content": ""})
     if "rends leurs noms" in etape:
         return _call("web_search", {"query": "sociétés de négoce"})
     if "Crée le Google Sheet" in etape:
@@ -235,6 +259,11 @@ async def run() -> dict:
 
     async def _dispatch(tool_name, tool_args, _cid, _uid, **_kw):
         """Les outils rendent ce que rendrait Google, sans réseau."""
+        if tool_name == "drive_list_files":
+            return "Aucun fichier trouvé.", True
+        if tool_name == "drive_create_file":
+            journal["historique_cree"] = tool_args.get("name")
+            return "Fichier créé : historique.md", True
         if tool_name == "web_search":
             return _SOURCE_SOCIETES, True
         if tool_name == "sheets_create_spreadsheet":
@@ -268,9 +297,10 @@ async def run() -> dict:
             graph = build_mission_graph().compile(checkpointer=MemorySaver())
             config = {"configurable": {"thread_id": m.id}}
             etat: dict = {}
-            # Assez de ticks pour : 2 étapes simples + 2 items + memoire
-            # (2 tentatives) + la terminaison. Le graphe sort à chaque tick.
-            for _ in range(12):
+            # Assez de ticks pour : l'étape composée (2 actes) + 2 étapes
+            # simples + 2 items + memoire (2 tentatives) + la terminaison.
+            # Le graphe sort à chaque tick.
+            for _ in range(14):
                 etat = await graph.ainvoke(
                     {"mission_id": m.id, "user_id": uid, "goal": "prospecter"},
                     config=config,
@@ -304,6 +334,16 @@ async def run() -> dict:
         # Sheet » est dans sa description, la sélection le trouve sans la
         # spec.
         "outil_nomme_par_la_spec_lie": "drive_update_file" in noms_lies,
+        # Défaut 7 (30/08) : une étape qui demande DEUX actes va au bout.
+        # L'évaluateur validait le premier — « la recherche a correctement
+        # rapporté l'absence du fichier » — et le fichier n'était jamais
+        # créé. Rendre le verdict exigeant sans l'état « ça avance »
+        # l'aurait abandonnée à mi-chemin : MAX_STEP_ATTEMPTS vaut 2.
+        "etape_composee_va_au_bout": journal.get("historique_cree") == "historique.md",
+        "etape_composee_garde_son_droit_a_l_erreur": all(
+            r.status == "done" and r.attempts <= 1
+            for r in par_step.get("historique", [])
+        ),
         # Défaut 6 : l'acteur connaît la date — sinon il l'invente.
         "acteur_connait_la_date": all(
             frag in (journal.get("titre_tableur") or "")

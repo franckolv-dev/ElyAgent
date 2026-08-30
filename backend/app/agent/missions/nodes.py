@@ -59,6 +59,21 @@ logger = logging.getLogger(__name__)
 # disent la même règle et sont tenues ensemble par un test.
 MAX_STEP_ATTEMPTS: int = 2
 
+# Combien de fois de suite l'évaluateur peut dire « ça avance, ce n'est pas
+# fini » sur une même étape avant qu'on cesse de le croire.
+#
+# Une étape peut légitimement demander plusieurs actes — « ajoute au fichier
+# X » suppose de trouver son identifiant, puis d'écrire — et avancer n'est
+# pas échouer : un tour qui rapproche du résultat ne consomme pas le droit à
+# l'erreur ci-dessus. Sans quoi toute étape composée serait abandonnée à
+# mi-chemin, MAX_STEP_ATTEMPTS valant précisément 2.
+#
+# Mais « ça avance » sans borne serait une boucle infinie polie. Quatre
+# appels couvrent les étapes composées observées ; au-delà, le verdict
+# redevient un échec ordinaire et l'étape repart dans la mécanique de
+# tentatives.
+MAX_STEP_PROGRESS_TICKS: int = 4
+
 # Combien de fois une MÊME action (même outil, mêmes arguments) peut être
 # jouée dans une mission avant d'être refusée. La deuxième reste tolérée —
 # une action peut légitimement être rejouée après un échec, c'est le droit à
@@ -1627,6 +1642,32 @@ def _mark_step_attempt(
     return nouveau, abandonnee
 
 
+def _mark_step_progress(
+    plan_json: Optional[dict], step_id: Optional[str],
+) -> tuple[dict, bool]:
+    """Compte un tour d'avancée sur l'étape courante.
+
+    Le compteur vit dans `plan_json`, à côté de `attempts` : il est
+    checkpointé avec le reste de l'état et se réinitialise naturellement
+    d'une étape à l'autre, sans champ de graphe ni colonne de plus.
+
+    Returns:
+        Le plan mis à jour, et si la borne est atteinte — auquel cas
+        l'appelant retombe dans le traitement d'échec ordinaire.
+    """
+    nouveau = dict(plan_json or {})
+    epuise = False
+    etapes = []
+    for s in nouveau.get("steps", []):
+        if s.get("id") == step_id:
+            s = dict(s)
+            s["progress_ticks"] = int(s.get("progress_ticks") or 0) + 1
+            epuise = s["progress_ticks"] > MAX_STEP_PROGRESS_TICKS
+        etapes.append(s)
+    nouveau["steps"] = etapes
+    return nouveau, epuise
+
+
 def _abandon_notice(plan_json: Optional[dict]) -> str:
     """Aveu des étapes abandonnées, ou chaîne vide s'il n'y en a aucune.
 
@@ -2077,32 +2118,57 @@ Résultat brut de l'outil :
 Tu réponds STRICTEMENT en JSON :
 {{
   "success": true|false,
+  "progress": true|false,
   "reason": "<une phrase max>",
   "all_done": true|false
 }}
 
 DÉFINITIONS PRÉCISES (lis-les avant de répondre) :
 
-- "success" = l'étape qui vient de tourner s'est techniquement bien passée
-  (pas d'erreur, pas d'exception, le tool a renvoyé un résultat plausible)
-  ET l'outil utilisé est COMPATIBLE avec le type d'étape.
+- "success" = CE QUE L'ÉTAPE DEMANDE EST FAIT. Pas « l'outil a répondu »,
+  pas « l'outil était du bon genre » : le résultat décrit par l'étape est
+  obtenu. Relis l'étape en entier, y compris ses conditions.
 
-  La cohérence outil ↔ étape dépend du TYPE de l'étape. On distingue 3 types :
+  ⚠️ Une étape peut demander PLUSIEURS actes. « Cherche le fichier X, et
+  s'il n'existe pas, crée-le » n'est accomplie que si, à la fin, le fichier
+  existe. Un `list` qui rapporte fidèlement « aucun fichier trouvé » a
+  répondu à la première moitié et laissé la seconde en plan :
+  success=false, progress=true.
+
+- "progress" = l'appel a FAIT AVANCER l'étape sans l'achever. Récupérer
+  l'identifiant qu'il faudra pour écrire, lister pour trouver la cible,
+  lire ce qu'on doit ensuite modifier : c'est de l'avancée, pas un échec.
+  Une étape qui avance est rejouée sans consommer son droit à l'erreur ;
+  dis alors dans "reason" CE QU'IL RESTE À FAIRE, c'est ce que l'agent
+  lira au tour suivant.
+  Mets progress=false quand l'appel n'a rien apporté : erreur technique,
+  hors sujet, ou simple répétition de ce qui était déjà connu.
+  Quand success=true, "progress" est ignoré.
+
+  La cohérence outil ↔ étape aide à trancher. On distingue 3 types :
 
   1️⃣ ÉTAPE MUTATIVE (modifie le système — verbes : SUPPRIMER, ENVOYER, CRÉER,
      PARTAGER, EFFACER, MODIFIER, DÉPLACER, ENVOIE, POSTE, PUBLIE, etc.)
-     → STRICT : l'outil DOIT être un outil mutatif correspondant.
+     → STRICT : elle n'est accomplie que par un outil qui change l'état.
+       Un outil de lecture ne l'accomplit pas — mais s'il prépare l'écriture
+       (trouver l'identifiant de la cible, par exemple), c'est de l'avancée.
        - étape "Supprime les spams" + tool gmail_trash_by_category → success=true ✅
-       - étape "Supprime les spams" + tool gmail_search           → success=FALSE ❌
-         (search ne supprime pas — il faut replan vers gmail_trash_emails)
+       - étape "Supprime les spams" + tool gmail_search
+         → success=FALSE, progress=TRUE (les IDs serviront à la suppression)
        - étape "Envoie le résumé"   + tool gmail_send_email       → success=true ✅
-       - étape "Envoie le résumé"   + tool gmail_list_emails      → success=FALSE ❌
+       - étape "Envoie le résumé"   + tool gmail_list_emails
+         → success=FALSE, progress=TRUE si la liste sert au résumé à envoyer
 
   2️⃣ ÉTAPE DE LECTURE (récupère de l'info — verbes : LISTER, CHERCHER, RÉCUPÉRER,
      LIRE, CONSULTER, OBTENIR, FETCH, GET, VOIR)
-     → SOUPLE : un outil list/search/read/get est cohérent.
+     → SOUPLE : un outil list/search/read/get l'accomplit.
        - étape "Liste mes emails non lus" + tool gmail_list_emails → success=true ✅
        - étape "Récupère la météo"        + tool weather_get        → success=true ✅
+       ⚠️ MAIS regarde si l'étape ne demande QUE ça. Un verbe de lecture en
+       tête ne rend pas l'étape entièrement lue :
+       - étape "Cherche le fichier X et lis-le. S'il n'existe pas, crée-le
+         vide." + tool drive_list_files qui ne trouve rien
+         → success=FALSE, progress=TRUE (il reste à créer le fichier)
 
   3️⃣ ÉTAPE DE SYNTHÈSE / ANALYSE (le LLM raisonne sur les données — verbes :
      RÉSUMER, ANALYSER, COMPARER, CONCLURE, FORMATER, REFORMULER, IDENTIFIER,
@@ -2120,9 +2186,11 @@ DÉFINITIONS PRÉCISES (lis-les avant de répondre) :
        NE JAMAIS retourner FALSE pour « l'outil ne fait pas de résumé/analyse » :
        cette analyse incombe au LLM, pas au tool.
 
-  Règle simple : ne mets success=FALSE QUE si l'étape est MUTATIVE (catégorie 1)
-  et que l'outil ne change PAS l'état du système. Les étapes de lecture et de
-  synthèse sont toujours validées tant que le tool a réussi techniquement.
+  Règle simple : success=true quand ce que l'étape demande est OBTENU, en
+  entier. Sinon, demande-toi si l'appel a rapproché du résultat : oui →
+  progress=true, non → progress=false. Ne confonds pas « l'outil a bien
+  fonctionné » avec « l'étape est faite » : c'est cette confusion qui a
+  validé une recherche de fichier là où l'étape demandait aussi de le créer.
 
 - "all_done" = ⚠️ TRÈS STRICT ⚠️ — vrai UNIQUEMENT si l'EFFET RÉEL ATTENDU
   par le goal global est CONCRÈTEMENT réalisé sur le système cible.
@@ -2347,9 +2415,62 @@ async def eval_node(state: MissionState) -> dict:
         success = bool(verdict.get("success", False))
         reason = str(verdict.get("reason", ""))[:500]
         all_done = bool(verdict.get("all_done", False))
+        # Absent par défaut : un modèle qui ignore le champ se comporte
+        # exactement comme avant — l'échec reste un échec.
+        progress = bool(verdict.get("progress", False))
     except Exception as exc:
         logger.warning("[mission %s] eval: JSON parse failed (%s) — assuming success", mission_id, exc)
-        success, reason, all_done = True, "Parse failed, assumed success", False
+        success, reason, all_done, progress = True, "Parse failed, assumed success", False, False
+
+    # ── L'étape avance, elle n'est pas finie ────────────────────────────
+    # Une étape peut demander plusieurs actes : « ajoute au fichier X »
+    # suppose d'en trouver l'identifiant, puis d'écrire. Facturer le
+    # premier acte comme une tentative ratée abandonnerait l'étape à
+    # mi-chemin — MAX_STEP_ATTEMPTS vaut 2, et c'est exactement ce qu'une
+    # étape composée consomme. Avancer n'est pas échouer.
+    #
+    # Borné : au-delà de MAX_STEP_PROGRESS_TICKS, « ça avance » cesse d'être
+    # cru et le verdict retombe dans le traitement d'échec ordinaire.
+    if not success and progress:
+        plan_apres, epuise = _mark_step_progress(plan_json, current_step_id)
+        if not epuise:
+            logger.info(
+                "[mission %s] eval: étape %s avance sans être finie — %s",
+                mission_id, current_step_id, reason,
+            )
+            if _is_spec:
+                from app.services import mission_spec_runtime as msr
+                await msr.rollback_attempt(
+                    mission_id, current_step_id or "?",
+                    state.get("current_item_index") or 0,
+                    note=f"En cours : {reason}",
+                )
+            await mission_service.add_step(
+                mission_id, phase="eval", evaluation=reason, success=False,
+                duration_ms=elapsed_ms, model_used="medium-tier",
+            )
+            return {
+                "last_eval_success": False,
+                "last_eval_reason": reason,
+                # Avancer ne rapproche pas d'un replan : le compteur
+                # d'échecs consécutifs sert à changer de STRATÉGIE, pas à
+                # sanctionner une étape qui progresse.
+                "consecutive_failures": 0,
+                "plan_json": plan_apres,
+                "current_item_index": None,
+            }
+        # Le compteur reste au plan : sans ça, un piétinement repartirait de
+        # zéro à chaque tour et la borne ne bornerait rien.
+        plan_json = plan_apres
+        reason = (
+            f"{reason} — mais l'étape n'a toujours pas abouti après "
+            f"{MAX_STEP_PROGRESS_TICKS} appels"
+        )[:500]
+        logger.warning(
+            "[mission %s] eval: étape %s piétine — « ça avance » n'est plus "
+            "cru au-delà de %d appels",
+            mission_id, current_step_id, MAX_STEP_PROGRESS_TICKS,
+        )
 
     # ── Sprint 4c J2 — mission structurée : statuts par item, jamais de
     # replan (la spec est le contrat). Le step foreach n'est marqué done
