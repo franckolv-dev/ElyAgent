@@ -37,7 +37,7 @@ import re
 import uuid
 from typing import Any, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 
 from app.database import async_session
 from app.models.mission import Mission, MissionStepRun
@@ -175,6 +175,40 @@ async def set_step_run_status(
     async with async_session() as db:
         if bump_attempts:
             values["attempts"] = MissionStepRun.attempts + 1
+        await db.execute(
+            update(MissionStepRun).where(
+                MissionStepRun.mission_id == mission_id,
+                MissionStepRun.step_id == step_id,
+                MissionStepRun.item_index == item_index,
+            ).values(**values)
+        )
+        await db.commit()
+
+
+async def rollback_attempt(
+    mission_id: str, step_id: str, item_index: int, *, note: str = "",
+) -> None:
+    """Rend la tentative comptée à l'entrée du tick, et repasse l'item pending.
+
+    `act_node` incrémente `attempts` AVANT d'agir, pour qu'un tick qui meurt
+    en cours de route soit tout de même compté. Mais un tick qui a fait
+    AVANCER l'étape sans l'achever n'est pas une tentative perdue : la lui
+    facturer abandonnerait toute étape composée à mi-chemin, `AUTO_SKIP_ATTEMPTS`
+    valant 2 (30/08/2026).
+
+    Le plancher à zéro évite qu'un enchaînement inattendu ne rende plus de
+    tentatives qu'il n'en a été compté.
+    """
+    async with async_session() as db:
+        values: dict[str, Any] = {
+            "status": "pending",
+            "attempts": case(
+                (MissionStepRun.attempts > 0, MissionStepRun.attempts - 1),
+                else_=0,
+            ),
+        }
+        if note:
+            values["note"] = note[:2000]
         await db.execute(
             update(MissionStepRun).where(
                 MissionStepRun.mission_id == mission_id,
