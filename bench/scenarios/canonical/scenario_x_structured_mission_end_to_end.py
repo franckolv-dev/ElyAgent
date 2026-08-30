@@ -142,7 +142,9 @@ class _FakeLLM:
             if dernier == "drive_list_files":
                 return types.SimpleNamespace(content=json.dumps({
                     "success": False, "progress": True,
-                    "reason": "fichier absent, il reste à le créer",
+                    # Ce texte est le seul canal vers l'acteur : c'est lui
+                    # qu'on vérifie ci-dessous dans son prompt.
+                    "reason": "fichier absent, il reste à le créer vide",
                     "all_done": False,
                 }))
             echec = dernier == "drive_update_file"
@@ -210,13 +212,17 @@ def _tool_call_for(prompt: str, journal: dict) -> list[dict]:
 
     if "historique.md" in etape:
         # Deux actes, comme dans la vraie mission : on cherche, on ne
-        # trouve pas, puis on crée. Le second n'arrive que si le premier
-        # n'a pas consommé le droit à l'erreur de l'étape.
-        if not journal.get("historique_cherche"):
-            journal["historique_cherche"] = True
-            return _call("drive_list_files", {"query": "historique.md"})
-        return _call("drive_create_file", {"name": "historique.md",
-                                           "content": ""})
+        # trouve pas, puis on crée.
+        #
+        # Le second acte n'arrive QUE si l'acteur a lu, dans son prompt, ce
+        # que l'évaluateur lui a répondu au tour d'avant. Sans ce retour il
+        # rejoue la recherche — c'est exactement ce qu'a fait la mission
+        # réelle, quatre tours de suite, jusqu'à l'abandon (30/08/2026).
+        if "reste à le créer" in prompt:
+            journal["acteur_a_lu_le_verdict"] = True
+            return _call("drive_create_file", {"name": "historique.md",
+                                               "content": ""})
+        return _call("drive_list_files", {"query": "historique.md"})
     if "rends les noms" in etape:
         return _call("web_search", {"query": "sociétés de négoce"})
     if "Crée le Google Sheet" in etape:
@@ -358,6 +364,12 @@ async def run() -> dict:
         # créé. Rendre le verdict exigeant sans l'état « ça avance »
         # l'aurait abandonnée à mi-chemin : MAX_STEP_ATTEMPTS vaut 2.
         "etape_composee_va_au_bout": journal.get("historique_cree") == "historique.md",
+        # Défaut 9 (30/08) : l'acteur ne voyait pas le verdict du tour
+        # precedent. L'évaluateur écrivait « il reste à le créer vide »
+        # quatre fois de suite, et l'acteur rejouait la recherche.
+        "acteur_lit_le_verdict_precedent": bool(
+            journal.get("acteur_a_lu_le_verdict")
+        ),
         "etape_composee_garde_son_droit_a_l_erreur": all(
             r.status == "done" and r.attempts <= 1
             for r in par_step.get("historique", [])
