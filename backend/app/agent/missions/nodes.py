@@ -1470,7 +1470,62 @@ async def _foreach_source(mission_id: str, step: dict) -> str:
     return await _load_recent_step_outputs(mission_id)
 
 
-async def _load_recent_step_outputs(mission_id: str, max_steps: int = 8, max_chars: int = 1200) -> str:
+async def _actions_pour_item(mission_id: str, item_index: int) -> int:
+    """Combien d'outils ont réellement tourné sur CET item du `foreach`.
+
+    Sert au garde-fou `not_found` : une absence se constate, elle ne se
+    suppose pas. La trace d'un item porte son étiquette (cf. `_item_tag`) ;
+    celles des autres items ne comptent pas — c'est précisément la confusion
+    qui a fait sauter deux sociétés jamais regardées.
+    """
+    from sqlalchemy import select
+
+    from app.database import async_session
+    from app.models.mission import MissionStep
+
+    try:
+        async with async_session() as db:
+            rows = (await db.execute(
+                select(MissionStep.thought).where(
+                    MissionStep.mission_id == mission_id,
+                    MissionStep.phase == "act",
+                    MissionStep.tool_name.isnot(None),
+                )
+            )).scalars().all()
+    except Exception as exc:  # noqa: BLE001 — un garde-fou ne casse pas un tick
+        logger.debug("comptage des actions par item indisponible (%s)", exc)
+        return 1  # dans le doute, on n'empêche rien
+    return sum(1 for t in rows if _item_tag(item_index) in (t or ""))
+
+
+def _item_tag(item_index: int) -> str:
+    """L'étiquette qu'`act_node` grave dans la trace d'un item de `foreach`.
+
+    UNE seule définition : elle est écrite dans `current_step_desc` (donc
+    dans `thought`) et relue par `_load_recent_step_outputs` pour savoir à
+    quelle société appartient une sortie. Deux formulations séparées, et le
+    filtre laisserait passer ce qu'il croit écarter.
+    """
+    return f"[Item {item_index + 1} :"
+
+
+def _sortie_d_un_autre_item(thought: Optional[str], item_index: int) -> bool:
+    """Cette sortie appartient-elle à un AUTRE item du même `foreach` ?
+
+    Une trace sans étiquette vient d'une étape ordinaire (la création du
+    tableur, la recherche de sociétés) : elle vaut pour tous les items et
+    reste visible.
+    """
+    texte = thought or ""
+    return "[Item " in texte and _item_tag(item_index) not in texte
+
+
+async def _load_recent_step_outputs(
+    mission_id: str,
+    max_steps: int = 8,
+    max_chars: int = 1200,
+    item_index: Optional[int] = None,
+) -> str:
     """Render the last N successful tool outputs as a context block.
 
     Used to give the actor LLM access to the data produced by previous
@@ -1506,7 +1561,15 @@ async def _load_recent_step_outputs(mission_id: str, max_steps: int = 8, max_cha
 
     # Reverse so we present them in chronological order (most recent last,
     # matching how a human would think of "the data so far").
-    rows_chrono = list(reversed(rows))
+    # ⚠️ UN ITEM EN ÉCHEC CONTAMINAIT TOUS LES SUIVANTS (31/08/2026). Au
+    # moment de traiter la deuxième société, le contexte de l'acteur était
+    # rempli des pages « Aucun résultat » de la PREMIÈRE. Il les a lues
+    # comme si elles la concernaient, et a signalé `not_found` sans ouvrir
+    # un seul onglet — pour les deux sociétés restantes.
+    rows_chrono = [
+        s for s in reversed(rows)
+        if item_index is None or not _sortie_d_un_autre_item(s.thought, item_index)
+    ]
     blocks: list[str] = []
     for rang, s in enumerate(rows_chrono):
         out = (s.tool_output or "").strip()
@@ -1950,7 +2013,7 @@ async def act_node(state: MissionState) -> dict:
             current_step_desc = msr.render_item(current_step_desc, _run.item_value)
             if _run.item_value:
                 current_step_desc = (
-                    f"[Item {_run.item_index + 1} : {_run.item_value}] {current_step_desc}"
+                    f"{_item_tag(_run.item_index)} {_run.item_value}] {current_step_desc}"
                 )
             # J3 — l'item relancé porte une réponse utilisateur : on
             # l'injecte (« mode chat » automatisé, moitié reprise).
@@ -1980,7 +2043,15 @@ async def act_node(state: MissionState) -> dict:
     # fill arguments with REAL values (fix #19, May 2026 — agent was sending
     # "[meteo_data]" placeholders to telegram_send_message because it had no
     # context window into what weather_get had returned earlier in the run).
-    prev_context = await _load_recent_step_outputs(mission_id)
+    # Le filtre par item ne vaut QUE dans un `foreach` : une étape ordinaire
+    # porte aussi `_current_item_index = 0`, et filtrer sur cette valeur
+    # reviendrait à ne lui montrer arbitrairement que le premier item.
+    _filtre_item = (
+        _current_item_index if current_step.get("foreach") else None
+    )
+    prev_context = await _load_recent_step_outputs(
+        mission_id, item_index=_filtre_item,
+    )
 
     _edge_block = ""
     if _is_spec:
@@ -2409,6 +2480,37 @@ async def eval_node(state: MissionState) -> dict:
         _name = str(_edge.get("name") or "inconnu")
         _detail = str(_edge.get("detail") or "")
         _idx = state.get("current_item_index") or 0
+
+        # ── Une absence se constate, elle ne se suppose pas ──────────────
+        # Le 31/08/2026, deux sociétés sur trois ont été signalées
+        # `not_found` sans UNE SEULE action : pas d'onglet ouvert, pas de
+        # recherche, pas de lecture. Le handler `skip_with_note` les a
+        # consignées « aucun contact trouvé » dans l'historique que
+        # l'utilisateur relira demain pour ne pas les re-prospecter.
+        #
+        # Les autres cas ne sont pas concernés : une consigne ambiguë
+        # (`ask_user`) ou une panne (`error`) se signalent légitimement
+        # avant d'agir.
+        if _name == "not_found" and not await _actions_pour_item(mission_id, _idx):
+            raison = (
+                "« Aucun résultat » ne peut pas être constaté avant d'avoir "
+                "cherché : aucun outil n'a encore tourné sur cet item. "
+                "Fais la recherche, puis conclus."
+            )
+            logger.warning(
+                "[mission %s] eval: not_found refusé sur l'item %s — aucune "
+                "action jouée", mission_id, _idx,
+            )
+            await mission_service.add_step(
+                mission_id, phase="eval", evaluation=raison, success=False,
+                duration_ms=0, model_used="garde-fou-not-found",
+            )
+            return {
+                "last_edge_case": None,
+                "last_eval_success": False,
+                "last_eval_reason": raison,
+                "consecutive_failures": _echecs_consecutifs(state, _is_spec),
+            }
         _step = next(
             (s for s in (state.get("plan_json") or {}).get("steps", [])
              if s.get("id") == current_step_id),
