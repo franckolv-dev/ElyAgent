@@ -1508,12 +1508,28 @@ async def _load_recent_step_outputs(mission_id: str, max_steps: int = 8, max_cha
     # matching how a human would think of "the data so far").
     rows_chrono = list(reversed(rows))
     blocks: list[str] = []
-    for s in rows_chrono:
+    for rang, s in enumerate(rows_chrono):
         out = (s.tool_output or "").strip()
         if not out:
             continue
-        if len(out) > max_chars:
-            out = out[:max_chars] + " […tronqué]"
+        # La DERNIÈRE sortie est celle sur laquelle l'étape courante
+        # travaille : c'est elle que l'acteur doit recopier. Elle a droit à
+        # la même place que ce qu'on archive.
+        #
+        # ⚠️ TOUT ÉTAIT COUPÉ À 1 200 (31/08/2026). Une page LinkedIn lue
+        # fait 4 200 à 4 600 caractères, dont ~280 rien que pour l'URL de
+        # recherche : l'acteur voyait l'adresse et le début de la page,
+        # jamais la liste de profils à transcrire. Il relisait donc la même
+        # page au tour suivant — non par entêtement, mais faute de l'avoir
+        # reçue. Les sorties plus anciennes restent au régime serré : elles
+        # servent de rappel, et huit sorties larges feraient exploser le
+        # prompt.
+        _place = (
+            STEP_OUTPUT_ARCHIVE_CHARS
+            if rang == len(rows_chrono) - 1 else max_chars
+        )
+        if len(out) > _place:
+            out = out[:_place] + " […tronqué]"
         thought = (s.thought or "").strip()
         # Strip the leading "Étape « ... »" prefix from the thought to
         # avoid duplication with the iter header.
@@ -1665,27 +1681,105 @@ def _mark_step_attempt(
     return nouveau, abandonnee
 
 
+async def _foreach_outcomes(
+    mission_id: str, plan_json: Optional[dict], current_step_id: Optional[str],
+) -> str:
+    """Bilan par item des étapes itérées DÉJÀ traitées.
+
+    ⚠️ CE QUE ÇA CORRIGE (31/08/2026). L'étape `memoire` devait consigner
+    « les sociétés pour lesquelles au moins un contact a été enregistré ».
+    Elle a retenu Négoce Drouillet — la seule dont pas une ligne n'avait été
+    écrite — et oublié Océalia, la seule qui avait abouti.
+
+    Ce n'était pas une hallucination. `mission_step_runs` sait tout : un
+    item par société, son nom, son statut, sa note. Rien ne remontait à
+    l'acteur, qui ne voyait que les dernières sorties d'outils RÉUSSIES —
+    donc, en fin de foreach, les lectures LinkedIn des sociétés en échec,
+    puisque ce sont les plus récentes. Il a recopié le nom qui traînait.
+
+    L'étape itérée EN COURS est exclue : pendant qu'elle tourne, relire ses
+    propres items serait du bruit à chaque tour, et une invitation à
+    retraiter une société déjà faite.
+    """
+    etapes = [
+        s for s in (plan_json or {}).get("steps", [])
+        if s.get("foreach") and s.get("id") != current_step_id
+    ]
+    if not etapes:
+        return ""
+
+    from app.services import mission_spec_runtime as msr
+
+    blocs: list[str] = []
+    for s in etapes:
+        try:
+            runs = await msr.list_step_runs(mission_id, s.get("id") or "?")
+        except Exception as exc:  # noqa: BLE001 — un rappel ne casse pas un tick
+            logger.debug("bilan foreach indisponible (%s)", exc)
+            continue
+        lignes = []
+        for r in runs:
+            if not r.item_value:
+                continue
+            verdict = "A ABOUTI" if r.status == "done" else f"n'a pas abouti ({r.status})"
+            detail = f" — {(r.note or '').strip()[:160]}" if r.note else ""
+            lignes.append(f"  • {r.item_value} : {verdict}{detail}")
+        if lignes:
+            blocs.append(f"Étape « {s.get('id')} » :\n" + "\n".join(lignes))
+
+    if not blocs:
+        return ""
+    return (
+        "\n\nBILAN DES ÉTAPES ITÉRÉES (qui a abouti, qui non — n'invente "
+        "aucun autre nom, et ne retiens que ceux marqués A ABOUTI si "
+        "l'étape courante te demande les réussites) :\n"
+        + "\n".join(blocs)
+    )
+
+
 def _mark_step_progress(
-    plan_json: Optional[dict], step_id: Optional[str],
+    plan_json: Optional[dict],
+    step_id: Optional[str],
+    item_index: Optional[int] = None,
 ) -> tuple[dict, bool]:
-    """Compte un tour d'avancée sur l'étape courante.
+    """Compte un tour d'avancée sur l'ITEM courant de l'étape courante.
 
     Le compteur vit dans `plan_json`, à côté de `attempts` : il est
-    checkpointé avec le reste de l'état et se réinitialise naturellement
-    d'une étape à l'autre, sans champ de graphe ni colonne de plus.
+    checkpointé avec le reste de l'état, sans champ de graphe ni colonne
+    de plus.
+
+    ⚠️ IL ÉTAIT PORTÉ PAR LE STEP (31/08/2026). Un step `foreach` est UN
+    step quel que soit son nombre d'items : le budget d'avancée était donc
+    partagé par toutes les sociétés, et rien ne le remettait à zéro — ni le
+    changement d'item, ni la réussite du précédent. Sur la mission
+    « Prospection STE Print », trois sociétés toutes pourvues de contacts :
+    Océalia a consommé 3 avancées et réussi, Négoce Drouillet en a eu 6 et
+    a été condamnée à la 9e (borne 8), Groupe Dubreuil une seule. Un
+    tableur avec une société sur trois.
+
+    Le budget appartient donc à l'item. `item_index=None` (étape ordinaire)
+    partage la clé de l'item 0 : c'est le même unique passage.
 
     Returns:
         Le plan mis à jour, et si la borne est atteinte — auquel cas
         l'appelant retombe dans le traitement d'échec ordinaire.
     """
+    cle = str(item_index or 0)
     nouveau = dict(plan_json or {})
     epuise = False
     etapes = []
     for s in nouveau.get("steps", []):
         if s.get("id") == step_id:
             s = dict(s)
-            s["progress_ticks"] = int(s.get("progress_ticks") or 0) + 1
-            epuise = s["progress_ticks"] > MAX_STEP_PROGRESS_TICKS
+            # Un checkpoint d'avant ce correctif porte un entier. On le
+            # laisse tomber plutôt que de le répartir : hériter d'un
+            # compteur de step condamnerait tous les items d'un coup, ce
+            # qui est précisément le défaut qu'on retire.
+            compteurs = s.get("progress_ticks")
+            compteurs = dict(compteurs) if isinstance(compteurs, dict) else {}
+            compteurs[cle] = int(compteurs.get(cle) or 0) + 1
+            s["progress_ticks"] = compteurs
+            epuise = compteurs[cle] > MAX_STEP_PROGRESS_TICKS
         etapes.append(s)
     nouveau["steps"] = etapes
     return nouveau, epuise
@@ -1908,6 +2002,9 @@ async def act_node(state: MissionState) -> dict:
     ):
         _retour_block = _ACT_RETOUR.format(last_reason=_raison_precedente[:500])
 
+    # Qui, parmi les items déjà itérés, a réellement abouti.
+    _bilan_block = await _foreach_outcomes(mission_id, plan_json, current_step_id)
+
     messages: list[BaseMessage] = [
         # ⚠️ LA DATE N'ÉTAIT DONNÉE À PERSONNE SUR UNE SPEC (29/08/2026).
         # Elle est injectée au planificateur et au replanificateur. Une
@@ -1921,7 +2018,7 @@ async def act_node(state: MissionState) -> dict:
             plan_text=plan_text,
             current_step_desc=current_step_desc,
             date_str=_current_date_paris_str(),
-        ) + _retour_block + _edge_block + _mandate_block),
+        ) + _bilan_block + _retour_block + _edge_block + _mandate_block),
         HumanMessage(content=f"Goal : {state.get('goal','?')}"),
     ]
     if prev_context:
@@ -2514,7 +2611,9 @@ async def eval_node(state: MissionState) -> dict:
     # Borné : au-delà de MAX_STEP_PROGRESS_TICKS, « ça avance » cesse d'être
     # cru et le verdict retombe dans le traitement d'échec ordinaire.
     if not success and progress:
-        plan_apres, epuise = _mark_step_progress(plan_json, current_step_id)
+        plan_apres, epuise = _mark_step_progress(
+            plan_json, current_step_id, state.get("current_item_index"),
+        )
         if not epuise:
             logger.info(
                 "[mission %s] eval: étape %s avance sans être finie — %s",
