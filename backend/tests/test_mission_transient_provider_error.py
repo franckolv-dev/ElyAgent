@@ -55,7 +55,9 @@ async def mission():
     from sqlalchemy import delete
 
     from app.database import async_session, init_db
-    from app.models.mission import Mission, MissionStep
+    from app.models.mission import (
+        Mission, MissionDailyCounter, MissionPlan, MissionStep, MissionStepRun,
+    )
     from app.models.user import User
     from app.services import mission_service
     from app.services.alembic_runner import ensure_migrations
@@ -73,7 +75,13 @@ async def mission():
     await mission_service.start_mission(m.id)
     yield uid, m.id
     async with async_session() as db:
-        await db.execute(delete(MissionStep).where(MissionStep.mission_id == m.id))
+        # Les CINQ tables filles, pas seulement celles qu'on croit avoir
+        # remplies : `fail_mission` en écrit que ce test ne crée pas
+        # lui-même, et la contrainte de clé étrangère ne pardonne pas
+        # (leçon de #354).
+        for modele in (MissionDailyCounter, MissionStepRun, MissionStep,
+                       MissionPlan):
+            await db.execute(delete(modele).where(modele.mission_id == m.id))
         await db.execute(delete(Mission).where(Mission.user_id == uid))
         u = await db.get(User, uid)
         if u is not None:
