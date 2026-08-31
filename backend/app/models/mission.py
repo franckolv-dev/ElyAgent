@@ -112,6 +112,14 @@ class Mission(Base):
     tick_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     next_tick_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
+    # Reports de tick sur panne PASSAGÈRE du fournisseur LLM (429, 5xx,
+    # délai dépassé). Une limite de débit n'est pas un bug : elle se résout
+    # en attendant, et tuer la mission jetterait son travail (31/08/2026).
+    # Borné par MAX_PROVIDER_RETRIES, remis à zéro au premier tick réussi.
+    provider_retries: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0",
+    )
+
     # ── Autonomous mode (2026-06-04) ──
     # When True the loop auto-approves HITL for NON-floor tools so an
     # unattended (e.g. 3 a.m.) run doesn't stall waiting for a confirmation
