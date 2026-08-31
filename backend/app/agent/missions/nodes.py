@@ -68,11 +68,18 @@ MAX_STEP_ATTEMPTS: int = 2
 # l'erreur ci-dessus. Sans quoi toute étape composée serait abandonnée à
 # mi-chemin, MAX_STEP_ATTEMPTS valant précisément 2.
 #
-# Mais « ça avance » sans borne serait une boucle infinie polie. Quatre
-# appels couvrent les étapes composées observées ; au-delà, le verdict
-# redevient un échec ordinaire et l'étape repart dans la mécanique de
-# tentatives.
-MAX_STEP_PROGRESS_TICKS: int = 4
+# Mais « ça avance » sans borne serait une boucle infinie polie. Au-delà,
+# le verdict redevient un échec ordinaire et l'étape repart dans la
+# mécanique de tentatives.
+#
+# La valeur était 4, calibrée sur des étapes à deux actes. Une étape de
+# navigateur en demande davantage — ouvrir l'onglet, charger la page,
+# lancer la recherche, lire les profils, écrire la ligne — et le 30/08/2026
+# l'étape LinkedIn était abandonnée à l'acte où elle allait aboutir : « La
+# page de recherche est chargée mais aucun profil n'a encore été lu ».
+# Huit couvre la séquence avec de la marge ; le budget d'itérations de la
+# mission et le garde-fou d'action répétée restent les bornes dures.
+MAX_STEP_PROGRESS_TICKS: int = 8
 
 # Combien de fois une MÊME action (même outil, mêmes arguments) peut être
 # jouée dans une mission avant d'être refusée. La deuxième reste tolérée —
@@ -1376,6 +1383,22 @@ données dedans avant de remplir les arguments.
 Toute date que tu écris — nom de fichier, titre, contenu — vient de CETTE
 ligne. N'en invente jamais une autre."""
 
+# Ce qu'on a reproché à l'étape au tour d'avant. Bloc ajouté au prompt de
+# l'acteur, et rien d'autre ne le porte : `_load_recent_step_outputs` ne
+# remonte que les tours RÉUSSIS, un refus n'avait donc aucun canal vers lui.
+#
+# Mesuré le 30/08/2026 sur « Prospection Print LinkedIn » : quatre tours de
+# suite, l'évaluateur écrit « il reste à créer le fichier vide », et
+# l'acteur rejoue `drive_list_files`. Diagnostic parfait, action inchangée,
+# abandon.
+_ACT_RETOUR = """
+
+⚠️ TOUR PRÉCÉDENT SUR CETTE MÊME ÉTAPE — elle n'a pas encore abouti :
+« {last_reason} »
+
+Ce n'est pas un reproche sur l'outil : c'est ce qu'il RESTE à faire. Ne
+rejoue pas l'appel précédent à l'identique — fais l'acte qui manque."""
+
 
 # Plafond de l'archive d'une sortie d'étape — défini avec la fonction qui
 # écrit (`mission_spec_runtime.set_step_run_status`), réexporté ici pour les
@@ -1871,6 +1894,20 @@ async def act_node(state: MissionState) -> dict:
         _edge_block = edge_protocol_prompt(current_step.get("handlers") or {})
 
     _mandate_block = _strict_autonomy_directives(_mandate) if _mandate is not None else ""
+
+    # Le verdict du tour précédent — seulement s'il porte sur CETTE étape.
+    # Le checkpoint conserve celui du tour d'avant, qui peut concerner
+    # l'étape déjà terminée : le reprocher ici enverrait l'acteur corriger
+    # ce qui est fait.
+    _retour_block = ""
+    _raison_precedente = (state.get("last_eval_reason") or "").strip()
+    if (
+        _raison_precedente
+        and state.get("last_eval_success") is False
+        and state.get("current_step_id") == current_step_id
+    ):
+        _retour_block = _ACT_RETOUR.format(last_reason=_raison_precedente[:500])
+
     messages: list[BaseMessage] = [
         # ⚠️ LA DATE N'ÉTAIT DONNÉE À PERSONNE SUR UNE SPEC (29/08/2026).
         # Elle est injectée au planificateur et au replanificateur. Une
@@ -1884,7 +1921,7 @@ async def act_node(state: MissionState) -> dict:
             plan_text=plan_text,
             current_step_desc=current_step_desc,
             date_str=_current_date_paris_str(),
-        ) + _edge_block + _mandate_block),
+        ) + _retour_block + _edge_block + _mandate_block),
         HumanMessage(content=f"Goal : {state.get('goal','?')}"),
     ]
     if prev_context:
