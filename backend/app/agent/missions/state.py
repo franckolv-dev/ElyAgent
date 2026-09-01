@@ -47,6 +47,11 @@ class MissionState(TypedDict, total=False):
     last_tool_name: Optional[str]
     last_tool_input: Optional[dict]
     last_tool_output: Optional[str]
+    # Le tour entier de l'acteur : les actions jouées dans ce tick, dans
+    # l'ordre ({"tool", "ok"}), et sa conclusion en texte quand il a cessé
+    # d'appeler des outils. L'évaluateur juge l'ÉTAPE, pas le dernier appel.
+    tick_actions: list[dict]
+    actor_final_text: Optional[str]
 
     # ── Last evaluation verdict (set by `eval_node`) ──
     last_eval_success: Optional[bool]

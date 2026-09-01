@@ -17,8 +17,9 @@ Design :
     to replan). The graph EXITS at the end of each tick — the heartbeat
     re-invokes for the next tick. This keeps budget guards tight and the
     kill switch instant.
-  - Plan / Eval / Replan use the MEDIUM tier (Gemma 4 21B REAP locally).
-    Act uses the same tier with `bind_tools` for function-calling.
+  - Plan / Act / Eval / Replan run on the tier of `_mission_llm_tier` :
+    COMPLEX (the mandate's `llm_tier` under an active mandate). Act binds
+    the step's tools on that model for function-calling.
   - HITL requests run inline before tool dispatch — same code path as
     the chat-mode `tool_node` so the user gets a unified experience.
 """
@@ -80,6 +81,26 @@ MAX_STEP_ATTEMPTS: int = 2
 # Huit couvre la séquence avec de la marge ; le budget d'itérations de la
 # mission et le garde-fou d'action répétée restent les bornes dures.
 MAX_STEP_PROGRESS_TICKS: int = 8
+
+# Combien d'appels d'outils l'acteur peut ENCHAÎNER dans un même tick.
+#
+# Un tick ne jouait qu'UN appel, puis le graphe sortait : au tour suivant
+# l'acteur repartait d'un prompt reconstruit depuis la base, sans le fil de
+# ce qu'il venait de faire. Le 31/08/2026, sur « Prospection LKDN », il a
+# rouvert le même onglet LinkedIn quatre fois de suite au lieu d'attendre
+# son chargement — chaque tour lui rendait le message « appeler
+# browser_tab_wait_loaded avant de lire », et chaque tour l'avait oublié.
+# Hermes tient un seul fil : outil, résultat, outil suivant, jusqu'à la
+# réponse en texte. C'est ce que fait la boucle d'`act_node`, dans cette
+# borne ; les budgets de la mission (itérations, tokens) restent les bornes
+# dures, et l'évaluateur juge l'étape à la sortie du tick.
+MAX_ACTIONS_PER_TICK: int = 8
+
+# Deux échecs d'outil de suite dans la chaîne : on rend la main à
+# l'évaluateur plutôt que de laisser l'acteur s'entêter. Le premier échec
+# lui est montré tel quel — une erreur est une donnée, il peut changer
+# d'approche ; c'est au second qu'on cesse de le croire.
+MAX_TOOL_ERRORS_IN_A_ROW: int = 2
 
 # Combien de fois une MÊME action (même outil, mêmes arguments) peut être
 # jouée dans une mission avant d'être refusée. La deuxième reste tolérée —
@@ -674,10 +695,15 @@ async def _mission_llm_tier(mission_id: str):
     """Tier LLM des nœuds de mission (C1a, audit 16/07 §6.6).
 
     D3 : sous mandat ACTIF (flag ON + ``autonomy_state='active'``), le tier
-    vient du mandat — ``llm_tier`` explicite, sinon COMPLEX forcé. Sans
-    mandat actif : MEDIUM, comportement historique des missions supervisées,
-    inchangé. Avant C1a, ``mandate.llm_tier`` était validé/stocké mais
-    jamais lu — les nœuds tournaient en MEDIUM en dur.
+    vient du mandat — ``llm_tier`` explicite, sinon COMPLEX forcé.
+
+    Sans mandat : COMPLEX aussi. Une mission est un travail agentique
+    multi-étapes, exactement ce que le chat envoie au tier COMPLEX depuis
+    la #287. Le repli historique était MEDIUM, dont la tête de chaîne est
+    un modèle LOCAL : le 31/08/2026, « Prospection LKDN » a tourné en
+    entier sur Gemma 4 26B — 10 à 22 s par appel, un acteur qui rouvre le
+    même onglet quatre fois de suite, deux étapes abandonnées. Le chat
+    aurait fait la même demande sur GPT-5.6.
     """
     from app.services.llm_provider import ComplexityTier
     try:
@@ -686,14 +712,25 @@ async def _mission_llm_tier(mission_id: str):
         if mandate is not None:
             return ComplexityTier(mandate.llm_tier or "complex")
     except Exception as exc:  # noqa: BLE001 — le tier ne casse jamais un tick
-        logger.debug("_mission_llm_tier: repli MEDIUM (%s)", exc)
-    return ComplexityTier.MEDIUM
+        logger.debug("_mission_llm_tier: repli COMPLEX (%s)", exc)
+    return ComplexityTier.COMPLEX
+
+
+def _tier_label(tier) -> str:
+    """Le libellé `model_used` d'une ligne de trace : « complex-tier », …
+
+    Il était figé sur « medium-tier » à huit endroits, quel que soit le
+    modèle réellement appelé — le viewer affichait « medium » pour une
+    mission sous mandat qui tournait en COMPLEX.
+    """
+    valeur = getattr(tier, "value", None) or str(tier or "complex")
+    return f"{valeur}-tier"
 
 
 def _get_planner_llm(tier=None):
     """LLM used for plan / replan — needs reasoning, not tool-calling."""
     from app.services.llm_provider import get_llm_for_tier, ComplexityTier
-    return get_llm_for_tier(tier or ComplexityTier.MEDIUM)
+    return get_llm_for_tier(tier or ComplexityTier.COMPLEX)
 
 
 def _norm(s: str) -> str:
@@ -1127,7 +1164,7 @@ async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", curre
     logger.info("act: filtered %d → %d tools (hint=%s, step=%r)",
                 len(all_tools), len(tools), tool_hint, current_step_desc[:60])
 
-    primary = get_llm_for_tier(tier or ComplexityTier.MEDIUM)
+    primary = get_llm_for_tier(tier or ComplexityTier.COMPLEX)
     primary_bound = primary.bind_tools(tools)
 
     fallbacks_bound = [(label, fb.bind_tools(tools)) for label, fb in get_fallback_llms()]
@@ -1137,7 +1174,7 @@ async def _get_actor_llms(tool_hint: Optional[str] = None, goal: str = "", curre
 def _get_evaluator_llm(tier=None):
     """LLM used for eval — judgment, no tools."""
     from app.services.llm_provider import get_llm_for_tier, ComplexityTier
-    return get_llm_for_tier(tier or ComplexityTier.MEDIUM)
+    return get_llm_for_tier(tier or ComplexityTier.COMPLEX)
 
 
 def _strip_json_fence(raw: str) -> str:
@@ -1269,7 +1306,8 @@ async def plan_node(state: MissionState) -> dict:
 
     # Generate v1 plan
     t0 = time.monotonic()
-    llm = _get_planner_llm(tier=await _mission_llm_tier(mission_id))
+    _tier = await _mission_llm_tier(mission_id)
+    llm = _get_planner_llm(tier=_tier)
 
     # Sprint 2 — inject the live tool catalog + current date into the
     # system prompt so the planner cannot hallucinate tool names (root
@@ -1345,7 +1383,7 @@ async def plan_node(state: MissionState) -> dict:
         evaluation=f"Plan v1 généré ({len(steps)} étapes)",
         success=True,
         duration_ms=elapsed_ms,
-        model_used="medium-tier",
+        model_used=_tier_label(_tier),
     )
     logger.info("[mission %s] plan: v1 with %d steps (%.1fs)", mission_id, len(steps), elapsed_ms / 1000)
 
@@ -1366,9 +1404,17 @@ _ACT_SYSTEM = """Tu es l'agent ELY exécutant une mission. Voici le plan en cour
 
 Étape courante à exécuter : « {current_step_desc} »
 
-Choisis UN outil disponible dans ton inventaire pour avancer sur cette étape.
-Émets UN SEUL appel d'outil. Tu ne dois pas répondre en texte — uniquement émettre un tool_call.
-Si aucun outil ne semble adapté, choisis l'outil qui s'en rapproche le plus.
+Travaille par appels d'outils, UN à la fois : tu reçois le résultat de chaque
+appel avant de choisir le suivant, et tu enchaînes dans ce même tour jusqu'à
+ce que l'étape soit accomplie (ouvrir, attendre le chargement, lire, écrire).
+Commence TOUJOURS par un appel d'outil : une étape ne se conclut pas sans
+avoir agi.
+Quand l'étape est accomplie — ou que tu as constaté, outils à l'appui,
+qu'elle ne peut pas l'être — réponds en texte, sans appel d'outil : ce texte
+est le RÉSULTAT de l'étape, ce que l'étape suivante doit lire (une liste de
+noms, un identifiant, un bilan), pas le récit de tes appels.
+Si aucun outil ne semble adapté, choisis celui qui s'en rapproche le plus,
+ou `find_tool` pour réclamer celui qui manque : il te sera relié aussitôt.
 
 ⚠️ RÈGLE CRITIQUE — REMPLISSAGE DES PARAMÈTRES :
 Si l'étape consiste à COMBINER, ENVOYER, RÉSUMER ou TRANSMETTRE des données
@@ -2029,15 +2075,21 @@ async def act_node(state: MissionState) -> dict:
     # Build prompt and invoke primary tool-bound LLM, with fallback.
     # Tool list is pre-filtered to ~15 tools max (smaller models choke on
     # 76 simultaneous tool schemas — payload too big for LM Studio etc.)
-    primary_llm, fallbacks, _tools = await _get_actor_llms(
-        tool_hint=current_tool_hint,
-        goal=state.get("goal", ""),
-        current_step_desc=current_step_desc,
-        user_id=user_id,
-        tier=await _mission_llm_tier(mission_id),
-        mission_id=mission_id,
-        step_tools=tuple(current_step.get("tools") or ()),
-    )
+    _tier = await _mission_llm_tier(mission_id)
+
+    async def _relier():
+        """Lie les outils de l'étape — au départ, et après un `find_tool`."""
+        return await _get_actor_llms(
+            tool_hint=current_tool_hint,
+            goal=state.get("goal", ""),
+            current_step_desc=current_step_desc,
+            user_id=user_id,
+            tier=_tier,
+            mission_id=mission_id,
+            step_tools=tuple(current_step.get("tools") or ()),
+        )
+
+    primary_llm, fallbacks, _tools = await _relier()
 
     # Load outputs of previous successful tool invocations so the LLM can
     # fill arguments with REAL values (fix #19, May 2026 — agent was sending
@@ -2106,7 +2158,9 @@ async def act_node(state: MissionState) -> dict:
     t0 = time.monotonic()
     response = None
     tool_calls = []
-    model_used = "medium-tier (primary)"
+    _label = _tier_label(_tier)
+    model_used = f"{_label} (primary)"
+    acteur = primary_llm
     try:
         response = await ainvoke_with_deadline(
             primary_llm, messages,
@@ -2132,9 +2186,9 @@ async def act_node(state: MissionState) -> dict:
     # pas de tool_call, pas de fallback, l'évaluateur applique le handler.
     # Le content sort du LLM → dé-anonymisé avant parse (une question
     # ask_user dérivée d'un EDGE_CASE doit arriver EN CLAIR à l'utilisateur).
+    from app.agent.missions.pii import deanonymize_any
     _edge: Optional[tuple] = None
     if _is_spec and response is not None and not tool_calls:
-        from app.agent.missions.pii import deanonymize_any
         from app.services.mission_spec_runtime import parse_edge_case
         _edge = parse_edge_case(deanonymize_any(_sf, content_to_text(getattr(response, "content", ""))))
 
@@ -2162,38 +2216,15 @@ async def act_node(state: MissionState) -> dict:
                     mission_id, time.monotonic() - t_fb, label, len(tool_calls),
                 )
                 if tool_calls:
-                    model_used = f"medium-tier (fallback {label})"
+                    model_used = f"{_label} (fallback {label})"
+                    acteur = fb_llm
                     break
             except Exception as exc:
                 logger.warning("[mission %s] act.fallback %s failed: %s", mission_id, label, exc)
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-    if _edge is not None:
-        _edge_name, _edge_detail = _edge
-        await mission_service.add_step(
-            mission_id, phase="act",
-            thought=f"EDGE_CASE {_edge_name} sur « {current_step_desc[:200]} » : {_edge_detail}",
-            evaluation=f"Cas particulier signalé : {_edge_name}",
-            success=True,
-            duration_ms=elapsed_ms,
-            model_used=model_used,
-        )
-        logger.info(
-            "[mission %s] act: edge case %s (item=%s) — handler à appliquer",
-            mission_id, _edge_name, _current_item_index,
-        )
-        return {
-            "current_step_id": current_step_id,
-            "current_item_index": _current_item_index,
-            "last_edge_case": {"name": _edge_name, "detail": _edge_detail},
-            "last_tool_name": None,
-            "last_tool_output": None,
-            "last_eval_success": None,
-            "last_eval_reason": None,
-        }
-
-    if not tool_calls:
+    if _edge is None and not tool_calls:
         # All providers refused to emit a tool call — count as iteration failure
         thought_txt = ""
         if response is not None:
@@ -2216,81 +2247,211 @@ async def act_node(state: MissionState) -> dict:
             "consecutive_failures": state.get("consecutive_failures", 0) + 1,
         }
 
-    # Take only the first tool call (one action per tick)
-    call = tool_calls[0]
-    tool_name = call["name"]
-    tool_args = dict(call.get("args") or {})
-    tool_id = call.get("id", "act-" + mission_id[:6])
+    # ── La chaîne d'actions du tick ─────────────────────────────────────
+    # Un seul fil, comme une conversation : l'acteur demande un outil, on
+    # le joue, il relit le résultat et choisit le suivant — dans le MÊME
+    # tour, sans repasser par un prompt reconstruit depuis la base. Il
+    # s'arrête en répondant en texte (la conclusion de l'étape), quand il
+    # rejoue un appel déjà joué ici (l'évaluateur tranche), quand deux
+    # outils échouent de suite, ou à MAX_ACTIONS_PER_TICK.
+    historique: list[BaseMessage] = list(messages)
+    actions: list[dict] = []
+    empreintes: set[str] = set()
+    texte_final = ""
+    echecs_de_suite = 0
+    tool_name: str = ""
+    tool_args: dict = {}
+    output: str = ""
+    t_action = t0
+    while _edge is None:
+        # Un appel à la fois : le premier de la réponse, les autres
+        # attendront d'avoir vu son résultat.
+        call = tool_calls[0]
+        tool_name = call["name"]
+        tool_args = dict(call.get("args") or {})
+        tool_id = call.get("id", "act-" + mission_id[:6])
 
-    # ── Anti-boucle D4 (Missions autonomes J5) ─────────────────────────────
-    # Sous mandat actif uniquement : si CE MÊME appel (outil + args) a déjà
-    # échoué COOLDOWN_THRESHOLD fois de suite, on refuse de le redispatcher
-    # une fois de plus. On force une divergence (nudge replan via
-    # consecutive_failures) et on consigne au carnet — jamais un arrêt (D4).
-    if _mandate is not None:
-        from app.services import mission_antiloop
-        _reps = await mission_antiloop.consecutive_identical_failures(
-            mission_id, tool_name, tool_args)
-        if _reps >= mission_antiloop.COOLDOWN_THRESHOLD:
-            logger.warning(
-                "[mission %s] anti-boucle : %s a échoué %d× à l'identique — "
-                "appel bloqué, stratégie alternative requise",
-                mission_id, tool_name, _reps,
+        _empreinte = _action_fingerprint(tool_name, tool_args)
+        if _empreinte in empreintes:
+            logger.info(
+                "[mission %s] act: « %s » déjà joué à l'identique dans ce "
+                "tick — la chaîne s'arrête, l'évaluateur tranche",
+                mission_id, tool_name,
             )
-            try:
-                from app.services.mission_workspace import carnet_append_section
-                carnet_append_section(
-                    mission_id, "Anti-boucle",
-                    f"Appel « {tool_name} » identique en échec {_reps}× — bloqué, "
-                    "changement de stratégie imposé.",
+            break
+
+        # ── Anti-boucle D4 (Missions autonomes J5) ─────────────────────
+        # Sous mandat actif uniquement : si CE MÊME appel (outil + args) a
+        # déjà échoué COOLDOWN_THRESHOLD fois de suite, on refuse de le
+        # redispatcher une fois de plus. On force une divergence (nudge
+        # replan via consecutive_failures) et on consigne au carnet —
+        # jamais un arrêt (D4).
+        if _mandate is not None:
+            from app.services import mission_antiloop
+            _reps = await mission_antiloop.consecutive_identical_failures(
+                mission_id, tool_name, tool_args)
+            if _reps >= mission_antiloop.COOLDOWN_THRESHOLD:
+                logger.warning(
+                    "[mission %s] anti-boucle : %s a échoué %d× à l'identique — "
+                    "appel bloqué, stratégie alternative requise",
+                    mission_id, tool_name, _reps,
                 )
-            except Exception as _c_exc:  # noqa: BLE001
-                logger.debug("Anti-boucle carnet %s non écrit : %s", mission_id, _c_exc)
-            await mission_service.add_step(
-                mission_id, phase="act",
-                thought=f"Anti-boucle : « {tool_name} » déjà tenté {_reps}× à l'identique",
-                tool_name=tool_name, tool_input=tool_args,
-                evaluation="Appel identique répété bloqué (D4) — stratégie alternative requise",
-                success=False, duration_ms=elapsed_ms, model_used=model_used,
+                try:
+                    from app.services.mission_workspace import carnet_append_section
+                    carnet_append_section(
+                        mission_id, "Anti-boucle",
+                        f"Appel « {tool_name} » identique en échec {_reps}× — bloqué, "
+                        "changement de stratégie imposé.",
+                    )
+                except Exception as _c_exc:  # noqa: BLE001
+                    logger.debug("Anti-boucle carnet %s non écrit : %s", mission_id, _c_exc)
+                await mission_service.add_step(
+                    mission_id, phase="act",
+                    thought=f"Anti-boucle : « {tool_name} » déjà tenté {_reps}× à l'identique",
+                    tool_name=tool_name, tool_input=tool_args,
+                    evaluation="Appel identique répété bloqué (D4) — stratégie alternative requise",
+                    success=False, duration_ms=elapsed_ms, model_used=model_used,
+                )
+                if actions:
+                    # Les actions déjà jouées restent : l'évaluateur les juge.
+                    break
+                return {
+                    "current_step_id": current_step_id,
+                    "current_item_index": _current_item_index,
+                    "last_edge_case": None,
+                    "last_tool_name": tool_name,
+                    "last_tool_input": tool_args,
+                    "last_tool_output": None,
+                    "last_eval_success": False,
+                    "last_eval_reason": (
+                        f"« {tool_name} » a déjà échoué {_reps} fois avec ces mêmes "
+                        "arguments. Change de stratégie : autres arguments, autre "
+                        "outil de ton mandat, ou signale pourquoi l'objectif est "
+                        "hors de portée."
+                    ),
+                    "consecutive_failures": state.get("consecutive_failures", 0) + 1,
+                }
+
+        output, ok = await dispatch_tool(
+            tool_name, tool_args, tool_id, user_id,
+            user_request=state.get("goal", ""),
+            mission_id=mission_id,
+        )
+        elapsed_ms = int((time.monotonic() - t_action) * 1000)
+
+        # Persist audit row — une ligne par action, comme avant : la trace,
+        # les garde-fous (action répétée, absence constatée) et le budget
+        # d'itérations comptent des ACTIONS.
+        await mission_service.add_step(
+            mission_id, phase="act",
+            thought=f"Étape « {current_step_desc} »",
+            tool_name=tool_name,
+            tool_input={k: v for k, v in tool_args.items() if k not in {"user_google_credentials_json", "user_id"}},
+            tool_output=output[:5000],
+            success=ok,
+            duration_ms=elapsed_ms,
+            model_used=model_used,
+        )
+        logger.info(
+            "[mission %s] act: tool=%s ok=%s (%.1fs) step=%s action=%d",
+            mission_id, tool_name, ok, elapsed_ms / 1000, current_step_id,
+            len(actions) + 1,
+        )
+        actions.append({"tool": tool_name, "ok": bool(ok)})
+        empreintes.add(_empreinte)
+
+        if len(actions) >= MAX_ACTIONS_PER_TICK:
+            logger.info(
+                "[mission %s] act: %d actions dans ce tick — borne atteinte, "
+                "l'évaluateur tranche", mission_id, len(actions),
             )
-            return {
-                "current_step_id": current_step_id,
-                "current_item_index": _current_item_index,
-                "last_edge_case": None,
-                "last_tool_name": tool_name,
-                "last_tool_input": tool_args,
-                "last_tool_output": None,
-                "last_eval_success": False,
-                "last_eval_reason": (
-                    f"« {tool_name} » a déjà échoué {_reps} fois avec ces mêmes "
-                    "arguments. Change de stratégie : autres arguments, autre "
-                    "outil de ton mandat, ou signale pourquoi l'objectif est "
-                    "hors de portée."
-                ),
-                "consecutive_failures": state.get("consecutive_failures", 0) + 1,
-            }
+            break
+        echecs_de_suite = 0 if ok else echecs_de_suite + 1
+        if echecs_de_suite >= MAX_TOOL_ERRORS_IN_A_ROW:
+            logger.info(
+                "[mission %s] act: %d échecs d'outil de suite — la chaîne "
+                "s'arrête, l'évaluateur tranche", mission_id, echecs_de_suite,
+            )
+            break
 
-    output, ok = await dispatch_tool(
-        tool_name, tool_args, tool_id, user_id,
-        user_request=state.get("goal", ""),
-        mission_id=mission_id,
-    )
+        # Un outil réclamé est relié AVANT le tour suivant, pas au tick
+        # d'après : `find_tool` a consigné ses trouvailles sous l'identité
+        # de la mission, `_relier` les remet en tête de la sélection.
+        if tool_name in DISCOVERY_ONLY_TOOLS:
+            try:
+                primary_llm, fallbacks, _tools = await _relier()
+                acteur = primary_llm
+            except Exception as _rel_exc:  # noqa: BLE001 — on continue avec les outils du départ
+                logger.warning(
+                    "[mission %s] act: reliaison après %s impossible (%s)",
+                    mission_id, tool_name, _rel_exc,
+                )
 
-    # Persist audit row
-    await mission_service.add_step(
-        mission_id, phase="act",
-        thought=f"Étape « {current_step_desc} »",
-        tool_name=tool_name,
-        tool_input={k: v for k, v in tool_args.items() if k not in {"user_google_credentials_json", "user_id"}},
-        tool_output=output[:5000],
-        success=ok,
-        duration_ms=elapsed_ms,
-        model_used=model_used,
-    )
-    logger.info(
-        "[mission %s] act: tool=%s ok=%s (%.1fs) step=%s",
-        mission_id, tool_name, ok, elapsed_ms / 1000, current_step_id,
-    )
+        # Le fil : ce que le modèle a demandé, ce que l'outil a rendu.
+        # Le retour d'outil vient du monde réel → anonymisé pour le modèle,
+        # comme les prompts (couche regex, mode contenu-machine).
+        historique.append(AIMessage(
+            content=content_to_text(getattr(response, "content", "")) or "",
+            tool_calls=[call],
+        ))
+        historique.append(ToolMessage(
+            content=_sf.anonymize(output, ner_detection=False) if output else "",
+            tool_call_id=str(tool_id),
+            name=tool_name,
+        ))
+
+        t_action = time.monotonic()
+        try:
+            response = await ainvoke_with_deadline(
+                acteur, historique,
+                timeout_s=get_settings().llm_deadline_mission_act_s, surface="mission-act")
+            await _log_mission_llm_usage(response, state["user_id"], mission_id, "act", acteur)
+            tool_calls = getattr(response, "tool_calls", []) or []
+        except Exception as exc:
+            logger.warning(
+                "[mission %s] act: l'acteur a levé %s en cours de chaîne — "
+                "les %d action(s) jouées restent, l'évaluateur tranche",
+                mission_id, type(exc).__name__, len(actions),
+            )
+            break
+
+        if not tool_calls:
+            texte = deanonymize_any(_sf, content_to_text(getattr(response, "content", "")))
+            if _is_spec:
+                from app.services.mission_spec_runtime import parse_edge_case
+                _edge = parse_edge_case(texte)
+                if _edge is not None:
+                    # Un cas particulier constaté APRÈS avoir agi : c'est le
+                    # cas légitime (« Aucun résultat » après la recherche).
+                    break
+            texte_final = (texte or "").strip()
+            break
+
+    if _edge is not None:
+        _edge_name, _edge_detail = _edge
+        await mission_service.add_step(
+            mission_id, phase="act",
+            thought=f"EDGE_CASE {_edge_name} sur « {current_step_desc[:200]} » : {_edge_detail}",
+            evaluation=f"Cas particulier signalé : {_edge_name}",
+            success=True,
+            duration_ms=elapsed_ms,
+            model_used=model_used,
+        )
+        logger.info(
+            "[mission %s] act: edge case %s (item=%s, après %d action(s)) — handler à appliquer",
+            mission_id, _edge_name, _current_item_index, len(actions),
+        )
+        return {
+            "current_step_id": current_step_id,
+            "current_item_index": _current_item_index,
+            "last_edge_case": {"name": _edge_name, "detail": _edge_detail},
+            "last_tool_name": None,
+            "last_tool_output": None,
+            "tick_actions": actions,
+            "actor_final_text": "",
+            "last_eval_success": None,
+            "last_eval_reason": None,
+        }
 
     return {
         "current_step_id": current_step_id,
@@ -2299,6 +2460,8 @@ async def act_node(state: MissionState) -> dict:
         "last_tool_name": tool_name,
         "last_tool_input": tool_args,
         "last_tool_output": output,
+        "tick_actions": actions,
+        "actor_final_text": texte_final,
         # IMPORTANT : clear stale eval flags from the previous tick so
         # `eval_node` runs fresh on this iteration. Without this, the
         # checkpointer-restored `last_eval_success=False` would short-circuit
@@ -2306,7 +2469,6 @@ async def act_node(state: MissionState) -> dict:
         "last_eval_success": None,
         "last_eval_reason": None,
     }
-
 
 # ── eval_node ────────────────────────────────────────────────────────────────
 
@@ -2319,7 +2481,7 @@ Résultat brut de l'outil :
 ---
 {tool_output}
 ---
-
+{tour}
 Tu réponds STRICTEMENT en JSON :
 {{
   "success": true|false,
@@ -2458,8 +2620,43 @@ DÉFINITIONS PRÉCISES (lis-les avant de répondre) :
   toujours laisser le planner replan une étape de plus."""
 
 
+def _tour_block(state: dict, cap: int) -> str:
+    """Ce que l'évaluateur voit du tour ENTIER de l'acteur.
+
+    Il juge l'étape, pas le dernier appel d'outil : quand la chaîne a joué
+    plusieurs actions (ouvrir, attendre, lire, écrire), il doit les voir
+    dans l'ordre. Et quand l'acteur a conclu en texte, cette conclusion est
+    la matière première de `step_result` — une PROPOSITION, jugée sur les
+    résultats des outils. Vide quand le tour n'a rien de plus que la
+    sortie brute déjà montrée (une seule action, pas de conclusion).
+    """
+    actions = list(state.get("tick_actions") or [])
+    texte = (state.get("actor_final_text") or "").strip()
+    if len(actions) < 2 and not texte:
+        return ""
+    bloc = ""
+    if actions:
+        bloc += (
+            "Actions jouées dans ce tour, dans l'ordre (le résultat brut "
+            "ci-dessus est celui de la dernière) :\n"
+            + "\n".join(
+                f"  {n}. {a.get('tool')} — {'ok' if a.get('ok') else 'ÉCHEC'}"
+                for n, a in enumerate(actions, 1)
+            )
+            + "\n"
+        )
+    if texte:
+        bloc += (
+            f"Conclusion de l'acteur pour cette étape : « {texte[:cap]} »\n"
+            "C'est une PROPOSITION : juge-la sur les résultats des outils, "
+            "pas sur sa formulation. Si elle est fidèle et que l'étape "
+            "demandait une forme précise, dérive `step_result` d'elle.\n"
+        )
+    return bloc
+
+
 async def eval_node(state: MissionState) -> dict:
-    """Judge the last action's success and update step status in plan."""
+    """Judge the step's outcome — the whole tick — and update the plan."""
     mission_id = state["mission_id"]
     plan_json = state.get("plan_json") or {}
     current_step_id = state.get("current_step_id")
@@ -2648,7 +2845,9 @@ async def eval_node(state: MissionState) -> dict:
         }
 
     t0 = time.monotonic()
-    llm = _get_evaluator_llm(tier=await _mission_llm_tier(mission_id))
+    _tier = await _mission_llm_tier(mission_id)
+    _label = _tier_label(_tier)
+    llm = _get_evaluator_llm(tier=_tier)
     current_step = next(
         (s for s in plan_json.get("steps", []) if s.get("id") == current_step_id),
         {"description": "?"},
@@ -2659,6 +2858,7 @@ async def eval_node(state: MissionState) -> dict:
         goal=state.get("goal", "?"),
         step_desc=current_step.get("description", "?"),
         tool_name=state.get("last_tool_name", "?"),
+        tour=_tour_block(state, STEP_OUTPUT_ARCHIVE_CHARS),
         # Aligné sur ce qui sera ARCHIVÉ : l'évaluateur doit maintenant
         # dériver `step_result` de cette sortie, et on ne résume pas
         # fidèlement ce qu'on ne nous a pas montré. La coupe à 2 000
@@ -2730,7 +2930,7 @@ async def eval_node(state: MissionState) -> dict:
                 )
             await mission_service.add_step(
                 mission_id, phase="eval", evaluation=reason, success=False,
-                duration_ms=elapsed_ms, model_used="medium-tier",
+                duration_ms=elapsed_ms, model_used=_label,
             )
             return {
                 "last_eval_success": False,
@@ -2845,7 +3045,7 @@ async def eval_node(state: MissionState) -> dict:
             evaluation=reason,
             success=success,
             duration_ms=elapsed_ms,
-            model_used="medium-tier",
+            model_used=_label,
         )
         # Terminaison DÉTERMINISTE : tous les steps du plan terminaux —
         # on n'utilise PAS le all_done du LLM, la spec est le contrat.
@@ -2903,7 +3103,7 @@ async def eval_node(state: MissionState) -> dict:
         evaluation=reason,
         success=success,
         duration_ms=elapsed_ms,
-        model_used="medium-tier",
+        model_used=_label,
     )
 
     failures = state.get("consecutive_failures", 0)
@@ -2981,7 +3181,8 @@ async def replan_node(state: MissionState) -> dict:
     new_version = state.get("plan_version", 1) + 1
 
     t0 = time.monotonic()
-    llm = _get_planner_llm()
+    _tier = await _mission_llm_tier(mission_id)
+    llm = _get_planner_llm(tier=_tier)
     # Sprint 2 — same anti-hallucination injection as plan_node.
     from app.skills import get_skill_registry
     _registry = get_skill_registry()
@@ -3046,7 +3247,7 @@ async def replan_node(state: MissionState) -> dict:
         evaluation=reason,
         success=True,
         duration_ms=elapsed_ms,
-        model_used="medium-tier",
+        model_used=_tier_label(_tier),
     )
     logger.info("[mission %s] replan: v%d with %d steps (%.1fs)", mission_id, new_version, len(steps), elapsed_ms / 1000)
 
