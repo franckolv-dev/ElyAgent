@@ -939,6 +939,27 @@ async def _ensure_tool_embeddings(all_tools: list) -> None:
         _tool_vec_version = version
 
 
+def _skill_map() -> dict[str, str]:
+    """Nom d'outil → nom de la compétence (skill) qui l'enregistre.
+
+    Best-effort : un registre vide ou absent (tests, démarrage) rend un
+    dictionnaire vide, et la sélection retombe sur l'ordre du registre.
+    """
+    try:
+        from app.skills import get_skill_registry
+
+        carte: dict[str, str] = {}
+        for skill in get_skill_registry().list_skills():
+            for t in getattr(skill, "tools", None) or ():
+                nom = getattr(t, "name", None)
+                if nom and nom not in carte:
+                    carte[nom] = skill.name
+        return carte
+    except Exception as exc:  # noqa: BLE001 — un confort ne casse pas un tick
+        logger.debug("act: compétences des outils indisponibles (%s)", exc)
+        return {}
+
+
 async def _filter_tools_for_step(
     all_tools: list,
     tool_hint: Optional[str],
@@ -1044,9 +1065,24 @@ async def _filter_tools_for_step(
                 _add(t)
         # Then prefix match (e.g. weather_ → weather_get, weather_forecast)
         prefix = hint_low.split("_")[0] if "_" in hint_low else hint_low
-        for t in all_tools:
-            if t.name.lower().startswith(prefix):
-                _add(t)
+        _famille = [t for t in all_tools if t.name.lower().startswith(prefix)]
+        # ⚠️ DEUX COMPÉTENCES PEUVENT PARTAGER UN PRÉFIXE (31/08/2026).
+        # `browser_navigate`, `browser_get_text`… sont le Chromium jetable
+        # de Playwright, sans session ; `browser_open_tab`,
+        # `browser_tab_read_text`… sont le Chrome de l'utilisateur, avec
+        # ses cookies — donc LinkedIn ouvert. Le premier est enregistré
+        # AVANT le second, et avec 11 places pour 23 outils, l'indice
+        # `browser_tab_read_text` faisait entrer les huit outils sans
+        # session et laissait dehors `browser_open_tab` et
+        # `browser_tab_wait_loaded`. La compétence de l'outil visé est
+        # servie d'abord ; l'ordre du registre ne départage que les égaux
+        # (le tri est stable).
+        _competences = _skill_map()
+        _visee = _competences.get(tool_hint)
+        if _visee:
+            _famille.sort(key=lambda t: 0 if _competences.get(t.name) == _visee else 1)
+        for t in _famille:
+            _add(t)
         # Then substring match (broader)
         if prefix and len(prefix) >= 4:
             for t in all_tools:
