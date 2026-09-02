@@ -36,6 +36,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -215,13 +216,50 @@ async def process_whatsapp_message(from_phone: str, message_text: str) -> None:
         history_msgs = history_msgs[-40:]
         history_msgs.append(HumanMessage(content=sf.anonymize(message_text)))
 
+        # PII sovereignty — see chat.py for full rationale.
+        # ⚠️ CE QUE ÇA CORRIGE (audit 02/09/2026) : ce canal ne posait pas le
+        # ContextVar, un utilisateur en souveraineté stricte repartait donc
+        # sur son fournisseur cloud habituel dès qu'il écrivait par WhatsApp.
+        try:
+            from app.services.sovereignty import SOVEREIGNTY_STRICT
+            SOVEREIGNTY_STRICT.set(bool(getattr(user, "sovereignty_strict", False)))
+        except Exception as _sov_exc:  # noqa: BLE001
+            logger.debug("sovereignty ContextVar set skipped: %s", _sov_exc)
+
         # Invoke agent
+        # Chrono démarré AVANT l'invocation : c'est le temps réellement attendu.
+        _turn_started_at = time.monotonic()
         agent = build_agent_graph()
+        # ⚠️ CE QUE ÇA CORRIGE (audit 02/09/2026) : WhatsApp était le seul
+        # canal de conversation à invoquer le graphe SANS `toolset_profile`
+        # (Telegram, Slack, Discord et la voix le passent depuis la vague 1).
+        #
+        # Ce que le profil apporte RÉELLEMENT aujourd'hui — il n'y a plus de
+        # superviseur ni de sous-agents à court-circuiter depuis le temps 2,
+        # WhatsApp tournait déjà sur l'unique nœud agent :
+        #   - `routing.should_bind_tools` branche les outils dès qu'un profil
+        #     est collé à la conversation. Sans lui, un tour hors tier COMPLEX
+        #     ne voyait ses outils que si la demande contenait un mot-clé.
+        #   - `nodes.agent_node` résout alors le catalogue par le profil de la
+        #     conversation (tout au tier COMPLEX, `compact` ailleurs) au lieu
+        #     de refiltrer par mots-clés à chaque tour : le catalogue devient
+        #     STABLE d'une question à l'autre, donc apprenable par le modèle,
+        #     et le préfixe du prompt cesse de bouger.
+        #   - `usage_instrumentation.architecture_label` étiquette le tour
+        #     « mono » au tableau de bord au lieu de « unknown ».
+        # Les outils appris, le bloc <learned_skills>, le vecteur d'état et
+        # les préférences ne dépendent PAS de ce champ : ils viennent de
+        # `builders/memory_snapshot` à partir de l'utilisateur et arrivaient
+        # déjà ici.
+        # whatsapp_web.py (pont neonize) délègue ici : il héritait du trou.
+        from app.agent.toolset_profiles import resolve_conversation_profile
+        _profile = await resolve_conversation_profile(conversation_id, message_text)
         invoke_result = await agent.ainvoke({
             "messages": history_msgs,
             "user_id": user_id,
             "conversation_id": conversation_id,
             "google_credentials": google_credentials or "",
+            "toolset_profile": _profile,
         })
 
         # content_to_text AVANT deanonymize : sur tier codex (Responses API),
@@ -255,6 +293,25 @@ async def process_whatsapp_message(from_phone: str, message_text: str) -> None:
                 content=ai_content,
             ))
             await db.commit()
+
+        # ⚠️ CE QUE ÇA CORRIGE (audit 02/09/2026) : ce canal n'écrivait AUCUNE
+        # ligne d'usage — coût, latence et architecture des tours WhatsApp
+        # étaient invisibles au tableau de bord, là où Telegram et Slack les
+        # posent depuis la vague 2. Best-effort : l'analytique ne doit jamais
+        # coûter une réponse déjà produite.
+        try:
+            from app.services.background_tasks import spawn
+            from app.services.usage_instrumentation import record_turn_usage
+            spawn(record_turn_usage(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                channel="whatsapp",
+                result=invoke_result,
+                started_at=_turn_started_at,
+                toolset_profile=_profile,
+            ), label="usage:whatsapp")
+        except Exception as _usage_exc:
+            logger.warning("usage accounting skipped (whatsapp): %s", _usage_exc)
 
         # Store in memory
         await get_memory_manager().store_interaction(
