@@ -119,11 +119,18 @@ async def test_token_budget_becomes_enforceable(_uid):
 
 
 @pytest.mark.asyncio
-async def test_mission_llm_tier_without_mandate_is_medium(_uid):
+async def test_mission_llm_tier_without_mandate_is_complex(_uid):
+    """Une mission est un travail agentique multi-étapes : le tier COMPLEX.
+
+    Le 31/08/2026, la mission « Prospection LKDN » a tourné entièrement sur
+    la tête du tier MEDIUM — Gemma 4 26B en local — : 10 à 22 s par appel,
+    et un acteur qui rouvre le même onglet quatre fois. Le chat, lui, envoie
+    toute demande utilisateur au tier COMPLEX depuis la #287.
+    """
     from app.agent.missions.nodes import _mission_llm_tier
     from app.services.llm_provider import ComplexityTier
     mid = await _mission(_uid)
-    assert await _mission_llm_tier(mid) == ComplexityTier.MEDIUM
+    assert await _mission_llm_tier(mid) == ComplexityTier.COMPLEX
 
 
 @pytest.mark.asyncio
@@ -155,9 +162,9 @@ async def test_mission_llm_tier_mandate_override(_uid, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_mission_llm_tier_flag_off_stays_medium(_uid, monkeypatch):
+async def test_mission_llm_tier_flag_off_falls_back_to_complex(_uid, monkeypatch):
     """Mission mandatée créée flag ON, puis flag ÉTEINT ⇒ load_active_mandate
-    renvoie None ⇒ repli MEDIUM (kill switch global respecté)."""
+    renvoie None ⇒ repli sur le tier des missions sans mandat : COMPLEX."""
     from app.agent.missions.nodes import _mission_llm_tier
     from app.config import get_settings
     from app.services import mission_service
@@ -167,7 +174,7 @@ async def test_mission_llm_tier_flag_off_stays_medium(_uid, monkeypatch):
     mid = await _mission(_uid, spec=EMAIL_SPEC_BASE + STEPS)
     await mission_service.set_autonomy_state(mid, "active")
     monkeypatch.setattr(get_settings(), "autonomous_missions_enabled", False)
-    assert await _mission_llm_tier(mid) == ComplexityTier.MEDIUM
+    assert await _mission_llm_tier(mid) == ComplexityTier.COMPLEX
 
 
 # ── 3. Les getters LLM propagent le tier ────────────────────────────────────

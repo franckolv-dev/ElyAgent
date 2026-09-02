@@ -463,13 +463,19 @@ async def add_step(
         )
         db.add(step)
 
-        # Concurrently bump the mission's running counters
+        # Concurrently bump the mission's running counters.
+        #
+        # Une itération est un TOUR DE L'ACTEUR. Le compteur montait à
+        # chaque ligne écrite — plan, action, évaluation — si bien qu'un
+        # appel d'outil coûtait deux itérations et que le budget par
+        # défaut (30) n'en laissait qu'une quinzaine : « Prospection LKDN »
+        # a consommé 41 itérations pour 18 appels d'outils (31/08/2026).
         await db.execute(
             update(Mission)
             .where(Mission.id == mission_id)
             .values(
                 tokens_used=Mission.tokens_used + tokens_used,
-                iterations_used=Mission.iterations_used + 1,
+                iterations_used=Mission.iterations_used + (1 if phase == "act" else 0),
             )
         )
         await db.commit()

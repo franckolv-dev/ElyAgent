@@ -415,11 +415,32 @@ async def _process_one_mission(mission) -> None:
                     except ValueError:
                         pass
 
-                # Schedule next tick. Default 60s if mission has no interval
-                # set (single-shot missions still get re-ticked at 60s
-                # cadence until they complete or fail).
-                interval = mission.tick_interval_seconds or 60
-                next_at = _utcnow() + timedelta(seconds=interval)
+                # Schedule next tick.
+                #
+                # Un intervalle EXPLICITE est un choix de l'utilisateur
+                # (« toutes les heures ») : il est respecté tel quel. Sans
+                # intervalle, une mission qui vient d'AGIR est reprise au
+                # battement suivant — reporter à +60 s, plus les 30 s du
+                # heartbeat, faisait attendre 80 s entre deux appels
+                # d'outils : vingt actions en trente minutes, dont
+                # une vingtaine à ne rien faire (31/08/2026). Un tick sans
+                # action (des items attendent une réponse humaine) garde le
+                # délai d'une minute : on ne martèle pas ce qui attend.
+                if mission.tick_interval_seconds:
+                    next_at = _utcnow() + timedelta(
+                        seconds=mission.tick_interval_seconds,
+                    )
+                else:
+                    apres = await mission_service.get_mission(mid)
+                    a_agi = (
+                        apres is not None
+                        and (apres.iterations_used or 0)
+                        > (mission.iterations_used or 0)
+                    )
+                    next_at = (
+                        _utcnow() if a_agi
+                        else _utcnow() + timedelta(seconds=60)
+                    )
                 from app.database import async_session
                 from app.models.mission import Mission as _M
                 from sqlalchemy import update

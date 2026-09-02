@@ -24,8 +24,11 @@ Decisions :
     checked (single source of truth).
   - `replan` is only called when consecutive_failures ≥ 3.
   - The graph EXITS at the end of one iteration. The heartbeat re-enters
-    it on the next tick. We don't run a tight inner loop because that
-    would defeat the budget guards and the kill-switch.
+    it on the next tick. Inside `act`, the actor chains its tool calls in
+    one conversation (bounded by MAX_ACTIONS_PER_TICK) so that one tick is
+    one attempt at the step, not one tool call — but the graph itself
+    never loops : the budget guards and the kill-switch keep their grip
+    between ticks.
 """
 from __future__ import annotations
 
