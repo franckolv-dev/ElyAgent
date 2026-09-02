@@ -48,7 +48,6 @@ from app.services.memory._constants import (
     COLLECTION_INTERACTIONS,
     COLLECTION_MEMORIES,
     COLLECTION_PREFERENCES,
-    COLLECTION_PROCEDURES,
     VECTOR_DIM,
 )
 
@@ -79,7 +78,6 @@ class MemoryManager:
                 COLLECTION_CONSTRAINTS,
                 COLLECTION_INTERACTIONS,
                 COLLECTION_PREFERENCES,
-                COLLECTION_PROCEDURES,
             ):
                 if name not in existing:
                     await asyncio.to_thread(

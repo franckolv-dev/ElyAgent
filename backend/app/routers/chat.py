@@ -57,13 +57,14 @@ router = APIRouter()
 # One graph instance shared across all connections
 _agent_graph = None
 
-# One SecurityFilter per conversation (bounded LRU to prevent unbounded memory growth)
-from collections import OrderedDict
-
 
 # Per-conversation SecurityFilter registry — moved to a shared services
 # module so tool_node (nodes.py) can deanonymize tool args using the same
 # vault as the user-input anonymization. See services/conversation_filters.py.
+# Ménage 02/09/2026 : le bornage (LRU 1000 + TTL 24 h) a suivi le registre
+# là-bas. L'import ``OrderedDict`` resté ici ne servait plus à rien : la règle
+# ruff des imports inutilisés étant ignorée par le projet, il a survécu au
+# déménagement sans que rien ne le signale.
 from app.services.conversation_filters import (
     discard_filter as _discard_filter,
     get_filter as _get_filter,
