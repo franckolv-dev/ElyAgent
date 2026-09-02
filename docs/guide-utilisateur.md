@@ -52,7 +52,7 @@ C'est ce qui a permis, sur une conversion de 395 pages, de retirer 347 folios su
 
 ## Ce qu'Ely sait faire
 
-**201 outils** avec les réglages par défaut. Activer le client MCP en ajoute 10,
+**199 outils** avec les réglages par défaut. Activer le client MCP en ajoute 10,
 et chaque serveur MCP connecté apporte les siens. Les grandes familles :
 
 ### Google
@@ -119,8 +119,12 @@ mécanique.
 
 ### Canaux
 
-Telegram, Slack, Discord, WhatsApp. Ces surfaces utilisent le **même** moteur que
-le chat web : mêmes outils, même mémoire, mêmes préférences.
+Telegram. Cette surface utilise le **même** moteur que le chat web : mêmes
+outils, même mémoire, mêmes préférences.
+
+Les ponts WhatsApp, Slack et Discord ont été retirés le 02/09/2026 : zéro
+message en cinq mois. Le code est conservé dans
+[archive/README.md](../archive/README.md).
 
 ---
 
@@ -128,7 +132,7 @@ le chat web : mêmes outils, même mémoire, mêmes préférences.
 
 Un bandeau apparaît avant l'action, avec ce qu'elle s'apprête à faire.
 
-**46 outils** sont sous accord par leur nom. En plus, le **contenu** de la
+**44 outils** sont sous accord par leur nom. En plus, le **contenu** de la
 demande peut déclencher une vérification : un virement, un achat, une
 suppression, un passage en caisse.
 

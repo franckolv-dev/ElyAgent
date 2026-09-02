@@ -11,8 +11,14 @@ default 30 s). On each beat :
   1. Query all missions whose `next_tick_at` ≤ now AND status ∈ {running, planning}
   2. For each due mission :
      a. Check budget guards (iterations, tokens, deadline) — fail mission if over
-     b. Compile mission graph + checkpointer
-     c. Invoke ONE iteration (Plan → Act → Eval → maybe Replan)
+     b. Aiguillage (`_tick_one_mission`, 02/09/2026) : une mission LIBRE part
+        sur la boucle du chat (`app/agent/missions/chat_loop.py`) — un passage
+        = un tour de chat automatisé, le carnet de bord pour mémoire entre
+        deux réveils. Une mission STRUCTURÉE (`spec_yaml`) garde sa machine à
+        états ; c'est désormais le chemin MINORITAIRE.
+     c. Invoke UN passage / UNE itération selon le chemin retenu. Les deux
+        rendent le MÊME contrat (`done` / `final_summary` / `failed` /
+        `failure_reason`), et la suite de cette boucle l'ignore.
      d. If `done` flag set → complete mission + notify channel(s)
      e. If `failed` flag set → fail mission + notify
      f. Otherwise → schedule next tick at now + tick_interval_seconds
@@ -29,7 +35,7 @@ L'ordre de dispatch est round-robin par user (équité inter-utilisateurs).
 
 Notifications : when a mission terminates, we attempt to push the result
 via the channel that originated it (source_ref → conversation_id /
-telegram chat / whatsapp self-chat). Phase 4.3 implements the actual
+telegram chat). Phase 4.3 implements the actual
 sending — for now we log + persist to the conversation if applicable.
 """
 from __future__ import annotations
@@ -140,7 +146,7 @@ async def _oublier_les_reports(mission_id: str) -> None:
         await db.commit()
 
 
-async def _tick_one_mission(mission_id: str, user_id: str, goal: str) -> dict:
+async def _tick_mission_graph(mission_id: str, user_id: str, goal: str) -> dict:
     """Run exactly one iteration of the persistence loop for a mission."""
     from app.agent.missions.checkpointer import get_mission_checkpointer
     from app.agent.missions.graph import build_mission_graph
@@ -150,6 +156,39 @@ async def _tick_one_mission(mission_id: str, user_id: str, goal: str) -> dict:
     state = {"mission_id": mission_id, "user_id": user_id, "goal": goal}
     config = {"configurable": {"thread_id": mission_id}}
     return await graph.ainvoke(state, config=config)
+
+
+async def _sur_la_boucle_du_chat(mission_id: str) -> bool:
+    """Cette mission doit-elle tourner comme un chat sans humain ?
+
+    DEUX conditions, et la seconde est un contrat : une mission STRUCTURÉE
+    (``spec_yaml``) garde son exécuteur — ``foreach``, ``on_error``,
+    ``ask_user``, reprise après réponse humaine. L'utilisateur l'a écrit à la
+    main, on ne le réinterprète pas. Seule la mission LIBRE — celle qu'on
+    n'arrivait pas à faire aboutir — change de moteur (02/09/2026).
+    """
+    from app.config import get_settings
+
+    if not get_settings().missions_on_chat_loop:
+        return False
+    from app.services import mission_service
+
+    m = await mission_service.get_mission(mission_id)
+    return m is not None and not (m.spec_yaml or "").strip()
+
+
+async def _tick_one_mission(mission_id: str, user_id: str, goal: str) -> dict:
+    """Un réveil de mission, sur le chemin qui lui correspond.
+
+    Les deux chemins rendent le MÊME contrat (``done`` / ``final_summary`` /
+    ``failed`` / ``failure_reason``) : ``_process_one_mission`` n'a pas à
+    savoir lequel a tourné.
+    """
+    if await _sur_la_boucle_du_chat(mission_id):
+        from app.agent.missions import chat_loop
+
+        return await chat_loop.run_mission_chat_passage(mission_id, user_id, goal)
+    return await _tick_mission_graph(mission_id, user_id, goal)
 
 
 async def _notify_terminal(mission, kind: str, summary: str) -> None:

@@ -40,7 +40,7 @@ def _legacy(tool: str, desc: str) -> bool:
 # Échantillon : critiques (dans ALWAYS_CRITICAL) + non-critiques + surcharges
 # ALWAYS. web_search est traité à part (refinement délibéré).
 _ALWAYS_SAMPLE = ["ssh_execute", "drive_delete_file", "gmail_send_email",
-                  "whatsapp_send", "calendar_delete_event"]
+                  "telegram_send_message", "calendar_delete_event"]
 _NONCRIT_SAMPLE = ["calendar_list_events", "gmail_list_emails",
                    "drive_search", "notes_create", "mcp__github__search"]
 

@@ -245,7 +245,7 @@ async def save_constraint(
 
     Exemples INVALIDES (rejetés automatiquement) :
     - "Je ne peux pas envoyer d'e-mails" ❌ (auto-limitation hallucinée)
-    - "Aucun outil disponible pour WhatsApp" ❌ (faux — l'outil existe)
+    - "Aucun outil disponible pour Telegram" ❌ (faux — l'outil existe)
     - "Je ne peux pas accéder aux logs" ❌ (auto-limitation)
 
     Args:

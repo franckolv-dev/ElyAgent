@@ -118,9 +118,6 @@ _KW_FILTERS: list[tuple[re.Pattern, tuple[str, ...]]] = [
     # Maps / location
     (re.compile(r"\b(maps?|cartes?|itinéraires?|trajets?|directions?|adresse|gps|géoloc|position|près de|autour|nearby|restaurants?|cafés?|hôtels?|stations?)\b"),
      ("maps_",)),
-    # WhatsApp
-    (re.compile(r"\b(whatsapp|whats|wa)\b"),
-     ("whatsapp_",)),
     # Telegram
     (re.compile(r"\b(telegram|tg)\b"),
      ("telegram_",)),

@@ -131,7 +131,7 @@ async def find_tool(capability: str, top_k: int = 5) -> str:
     « sais-tu faire… ») : la recherche consigne les capacités réellement
     absentes. Décris le besoin en langage naturel (ex. « lire un Google
     Sheet existant », « ajouter des lignes à un tableur », « publier sur
-    Slack »). Renvoie les outils les plus pertinents, qui deviennent
+    Telegram »). Renvoie les outils les plus pertinents, qui deviennent
     disponibles pour le reste de la conversation — appelle ensuite celui qu'il
     te faut.
 
@@ -268,33 +268,79 @@ async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False
         )
     except Exception as exc:  # noqa: BLE001 — recording must never break the turn
         logger.debug("find_tool: gap recording skipped: %s", exc)
-    _auto_gen = False
+    _redaction_lancee = False
+    _fabrique_ouverte = False
     if _case_id:
+        # ⚠️ LE DRAPEAU SE LIT AVANT LE DÉPART (02/09/2026).
+        #
+        # Il était lu APRÈS le `spawn`, dans le même `try` : une lecture qui
+        # lève faisait retomber la réponse sur « rien n'a pu être lancé »
+        # alors que la rédaction était déjà partie. Ely aurait dit à
+        # l'utilisateur que personne ne s'occupe du manque pendant qu'une
+        # procédure s'écrivait. Lu ici, il ne peut plus mentir sur un départ
+        # qui a eu lieu — et un drapeau illisible vaut « fabrique gelée » :
+        # on ne promet jamais un outil qu'on n'est pas sûr de produire.
         try:
             from app.config import get_settings
+
+            _fabrique_ouverte = bool(get_settings().auto_tool_generation_enabled)
+        except Exception as exc:  # noqa: BLE001 — un drapeau illisible ne coupe rien
+            logger.debug("find_tool: drapeau de fabrique illisible (%s)", exc)
+        try:
             from app.services.background_tasks import spawn
             from app.services.learning.auto_tool_generation import (
                 maybe_generate_for_gap,
             )
 
-            _auto_gen = bool(get_settings().auto_tool_generation_enabled)
-            if _auto_gen:
-                # detach_context : la génération fait ses PROPRES appels LLM —
-                # sans détachement, les callbacks LangChain hérités routaient
-                # les tokens tier-S dans le stream du chat (entrelacés avec
-                # la réponse d'Ely — bug réel 19/07).
-                spawn(
-                    maybe_generate_for_gap(
-                        _case_id, capability, _gap_user,
-                        skip_precheck=model_judged,
-                    ),
-                    label="auto-tool-generation",
-                    detach_context=True,
-                )
+            # ⚠️ LE DÉPART NE DÉPEND PLUS DU DRAPEAU (02/09/2026).
+            #
+            # La tâche de fond n'était lancée QUE si `auto_tool_generation_
+            # enabled` était vrai. Geler la fabrique éteignait donc AUSSI la
+            # voie document, faute de départ : le manque était consigné, puis
+            # plus personne ne s'en occupait. Le drapeau décide de ce qui
+            # SORT (procédure ou outil), pas de savoir si quelqu'un s'en
+            # occupe.
+            #
+            # detach_context : la rédaction fait ses PROPRES appels LLM —
+            # sans détachement, les callbacks LangChain hérités routaient
+            # les tokens tier-S dans le stream du chat (entrelacés avec
+            # la réponse d'Ely — bug réel 19/07).
+            spawn(
+                maybe_generate_for_gap(
+                    _case_id, capability, _gap_user,
+                    skip_precheck=model_judged,
+                ),
+                label="auto-tool-generation",
+                detach_context=True,
+            )
+            _redaction_lancee = True
         except Exception as exc:  # noqa: BLE001 — le déclencheur non plus
             logger.debug("find_tool: auto-generation skipped: %s", exc)
-            _auto_gen = False
-    if _auto_gen:
+            _redaction_lancee = False
+    if _redaction_lancee and not _fabrique_ouverte:
+        # Fabrique gelée : seule une procédure peut sortir. Annoncer « un
+        # outil candidat » ferait attendre au modèle une capacité appelable
+        # qui n'arrivera jamais.
+        #
+        # ⚠️ 02/09/2026 — et on n'annonce pas non plus un DÉPART. La tâche de
+        # fond a deux sorties silencieuses légitimes : `deja_perimee` (une
+        # procédure née de ce motif est morte sans jamais servir) et
+        # `candidate_en_attente` (une procédure attend déjà une décision
+        # humaine pour ce motif). La seconde est le chemin COURANT une fois la
+        # fabrique gelée : `_playbooks_for_capability` ne remonte que les
+        # playbooks ACTIVE, donc une candidate en attente est invisible d'ici,
+        # le manque est re-consigné à chaque récurrence, et le garde refuse
+        # d'en écrire une deuxième. Promettre « une rédaction est en cours »
+        # dans ce cas, c'est le défaut même que ce message répare un cran plus
+        # haut, déplacé d'un cran.
+        return (
+            f"Aucun outil existant ne couvre « {capability} ». "
+            "Capacité réellement absente — consignée dans "
+            "les « Capacités manquantes ». Si elle doit donner lieu à une "
+            "procédure, celle-ci passera par une validation humaine avant "
+            "d'être servie."
+        )
+    if _redaction_lancee:
         # ⚠️ « un outil candidat » était devenu FAUX (24/08). Depuis que la
         # branche « compétence » de l'aiguillage écrit un playbook au lieu de
         # ne rien faire, ce qui démarre est l'un OU l'autre — et c'est le juge
@@ -310,24 +356,27 @@ async def _record_gap_and_trigger(capability: str, *, model_judged: bool = False
             "est en cours de rédaction selon ce que la demande réclame ; il "
             "sera soumis à validation humaine avant d'être utilisable."
         )
+    # Rien n'a pu être lancé (pas de cas consigné, ou le départ a échoué) : on
+    # ne promet ni procédure ni outil, on dit seulement où le manque atterrit.
     return (
         f"Aucun outil existant ne couvre « {capability} ». "
         "Capacité réellement absente — consignée dans "
-        "les « Capacités manquantes » : un outil peut y être généré "
-        "puis soumis à validation humaine avant d'être utilisable."
+        "les « Capacités manquantes », où elle attend une décision humaine."
     )
 
 
 @tool
 async def report_missing_capability(capability: str) -> str:
-    """Consigner une capacité RÉELLEMENT absente et lancer la génération d'un outil candidat.
+    """Consigner une capacité RÉELLEMENT absente et lancer une rédaction pour la combler.
 
     APPELLE CET OUTIL quand `find_tool` a renvoyé des résultats qui ne
     couvrent PAS le besoin (faux-matchs — ex. des outils « pdf » qui ne
     convertissent pas), ou quand l'utilisateur te signale explicitement une
     capacité manquante à implémenter. La consignation apparaît dans
-    « Capacités manquantes » ; un outil candidat est généré automatiquement
-    puis soumis à validation humaine avant d'être utilisable.
+    « Capacités manquantes » ; une rédaction démarre ensuite toute seule —
+    une procédure écrite, ou un outil candidat quand la fabrique d'outils est
+    ouverte — et passe par une validation humaine avant de servir. Le retour
+    de cet outil dit laquelle : reprends-le, n'annonce rien de plus.
 
     Args:
         capability: description en langage naturel de la capacité absente

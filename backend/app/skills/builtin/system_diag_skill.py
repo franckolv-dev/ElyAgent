@@ -33,9 +33,12 @@ get_skill_registry().register(Skill(
     name="system_diag",
     display_name="Diagnostic système",
     description=(
+        # 02/09/2026 : le retrait de « Discord, Slack, WhatsApp), » avait
+        # emporté la parenthèse fermante. Cette phrase part au modèle dans le
+        # catalogue de sélection d'outil : cassée, elle se lit mal.
         "Permet à ELY de lire ses propres logs, lister ses tâches planifiées "
-        "et missions, vérifier l'état des canaux conversationnels (Telegram, "
-        "Discord, Slack, WhatsApp), inspecter la configuration LLM et "
+        "et missions, vérifier l'état des canaux conversationnels (Telegram), "
+        "inspecter la configuration LLM et "
         "produire un bilan de santé du backend. Lecture seule — aucune "
         "modification, aucune commande shell, aucun secret divulgué (les "
         "tokens et mots de passe sont automatiquement masqués dans les logs)."

@@ -91,12 +91,19 @@ async def test_dispatch_pose_le_contexte_de_la_mission(mission_id) -> None:
             return await _sonde()
 
     reg = get_skill_registry()
-    original = reg.all_tools
+    # ⚠️ On restaure la PROPRIÉTÉ D'ORIGINE, pas une qui rend l'instantané.
+    # Avant le 02/09/2026, le `finally` reposait `property(lambda: original)` :
+    # `all_tools` restait FIGÉ pour tout le reste de la session pytest, et
+    # toute compétence enregistrée plus tard devenait invisible en silence.
+    # Un test du lot « la mission est le chat sans humain » est tombé dessus —
+    # il enregistrait un faux outil que le nœud agent ne voyait jamais.
+    propriete_originale = type(reg).__dict__["all_tools"]
+    instantane = list(reg.all_tools)
     try:
-        type(reg).all_tools = property(lambda _self: list(original) + [_FauxOutil()])
+        type(reg).all_tools = property(lambda _self: instantane + [_FauxOutil()])
         await dispatch_tool("sonde_contexte", {}, "call-1", uid, mission_id=mid)
     finally:
-        type(reg).all_tools = property(lambda _self: original)
+        type(reg).all_tools = propriete_originale
 
     assert vu and vu[0] == mid, (
         "l'exécution d'un outil de mission doit porter l'identité de la "

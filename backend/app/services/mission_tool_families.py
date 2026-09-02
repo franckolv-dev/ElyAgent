@@ -46,7 +46,6 @@ _PREFIX_TO_FAMILY: Final[dict[str, str]] = {
     "memory": "memory",
     "knowledge": "knowledge",
     "smart": "knowledge",      # smart_knowledge_query
-    "whatsapp": "messaging",
     "telegram": "messaging",
     "scheduler": "scheduler",
     # ── Noyau interdit (mappé pour être refusé sec par le gate) ──

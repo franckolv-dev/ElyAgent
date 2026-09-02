@@ -41,7 +41,10 @@ from pathlib import Path
 
 import pytest
 
-_BOTS = ["telegram_bot", "slack_bot", "discord_bot"]
+# Slack et Discord ont quitté le dépôt le 02/09/2026 (archive/canaux) :
+# zéro appel de modèle en cinq mois. Telegram reste, et c'est LUI que
+# l'incident #247 avait cassé.
+_BOTS = ["telegram_bot"]
 
 
 @pytest.mark.parametrize("bot", _BOTS)

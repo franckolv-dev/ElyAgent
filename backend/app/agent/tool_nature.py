@@ -387,9 +387,6 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     # N'arbitre pas : le plan vient du modèle, l'outil le range sans rien en
     # décider — aucune forme n'est tranchée ici.
     "session_todo": _N("ECRITURE"),
-    # ── agent/tools/whatsapp_tool ───────────────────────────────
-    "whatsapp_send": _N("ENGAGEANT"),
-    "whatsapp_send_template": _N("ENGAGEANT"),
     # ── agent/tools/youtube_tool ────────────────────────────────
     "youtube_search": _N("LECTURE"),
     "youtube_transcript": _N("LECTURE"),

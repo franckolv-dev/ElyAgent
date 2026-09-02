@@ -140,8 +140,8 @@ _SIMPLE_PATTERNS: list[tuple[str, int]] = [
     (r"\bconvertis\b",                  10),
     # QR code
     (r"\bqr code\b",                    15),
-    # Whatsapp simple send
-    (r"\benvoie (un |le )?(message|whatsapp|sms)\b", 10),
+    # Envoi simple d'un message
+    (r"\benvoie (un |le )?(message|sms)\b", 10),
 ]
 
 _SUBORDINATE_RE = re.compile(

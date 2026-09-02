@@ -61,7 +61,6 @@ const PAGES = [
     // Le BarChart est SVG, on lui laisse le temps d'animer
     await page.waitForTimeout(1500);
   } },
-  { slug: "arena",      path: "/arena",        ready: "main h1, textarea, [data-arena-prompt]" },
   { slug: "security",   path: "/security",     ready: "main h1, [data-security-tile], main h2" },
 ];
 

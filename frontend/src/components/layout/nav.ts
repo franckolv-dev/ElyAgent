@@ -19,7 +19,7 @@
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck,
   Clock, Search, BookOpen, Target, Brain, Compass,
-  Sparkles, ClipboardCheck, Stethoscope, Undo2, BrainCircuit, Swords, Eye,
+  Sparkles, ClipboardCheck, Stethoscope, Undo2, BrainCircuit, Eye,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,17 +33,11 @@ export const isGroup = (e: NavEntry): e is NavGroup => "children" in e;
 // groups, so the list stays short and "Admin" is reachable without scrolling.
 // Candidates moved to /me/learning/* (was 404ing under the backend-owned
 // /admin/learning/* namespace — see that page's header).
-// Arena rebranchee le 02/09/2026 : retiree en juin comme « inutilisee » alors
-// qu'elle fonctionnait (6 matchs et 3 lignes de classement en base). La page et
-// sa cle `navArena` etaient restees, sans aucun lien pour y mener.
-// Elle est HORS du groupe Admin, et c'est volontaire : `routers/arena.py` ne
-// demande qu'un utilisateur connecte sur ses cinq routes, le match part du
-// prompt de l'appelant, `record_vote` refuse le vote d'un tiers (403) et
-// l'historique est filtre par `user_id`. Aucune route ne change un reglage
-// d'instance, et le classement ELO n'est lu nulle part ailleurs dans le
-// backend. C'est un outil PERSONNEL : le mettre sous Admin le laissait
-// injoignable pour tout le monde sauf l'administrateur — le defaut d'origine a
-// moitie corrige (relecture 02/09/2026).
+// L'Arena a ete RETIREE le 02/09/2026, quelques heures apres avoir ete
+// rebranchee dans cette liste. Les deux decisions ne se contredisent pas : la
+// premiere corrigeait une page livree que rien n'atteignait, la seconde
+// constate que la page elle-meme ne sert pas — 6 matchs en cinq mois. Le code
+// est sous `archive/arena/`, ses tables restent en base.
 export const NAV: NavEntry[] = [
   { href: "/chat",      labelKey: "navChat",      icon: MessageSquare },
   { href: "/missions",  labelKey: "navMissions",  icon: Target },
@@ -73,7 +67,6 @@ export const NAV: NavEntry[] = [
       // de faire POUR MOI ». Sous Admin, la reponse serait injoignable par
       // celui qui la pose.
       { href: "/transparence", labelKey: "navTransparency", icon: Eye },
-      { href: "/arena",     labelKey: "navArena",     icon: Swords },
     ],
   },
   { href: "/settings", labelKey: "navSettings", icon: Settings },

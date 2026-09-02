@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
     # B-16 (revue 2026-06-10) — le backend est LE service dont la RAM croît
     # avec le nombre d'utilisateurs (faster-whisper, fastembed, Chromium
-    # Playwright, clients WhatsApp par user, caches). Sans cap, il peut
+    # Playwright, caches). Sans cap, il peut
     # pousser le Mac hôte en swap et dégrader LM Studio — exactement le
     # scénario que le mem_limit du frontend visait déjà. À recalibrer si
     # OOM-kill constaté (docker inspect → OOMKilled: true).

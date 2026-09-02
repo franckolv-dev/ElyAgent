@@ -36,8 +36,8 @@ Tout code qui suppose une string casse alors de deux façons :
     2026).
 
 Ce helper est la source de vérité partagée ; ``session_search`` y délègue.
-(``arena_service._extract_text`` garde un séparateur ``\\n`` à part — usage
-cosmétique Arena, hors périmètre.)
+(Le seul autre aplatisseur du dépôt, ``arena_service._extract_text``, est parti
+avec l'Arena le 02/09/2026 — archive/arena.)
 """
 from __future__ import annotations
 

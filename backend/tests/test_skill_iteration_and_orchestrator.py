@@ -298,7 +298,11 @@ async def test_mark_rejected_unknown_id(_seeded_user):
 @pytest.mark.asyncio
 async def test_run_full_loop_no_failure_cases(_seeded_user):
     out = await run_full_loop(user_id=_seeded_user, batch_size=3)
-    assert out["totals"] == {"drafts": 0, "passed": 0, "rejected": 0, "errored": 0}
+    # `skipped` : les sauts délibérés du garde « procédure périmée », qui
+    # ne sont pas des pannes (02/09/2026).
+    assert out["totals"] == {
+        "drafts": 0, "passed": 0, "rejected": 0, "errored": 0, "skipped": 0,
+    }
     assert out["loops"] == []
 
 
@@ -485,7 +489,11 @@ content""")
 async def test_run_full_loop_no_user_id():
     out = await run_full_loop(user_id="", batch_size=3)
     assert "error" in out
-    assert out["totals"] == {"drafts": 0, "passed": 0, "rejected": 0, "errored": 0}
+    # `skipped` : les sauts délibérés du garde « procédure périmée », qui
+    # ne sont pas des pannes (02/09/2026).
+    assert out["totals"] == {
+        "drafts": 0, "passed": 0, "rejected": 0, "errored": 0, "skipped": 0,
+    }
 
 
 # ────────────────────────────────────────────────────────────────────────

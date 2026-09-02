@@ -45,13 +45,6 @@
       "description": "Demarrer une nouvelle conversation avec Eli",
       "url": "/chat?new=1",
       "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
-    },
-    {
-      "name": "Arena",
-      "short_name": "Arena",
-      "description": "Comparer deux modeles en aveugle",
-      "url": "/arena",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
     }
   ]
 }

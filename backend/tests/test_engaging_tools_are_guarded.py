@@ -13,7 +13,7 @@
 ``gmail_empty_trash`` ». **C'était faux.** ``ALREADY_GUARDED`` avait été bâti
 sur ``hitl_descriptions.py`` (6 outils) alors que la garde réelle vit dans
 ``hitl_preferences.LOCKED_HITL_TOOLS`` ∪ ``security_filter.ALWAYS_CRITICAL_TOOLS``
-— **38 outils**. ``ssh_execute``, ``gmail_empty_trash``, ``whatsapp_send``,
+— **38 outils**. ``ssh_execute``, ``gmail_empty_trash``,
 ``contacts_delete``, ``drive_share_file`` et les sept ``*_raw_api_call`` étaient
 déjà protégés.
 

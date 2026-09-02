@@ -89,8 +89,7 @@ Les grandes familles :
 - **Mémoire** — rappel typé, recherche vectorielle, plein texte sur les
   conversations passées
 - **Planification** — tâches récurrentes
-- **Canaux** — Telegram, Slack, Discord, WhatsApp, sur le même moteur que le chat
-  web
+- **Canaux** — Telegram, sur le même moteur que le chat web
 - **MCP** — Ely est à la fois cliente de serveurs MCP externes et serveur MCP
   elle-même
 
@@ -160,7 +159,7 @@ Marche à suivre complète : **[docs/installation.md](docs/installation.md)**.
 
 ## L'accord, et où il vit réellement
 
-**46 outils** demandent votre accord par leur nom. En plus, le **contenu** d'une
+**44 outils** demandent votre accord par leur nom. En plus, le **contenu** d'une
 demande peut déclencher une vérification : un virement, un achat, une
 suppression, un passage en caisse.
 
@@ -209,9 +208,9 @@ fichier, une API, un service. Sinon ce sera une compétence : une procédure
 FastAPI · LangGraph · Next.js · SQLite (Alembic seul fait foi sur le schéma) ·
 Qdrant · nginx · Squid pour le filtrage des sorties · Docker Compose.
 
-Surfaces : web, API REST, Telegram, Slack, Discord, WhatsApp, voix par
-WebSocket, extension Chrome et application de bureau. Les applications
-Android et iOS sont archivées depuis le 02/09/2026 — voir
+Surfaces : web, API REST, Telegram, voix par WebSocket, extension Chrome et
+application de bureau. Les applications Android et iOS, ainsi que les ponts
+WhatsApp, Slack et Discord, sont archivés depuis le 02/09/2026 — voir
 [archive/README.md](archive/README.md).
 
 ---

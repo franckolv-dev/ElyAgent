@@ -78,8 +78,6 @@ _WRITE_TOOLS_EXPLICIT: frozenset[str] = frozenset({
     # Desktop (écritures locales)
     "desktop_write_file", "desktop_move_file", "desktop_create_dir",
     "desktop_delete_file",
-    # Communications externes
-    "whatsapp_send", "whatsapp_send_template",
     # Planification (crée une tâche)
     "system_create_scheduled_task", "scheduler_create_task",
 })

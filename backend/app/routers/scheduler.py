@@ -166,8 +166,8 @@ async def run_task_now(
 
     Useful to (a) verify a task works without waiting for its cron tick,
     (b) get a fresh result on demand. Runs IN-PROCESS so it shares the
-    backend's LLM instance cache, skill registry, and Telegram/Slack
-    bot connections — unlike a `docker exec` Python script which would
+    backend's LLM instance cache, skill registry, and Telegram bot
+    connection — unlike a `docker exec` Python script which would
     spawn a fresh process with empty caches.
     """
     result = await db.execute(

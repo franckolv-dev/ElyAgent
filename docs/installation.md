@@ -125,10 +125,13 @@ Renseignez `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans `.env`, puis
 autorisez votre compte depuis les réglages de l'application. Cela débloque une
 soixantaine d'outils.
 
-### Canaux — Telegram, Slack, Discord, WhatsApp
+### Canal — Telegram
 
-Configurables depuis l'interface : **Réglages → Canaux**. Les jetons peuvent
-aussi être posés dans `.env` (section *Channels*).
+Configurable depuis l'interface : **Réglages → Canaux**. Le jeton peut aussi
+être posé dans `.env` (`TELEGRAM_BOT_TOKEN`).
+
+WhatsApp, Slack et Discord ont été retirés le 02/09/2026 — voir
+[archive/README.md](../archive/README.md).
 
 ### Extension Chrome — piloter votre vrai navigateur
 

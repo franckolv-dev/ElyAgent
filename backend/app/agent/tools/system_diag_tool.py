@@ -267,7 +267,7 @@ async def system_list_missions(
 async def system_check_channels(
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Check the runtime status of all chat channels (Telegram, Discord, Slack, WhatsApp Web).
+    """Check the runtime status of the chat channels (Telegram).
 
     Reports : configured (yes/no), running (yes/no), whether **you** are
     linked on this channel, bot username when known. Use this to diagnose
@@ -302,41 +302,6 @@ async def system_check_channels(
         out.append(f"📨 Telegram : configuré={bool(tok)} bot_alive={bot_alive} {_linked_str(linked, len(linked))}")
     except Exception as exc:
         out.append(f"📨 Telegram : erreur introspection ({exc})")
-
-    # Discord
-    try:
-        from app.channels import discord_bot as dc
-        tok = await _config_get("discord_bot_token", "")
-        client = getattr(dc, "_discord_client", None)
-        is_ready = bool(client and client.is_ready()) if client else False
-        linked = getattr(dc, "_linked_users", {})
-        out.append(f"💬 Discord : configuré={bool(tok)} ready={is_ready} {_linked_str(linked, len(linked))}")
-    except Exception as exc:
-        out.append(f"💬 Discord : erreur introspection ({exc})")
-
-    # Slack
-    try:
-        from app.channels import slack_bot as sl
-        bot_tok = await _config_get("slack_bot_token", "")
-        app_tok = await _config_get("slack_app_token", "")
-        slack_alive = getattr(sl, "_slack_app", None) is not None
-        linked = getattr(sl, "_linked_users", {})
-        out.append(f"🌳 Slack : configuré={bool(bot_tok and app_tok)} app_alive={slack_alive} {_linked_str(linked, len(linked))}")
-    except Exception as exc:
-        out.append(f"🌳 Slack : erreur introspection ({exc})")
-
-    # WhatsApp Web — sessions keyed by user_id
-    try:
-        from app.channels import whatsapp_web as wa
-        sessions = getattr(wa, "_sessions", {})
-        n_linked = sum(1 for s in sessions.values() if s.get("status") == "linked")
-        you_linked = bool(user_id and user_id in sessions and sessions[user_id].get("status") == "linked")
-        if show_global_count:
-            out.append(f"📱 WhatsApp Web : sessions_total={len(sessions)} linked={n_linked} you_linked={you_linked}")
-        else:
-            out.append(f"📱 WhatsApp Web : you_linked={you_linked}")
-    except Exception as exc:
-        out.append(f"📱 WhatsApp Web : erreur introspection ({exc})")
 
     return "\n".join(out)
 

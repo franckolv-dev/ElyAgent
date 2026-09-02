@@ -17,9 +17,13 @@ qu'aucune ligne de log n'explique pourquoi.
 
 Le dépôt avait déjà l'outil : ``services/background_tasks.spawn`` garde la
 référence forte dans un set et journalise l'exception au lieu de la perdre
-avec la tâche. D'autres sites nus sont passés au même remplaçant : le
-webhook WhatsApp, la comptabilité de tokens des missions, l'indexation FTS
-des messages et la sonde des têtes de chaîne au démarrage.
+avec la tâche. D'autres sites nus sont passés au même remplaçant : la
+comptabilité de tokens des missions, l'indexation FTS des messages et la
+sonde des têtes de chaîne au démarrage.
+
+⚠️ Le webhook WhatsApp était le troisième site épinglé ici. Il est parti le
+02/09/2026 sous ``archive/canaux`` — zéro message en cinq mois — et ses deux
+tests de rétention avec lui.
 
 ⚠️ L'indexation FTS était citée comme motif d'existence par la docstring
 de ``background_tasks`` — et elle était pourtant restée en
@@ -129,107 +133,6 @@ async def test_une_notification_hitl_qui_echoue_laisse_une_trace(monkeypatch, ca
 
 
 @pytest.mark.asyncio
-async def test_le_message_whatsapp_entrant_est_retenu_pendant_son_vol(monkeypatch):
-    """Le webhook rend son 200 à Meta AVANT d'avoir traité le message.
-
-    C'est tout l'intérêt du tir-et-oublie ici — et tout le danger : une tâche
-    posée en `create_task` nu n'est tenue que par une référence faible, donc
-    collectable en vol. Le message serait perdu et Meta, ayant reçu son 200,
-    ne le rejouerait jamais.
-    """
-    from app.channels import whatsapp as canal_whatsapp
-    from app.routers import whatsapp_webhook as routeur
-    from app.services import background_tasks
-
-    demarree = asyncio.Event()
-    liberee = asyncio.Event()
-
-    async def _traitement_lent(_phone, _text) -> None:
-        demarree.set()
-        await liberee.wait()
-
-    monkeypatch.setattr(
-        canal_whatsapp, "process_whatsapp_message", _traitement_lent
-    )
-    # Sans secret Meta configuré, le routeur saute la vérification de
-    # signature : le test ne dépend pas du `.env` de la machine.
-    monkeypatch.setattr(
-        routeur, "get_settings",
-        lambda: SimpleNamespace(whatsapp_phone_number_id="", whatsapp_app_secret=""),
-    )
-
-    charge = json.dumps({
-        "entry": [{"changes": [{"value": {"messages": [
-            {"type": "text", "from": "33612345678",
-             "text": {"body": "tu peux me lire mes mails ?"}},
-        ]}}]}],
-    }).encode()
-
-    async def _body() -> bytes:
-        return charge
-
-    reponse = await routeur.whatsapp_webhook(
-        SimpleNamespace(body=_body, headers={})
-    )
-    try:
-        assert reponse == {"status": "ok"}
-        await asyncio.wait_for(demarree.wait(), timeout=2.0)
-
-        retenues = {
-            t.get_name()
-            for t in background_tasks._BG_TASKS  # noqa: SLF001 — c'est le pin
-            if not t.done()
-        }
-        assert "whatsapp.incoming_message" in retenues, (
-            "le traitement du message WhatsApp n'est pas retenu : le GC peut "
-            "l'emporter en vol, et Meta a déjà eu son 200"
-        )
-    finally:
-        liberee.set()
-        await background_tasks.drain()
-
-
-@pytest.mark.asyncio
-async def test_un_message_whatsapp_qui_echoue_laisse_une_trace(monkeypatch, caplog):
-    """Un traitement qui lève ne doit pas emporter son exception avec lui."""
-    from app.channels import whatsapp as canal_whatsapp
-    from app.routers import whatsapp_webhook as routeur
-    from app.services import background_tasks
-
-    async def _traitement_casse(_phone, _text) -> None:
-        raise RuntimeError("graphe injoignable")
-
-    monkeypatch.setattr(
-        canal_whatsapp, "process_whatsapp_message", _traitement_casse
-    )
-    monkeypatch.setattr(
-        routeur, "get_settings",
-        lambda: SimpleNamespace(whatsapp_phone_number_id="", whatsapp_app_secret=""),
-    )
-
-    charge = json.dumps({
-        "entry": [{"changes": [{"value": {"messages": [
-            {"type": "text", "from": "33612345678", "text": {"body": "coucou"}},
-        ]}}]}],
-    }).encode()
-
-    async def _body() -> bytes:
-        return charge
-
-    with caplog.at_level(logging.WARNING, logger="app.services.background_tasks"):
-        await routeur.whatsapp_webhook(SimpleNamespace(body=_body, headers={}))
-        await background_tasks.drain()
-        # Le rappel `done` de `spawn` est posté en `call_soon`.
-        await asyncio.sleep(0)
-
-    traces = [r.getMessage() for r in caplog.records]
-    assert any(
-        "whatsapp.incoming_message" in m and "graphe injoignable" in m
-        for m in traces
-    ), f"l'échec du traitement WhatsApp n'a laissé aucune trace : {traces}"
-
-
-@pytest.mark.asyncio
 async def test_l_indexation_fts_d_un_message_est_retenue(monkeypatch):
     """Le site que la docstring de ``background_tasks`` cite en exemple.
 
@@ -270,7 +173,6 @@ async def test_l_indexation_fts_d_un_message_est_retenue(monkeypatch):
     "module, attribut",
     [
         ("app.services.hitl_manager", "spawn"),
-        ("app.routers.whatsapp_webhook", "spawn"),
         ("app.services.messages_fts_indexer", "spawn"),
     ],
 )
@@ -279,7 +181,7 @@ def test_le_nom_spawn_de_ces_modules_est_celui_du_depot(module, attribut):
 
     ⚠️ Ce test ne dit RIEN de l'usage : il vérifie une liaison de nom, pas
     qu'elle est appelée. Ce sont les tests de comportement ci-dessus (HITL,
-    webhook WhatsApp) qui épinglent la rétention réelle des tâches.
+    indexation FTS) qui épinglent la rétention réelle des tâches.
     """
     import importlib
 

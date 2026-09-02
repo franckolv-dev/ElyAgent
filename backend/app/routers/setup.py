@@ -178,11 +178,6 @@ async def get_setup_status():
     telegram_token = await gc("telegram_bot_token", fallback=s.telegram_bot_token)
     telegram_configured = bool(telegram_token)
 
-    # --- WhatsApp ---
-    whatsapp_configured = bool(
-        await gc("whatsapp_phone_number_id", fallback=s.whatsapp_phone_number_id)
-    )
-
     # --- First launch ---
     any_llm = await _any_llm_configured() or llm_status["ollama"]["available"]
     is_first_launch = not any_llm
@@ -194,7 +189,6 @@ async def get_setup_status():
         },
         "llm": llm_status,
         "telegram": {"configured": telegram_configured},
-        "whatsapp": {"configured": whatsapp_configured},
         "is_first_launch": is_first_launch,
     }
 

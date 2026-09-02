@@ -158,6 +158,7 @@ async def run_full_loop(
             "passed": <int>,
             "rejected": <int>,
             "errored": <int>,
+            "skipped": <int>,
           },
         }
 
@@ -167,7 +168,10 @@ async def run_full_loop(
     if not user_id:
         return {
             "error": "user_id is required",
-            "totals": {"drafts": 0, "passed": 0, "rejected": 0, "errored": 0},
+            "totals": {
+                "drafts": 0, "passed": 0, "rejected": 0, "errored": 0,
+                "skipped": 0,
+            },
             "loops": [],
         }
 
@@ -176,7 +180,7 @@ async def run_full_loop(
     )
 
     loops: list[dict[str, Any]] = []
-    passed = rejected = errored = 0
+    passed = rejected = errored = skipped = 0
 
     for draft in creator_result.get("drafts", []):
         if draft.get("status") != "drafted":
@@ -187,7 +191,17 @@ async def run_full_loop(
                 "skill_id": None,
                 "final_status": draft.get("status"),
             })
-            errored += 1
+            # Un saut DÉLIBÉRÉ n'est pas une panne (02/09/2026) : le garde
+            # « motif déjà couvert par une procédure périmée » sort en
+            # `deja_perimee`, et le compter dans `errored` faisait mentir la
+            # télémétrie sur ce que fait ce garde — plus il travaillait, plus
+            # la boucle avait l'air en panne.
+            # `candidate_en_attente` (02/09) : une procédure attend déjà une
+            # décision humaine pour ce motif — saut voulu, pas panne.
+            if draft.get("status") in {"deja_perimee", "candidate_en_attente"}:
+                skipped += 1
+            else:
+                errored += 1
             continue
 
         skill_id = draft.get("learned_skill_id")
@@ -220,5 +234,6 @@ async def run_full_loop(
             "passed": passed,
             "rejected": rejected,
             "errored": errored,
+            "skipped": skipped,
         },
     }

@@ -21,7 +21,7 @@ The supervisor-based multi-agent architecture is used by default:
   router → {research | workspace | infra | general} → tools → (loop)
 
 The old single-agent graph is kept as ``build_simple_agent_graph()`` for
-testing and for channels (Telegram, WhatsApp, scheduler) that build their
+testing and for channels (Telegram, scheduler) that build their
 own graph instance and may want the simpler version.
 
 ``build_agent_graph()`` is the public API used by all callers.

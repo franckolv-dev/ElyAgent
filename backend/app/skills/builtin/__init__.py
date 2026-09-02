@@ -76,7 +76,6 @@ def register_all() -> None:
     from app.skills.builtin import maps_skill        # noqa: F401
     from app.skills.builtin import youtube_skill     # noqa: F401
     from app.skills.builtin import qrcode_skill      # noqa: F401
-    from app.skills.builtin import whatsapp_skill    # noqa: F401
     from app.skills.builtin import telegram_skill    # noqa: F401
     from app.skills.builtin import github_skill      # noqa: F401
     from app.skills.builtin import vision_skill      # noqa: F401

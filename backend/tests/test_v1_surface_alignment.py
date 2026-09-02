@@ -147,8 +147,6 @@ async def test_vocabulary_injection_never_raises():
 
 @pytest.mark.parametrize("surface", [
     "app/channels/telegram_bot.py",
-    "app/channels/slack_bot.py",
-    "app/channels/discord_bot.py",
     "app/routers/voice.py",
 ])
 def test_every_surface_passes_the_toolset_profile(surface):
@@ -162,8 +160,6 @@ def test_every_surface_passes_the_toolset_profile(surface):
 
 @pytest.mark.parametrize("surface", [
     "app/channels/telegram_bot.py",
-    "app/channels/slack_bot.py",
-    "app/channels/discord_bot.py",
 ])
 def test_the_profile_is_resolved_before_the_agent_is_invoked(surface):
     src = Path(surface).read_text(encoding="utf-8")

@@ -258,7 +258,7 @@ _OVERRIDES: dict[str, CapabilityManifest] = {
 
 # Heuristique descriptive d'effets pour les outils ALWAYS dérivés.
 _DESTRUCTIVE_HINTS = ("delete", "trash", "remove", "drop", "empty", "destroy")
-_COMMS_HINTS = ("send", "reply", "message", "whatsapp", "publish", "post")
+_COMMS_HINTS = ("send", "reply", "message", "publish", "post")
 
 
 def _always_effects(tool_name: str) -> list[Effect]:

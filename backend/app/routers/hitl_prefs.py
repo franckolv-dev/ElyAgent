@@ -25,6 +25,7 @@ from app.auth.dependencies import get_current_user
 from app.database import async_session
 from app.models.hitl_preference import HitlPreference
 from app.models.user import User
+from app.services.hitl_channels import ALLOWED_CHANNELS, normalize_channel
 from app.services.hitl_manager import get_hitl_manager
 from app.services.hitl_preferences import LOCKED_HITL_TOOLS, is_hitl_waivable
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS
@@ -309,17 +310,18 @@ async def update_preference(
 # HITL preferred channel
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Whitelist of accepted channel values. Keep in sync with the frontend
-# Settings UI dropdown and the dispatch logic in hitl_manager.request_validation.
-_ALLOWED_CHANNELS = frozenset({
-    "ely_android",
-    "ntfy",
-    "telegram",
-    "discord",
-    "slack",
-    "web_only",
-    "all",
-})
+# Liste blanche des canaux acceptés. À garder en phase avec le menu déroulant
+# des Réglages côté frontend.
+#
+# ⚠️ AUDIT 02/09/2026 : « discord » et « slack » sont retirés avec leurs canaux
+# (archive/canaux). Ils n'ont JAMAIS rien envoyé — le dispatch les comptait dans
+# son fan-out mais aucune fonction d'envoi n'existait. Une préférence encore
+# posée sur l'un des deux est désormais ramenée à « all » — donc Telegram +
+# ntfy + Android — par `normalize_channel`, appelée À LA LECTURE aussi bien
+# ici qu'au moment du dispatch. La liste a déménagé dans
+# `app.services.hitl_channels` pour cette raison : `hitl_manager` ne pouvait
+# pas l'importer d'ici (ce module l'importe déjà), il lisait donc la colonne
+# brute et l'éventail tombait à zéro sur une valeur orpheline.
 
 
 class HitlChannelOut(BaseModel):
@@ -328,7 +330,7 @@ class HitlChannelOut(BaseModel):
 
 
 class HitlChannelPatch(BaseModel):
-    preferred_channel: str = Field(..., description="One of: ely_android, ntfy, telegram, discord, slack, web_only, all.")
+    preferred_channel: str = Field(..., description="One of: ely_android, ntfy, telegram, web_only, all.")
 
 
 @router.get("/channel", response_model=HitlChannelOut)
@@ -340,15 +342,11 @@ async def get_hitl_channel(current_user: User = Depends(get_current_user)) -> Hi
     for unlinked channels.
     """
     import os
-    pref = (current_user.hitl_preferred_channel or "all").strip().lower()
-    if pref not in _ALLOWED_CHANNELS:
-        pref = "all"
+    pref = normalize_channel(current_user.hitl_preferred_channel)
 
     # Resolve availability per channel
     has_telegram = bool(getattr(current_user, "telegram_id", None))
     has_fcm = bool(getattr(current_user, "fcm_token", None))
-    has_discord = bool(getattr(current_user, "discord_id", None))
-    has_slack = bool(getattr(current_user, "slack_id", None))
 
     # ntfy is configured server-side (env or DB)
     from app.services.system_config import get_config
@@ -359,8 +357,6 @@ async def get_hitl_channel(current_user: User = Depends(get_current_user)) -> Hi
         {"value": "ely_android", "label": "App ELY Android", "available": has_fcm,    "icon": "📱"},
         {"value": "ntfy",        "label": "ntfy (push)",     "available": has_ntfy,   "icon": "🔔"},
         {"value": "telegram",    "label": "Telegram",        "available": has_telegram, "icon": "✈️"},
-        {"value": "discord",     "label": "Discord",         "available": has_discord,  "icon": "💜"},
-        {"value": "slack",       "label": "Slack",           "available": has_slack,    "icon": "🟣"},
         {"value": "web_only",    "label": "Web seulement",   "available": True,         "icon": "🌐"},
         {"value": "all",         "label": "Tous (broadcast)","available": True,         "icon": "📢"},
     ]
@@ -374,10 +370,10 @@ async def patch_hitl_channel(
 ) -> HitlChannelOut:
     """Set the user's preferred HITL notification channel."""
     val = (body.preferred_channel or "all").strip().lower()
-    if val not in _ALLOWED_CHANNELS:
+    if val not in ALLOWED_CHANNELS:
         raise HTTPException(
             status_code=400,
-            detail=f"Canal '{body.preferred_channel}' invalide. Valeurs : {sorted(_ALLOWED_CHANNELS)}.",
+            detail=f"Canal '{body.preferred_channel}' invalide. Valeurs : {sorted(ALLOWED_CHANNELS)}.",
         )
 
     async with async_session() as db:

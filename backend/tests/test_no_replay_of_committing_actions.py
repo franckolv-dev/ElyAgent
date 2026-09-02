@@ -206,8 +206,7 @@ def test_the_scheduler_channel_hides_the_matching_send_tool():
     from app.agent.replay_guard import channel_delivery_tools
 
     assert channel_delivery_tools("telegram") == {"telegram_send_message"}
-    assert channel_delivery_tools("whatsapp") == {"whatsapp_send",
-                                                 "whatsapp_send_template"}
+    assert channel_delivery_tools("whatsapp") == set()
 
 
 def test_an_unknown_or_absent_channel_hides_nothing():
