@@ -33,8 +33,14 @@ interface LiveBrowserPanelProps {
  * fill) and can be dismissed manually.
  */
 export function LiveBrowserPanel({ frame, onClose }: LiveBrowserPanelProps) {
-  if (!frame) return null;
-
+  // ⚠️ CE QUE ÇA CORRIGE (02/09) : ce `useCallback` etait appele APRES le
+  // `if (!frame) return null` ci-dessous. React identifie les hooks par leur
+  // RANG d'appel : le rendu ou `frame` valait null n'en appelait aucun, celui
+  // d'apres en appelait un — l'etat interne du composant se decalait d'un cran
+  // (« Rendered more hooks than during the previous render »). Le panneau
+  // apparait justement quand une image arrive apres avoir ete absente : le
+  // chemin fautif etait le chemin nominal. Tout hook doit rester au-dessus de
+  // tout retour anticipe.
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -42,6 +48,8 @@ export function LiveBrowserPanel({ frame, onClose }: LiveBrowserPanelProps) {
     },
     [onClose]
   );
+
+  if (!frame) return null;
 
   // Shorten URL for display (strip protocol + strip long paths)
   const displayUrl = (() => {

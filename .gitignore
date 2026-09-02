@@ -67,6 +67,13 @@ android/app/google-services.json
 # Next.js / TypeScript build artifacts
 frontend/tsconfig.tsbuildinfo
 
+# Couverture pytest. Depuis que la CI lance `pytest --cov` (02/09/2026), le
+# moindre run local depose backend/.coverage et le fait apparaitre dans
+# `git status`. C'est une mesure d'execution, pas une source.
+.coverage
+.coverage.*
+htmlcov/
+
 # Test runner logs (keep in test-runner/ only, not at repo root)
 /*.log
 /hitl-*.log

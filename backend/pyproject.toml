@@ -86,6 +86,11 @@ packages = ["app"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    # Mesure de couverture (audit CI 02/09/2026) : elle n'etait mesuree nulle
+    # part, donc personne ne savait quels modules la suite ne touche jamais.
+    # Le job CI l'affiche (`--cov=app --cov-report=term`) SANS plancher :
+    # on mesure d'abord, on decidera d'un seuil ensuite.
+    "pytest-cov>=5.0",
 ]
 
 [tool.ruff]
