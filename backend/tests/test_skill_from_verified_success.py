@@ -136,9 +136,19 @@ description: Conserver la géométrie de page lors d'une conversion PDF vers Wor
 ## Quand l'appliquer
 Une conversion PDF -> DOCX où l'utilisateur exige la mise en page.
 
+## Ne pas appliquer quand
+Le PDF est un scan sans couche texte : passer par l'OCR d'abord.
+
 ## Procédure
 1. Appeler `pdf_to_docx` avec `keep_geometry=True`.
 2. Vérifier le calibrage rapporté avant de répondre.
+
+## Pièges
+Sans `keep_geometry`, l'outil rend un document propre aux marges fausses et
+ne le signale pas.
+
+## Terminé quand
+Le calibrage rapporté est à 0 caractère perdu.
 """
 
 

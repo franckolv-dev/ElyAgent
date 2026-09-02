@@ -11,9 +11,21 @@
  *   /tts/*   -- generated TTS audio (one-shot)
  * --------------------------------------------------------------------------- */
 
-// Bump this on any sw.js change so browsers fetch the new file and the
-// activate handler purges the old caches.
-const VERSION = "ely-sw-v48";
+// ⚠️ CE QUE ÇA CORRIGE (02/09) : cette ligne disait « Bump this on any sw.js
+// change », et personne ne l'a bumpee pendant quatorze commits frontend. Or
+// `activate` (plus bas) ne purge les anciens caches que si VERSION change : un
+// onglet qui revenait apres un deploiement rejouait, depuis le cache, un HTML
+// pointant vers des chunks supprimes par la reconstruction — ChunkLoadError,
+// ecran blanc, puis rechargement dur par ChunkReloadGuard, a chaque fois.
+//
+// La valeur est desormais REECRITE AU BUILD par scripts/stamp-sw-version.mjs,
+// appele par le Dockerfile juste apres `npm run build`, a partir de
+// `.next/BUILD_ID`. Le marqueur de fin de ligne est la cible du remplacement :
+// NE PAS LE RETIRER (le script echoue s'il ne le trouve plus, exprès).
+//
+// La valeur ci-dessous est le repli du developpement local, ou aucun build ne
+// tourne et ou le service worker n'est de toute facon pas enregistre.
+const VERSION = "ely-sw-dev"; // ely:build-stamp
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const SHELL_CACHE = `${VERSION}-shell`;
 

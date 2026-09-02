@@ -48,6 +48,7 @@ from langchain_core.tools import tool, InjectedToolArg
 
 from app.services import browser_extension_registry as bext_registry
 from app.services.chrome_privacy_filter import filter_rows as _privacy_filter_rows
+from app.services.external_content import etiquette_externe, wrap_external
 
 logger = logging.getLogger(__name__)
 
@@ -68,18 +69,35 @@ _PROTOCOL_VERSION = "0.1.0"
 MAX_PAGE_CHARS = 8_000
 
 
-def _bound_page(content: str, kind: str = "contenu") -> tuple[str, bool]:
-    """Borne un contenu de page. Renvoie ``(texte, tronqué)``.
+def _bound_page(
+    content: str,
+    kind: str = "contenu",
+    *,
+    source: str = "onglet Chrome",
+    origin: str = "",
+) -> tuple[str, bool]:
+    """Borne un contenu de page et l'encadre. Renvoie ``(texte, tronqué)``.
 
     La troncature est ANNONCÉE, avec la taille réelle et une issue : coupée en
     silence, elle ferait conclure au modèle que la page est courte, et il
     répondrait avec assurance sur des données amputées. Sans issue proposée, il
     réessaie le même appel — et le repaie.
+
+    ⚠️ CE QUE ÇA CORRIGE (audit du 02/09/2026) : le contenu d'un onglet est du
+    contenu TIERS — c'est par là qu'arrive une injection de prompt. Il part
+    désormais encadré (``services/external_content``), comme le contenu MCP
+    l'était déjà. L'annonce de troncature, elle, reste HORS du cadre : elle
+    vient d'Ely, et une consigne d'Ely encadrée en « non fiable » serait
+    ignorée par le modèle au moment même où elle lui dit quoi faire.
     """
-    if len(content) <= MAX_PAGE_CHARS:
-        return content, False
+    tronque = len(content) > MAX_PAGE_CHARS
+    texte = wrap_external(
+        content[:MAX_PAGE_CHARS], source=source, origin=origin or None,
+    )
+    if not tronque:
+        return texte, False
     return (
-        content[:MAX_PAGE_CHARS]
+        texte
         + f"\n\n[… {kind} tronqué — {len(content)} caractères au total. "
           f"Relance avec un `selector` CSS plus précis (par ex. \"main\", "
           f"\"article\", \"#content\") pour cibler ce qui t'intéresse.]",
@@ -257,11 +275,17 @@ async def browser_tab_read_text(
     if not res.get("ok"):
         return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
     text = res.get("text", "")
-    bounded, _ = _bound_page(text, "contenu")
+    # ⚠️ URL et titre sont écrits par la PAGE (le titre l'est littéralement,
+    # l'URL est celle où la page a fini par emmener le navigateur). Rendus
+    # bruts, ils forgeaient une fausse ligne de fermeture juste au-dessus du
+    # cadre — relecture du 02/09/2026. Ils restent dehors, ce sont les repères
+    # d'Ely, mais mis à plat et neutralisés.
+    url = etiquette_externe(res.get("url"))
+    bounded, _ = _bound_page(text, "contenu", origin=url)
     return (
-        f"URL : {res.get('url', '')}\n"
-        f"Titre : {res.get('title', '')}\n"
-        f"Sélecteur : {res.get('selector', 'body')}\n"
+        f"URL : {url}\n"
+        f"Titre : {etiquette_externe(res.get('title'))}\n"
+        f"Sélecteur : {etiquette_externe(res.get('selector')) or 'body'}\n"
         f"Contenu ({len(text)} caractères) :\n{bounded}"
     )
 
@@ -296,10 +320,11 @@ async def browser_tab_read_html(
     # Le HTML est encore plus verbeux que le texte — il porte les balises en
     # plus du contenu. Il a coûté 1,42 $ en mai et 0,73 $ en juin sur le même
     # défaut, avant qu'on le mesure.
-    bounded, _ = _bound_page(html, "HTML")
+    url = etiquette_externe(res.get("url"))
+    bounded, _ = _bound_page(html, "HTML", origin=url)
     return (
-        f"URL : {res.get('url', '')}\n"
-        f"Sélecteur : {res.get('selector', 'body')}\n"
+        f"URL : {url}\n"
+        f"Sélecteur : {etiquette_externe(res.get('selector')) or 'body'}\n"
         f"HTML ({len(html)} caractères) :\n{bounded}"
     )
 

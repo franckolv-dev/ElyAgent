@@ -33,9 +33,7 @@ automatically as soon as it lands).
 What is wiped
 -------------
 Qdrant collections   : memories, user_profile, security_constraints,
-                       interactions (created if missing). The new
-                       `procedures` collection is left empty (Jalon 1
-                       just created it).
+                       interactions (created if missing).
 SQL tables           : user_memory_logs, user_profiles
 SQLite FTS5 rows     : memory_fts WHERE collection IN (...)
 
@@ -79,7 +77,6 @@ from app.services.memory._constants import (
     COLLECTION_INTERACTIONS,
     COLLECTION_MEMORIES,
     COLLECTION_PREFERENCES,
-    COLLECTION_PROCEDURES,
     VECTOR_DIM,
 )
 
@@ -90,14 +87,17 @@ logging.basicConfig(
 log = logging.getLogger("wipe")
 
 
-# Order matters only for log readability. Procedures is included so it
-# exists empty at the end of the run if it wasn't already created.
+# Order matters only for log readability.
+#
+# ⚠️ 02/09/2026 : `procedures` a quitté cette liste avec la constante. Cette
+# collection n'a jamais eu ni lecteur ni écrivain (voir memory/_constants.py) ;
+# le script la recréait à vide en fin de course. Si un reliquat existe encore
+# sur une instance, il s'efface à la main — rien ne le lit.
 _COLLECTIONS_TO_WIPE: tuple[str, ...] = (
     COLLECTION_MEMORIES,
     COLLECTION_PREFERENCES,
     COLLECTION_CONSTRAINTS,
     COLLECTION_INTERACTIONS,
-    COLLECTION_PROCEDURES,
 )
 
 

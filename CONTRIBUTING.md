@@ -73,13 +73,14 @@ npm run dev                           # http://localhost:3000
 npm run lint                          # ESLint
 ```
 
-### Android (optional)
+### Mobile (archived)
 
-```bash
-cd android
-./gradlew assembleDebug              # build APK
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+The Android and iOS apps were moved to `archive/mobile/` on 2026-09-02: zero
+production traffic in five months, two competing Android source trees, no Xcode
+project on the iOS side, and a WebSocket protocol the backend has since moved
+past. Nothing there is built or tested by CI. Read
+[archive/README.md](archive/README.md) before reviving either one — it lists
+what has to be fixed first.
 
 ---
 

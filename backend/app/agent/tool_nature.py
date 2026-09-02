@@ -273,8 +273,6 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "gmail_trash_by_query": _N("ECRITURE"),
     "gmail_trash_emails": _N("ECRITURE"),
     "gmail_update_settings": _N("ENGAGEANT"),
-    # ── agent/tools/graduated/fibonacci_tool ────────────────────
-    "fibonacci": _N("LECTURE"),
     # ── agent/tools/knowledge_tool ──────────────────────────────
     "knowledge_list": _N("LECTURE"),
     "knowledge_search": _N("LECTURE"),
@@ -373,6 +371,22 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "tasks_update": _N("ECRITURE"),
     # ── agent/tools/telegram_tool ───────────────────────────────
     "telegram_send_message": _N("ENGAGEANT"),
+    # ── agent/tools/tool_output_spill_tool ──────────────────────
+    # Relit une tranche d'une sortie d'outil déjà produite et déjà conservée
+    # sur disque : rien n'est modifié, rien ne sort de la machine, et le
+    # découpage n'est pas un arbitrage (le modèle choisit lui-même l'offset).
+    "tool_output_read": _N("LECTURE"),
+    # ── agent/tools/todo_tool ───────────────────────────────────
+    # ECRITURE et non LECTURE : son objet EST d'inscrire un état. Il n'atteint
+    # rien d'extérieur — ni fichier, ni API, ni tiers — et ce qu'il écrit vit
+    # en mémoire, le temps d'une conversation : réversible et privé, soit la
+    # définition d'ECRITURE. Le classer LECTURE parce qu'« il ne sort pas du
+    # processus » ferait mentir la table sur ce que l'outil fait ; le classer
+    # ENGAGEANT ferait confirmer une prise de notes, et apprendrait à
+    # l'utilisateur à valider sans lire.
+    # N'arbitre pas : le plan vient du modèle, l'outil le range sans rien en
+    # décider — aucune forme n'est tranchée ici.
+    "session_todo": _N("ECRITURE"),
     # ── agent/tools/whatsapp_tool ───────────────────────────────
     "whatsapp_send": _N("ENGAGEANT"),
     "whatsapp_send_template": _N("ENGAGEANT"),

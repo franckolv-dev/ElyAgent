@@ -62,6 +62,8 @@ from typing import Any
 
 from langchain_core.tools import tool
 
+from app.services.external_content import MARQUEUR, etiquette_externe, wrap_external
+
 logger = logging.getLogger(__name__)
 
 # Là où vivent les pièces jointes, comme `browser_screenshot` (2026-05-06).
@@ -110,6 +112,21 @@ def _valider_url(url: str) -> str | None:
         return (
             f"URL refusée : « {u[:80]} ». Seuls http:// et https:// sont "
             f"acceptés — cet outil lit le web, pas le disque."
+        )
+    # ⚠️ SSRF (audit du 02/09/2026). Le schéma ne suffit pas : ces outils
+    # pilotent un Chromium vers l'URL que le modèle leur donne, et
+    # `http://169.254.169.254/` (métadonnées cloud), `http://qdrant:6333`
+    # (la base vectorielle du réseau Docker) ou `http://127.0.0.1:8000` (le
+    # backend lui-même) passaient. Le garde complet existait pour le client
+    # MCP — boucle locale, lien local, adresses privées, CGNAT, formes
+    # obfusquées — et n'était branché que là. Le web, lui, reste en http.
+    from app.services.mcp_egress import MCPEgressBlocked, validate_egress_url
+    try:
+        validate_egress_url(u, require_https=False)
+    except MCPEgressBlocked as exc:
+        return (
+            f"URL refusée : « {u[:80]} » vise un hôte interne ({exc}). "
+            f"Cet outil lit le web public, pas le réseau de la machine."
         )
     return None
 
@@ -210,7 +227,7 @@ async def web_screenshot(
     return json.dumps({
         "ok": True,
         "url": url,
-        "title": titre,
+        "title": etiquette_externe(titre),
         "local_path": chemin,
         "attachment_id": identifiant,
         "bytes": len(png),
@@ -277,7 +294,7 @@ async def web_to_pdf(
     return json.dumps({
         "ok": True,
         "url": url,
-        "title": titre,
+        "title": etiquette_externe(titre),
         "local_path": chemin,
         "attachment_id": identifiant,
         "bytes": len(pdf),
@@ -337,9 +354,16 @@ async def web_extract(
     return json.dumps({
         "ok": True,
         "url": url,
-        "title": titre,
+        "title": etiquette_externe(titre),
         "selector": selector,
-        "text": texte[:_MAX_TEXT_CHARS],
+        # ⚠️ CE QUE ÇA CORRIGE (audit du 02/09/2026) : le texte d'une page est
+        # du contenu TIERS, la surface d'injection de prompt la plus banale du
+        # lot. Seul ce champ est encadré : l'URL demandée, le compteur et la
+        # note de troncature sont dits par Ely, les encadrer les rendrait
+        # suspects au modèle. Le TITRE, lui, est écrit par la PAGE : il reste
+        # hors du cadre (c'est un repère) mais passe par le même traitement
+        # que l'origine — relecture du 02/09, il en sortait brut.
+        "text": wrap_external(texte[:_MAX_TEXT_CHARS], source="page web", origin=url),
         "chars": len(texte),
         # ⚠️ La troncature s'ANNONCE. Muette, elle ferait conclure au modèle
         # qu'il a lu la page entière, et résumer un article sur sa première
@@ -404,7 +428,13 @@ async def web_compare(
         logger.warning("web_compare: %s — %s", url, exc)
         return _erreur(f"Comparaison impossible : {exc}", url)
 
-    avant = reference_text.splitlines()
+    # ⚠️ La référence est le `text` d'un `web_extract` précédent — donc déjà
+    # encadré (audit du 02/09/2026). Les deux lignes de cadre porteraient
+    # sinon comme des différences, et TOUTE page serait « changée » à chaque
+    # tour de veille : le bruit qui fait couper la surveillance au bout de
+    # trois jours. Le cadre n'ajoute que ces deux lignes, toutes deux
+    # marquées : c'est ce qui rend le filtre exact.
+    avant = [ligne for ligne in reference_text.splitlines() if MARQUEUR not in ligne]
     apres = actuel.splitlines()
     diff = [
         ligne for ligne in difflib.unified_diff(
@@ -421,16 +451,21 @@ async def web_compare(
     return json.dumps({
         "ok": True,
         "url": url,
-        "title": titre,
+        "title": etiquette_externe(titre),
         "selector": selector,
         "changed": change,
         "added_lines": sum(1 for l in corps if l.startswith("+")),
         "removed_lines": sum(1 for l in corps if l.startswith("-")),
-        "diff": "\n".join(diff[:_MAX_DIFF_LINES]),
+        "diff": wrap_external(
+            "\n".join(diff[:_MAX_DIFF_LINES]), source="page web (différences)",
+            origin=url,
+        ),
         "diff_truncated": len(diff) > _MAX_DIFF_LINES,
         # Le texte courant est rendu pour servir de référence au PROCHAIN
         # appel. Sans lui, surveiller une page demanderait deux outils à
         # chaque tour, et la référence dériverait d'un tour sur l'autre.
-        "current_text": actuel[:_MAX_TEXT_CHARS],
+        "current_text": wrap_external(
+            actuel[:_MAX_TEXT_CHARS], source="page web", origin=url,
+        ),
         "current_truncated": len(actuel) > _MAX_TEXT_CHARS,
     }, ensure_ascii=False)

@@ -18,9 +18,15 @@ COLLECTION_CONSTRAINTS = "security_constraints"
 COLLECTION_INTERACTIONS = "interactions"
 COLLECTION_PREFERENCES = "user_profile"
 
-# Sprint 2.5 — new collection holding the Qdrant index over the SQL
-# `procedures` table (SQL = source of truth, this is just the semantic index).
-COLLECTION_PROCEDURES = "procedures"
+# ⚠️ CE QUE ÇA CORRIGE (ménage du 02/09/2026) : il y avait ici un
+# `COLLECTION_PROCEDURES = "procedures"`, index sémantique prévu au Sprint 2.5
+# au-dessus de la table SQL du même nom. La moisson n'a jamais été livrée, le
+# `ProceduralStore` est parti en stub, et la lecture `procedural` a finalement
+# été rebranchée le 02/08 sur le REGISTRE D'OUTILS (`_recall_procedural` →
+# `rank_tools_for_capability`) — pas sur Qdrant. Restait `init_collections`,
+# qui créait la collection à vide à chaque démarrage sans personne pour y
+# écrire ni y lire. Si la voie procédurale reprend un jour un vrai magasin,
+# c'est une décision d'architecture, pas une constante à remettre ici.
 
 # all-MiniLM-L6-v2 output dimension — fastembed default
 VECTOR_DIM = 384

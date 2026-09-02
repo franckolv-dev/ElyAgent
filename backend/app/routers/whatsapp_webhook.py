@@ -24,7 +24,6 @@ DELETE /api/whatsapp/link/{user_id} — admin: remove WA link
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 
@@ -35,6 +34,7 @@ from sqlalchemy import select
 from app.auth.dependencies import get_current_user
 from app.config import get_settings
 from app.database import async_session
+from app.services.background_tasks import spawn
 from app.models.user import User
 
 router = APIRouter()
@@ -86,8 +86,15 @@ async def whatsapp_webhook(request: Request):
                 if msg.get("type") == "text":
                     from_phone = msg["from"]
                     text = msg["text"]["body"]
-                    # Process asynchronously to return 200 quickly
-                    asyncio.create_task(process_whatsapp_message(from_phone, text))
+                    # Process asynchronously to return 200 quickly.
+                    # ⚠️ (audit 02/09) `create_task` nu : Meta reçoit son 200,
+                    # puis la tâche peut être ramassée par le GC avant d'avoir
+                    # répondu — message perdu, sans trace. `spawn` la retient
+                    # et journalise son exception.
+                    spawn(
+                        process_whatsapp_message(from_phone, text),
+                        label="whatsapp.incoming_message",
+                    )
 
     # Meta expects a 200 response quickly
     return {"status": "ok"}

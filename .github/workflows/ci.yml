@@ -48,7 +48,31 @@ jobs:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           QDRANT_URL: "http://localhost:6333"
           ENVIRONMENT: test
-        run: uv run python -m pytest tests/ -v
+        # `--cov` sans plancher (audit CI 02/09/2026) : la couverture n'etait
+        # mesuree NULLE PART, donc personne ne savait quels modules la suite ne
+        # touche jamais. On l'affiche d'abord ; on fixera un seuil quand on
+        # connaitra le chiffre reel. Ajouter `--cov-fail-under=N` ici le jour ou
+        # ce sera decide — pas avant, un seuil pose au juge casse la CI.
+        run: uv run python -m pytest tests/ -v --cov=app --cov-report=term
+
+      # Le banc canonique ne tournait que la NUIT (bench-nightly.yml) : une
+      # regression de la chaine mission etait vue jusqu'a 24 h trop tard.
+      # Les tags shallow+medium sont HERMETIQUES (LLM et outils simules) et
+      # prennent ~1 min — ils ont leur place sur chaque PR. Le tag `deep`
+      # (vrais appels LLM, ca coute) reste exclu, il est lance a la main.
+      #
+      # Lance depuis la RACINE du depot (le paquet `bench` vit la ; le runner
+      # ajoute `backend/` a sys.path lui-meme). DB SQLite sur FICHIER
+      # obligatoire : `:memory:` est par connexion, un scenario qui ecrit dans
+      # une session et relit dans une autre verrait une base vide.
+      - name: Canonical bench (shallow,medium)
+        working-directory: .
+        env:
+          JWT_SECRET_KEY: ci-runner-ephemeral-jwt-secret-not-for-production-use-only
+          DATABASE_URL: "sqlite+aiosqlite:///./bench_ci.db"
+          QDRANT_URL: "http://localhost:6333"
+          ENVIRONMENT: test
+        run: PYTHONPATH=. backend/.venv/bin/python -m bench.run_canonical --tag shallow,medium
 
   frontend:
     name: Frontend
@@ -68,8 +92,59 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `npm run lint` etait MORT (audit 02/09/2026) : le script appelait
+      # `next lint`, retire de Next 16, sans aucun fichier de config ESLint et
+      # sans eslint installe. Le job ne faisait donc que `tsc --noEmit`. Voir
+      # frontend/eslint.config.mjs pour les regles laissees en avertissement
+      # sur la dette existante — tout le reste est bloquant.
+      - name: Lint
+        run: npm run lint
+
       - name: Type check
         run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      # Les tests des scripts de build ne passent PAS par vitest : son `include`
+      # ne ramasse que `src/**/*.test.ts(x)`, et `scripts/stamp-sw-version.mjs`
+      # vit hors de `src/`. Sans cette etape, les 9 tests de l'estampilleur du
+      # service worker n'auraient jamais tourne ailleurs que sur le poste de
+      # celui qui les a ecrits — or ce script est un maillon du build de l'image
+      # (frontend/Dockerfile), et il echoue exprès quand il ne trouve plus sa
+      # cible : le casser casse le deploiement.
+      - name: Test build scripts
+        run: node --test scripts/*.test.mjs
+
+      # `tsc` ne voit pas ce que le compilateur Next refuse : frontiere
+      # serveur/client violee, import dynamique casse, page qui n'exporte pas
+      # ce qu'il faut. Sans cette etape, une PR qui casse le build passait
+      # verte et ne cassait qu'au deploiement.
+      - name: Build
+        run: npm run build
+
+  desktop:
+    # Les 21 tests Go du daemon (dont chaque invariant anti-traversee de chemin
+    # de desktop/filesystem.go) ne tournaient JAMAIS en CI : le fichier avait
+    # cinq jobs et aucun n'etait Go (audit 02/09/2026). Un garde-fou de
+    # securite qu'aucune CI n'exerce est un garde-fou qu'on croit avoir.
+    name: Desktop daemon
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          # La version fait foi dans desktop/go.mod — pas de second endroit
+          # a tenir a jour.
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Run tests
+        run: go test ./...
 
   sandbox-image:
     # Sprint 4b V3 J2.a — validate that the sandbox base image still builds.

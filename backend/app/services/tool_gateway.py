@@ -104,8 +104,18 @@ class GatewayContext:
     #   n'exécute PAS l'outil (disjoncteurs J3 des missions).
     # post_execute : hook (tool_name, ok, elapsed_s, result_ou_exc) -> None
     #   (journal de bord J4).
+    # spill_large_results : False = les grandes sorties reviennent ENTIÈRES.
+    #   ⚠️ 02/09/2026 — sur le chemin des missions, la sortie d'outil n'est pas
+    #   qu'un affichage : elle est lue par l'évaluateur d'étape, ARCHIVÉE dans
+    #   MissionStepRun.output, puis relue par `_foreach_source` pour étendre un
+    #   `foreach`. Or l'évaluateur et l'expansion sont des PROMPTS, pas des
+    #   boucles d'outils : ils ne peuvent PAS appeler `tool_output_read`. Un
+    #   débordement là-bas ne masque pas la donnée, il la DÉTRUIT — un `foreach`
+    #   sur une recherche volumineuse extrairait ses items d'un aperçu tronqué,
+    #   exactement le défaut fermé les 29 et 30/08.
     needs_hitl_final: bool | None = None
     anonymize_results: bool = True
+    spill_large_results: bool = True
     pre_execute: Any = None
     post_execute: Any = None
     # Surface INTERACTIVE (un humain attend devant son écran) : un outil qui
@@ -131,13 +141,54 @@ _SELF_MAIL_TOOLS: frozenset[str] = frozenset({
 })
 
 
+class GoogleAccountUnknown(Exception):
+    """L'alias de compte Google demandé ne résout vers aucun compte lié.
+
+    ⚠️ CE QUE ÇA CORRIGE (audit du 02/09/2026). Un alias introuvable — ou
+    une recherche en erreur — posait un avertissement dans les logs et
+    continuait avec les identifiants du compte PAR DÉFAUT : « envoie ce
+    mail depuis mon compte travail » partait du compte personnel, et rien
+    ne le disait à l'utilisateur. Un alias qui ne résout pas est un refus,
+    porté jusqu'au modèle avec les comptes qui existent.
+    """
+
+    def __init__(self, alias: str, connus: list[str]) -> None:
+        self.alias = alias
+        self.connus = connus
+        liste = ", ".join(f"« {a} »" for a in connus) if connus else "aucun compte lié"
+        super().__init__(
+            f"⛔ Compte Google « {alias} » inconnu pour cet utilisateur — "
+            f"l'appel n'a PAS été exécuté (il serait parti du compte par "
+            f"défaut). Comptes disponibles : {liste} ; omets « account » "
+            f"pour le compte par défaut."
+        )
+
+
+async def _google_account_aliases(user_id: str) -> list[str]:
+    """Les alias de comptes Google liés à l'utilisateur (best-effort)."""
+    try:
+        from sqlalchemy import select as _select
+
+        from app.database import async_session as _async_session
+        from app.models.google_account import GoogleAccount as _GA
+        async with _async_session() as _db:
+            rows = await _db.execute(
+                _select(_GA.alias).where(_GA.user_id == user_id)
+            )
+            return sorted({a for a in rows.scalars().all() if a})
+    except Exception:  # noqa: BLE001 — une aide, pas une garde
+        return []
+
+
 async def _inject_google_credentials(user_id: str, args: dict) -> None:
     """Injecte les credentials Google depuis le stockage SERVEUR (jamais
     l'état du graphe — SEC-1). Multi-comptes (C3b, historiquement réservé
     aux spécialistes) : l'alias ``account`` passé par le LLM cible un
-    GoogleAccount lié ; alias vide/« default »/inconnu → store mémoire →
+    GoogleAccount lié ; alias vide/« default » → store mémoire →
     GoogleAccount par défaut → User.google_credentials legacy, avec
-    repeuplement du store pour les appels suivants."""
+    repeuplement du store pour les appels suivants. Un alias explicite
+    qui ne résout pas lève ``GoogleAccountUnknown`` : jamais de repli sur
+    un autre compte que celui demandé."""
     _uid = user_id or ""
     _requested_alias = (args.pop("account", "") or "").strip()
     _resolved_creds: str | None = None
@@ -157,14 +208,17 @@ async def _inject_google_credentials(user_id: str, args: dict) -> None:
                 _resolved_creds = _row.scalar_one_or_none()
         except Exception as _ga_exc:
             logger.warning(
-                "GoogleAccount lookup failed for uid=%s alias=%s: %s — falling back to default",
+                "GoogleAccount lookup failed for uid=%s alias=%s: %s — appel refusé",
                 _uid, _requested_alias, _ga_exc,
             )
             _resolved_creds = None
         if _resolved_creds is None:
             logger.warning(
-                "Google account alias '%s' not found for user %s — using default credentials",
-                _requested_alias, _uid,
+                "Google account alias '%s' not found for user %s — appel refusé, "
+                "pas de repli sur le compte par défaut", _requested_alias, _uid,
+            )
+            raise GoogleAccountUnknown(
+                _requested_alias, await _google_account_aliases(_uid),
             )
     if _resolved_creds:
         args["user_google_credentials_json"] = _resolved_creds
@@ -306,15 +360,33 @@ async def _decide_hitl(ctx: GatewayContext, tool_name: str, args: dict,
     # only (args ignored) so one click covers every later call of this
     # tool in the conversation — fixes the "11 deletes, 11 clicks because
     # each file_id re-prompted" friction. NOT persisted across tasks.
+    #
+    # ⚠️ SAUF les outils NON DISPENSABLES (audit 02/09/2026, second tour).
+    # Fermer la préférence permanente sans fermer celle-ci ne fermait rien :
+    # ce test-ci vient AVANT, donc « Autoriser pour cette tâche » sur un
+    # ``*_raw_api_call`` éteignait la confirmation pour tout le reste de la
+    # conversation — un passe-plat refait ce que font tous les autres outils
+    # Google sans passer par eux. Le critère n'est pas recopié ici : il vit
+    # dans ``hitl_preferences.is_hitl_waivable``, consulté aussi à
+    # l'ENREGISTREMENT de la décision (cf. branche ``allow_for_task``) et par
+    # le chemin missions. Refuser à la LECTURE est le garde-fou porteur : il
+    # neutralise aussi les approbations déjà en mémoire d'un run en cours.
     if needs_hitl and _conv_id:
         try:
+            from app.services.hitl_preferences import is_hitl_waivable
             from app.services.task_approvals import is_tool_approved_for_task
             if is_tool_approved_for_task(_conv_id, tool_name):
-                logger.info(
-                    "HITL skipped (task-scoped allow) tool=%s conv=%s",
-                    tool_name, _conv_id[:8],
-                )
-                needs_hitl = False
+                if is_hitl_waivable(tool_name):
+                    logger.info(
+                        "HITL skipped (task-scoped allow) tool=%s conv=%s",
+                        tool_name, _conv_id[:8],
+                    )
+                    needs_hitl = False
+                else:
+                    logger.info(
+                        "HITL maintenu malgre une approbation de tache : %s "
+                        "n'est pas dispensable (passe-plat)", tool_name,
+                    )
         except Exception as _ta_exc:
             logger.debug("task-approval lookup failed: %s", _ta_exc)
     # Per-user override (2026-05-23) — honour "Toujours autoriser"
@@ -430,7 +502,12 @@ async def execute_tool_call(
     # store (never stored in graph state) to prevent exposure in logs/events.
     # Multi-comptes inclus (alias ``account``) — voir _inject_google_credentials.
     if tool_name in GOOGLE_TOOLS:
-        await _inject_google_credentials(user_id, args)
+        try:
+            await _inject_google_credentials(user_id, args)
+        except GoogleAccountUnknown as exc:
+            # Refus AVANT le HITL : on ne demande pas à l'utilisateur
+            # d'approuver un acte qu'on ne peut pas faire depuis le bon compte.
+            return _tool_result(str(exc), tool_call["id"])
     if tool_name in USER_ID_TOOLS:
         args["user_id"] = user_id or ""
 
@@ -538,16 +615,30 @@ async def execute_tool_call(
                     # autoriser » ne tenait jamais, ré-demande à chaque appel,
                     # même d'un run à l'autre — bug terrain Franck 2026-06-20).
                     from app.services.mcp_acl import set_permission
-                    await set_permission(user_id, tool_name, "allow")
+                    _dispense_ecrite = await set_permission(
+                        user_id, tool_name, "allow",
+                    )
                 else:
                     from app.services.hitl_preferences import set_user_preference
-                    await set_user_preference(
+                    _dispense_ecrite = await set_user_preference(
                         user_id, tool_name, requires_confirmation=False,
                     )
-                logger.info(
-                    "HITL: tool %s now always-allowed for user %s",
-                    tool_name, user_id[:8],
-                )
+                # Le retour compte depuis le 02/09/2026 : la dispense est
+                # REFUSÉE pour les outils non dispensables, donc rien n'est
+                # écrit. Journaliser « now always-allowed » sans regarder,
+                # c'était affirmer l'inverse de la vérité dans le seul
+                # endroit où on irait la chercher après coup.
+                if _dispense_ecrite:
+                    logger.info(
+                        "HITL: tool %s now always-allowed for user %s",
+                        tool_name, user_id[:8],
+                    )
+                else:
+                    logger.info(
+                        "HITL: dispense permanente NON enregistree pour %s "
+                        "(user %s) — la confirmation restera demandee",
+                        tool_name, user_id[:8],
+                    )
             except Exception as _save_exc:
                 logger.debug("Could not save HITL preference: %s", _save_exc)
             # Fall through to execute (same as plain "allow")
@@ -555,13 +646,27 @@ async def execute_tool_call(
             # Approve this tool (action) for the REST OF THIS CONVERSATION
             # only — args-agnostic, ephemeral, NOT persisted. Works even
             # for LOCKED tools. Then fall through to execute this time.
+            #
+            # ⚠️ Sauf les outils non dispensables (audit 02/09/2026) : la
+            # lecture les refuserait, on n'enregistre donc rien plutôt que de
+            # garder une entrée morte. Cette occurrence-ci reste exécutée —
+            # l'utilisateur vient de l'approuver, c'est la SUITE qui
+            # redemandera.
             try:
+                from app.services.hitl_preferences import is_hitl_waivable
                 from app.services.task_approvals import approve_tool_for_task
-                approve_tool_for_task(_conv_id, tool_name)
-                logger.info(
-                    "HITL: tool %s allowed for the rest of conv %s (task-scoped)",
-                    tool_name, (_conv_id or "")[:8],
-                )
+                if not is_hitl_waivable(tool_name):
+                    logger.info(
+                        "HITL: approbation de tache NON enregistree pour %s "
+                        "(passe-plat) — chaque appel restera confirme",
+                        tool_name,
+                    )
+                else:
+                    approve_tool_for_task(_conv_id, tool_name)
+                    logger.info(
+                        "HITL: tool %s allowed for the rest of conv %s (task-scoped)",
+                        tool_name, (_conv_id or "")[:8],
+                    )
             except Exception as _ta_exc:
                 logger.debug("Could not register task-scoped approval: %s", _ta_exc)
             # Fall through to execute (same as plain "allow")
@@ -630,7 +735,17 @@ async def execute_tool_call(
             from app.services.event_envelope import EventKind, emit
             emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
                  fingerprint=_action_fp, outcome="idempotent_cache")
-            return _tool_result(_cached, tc_id)
+            # ⚠️ 02/09/2026 — le rejeu passe par le MÊME débordement que le
+            # premier appel : sans ça, une action rejouée dans la fenêtre TTL
+            # rendait la sortie complète que le premier appel avait fait
+            # déborder. Deux tailles pour un même acte, selon l'heure.
+            _rejeu = _cached
+            if ctx.spill_large_results:
+                from app.services.tool_output_spill import spill_if_large
+                _rejeu = spill_if_large(
+                    _cached, user_id=user_id, tool_name=tool_name,
+                )
+            return _tool_result(_rejeu, tc_id)
 
     # C3b-2 — hook pré-exécution de l'appelant (disjoncteurs J3 des
     # missions) : un refus ici N'EXÉCUTE PAS l'outil. Une exception du
@@ -666,9 +781,14 @@ async def execute_tool_call(
             # reçoit un accusé au lieu du résultat (incident 24/07). Point
             # unique : tous les outils passent ici, natifs comme MCP.
             from app.services.long_running_tools import invoke_with_handoff
-            result, _handoff_notice = await invoke_with_handoff(
-                ctx, tool_name, tool, args,
-            )
+            # Le propriétaire des débordements (sorties volumineuses écrites
+            # sur disque) est posé ICI, pas passé en argument d'outil : le
+            # modèle ne doit pas pouvoir désigner un autre utilisateur.
+            from app.services.tool_output_spill import owner_scope
+            with owner_scope(user_id):
+                result, _handoff_notice = await invoke_with_handoff(
+                    ctx, tool_name, tool, args,
+                )
             if _handoff_notice is not None:
                 if meta is not None:
                     meta["handoff"] = True
@@ -730,7 +850,27 @@ async def execute_tool_call(
             # Gmail indisponible » confabulé alors que le résultat était là).
             from app.services.turn_ledger import record as _ledger_record
             _ledger_record(ctx.conversation_id, tool_name, _safe_result)
-            _msg = _tool_result(_safe_result, tc_id)
+            # ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : au-delà d'un seuil, la sortie
+            # était TRONQUÉE en amont et sa suite perdue — le modèle relançait
+            # le même outil et repayait la même troncature. Elle part désormais
+            # en entier dans un fichier ; le modèle reçoit la taille réelle, un
+            # aperçu, et de quoi pager avec `tool_output_read`.
+            # Placé APRÈS le registre de tour et avant `remember` : le secours
+            # et l'idempotence gardent le résultat COMPLET, seul le contexte du
+            # modèle est allégé. Placé après l'anonymisation aussi : quand elle
+            # a lieu (`anonymize_results`), ce qui est sur disque est masqué —
+            # mais ce n'est PAS une garantie du débordement, c'est une garantie
+            # de l'appelant (voir `tool_output_spill`, section Sécurité).
+            # `spill_large_results=False` sort les missions de ce mécanisme :
+            # leur sortie d'outil est relue par des PROMPTS qui ne peuvent pas
+            # pager.
+            _rendu = _safe_result
+            if ctx.spill_large_results:
+                from app.services.tool_output_spill import spill_if_large
+                _rendu = spill_if_large(
+                    _safe_result, user_id=user_id, tool_name=tool_name,
+                )
+            _msg = _tool_result(_rendu, tc_id)
             # P1/J3 — mémorise le résultat d'une action « supported » réussie
             # (no-op si le manifeste ne déclare pas l'idempotence).
             if _action_fp is not None:

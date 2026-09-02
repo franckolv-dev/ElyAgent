@@ -58,6 +58,7 @@ vocabulaire supprimée en L2 (#287).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -83,6 +84,21 @@ logger = logging.getLogger(__name__)
 MAX_CONFORMITY_RETRIES: int = 5
 
 _CONFORME = "CONFORME"
+
+# Le marqueur d'écarts, lu comme le juge l'écrit — 02/09/2026.
+#
+# On cherchait ``ÉCARTS:`` collé aux deux-points. Or la typographie française
+# met une espace avant « : » et le juge répond en français : « ÉCARTS : … »
+# ne portait AUCUN marqueur reconnu, était classé CONFORME, et la reprise ne
+# partait pas. L'utilisateur recevait un résultat incomplet en silence, et le
+# journal accusait un « verdict hors contrat » que le juge avait respecté à
+# une espace près. En cascade : ``conformity_retries`` restant à zéro,
+# ``skill_from_success`` ne proposait jamais aucune procédure.
+#
+# Tolérées : l'accent absent (ECARTS), la casse, et les trois espaces qu'un
+# modèle peut poser devant les deux-points — ordinaire, insécable (U+00A0),
+# insécable étroite (U+202F).
+_MARQUE_ECARTS = re.compile(r"[EÉ]CARTS[ \t  ]*:", re.IGNORECASE)
 
 # Préfixe des relances. Sert deux fois : à les reconnaître pour router après
 # vérification, et à les SAUTER quand on cherche la demande d'origine — sans
@@ -205,24 +221,23 @@ def parse_conformity_verdict(raw: Any) -> tuple[bool, str]:
     text = content_to_text(raw).strip()
     if not text:
         return True, ""
-    if _CONFORME in text.upper():
+
+    upper = text.upper()
+    marque = _MARQUE_ECARTS.search(text)
+    # « CONFORME » n'est un verdict que s'il OUVRE la réponse. Cherché n'importe
+    # où, il faisait passer pour satisfait « - le fichier n'est pas conforme au
+    # format demandé » — du français ordinaire dans une liste d'écarts.
+    if marque is not None and not upper.startswith(_CONFORME):
+        gaps = text[marque.end():].strip()
+        if gaps:
+            return False, gaps
         return True, ""
 
-    marker = "ÉCARTS:"
-    upper = text.upper()
-    idx = upper.find(marker)
-    if idx == -1:
-        idx = upper.find("ECARTS:")
-    if idx == -1:
-        # Ni « CONFORME » ni « ÉCARTS: » — le juge n'a pas suivi le contrat.
+    if _CONFORME not in upper:
+        # Ni « CONFORME » ni « ÉCARTS : » — le juge n'a pas suivi le contrat.
         # On ne relance pas sur du bavardage.
         logger.info("conformité : verdict hors contrat, traité comme conforme")
-        return True, ""
-
-    gaps = text[idx + len(marker):].strip()
-    if not gaps:
-        return True, ""
-    return False, gaps
+    return True, ""
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -344,6 +359,26 @@ async def conformity_node(state: AgentState | dict) -> dict:
             messages,
             retries=int(state.get("conformity_retries", 0)),
         )
+        # Et dans l'autre sens : ce tour a-t-il SUIVI une procédure apprise ?
+        # ``use_count`` ne bougeait plus depuis que les playbooks sont écrits
+        # directement dans le prompt (28/07) — 0 appel à ``skill_view`` depuis
+        # toujours. Le curateur archivait donc ce qui travaillait (43 périmées
+        # sur 98 au 02/09). Voir ``services/learning/playbook_usage``.
+        #
+        # ⚠️ ``conversation_id`` n'est pas décoratif : c'est la clé du snapshot
+        # figé, donc du bloc RÉELLEMENT injecté. Sans lui, le comptage n'a
+        # aucune trace de ce que le modèle avait sous les yeux, et il ne compte
+        # rien — plutôt que de rejouer une sélection triée par le compteur.
+        try:
+            from app.services.learning.playbook_usage import schedule_playbook_usage
+
+            schedule_playbook_usage(
+                state.get("user_id", ""),
+                messages,
+                state.get("conversation_id", "") or "",
+            )
+        except Exception as exc:  # noqa: BLE001 — un compteur ne casse pas un tour
+            logger.debug("playbooks servis : comptage non programmé (%s)", exc)
         return {"messages": []}
 
     # Le progrès décide, pas le compteur.

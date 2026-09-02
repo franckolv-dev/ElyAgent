@@ -24,11 +24,13 @@ import io
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.auth.dependencies import get_current_user
 from app.config import get_settings
+from app.models.user import User
 
 try:
     import edge_tts
@@ -143,7 +145,12 @@ def _require_edge_tts() -> None:
 
 
 @router.post("/speak")
-async def speak(req: TTSRequest):
+async def speak(
+    req: TTSRequest,
+    # Sans utilisateur connecté, n'importe qui atteignant l'API faisait
+    # synthétiser du texte aux frais du déploiement (audit du 02/09/2026).
+    _user: User = Depends(get_current_user),
+):
     _require_edge_tts()
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Empty text")
@@ -165,7 +172,7 @@ async def speak(req: TTSRequest):
 
 
 @router.get("/voices")
-async def list_voices():
+async def list_voices(_user: User = Depends(get_current_user)):
     """Return available French voices."""
     _require_edge_tts()
     voices = await edge_tts.list_voices()

@@ -37,8 +37,24 @@ from __future__ import annotations
 
 import pytest
 
-# Budget total du profil. Départ mesuré : 15 486 tokens.
-_PROFILE_BUDGET_TOKENS = 9_500
+# Budget total du profil. Départ mesuré : 15 486 tokens pour 82 outils.
+#
+# ⚠️ RELEVÉ LE 02/09/2026, de 9 500 à 9 700, pour DEUX OUTILS AJOUTÉS et non
+# pour de la prose : `session_todo` (174 tokens — sa description PORTE le
+# contrat d'usage, c'est un choix : payée une fois dans un schéma mis en
+# cache plutôt qu'à chaque tour dans le prompt système) et `tool_output_read`
+# (184). Le profil passe de 84 à 86 outils, et de 9 228 à 9 586 tokens.
+#
+# Ce que ce budget défend n'est PAS un total, c'est une discipline : une
+# description sert à CHOISIR un outil, pas à le documenter. Le garde qui porte
+# vraiment cette règle est la MOYENNE par outil (test plus bas) — 111 tokens
+# ici, contre 189 au départ et 79 chez Hermes. Un total qui monte parce que le
+# catalogue grandit est légitime ; une moyenne qui monte ne l'est pas.
+#
+# Relever ce chiffre pour faire passer une description bavarde serait manquer
+# le sujet : la première question est toujours « cette description aide-t-elle
+# à choisir ? », et le POURQUOI d'un mécanisme appartient au module.
+_PROFILE_BUDGET_TOKENS = 9_700
 
 # Plafond par outil : au-delà, une description cesse d'aider au choix et
 # devient de la documentation. `orchestrate` est le plus proche du plafond

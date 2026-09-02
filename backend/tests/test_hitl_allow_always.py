@@ -144,13 +144,23 @@ async def test_dangerous_tools_honor_skip_preference() -> None:
     posait une préférence persistante en base ; comme ``next(iter(frozenset))``
     dépend du hash seed du process, un run suivant pouvait re-piocher le même
     outil et casser l'assertion « défaut = True » (test flaky ~1/3). Un user
-    vierge garantit la précondition « aucune préférence »."""
+    vierge garantit la précondition « aucune préférence ».
+
+    ⚠️ 02/09/2026 — l'outil n'est plus tiré au hasard. Depuis l'audit sécurité,
+    les passe-plats ``*_raw_api_call`` de ``LOCKED_HITL_TOOLS`` ne sont PLUS
+    dispensables (``hitl_preferences.is_hitl_waivable``), et
+    ``next(iter(frozenset))`` en piochait un environ un run sur trois — le test
+    redevenait flaky, pour une raison différente. On nomme donc un outil
+    dangereux ORDINAIRE ; la règle générale du 19/06 reste bien celle testée,
+    et l'exception a son propre fichier
+    (``test_raw_api_call_hors_preferences.py``)."""
     import uuid
 
     from app.database import async_session, init_db
     from app.models.user import User
     from app.services.hitl_preferences import (
         LOCKED_HITL_TOOLS,
+        is_hitl_waivable,
         set_user_preference,
         user_requires_hitl,
     )
@@ -161,7 +171,9 @@ async def test_dangerous_tools_honor_skip_preference() -> None:
         db.add(User(id=uid, username=uid, email=f"{uid}@test.local", hashed_password="x"))
         await db.commit()
 
-    dangerous = next(iter(LOCKED_HITL_TOOLS))
+    dangerous = "gmail_trash_emails"
+    assert dangerous in LOCKED_HITL_TOOLS
+    assert is_hitl_waivable(dangerous)
     # défaut sûr : aucune préférence → confirmation requise
     assert await user_requires_hitl(uid, dangerous) is True
     # l'utilisateur désactive explicitement → désormais honoré (= le fix)

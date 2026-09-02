@@ -205,7 +205,8 @@ FastAPI · LangGraph · Next.js · SQLite (Alembic is the sole schema authority)
 Qdrant · nginx · Squid for egress filtering · Docker Compose.
 
 Surfaces: web, REST API, Telegram, Slack, Discord, WhatsApp, voice over
-WebSocket, a Chrome extension, a desktop app, Android and iOS.
+WebSocket, a Chrome extension and a desktop app. The Android and iOS apps
+were archived on 2026-09-02 — see [archive/README.md](archive/README.md).
 
 ---
 

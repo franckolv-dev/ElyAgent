@@ -17,17 +17,22 @@
 # =============================================================================
 """User memory service — episodic fact extraction and profile consolidation.
 
-This service provides three async entry points:
+This service provides these async entry points:
 
-    extract_and_store_facts()  — called after each agent response (fire-and-forget)
-    get_user_context()         — injects a user profile summary into system prompts
-    consolidate_user_memory()  — nightly job: merges logs into UserProfile
-    consolidate_all_users()    — called by APScheduler at 3 AM
+    extract_and_store_facts()      — extraction d'un échange (chemin par tour,
+                                     désormais réservé au drapeau de secours)
+    extract_new_facts_for_user()   — extraction PAR LOT : un appel de modèle
+                                     pour tout ce qui est nouveau
+    extract_facts_for_all_users()  — passe quotidienne (APScheduler, 02:45)
+    get_user_context()             — injects a user profile summary into system prompts
+    consolidate_user_memory()      — nightly job: merges logs into UserProfile
+    consolidate_all_users()        — called by APScheduler at 3 AM
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
 
@@ -65,9 +70,12 @@ def _is_safe_fact(fact: str) -> bool:
 # ---------------------------------------------------------------------------
 
 _EXTRACTION_PROMPT = """\
-Tu es un extracteur de faits silencieux. Analyse la conversation suivante et extrait \
-les faits importants sur l'utilisateur (préférences, projets, outils, contexte personnel, \
-compétences, habitudes).
+Tu es un extracteur de faits silencieux. Analyse le ou les fils de conversation \
+ci-dessous et extrait les faits importants sur l'utilisateur (préférences, projets, \
+outils, contexte personnel, compétences, habitudes).
+
+Chaque fil est introduit par une ligne « --- Fil n --- ». Deux fils sont deux sujets \
+distincts : ne combine JAMAIS un élément d'un fil avec un élément d'un autre.
 
 Réponds UNIQUEMENT avec un objet JSON de la forme :
 {{
@@ -80,8 +88,9 @@ Réponds UNIQUEMENT avec un objet JSON de la forme :
 Types valides : "preference", "context", "event", "skill", "personal"
 Si aucun fait utile n'est détectable, réponds avec : {{"facts": []}}
 N'invente aucun fait. N'extrait que ce qui est dit EXPLICITEMENT.
+Certaines valeurs sont masquées ([EMAIL_0], [PHONE_1], …) : recopie le masque tel quel.
 
-Conversation :
+Fils :
 {conversation}
 """
 
@@ -148,8 +157,35 @@ def should_extract_facts(response) -> bool:
     return not getattr(response, "tool_calls", None)
 
 
+# ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : la fin d'un tour payait un appel de
+# modèle. Sur 30 jours glissants, l'extraction pesait 336 appels contre 208
+# demandes web réelles — le travail de fond coûtait plus cher que le travail
+# demandé, et l'extraction en était le premier poste. Chaque tour relançait
+# le modèle sur une conversation qui n'avait bougé que d'un échange.
+#
+# L'extraction est désormais GROUPÉE : une passe quotidienne
+# (``extract_facts_for_all_users``, 02:45, juste avant la consolidation)
+# émet UN appel par utilisateur pour tout ce qui est nouveau. Un utilisateur
+# qui fait 20 tours dans sa journée coûte 1 appel au lieu de 20.
+#
+# La fin d'un tour ne marque rien : ce serait de l'état à tenir à jour pour
+# rien. La borne « depuis quand » se dérive de la base — voir
+# ``_last_extraction_at``.
+def _per_turn_extraction_enabled() -> bool:
+    """Porte de sortie : ``MEMORY_EXTRACTION_PER_TURN=true`` rétablit l'ancien
+    comportement (une extraction par tour, en tâche de fond).
+
+    À n'activer que si la passe quotidienne se révélait manquer des faits en
+    production — elle relit les messages persistés, pas les résultats d'outils
+    de la boucle, qui eux ne sont pas stockés.
+    """
+    return os.getenv("MEMORY_EXTRACTION_PER_TURN", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def maybe_spawn_fact_extraction(user_id: str, messages: list, response) -> bool:
-    """Lance UNE extraction de faits en tâche de fond si le tour se termine.
+    """Point de fin de tour. **Ne coûte plus rien par défaut.**
 
     Appelé par les deux nœuds qui peuvent clore un tour : ``agent_node`` (cas
     normal) et ``force_summary_node`` (budget d'itérations épuisé — là,
@@ -160,9 +196,13 @@ def maybe_spawn_fact_extraction(user_id: str, messages: list, response) -> bool:
     le tour de l'utilisateur.
 
     Returns:
-        True si une extraction a été lancée.
+        True seulement si le drapeau de secours a effectivement fait partir
+        une extraction ; False dans le fonctionnement normal, où c'est la
+        passe quotidienne qui s'en charge.
     """
     if not user_id or not should_extract_facts(response):
+        return False
+    if not _per_turn_extraction_enabled():
         return False
 
     async def _safe_extract() -> None:
@@ -183,12 +223,30 @@ def maybe_spawn_fact_extraction(user_id: str, messages: list, response) -> bool:
 # Fact extraction
 # ---------------------------------------------------------------------------
 
+# Bornes du prompt d'extraction. Historiques, mesurées : les N derniers
+# messages, chacun tronqué à 500 caractères.
+_EXTRACTION_MESSAGE_WINDOW = 10
+_EXTRACTION_CHAR_CAP = 500
+
+# Même forme de borne pour le lot quotidien — les N derniers messages,
+# tronqués à 500 caractères — seul N change, parce que la fenêtre est une
+# JOURNÉE et non un tour. 6 × 10 = 60 messages, soit ~30 tours : au-delà on
+# garde les plus RÉCENTS, un utilisateur bavard ne peut pas faire enfler le
+# prompt indéfiniment.
+_DAILY_EXTRACTION_MESSAGE_WINDOW = 6 * _EXTRACTION_MESSAGE_WINDOW
+
+
 async def extract_and_store_facts(
     user_id: str,
     conversation_id: str,
     messages: list,
 ) -> None:
     """Extract key facts from a conversation and store them as UserMemoryLog entries.
+
+    Chemin par TOUR. Depuis le 02/09/2026 il n'est plus branché par défaut :
+    seul ``MEMORY_EXTRACTION_PER_TURN=true`` le rallume (cf.
+    ``maybe_spawn_fact_extraction``). Le chemin normal est
+    ``extract_new_facts_for_user``, une fois par jour.
 
     Uses Ollama (Tier 1) for extraction — fast, free, local.
     This function is designed to be called as fire-and-forget; it swallows all errors.
@@ -199,18 +257,40 @@ async def extract_and_store_facts(
     try:
         # Build a compact conversation string (last N messages only)
         conversation_parts: list[str] = []
-        for msg in messages[-10:]:
+        for msg in messages[-_EXTRACTION_MESSAGE_WINDOW:]:
             role = getattr(msg, "type", "unknown")
             content = getattr(msg, "content", "")
             if isinstance(content, str) and content.strip():
                 role_label = "Utilisateur" if role == "human" else "Assistante"
-                conversation_parts.append(f"{role_label}: {content[:500]}")
+                conversation_parts.append(
+                    f"{role_label}: {content[:_EXTRACTION_CHAR_CAP]}"
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("extract_and_store_facts failed silently: %s", exc)
+        return
 
-        if not conversation_parts:
-            return
+    if not conversation_parts:
+        return
 
-        conversation_text = "\n".join(conversation_parts)
+    await _extract_facts_from_text(
+        user_id, conversation_id, "\n".join(conversation_parts)
+    )
 
+
+async def _extract_facts_from_text(
+    user_id: str,
+    conversation_id: str | None,
+    conversation_text: str,
+) -> int:
+    """UN appel de modèle sur un texte de conversation déjà borné.
+
+    Cœur partagé par le chemin par tour et le lot quotidien : c'est ici que
+    se compte le coût. Ne lève jamais.
+
+    Returns:
+        Le nombre de faits réellement stockés.
+    """
+    try:
         # Use MAINTENANCE tier (configurable via Settings → Niveaux de routage)
         from app.services.llm_provider import get_llm_for_tier, ComplexityTier
         llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
@@ -251,8 +331,9 @@ async def extract_and_store_facts(
         facts = data.get("facts", [])
 
         if not facts:
-            return
+            return 0
 
+        stored = 0
         # Store facts in DB
         async with async_session() as db:
             for item in facts:
@@ -280,14 +361,197 @@ async def extract_and_store_facts(
                     is_consolidated=False,
                 )
                 db.add(log_entry)
+                stored += 1
             await db.commit()
 
-        logger.debug("Extracted %d facts for user %s", len(facts), user_id)
+        logger.debug("Extracted %d facts for user %s", stored, user_id)
+        return stored
 
     except json.JSONDecodeError:
-        logger.debug("extract_and_store_facts: could not parse JSON response — skipping")
+        logger.debug("_extract_facts_from_text: could not parse JSON response — skipping")
+        return 0
     except Exception as exc:
-        logger.debug("extract_and_store_facts failed silently: %s", exc)
+        logger.debug("_extract_facts_from_text failed silently: %s", exc)
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Extraction par LOT — un appel de modèle par utilisateur et par jour
+# ---------------------------------------------------------------------------
+#
+# ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : voir le commentaire de
+# ``maybe_spawn_fact_extraction``. Ici vit le remplaçant.
+#
+# **Aucune table ni colonne nouvelle.** La borne « depuis quand » se dérive de
+# l'existant : ``observed_at`` est posé à l'instant de l'extraction, donc le
+# plus récent des ``UserMemoryLog`` d'un utilisateur dit jusqu'où on avait lu.
+# ``_extract_facts_from_text`` est le SEUL écrivain de cette table dans tout
+# ``app/`` (vérifié le 02/09/2026 : ``grep -rn "UserMemoryLog(" app`` ne rend
+# que cet appel), la borne ne peut donc pas être avancée par un autre chemin.
+#
+# ⚠️ Le seul angle mort assumé : si une passe ne rend AUCUN fait, rien n'est
+# écrit, donc la borne n'avance pas et le lendemain relit la même fenêtre.
+# Ça coûte 1 appel par jour — exactement le budget visé — et ça ne
+# s'accumule pas, la fenêtre glissant sur les messages les plus récents.
+
+
+async def _last_extraction_at(db, user_id: str) -> datetime | None:
+    """Jusqu'où l'extraction avait lu pour cet utilisateur, ou None."""
+    result = await db.execute(
+        select(UserMemoryLog.observed_at)
+        .where(UserMemoryLog.user_id == user_id)
+        .order_by(UserMemoryLog.observed_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+# ⚠️ PII (02/09/2026) — CE CHEMIN LIT LA BASE, PAS LE GRAPHE.
+#
+# Le chemin par TOUR ne voyait que du texte déjà anonymisé : ``chat.py``
+# anonymise avant de construire l'état du graphe, et l'extraction recevait
+# ces messages-là. Le lot, lui, relit la table ``messages``, qui stocke les
+# valeurs RÉELLES : ``chat.py`` y persiste ``user_content`` et non
+# ``clean_content``, et les réponses assistant y sont écrites
+# DÉ-anonymisées (pour l'affichage). C'est précisément pour ça que
+# ``chat.py`` ré-anonymise chaque ligne d'historique avant de la rendre au
+# modèle. Sans le même geste ici, la passe quotidienne envoyait adresses,
+# numéros, IBAN et jetons en clair au modèle de fond — qui peut être un
+# modèle cloud.
+#
+# Même discipline que ``chat.py`` : ``ner_detection`` actif sur ce que
+# l'utilisateur a TAPÉ, éteint sur le contenu machine (réponses assistant,
+# majoritairement du web recopié — y détecter chaque personne/organisation
+# détruit l'utilité de l'extraction, cf. security_filter.anonymize).
+#
+# FILTRE NEUF, PAS CELUI DU REGISTRE ``conversation_filters``. Trois raisons :
+#   1. Le lot couvre PLUSIEURS conversations ; le registre est indexé PAR
+#      conversation. Il n'existe donc pas « un » filtre partagé à prendre,
+#      et en choisir un mélangerait les vaults de fils distincts.
+#   2. Le registre est en mémoire, borné à 1000 entrées avec un TTL
+#      d'inactivité de 24 h. À 02:45, les filtres de la veille sont morts (ou
+#      le processus a redémarré) : ``get_filter`` FABRIQUERAIT des vaults
+#      vides et évincerait au passage ceux de conversations vivantes.
+#   3. La réversibilité ne sert à rien ici : la sortie n'est jamais
+#      dé-anonymisée ni rendue à l'utilisateur.
+#
+# ⚠️ ET ON NE DÉ-ANONYMISE PAS AU RETOUR. Les faits extraits sont stockés
+# masqués, donc un placeholder peut finir dans ``user_profiles`` puis dans un
+# prompt sans être résoluble — c'est déjà le cas du chemin par tour, qui
+# extrait lui aussi d'un texte masqué. Le remettre en clair déplacerait
+# simplement la fuite d'un cran : ``consolidate_user_memory`` (03:00) renvoie
+# le texte des faits au modèle SANS aucun filtre. Un masque irrésoluble se
+# lit comme un masque ; une adresse en clair partie au cloud ne se rattrape
+# pas.
+async def extract_new_facts_for_user(user_id: str) -> int:
+    """Extrait en UN appel les faits de tout ce qui est nouveau, toutes
+    conversations confondues.
+
+    Zéro appel de modèle si l'utilisateur n'a rien dit depuis la dernière
+    passe : la question « y a-t-il du nouveau ? » se répond en SQL.
+
+    Ne lève jamais — c'est un cron.
+
+    Returns:
+        Le nombre de faits stockés.
+    """
+    if not user_id:
+        return 0
+
+    try:
+        from app.models.conversation import Conversation, Message
+        from app.services.security_filter import SecurityFilter
+
+        async with async_session() as db:
+            bound = await _last_extraction_at(db, user_id)
+            query = (
+                select(Message.conversation_id, Message.role, Message.content)
+                .join(Conversation, Message.conversation_id == Conversation.id)
+                .where(Conversation.user_id == user_id)
+            )
+            if bound is not None:
+                query = query.where(Message.created_at > bound)
+            # Les plus RÉCENTS d'abord pour que le plafond coupe le vieux,
+            # puis remise en ordre chronologique pour le prompt.
+            query = query.order_by(Message.created_at.desc()).limit(
+                _DAILY_EXTRACTION_MESSAGE_WINDOW
+            )
+            rows = list((await db.execute(query)).all())
+
+        if not rows:
+            return 0
+
+        # Vault jeté à la fin de la passe — voir le commentaire au-dessus de
+        # la fonction pour le choix du filtre neuf.
+        filtre = SecurityFilter()
+
+        # La coupe de récence a été faite en SQL sur la DATE. On regroupe
+        # ensuite PAR FIL : deux conversations menées en parallèle dans la
+        # journée ressortaient sinon entrelacées ligne à ligne, et rien ne
+        # disait au modèle qu'il changeait de sujet — d'où des faits
+        # conflatés (« l'utilisateur travaille sur X avec Y », X et Y venant
+        # de deux fils). L'ordre des fils suit leur plus ancien message
+        # retenu ; l'ordre à l'intérieur d'un fil reste chronologique.
+        fils: dict[str, list[str]] = {}
+        for fil_id, role, content in reversed(rows):
+            if not isinstance(content, str) or not content.strip():
+                continue
+            venant_de_l_utilisateur = role == "user"
+            # Anonymiser AVANT de tronquer : couper d'abord pourrait scinder
+            # une adresse en deux et en laisser la moitié passer en clair,
+            # que la regex ne reconnaît plus.
+            masque = filtre.anonymize(
+                content, ner_detection=venant_de_l_utilisateur
+            )[:_EXTRACTION_CHAR_CAP]
+            role_label = "Utilisateur" if venant_de_l_utilisateur else "Assistante"
+            fils.setdefault(fil_id, []).append(f"{role_label}: {masque}")
+
+        if not fils:
+            return 0
+
+        blocs = [
+            f"--- Fil {rang} ---\n" + "\n".join(lignes)
+            for rang, lignes in enumerate(fils.values(), start=1)
+        ]
+
+        # conversation_id volontairement None : le lot couvre la journée,
+        # pas un fil.
+        return await _extract_facts_from_text(user_id, None, "\n\n".join(blocs))
+
+    except Exception as exc:  # noqa: BLE001
+        logger.error("extract_new_facts_for_user failed for user %s: %s", user_id, exc)
+        return 0
+
+
+async def extract_facts_for_all_users() -> None:
+    """Passe quotidienne — APScheduler, 02:45, juste AVANT la consolidation.
+
+    Au plus un appel de modèle par utilisateur, et aucun pour ceux qui n'ont
+    pas parlé.
+    """
+    try:
+        from app.models.user import User
+        async with async_session() as db:
+            result = await db.execute(select(User.id))
+            user_ids: list[str] = [row[0] for row in result.fetchall()]
+
+        total_facts = 0
+        for uid in user_ids:
+            try:
+                total_facts += await extract_new_facts_for_user(uid)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "extract_facts_for_all_users: failed for user %s: %s", uid, exc
+                )
+
+        logger.info(
+            "extract_facts_for_all_users: %d faits extraits sur %d utilisateurs",
+            total_facts,
+            len(user_ids),
+        )
+
+    except Exception as exc:  # noqa: BLE001
+        logger.error("extract_facts_for_all_users failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------

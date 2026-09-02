@@ -134,6 +134,29 @@ class Settings(BaseSettings):
     long_tool_handoff_enabled: bool = True
     long_tool_soft_deadline_s: float = 90.0
 
+    # Plafond QUOTIDIEN de dépense d'escalade, par utilisateur, en dollars.
+    #
+    # ⚠️ CE QUE ÇA CORRIGE (audit 02/09/2026) : sur 30 jours de production,
+    # `escalation:panel` pèse 68 appels pour 1,29 $ — le PREMIER poste de coût
+    # du produit, devant tout le reste (la conformité coûte 0 $, elle tourne au
+    # forfait ; l'extraction mémoire 0,23 $). Le déclencheur (stagnation
+    # mesurée) et le plafond PAR DEMANDE (`escalation.METERED_BUDGET_USD`)
+    # étaient déjà bons ; rien ne bornait le CUMUL. Soixante-huit escalades
+    # dans le mois, ou dix dans la même journée, passaient chacune sous le
+    # plafond par demande et personne ne voyait la somme.
+    #
+    # 0,25 $ : la dépense mesurée vaut 0,043 $ par jour en moyenne (1,29 $ /
+    # 30 j) et un appel de panel 0,019 $ — le plafond laisse donc passer
+    # environ trois escalades complètes dans la même journée, soit six fois
+    # l'usage constaté. Il ne gêne pas une journée normale et borne un
+    # emballement à ~7 $ par mois au lieu de rien du tout. Seules les lignes
+    # d'escalade sont comptées et la vérification a lieu AVANT de payer : la
+    # première escalade d'une journée passe toujours.
+    #
+    # 0 (ou négatif) désactive le plafond. Surcharge :
+    # ESCALATION_DAILY_BUDGET_USD.
+    escalation_daily_budget_usd: float = 0.25
+
     # Auth
     jwt_secret_key: str = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
     jwt_algorithm: str = "HS256"
@@ -326,12 +349,28 @@ class Settings(BaseSettings):
     mcp_resources_enabled: bool = False
 
     # ── Substrat de confiance (chantier P1, 2026-06) ──────────────────────
-    # Interrupteur maître du substrat : CapabilityManifest, ActionPlan +
-    # empreinte, idempotence, EventEnvelope. OFF par défaut. Tant qu'il est
-    # OFF, le comportement actuel (HITL/ACL) est strictement préservé ; le
-    # gate HITL ne lit le manifeste que lorsqu'il est ON, en reproduisant à
-    # l'identique la décision actuelle pour tout outil connu.
-    trust_substrate_enabled: bool = False
+    # Interrupteur maître du substrat. Quand il est ON, quatre choses vivent :
+    #  - la décision HITL de base est lue dans le CapabilityManifest
+    #    (approval always|risk_based|never) au lieu des ensembles ad-hoc — à
+    #    décision IDENTIQUE pour tout outil connu, c'est une unification ;
+    #  - chaque appel porte l'empreinte de son plan d'action, re-vérifiée
+    #    juste avant l'exécution : l'acte exécuté doit être EXACTEMENT celui
+    #    approuvé, sinon refus (fail-closed, services/tool_gateway.py) ;
+    #  - le magasin d'idempotence court-circuite une action « supported »
+    #    re-jouée à l'identique dans la fenêtre TTL ci-dessous ;
+    #  - les événements typés (EventEnvelope) sont corrélés au tour.
+    #
+    # ⚠️ CE QUE ÇA CORRIGE (audit 02/09/2026) : le défaut était False alors
+    # que le conteneur de prod porte TRUST_SUBSTRATE_ENABLED=true depuis la
+    # fin du chantier — le commentaire de reversible_journal_enabled, plus
+    # bas, l'affirmait déjà (« déjà ON en prod »). Une installation NEUVE
+    # héritait donc du défaut : ni empreinte re-vérifiée, ni idempotence.
+    # Une garde qui n'existe que dans le .env d'une machine n'est pas une
+    # garde. ON par défaut, désormais.
+    # Pour la couper (rollback) : TRUST_SUBSTRATE_ENABLED=false dans le .env
+    # RACINE, puis `docker compose up -d`. Le chemin OFF reste supporté et
+    # préserve strictement le comportement historique (HITL/ACL seuls).
+    trust_substrate_enabled: bool = True
     # Fenêtre d'idempotence (J3) : une action « supported » identique re-jouée
     # dans ce délai renvoie le résultat mémorisé au lieu de ré-exécuter.
     idempotency_ttl_seconds: int = 600
@@ -341,8 +380,10 @@ class Settings(BaseSettings):
     # Reversible Action Journal (substrat, suite de P1). Rend exécutable le
     # champ `CapabilityManifest.compensation` : une action mutante annulable est
     # journalisée après succès, et peut être compensée (« annuler »). Flag dédié
-    # (≠ trust_substrate_enabled, déjà ON en prod) pour canaryer séparément.
+    # (≠ trust_substrate_enabled, ON par défaut) pour canaryer séparément.
     # OFF par défaut ⇒ le hook d'enregistrement dans tool_node est un no-op.
+    # NB : le journal n'a de prise QUE substrat ON — c'est l'empreinte du plan
+    # d'action qui déclenche son enregistrement (services/tool_gateway.py).
     reversible_journal_enabled: bool = False
     # Fenêtre d'annulation : au-delà, l'entrée passe `expired` (annulation
     # refusée). 7 j par défaut, < les ~30 j de la corbeille Drive réelle.
