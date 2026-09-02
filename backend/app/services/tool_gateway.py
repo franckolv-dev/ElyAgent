@@ -131,13 +131,54 @@ _SELF_MAIL_TOOLS: frozenset[str] = frozenset({
 })
 
 
+class GoogleAccountUnknown(Exception):
+    """L'alias de compte Google demandé ne résout vers aucun compte lié.
+
+    ⚠️ CE QUE ÇA CORRIGE (audit du 02/09/2026). Un alias introuvable — ou
+    une recherche en erreur — posait un avertissement dans les logs et
+    continuait avec les identifiants du compte PAR DÉFAUT : « envoie ce
+    mail depuis mon compte travail » partait du compte personnel, et rien
+    ne le disait à l'utilisateur. Un alias qui ne résout pas est un refus,
+    porté jusqu'au modèle avec les comptes qui existent.
+    """
+
+    def __init__(self, alias: str, connus: list[str]) -> None:
+        self.alias = alias
+        self.connus = connus
+        liste = ", ".join(f"« {a} »" for a in connus) if connus else "aucun compte lié"
+        super().__init__(
+            f"⛔ Compte Google « {alias} » inconnu pour cet utilisateur — "
+            f"l'appel n'a PAS été exécuté (il serait parti du compte par "
+            f"défaut). Comptes disponibles : {liste} ; omets « account » "
+            f"pour le compte par défaut."
+        )
+
+
+async def _google_account_aliases(user_id: str) -> list[str]:
+    """Les alias de comptes Google liés à l'utilisateur (best-effort)."""
+    try:
+        from sqlalchemy import select as _select
+
+        from app.database import async_session as _async_session
+        from app.models.google_account import GoogleAccount as _GA
+        async with _async_session() as _db:
+            rows = await _db.execute(
+                _select(_GA.alias).where(_GA.user_id == user_id)
+            )
+            return sorted({a for a in rows.scalars().all() if a})
+    except Exception:  # noqa: BLE001 — une aide, pas une garde
+        return []
+
+
 async def _inject_google_credentials(user_id: str, args: dict) -> None:
     """Injecte les credentials Google depuis le stockage SERVEUR (jamais
     l'état du graphe — SEC-1). Multi-comptes (C3b, historiquement réservé
     aux spécialistes) : l'alias ``account`` passé par le LLM cible un
-    GoogleAccount lié ; alias vide/« default »/inconnu → store mémoire →
+    GoogleAccount lié ; alias vide/« default » → store mémoire →
     GoogleAccount par défaut → User.google_credentials legacy, avec
-    repeuplement du store pour les appels suivants."""
+    repeuplement du store pour les appels suivants. Un alias explicite
+    qui ne résout pas lève ``GoogleAccountUnknown`` : jamais de repli sur
+    un autre compte que celui demandé."""
     _uid = user_id or ""
     _requested_alias = (args.pop("account", "") or "").strip()
     _resolved_creds: str | None = None
@@ -157,14 +198,17 @@ async def _inject_google_credentials(user_id: str, args: dict) -> None:
                 _resolved_creds = _row.scalar_one_or_none()
         except Exception as _ga_exc:
             logger.warning(
-                "GoogleAccount lookup failed for uid=%s alias=%s: %s — falling back to default",
+                "GoogleAccount lookup failed for uid=%s alias=%s: %s — appel refusé",
                 _uid, _requested_alias, _ga_exc,
             )
             _resolved_creds = None
         if _resolved_creds is None:
             logger.warning(
-                "Google account alias '%s' not found for user %s — using default credentials",
-                _requested_alias, _uid,
+                "Google account alias '%s' not found for user %s — appel refusé, "
+                "pas de repli sur le compte par défaut", _requested_alias, _uid,
+            )
+            raise GoogleAccountUnknown(
+                _requested_alias, await _google_account_aliases(_uid),
             )
     if _resolved_creds:
         args["user_google_credentials_json"] = _resolved_creds
@@ -430,7 +474,12 @@ async def execute_tool_call(
     # store (never stored in graph state) to prevent exposure in logs/events.
     # Multi-comptes inclus (alias ``account``) — voir _inject_google_credentials.
     if tool_name in GOOGLE_TOOLS:
-        await _inject_google_credentials(user_id, args)
+        try:
+            await _inject_google_credentials(user_id, args)
+        except GoogleAccountUnknown as exc:
+            # Refus AVANT le HITL : on ne demande pas à l'utilisateur
+            # d'approuver un acte qu'on ne peut pas faire depuis le bon compte.
+            return _tool_result(str(exc), tool_call["id"])
     if tool_name in USER_ID_TOOLS:
         args["user_id"] = user_id or ""
 
