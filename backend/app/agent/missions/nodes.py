@@ -206,8 +206,13 @@ async def _log_mission_llm_usage(
 
         provider, model = _extract_provider_model(llm)
 
-        import asyncio
-        asyncio.create_task(log_usage(
+        # ⚠️ (audit 02/09) `create_task` nu : la ligne d'usage pouvait
+        # disparaître avec la tâche sous pression du GC — coûts de mission
+        # sous-comptés en silence. `detach_context` reste FAUX : `log_usage`
+        # n'appelle aucun LLM (simple écriture UsageLog), rien à isoler du
+        # stream de l'appelant, et le contexte hérité garde la corrélation.
+        from app.services.background_tasks import spawn
+        spawn(log_usage(
             user_id=user_id,
             model=model,
             provider=provider,
@@ -215,7 +220,7 @@ async def _log_mission_llm_usage(
             output_tokens=out_tok,
             skill_used=f"mission_{phase}",
             channel="mission",
-        ))
+        ), label="mission.log_usage")
     except Exception as exc:
         # Non-critical — analytics must never break a mission.
         logger.debug("log_mission_llm_usage failed for mission %s phase %s: %s",
@@ -519,12 +524,29 @@ async def dispatch_tool(
     # Once approved for THIS mission, the same tool stops prompting for the
     # rest of the run. Bypasses even LOCKED tools (explicit mission-scoped
     # consent). Mission_id is the task key.
+    #
+    # ⚠️ SAUF les outils NON DISPENSABLES (audit 02/09/2026, second tour).
+    # Ici la « tâche » est la MISSION entière et rien n'appelle
+    # ``clear_task_approvals`` en production : un clic sur « Autoriser pour
+    # cette tâche » au premier tick dispensait un ``*_raw_api_call`` de tous
+    # les ticks suivants, y compris ceux qui tournent sans personne devant
+    # l'écran. Même critère qu'au chat, même source unique
+    # (``hitl_preferences.is_hitl_waivable``).
     if needs_hitl and mission_id:
         try:
+            from app.services.hitl_preferences import is_hitl_waivable
             from app.services.task_approvals import is_tool_approved_for_task
             if is_tool_approved_for_task(mission_id, tool_name):
-                logger.info("Mission HITL skipped (task-scoped allow) tool=%s", tool_name)
-                needs_hitl = False
+                if is_hitl_waivable(tool_name):
+                    logger.info(
+                        "Mission HITL skipped (task-scoped allow) tool=%s", tool_name,
+                    )
+                    needs_hitl = False
+                else:
+                    logger.info(
+                        "Mission HITL maintenu malgre une approbation de tache : "
+                        "%s n'est pas dispensable (passe-plat)", tool_name,
+                    )
         except Exception as _ta_exc:
             logger.debug("Mission task-approval lookup failed: %s", _ta_exc)
     # ── Persistent "Toujours autoriser" preference ────────────────────
@@ -572,11 +594,24 @@ async def dispatch_tool(
                     "Mission autonomous: floor tool %s skipped (manual approval required)",
                     tool_name,
                 )
+                # Le conseil « pré-autorise l'outil » n'est pas donné aux
+                # outils non dispensables : depuis le 02/09/2026 l'API répond
+                # 403 sur cette dispense-là. Conseiller un geste impossible
+                # envoie l'utilisateur (ou le modèle qui lit ce message) dans
+                # une boucle sans issue.
+                from app.services.hitl_preferences import is_hitl_waivable
+                _issue = (
+                    "Lance-la via un Tick supervisé, ou pré-autorise l'outil "
+                    "(« Toujours autoriser »)."
+                    if is_hitl_waivable(tool_name)
+                    else "Lance-la via un Tick supervisé : cet outil est un "
+                    "passe-plat vers l'API brute, aucune pré-autorisation ne "
+                    "peut le dispenser de confirmation."
+                )
                 return (
                     f"Action « {tool_name} » non exécutée : en mode autonome, cette "
                     "action sensible (irréversible / externe / sécurité) n'est PAS "
-                    "auto-approuvée. Lance-la via un Tick supervisé, ou pré-autorise "
-                    "l'outil (« Toujours autoriser »).",
+                    f"auto-approuvée. {_issue}",
                     False,
                 )
             logger.info(

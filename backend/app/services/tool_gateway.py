@@ -350,15 +350,33 @@ async def _decide_hitl(ctx: GatewayContext, tool_name: str, args: dict,
     # only (args ignored) so one click covers every later call of this
     # tool in the conversation — fixes the "11 deletes, 11 clicks because
     # each file_id re-prompted" friction. NOT persisted across tasks.
+    #
+    # ⚠️ SAUF les outils NON DISPENSABLES (audit 02/09/2026, second tour).
+    # Fermer la préférence permanente sans fermer celle-ci ne fermait rien :
+    # ce test-ci vient AVANT, donc « Autoriser pour cette tâche » sur un
+    # ``*_raw_api_call`` éteignait la confirmation pour tout le reste de la
+    # conversation — un passe-plat refait ce que font tous les autres outils
+    # Google sans passer par eux. Le critère n'est pas recopié ici : il vit
+    # dans ``hitl_preferences.is_hitl_waivable``, consulté aussi à
+    # l'ENREGISTREMENT de la décision (cf. branche ``allow_for_task``) et par
+    # le chemin missions. Refuser à la LECTURE est le garde-fou porteur : il
+    # neutralise aussi les approbations déjà en mémoire d'un run en cours.
     if needs_hitl and _conv_id:
         try:
+            from app.services.hitl_preferences import is_hitl_waivable
             from app.services.task_approvals import is_tool_approved_for_task
             if is_tool_approved_for_task(_conv_id, tool_name):
-                logger.info(
-                    "HITL skipped (task-scoped allow) tool=%s conv=%s",
-                    tool_name, _conv_id[:8],
-                )
-                needs_hitl = False
+                if is_hitl_waivable(tool_name):
+                    logger.info(
+                        "HITL skipped (task-scoped allow) tool=%s conv=%s",
+                        tool_name, _conv_id[:8],
+                    )
+                    needs_hitl = False
+                else:
+                    logger.info(
+                        "HITL maintenu malgre une approbation de tache : %s "
+                        "n'est pas dispensable (passe-plat)", tool_name,
+                    )
         except Exception as _ta_exc:
             logger.debug("task-approval lookup failed: %s", _ta_exc)
     # Per-user override (2026-05-23) — honour "Toujours autoriser"
@@ -587,16 +605,30 @@ async def execute_tool_call(
                     # autoriser » ne tenait jamais, ré-demande à chaque appel,
                     # même d'un run à l'autre — bug terrain Franck 2026-06-20).
                     from app.services.mcp_acl import set_permission
-                    await set_permission(user_id, tool_name, "allow")
+                    _dispense_ecrite = await set_permission(
+                        user_id, tool_name, "allow",
+                    )
                 else:
                     from app.services.hitl_preferences import set_user_preference
-                    await set_user_preference(
+                    _dispense_ecrite = await set_user_preference(
                         user_id, tool_name, requires_confirmation=False,
                     )
-                logger.info(
-                    "HITL: tool %s now always-allowed for user %s",
-                    tool_name, user_id[:8],
-                )
+                # Le retour compte depuis le 02/09/2026 : la dispense est
+                # REFUSÉE pour les outils non dispensables, donc rien n'est
+                # écrit. Journaliser « now always-allowed » sans regarder,
+                # c'était affirmer l'inverse de la vérité dans le seul
+                # endroit où on irait la chercher après coup.
+                if _dispense_ecrite:
+                    logger.info(
+                        "HITL: tool %s now always-allowed for user %s",
+                        tool_name, user_id[:8],
+                    )
+                else:
+                    logger.info(
+                        "HITL: dispense permanente NON enregistree pour %s "
+                        "(user %s) — la confirmation restera demandee",
+                        tool_name, user_id[:8],
+                    )
             except Exception as _save_exc:
                 logger.debug("Could not save HITL preference: %s", _save_exc)
             # Fall through to execute (same as plain "allow")
@@ -604,13 +636,27 @@ async def execute_tool_call(
             # Approve this tool (action) for the REST OF THIS CONVERSATION
             # only — args-agnostic, ephemeral, NOT persisted. Works even
             # for LOCKED tools. Then fall through to execute this time.
+            #
+            # ⚠️ Sauf les outils non dispensables (audit 02/09/2026) : la
+            # lecture les refuserait, on n'enregistre donc rien plutôt que de
+            # garder une entrée morte. Cette occurrence-ci reste exécutée —
+            # l'utilisateur vient de l'approuver, c'est la SUITE qui
+            # redemandera.
             try:
+                from app.services.hitl_preferences import is_hitl_waivable
                 from app.services.task_approvals import approve_tool_for_task
-                approve_tool_for_task(_conv_id, tool_name)
-                logger.info(
-                    "HITL: tool %s allowed for the rest of conv %s (task-scoped)",
-                    tool_name, (_conv_id or "")[:8],
-                )
+                if not is_hitl_waivable(tool_name):
+                    logger.info(
+                        "HITL: approbation de tache NON enregistree pour %s "
+                        "(passe-plat) — chaque appel restera confirme",
+                        tool_name,
+                    )
+                else:
+                    approve_tool_for_task(_conv_id, tool_name)
+                    logger.info(
+                        "HITL: tool %s allowed for the rest of conv %s (task-scoped)",
+                        tool_name, (_conv_id or "")[:8],
+                    )
             except Exception as _ta_exc:
                 logger.debug("Could not register task-scoped approval: %s", _ta_exc)
             # Fall through to execute (same as plain "allow")

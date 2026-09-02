@@ -26,7 +26,7 @@ from app.database import async_session
 from app.models.hitl_preference import HitlPreference
 from app.models.user import User
 from app.services.hitl_manager import get_hitl_manager
-from app.services.hitl_preferences import LOCKED_HITL_TOOLS
+from app.services.hitl_preferences import LOCKED_HITL_TOOLS, is_hitl_waivable
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS
 
 router = APIRouter(prefix="/hitl", tags=["hitl"])
@@ -62,6 +62,15 @@ class HitlPrefOut(BaseModel):
             "If true, this is a destructive/irreversible tool: HITL is ON by "
             "default and the UI shows a red 'DANGEREUX' warning, but the user "
             "MAY disable it at their own risk."
+        ),
+    )
+    waivable: bool = Field(
+        default=True,
+        description=(
+            "If false, the 'always allow' preference CANNOT cover this tool: "
+            "the UI must show it as non-disableable and the PATCH endpoint "
+            "refuses to store a waiver for it (audit 2026-09-02 — the "
+            "*_raw_api_call pass-throughs reach the whole Google API)."
         ),
     )
     description: str | None = Field(
@@ -209,14 +218,19 @@ async def list_preferences(
     out: list[HitlPrefOut] = []
     for tool_name in sorted(ALWAYS_CRITICAL_TOOLS | LOCKED_HITL_TOOLS):
         is_dangerous = tool_name in LOCKED_HITL_TOOLS
+        waivable = is_hitl_waivable(tool_name)
         # Tous les outils — dangereux compris — honorent la préférence de
         # l'utilisateur (défaut True). Avant 2026-06-19 les dangereux étaient
         # forcés à True ; ils sont désormais désactivables (avertis « DANGEREUX »).
-        requires = bool(overrides.get(tool_name, True))
+        # ⚠️ Sauf les non dispensables (02/09/2026) : on renvoie True en dur,
+        # comme la résolution, pour que l'UI n'affiche jamais « désactivé » sur
+        # une garde qui, elle, est bien active.
+        requires = True if not waivable else bool(overrides.get(tool_name, True))
         out.append(HitlPrefOut(
             tool_name=tool_name,
             requires_confirmation=requires,
             dangerous=is_dangerous,
+            waivable=waivable,
             description=descriptions.get(tool_name),
         ))
     return out
@@ -239,11 +253,28 @@ async def update_preference(
     confirmation sont gérés côté UI. On accepte donc l'union des outils
     critiques et dangereux ; tout autre outil (non concerné par le HITL) est
     rejeté.
+
+    ⚠️ CE QUE ÇA CORRIGE (audit sécurité 02/09/2026) : les outils non
+    dispensables (``is_hitl_waivable`` — les passe-plats ``*_raw_api_call``)
+    refusent la dispense en 403. Défense en profondeur : la résolution les
+    protège déjà, mais l'API ne doit pas accepter d'écrire une préférence
+    qu'elle n'appliquera pas — sinon l'utilisateur croit avoir réglé quelque
+    chose. Ré-armer la confirmation (``requires_confirmation=true``) reste
+    permis, c'est un no-op sûr.
     """
     if body.tool_name not in (ALWAYS_CRITICAL_TOOLS | LOCKED_HITL_TOOLS):
         raise HTTPException(
             status_code=400,
             detail=f"Tool '{body.tool_name}' is not a critical tool (HITL doesn't apply to it).",
+        )
+    if not body.requires_confirmation and not is_hitl_waivable(body.tool_name):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"L'outil '{body.tool_name}' est un passe-plat vers l'API "
+                "complète : la confirmation humaine ne peut pas être "
+                "désactivée."
+            ),
         )
 
     async with async_session() as db:

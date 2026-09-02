@@ -132,6 +132,62 @@ LOCKED_HITL_TOOLS: Final[frozenset[str]] = frozenset({
 })
 
 
+# Suffixes d'outils NON DISPENSABLES : la préférence « Toujours autoriser » ne
+# les couvre pas, quelle que soit la ligne présente en base.
+#
+# ⚠️ CE QUE ÇA CORRIGE (audit sécurité 02/09/2026) : les sept ``*_raw_api_call``
+# (gmail, drive, calendar, docs, sheets, tasks, contacts) sont des passe-plats
+# vers l'API Google ENTIÈRE — la méthode arrive en chemin pointé, donc
+# ``users.settings.forwardingAddresses.create`` et
+# ``users.settings.filters.create`` passent par là. Installer un transfert
+# automatique de toute la boîte tient dans un appel. Ils étaient bien dans
+# ``LOCKED_HITL_TOOLS``, mais depuis le 19/06/2026 la préférence utilisateur
+# vaut AUSSI pour les outils dangereux : un seul clic sur « Toujours autoriser »,
+# dans une fenêtre d'approbation qui n'affiche qu'un JSON brut, éteignait
+# définitivement cette garde — et avec elle, par ricochet, celle de tous les
+# autres outils Google, puisqu'un passe-plat refait ce qu'ils font sans passer
+# par eux.
+#
+# La liberté du 19/06 n'est pas retirée : la préférence reste honorée partout
+# ailleurs, y compris sur les autres outils dangereux. Seule la porte qui
+# contourne toutes les autres ne peut plus être laissée ouverte d'un clic.
+#
+# ⚠️ « D'UN CLIC » COUVRE DEUX BOUTONS, PAS UN (relecture du 02/09/2026).
+# Fermer la seule préférence permanente ne fermait rien : l'approbation PAR
+# TÂCHE (« Autoriser pour cette tâche », ``services/task_approvals``) est
+# évaluée AVANT elle dans les deux chemins, et elle ignore la nature de
+# l'outil. Les deux consultent donc ce critère aujourd'hui. Côté missions la
+# « tâche » est la MISSION entière et rien n'appelle ``clear_task_approvals``
+# en production : un clic au premier tick valait pour tous les suivants.
+#
+# Le critère est un SUFFIXE, pas une liste : le prochain ``*_raw_api_call``
+# ajouté au catalogue est couvert sans qu'on ait à penser à l'inscrire.
+NEVER_WAIVABLE_TOOL_SUFFIXES: Final[tuple[str, ...]] = ("_raw_api_call",)
+
+
+def is_hitl_waivable(tool_name: str) -> bool:
+    """True si un consentement de l'utilisateur peut dispenser cet outil de HITL.
+
+    False pour les passe-plats ``*_raw_api_call`` (cf.
+    ``NEVER_WAIVABLE_TOOL_SUFFIXES``).
+
+    Point de vérité UNIQUE ; les consultations, elles, sont réparties là où
+    les dispenses se décident — c'est délibéré, ``task_approvals`` reste un
+    registre éphémère sans politique :
+      - préférence permanente : ``user_requires_hitl`` (résolution),
+        ``set_user_preference`` (écriture), ``routers/hitl_prefs`` (API) ;
+      - approbation par tâche : les deux lectures
+        (``tool_gateway._decide_hitl``, ``missions/nodes.dispatch_tool``) et
+        l'enregistrement de la décision ``allow_for_task`` ;
+      - message de refus du noyau des missions autonomes, qui ne conseille
+        plus « Toujours autoriser » quand ce geste est devenu impossible.
+    Un futur appelant qui dispense de HITL doit consulter cette fonction.
+    """
+    if not tool_name:
+        return True
+    return not tool_name.endswith(NEVER_WAIVABLE_TOOL_SUFFIXES)
+
+
 async def set_user_preference(
     user_id: str,
     tool_name: str,
@@ -149,9 +205,21 @@ async def set_user_preference(
     être désactivés ici : ``user_requires_hitl`` honore désormais la préférence
     écrite, même pour eux (l'UI prévient avec un toggle « DANGEREUX »).
 
+    ⚠️ Exception depuis le 02/09/2026 : une DISPENSE
+    (``requires_confirmation=False``) est refusée pour les outils non
+    dispensables (``is_hitl_waivable``). Ré-armer la confirmation reste permis.
+    Refuser ici évite d'écrire en base une ligne que la résolution ignorerait
+    de toute façon — donc de laisser croire à l'utilisateur que c'est réglé.
+
     Never raises — any DB error returns False, caller may log + skip.
     """
     if not user_id or not tool_name:
+        return False
+    if not requires_confirmation and not is_hitl_waivable(tool_name):
+        logger.info(
+            "Dispense HITL refusee pour %s (outil non dispensable) user=%s",
+            tool_name, user_id[:8],
+        )
         return False
     try:
         from datetime import datetime, timezone
@@ -187,6 +255,10 @@ async def user_requires_hitl(user_id: str, tool_name: str) -> bool:
     """Return True if HITL approval is required for ``user_id`` on ``tool_name``.
 
     Resolution order :
+      0. If the tool is NOT waivable (``is_hitl_waivable``) → True, sans même
+         lire la base : c'est la RÉSOLUTION qui décide, pas la table. Une
+         dispense déjà enregistrée avant le 02/09/2026 est donc neutralisée
+         sans migration.
       1. If a user-specific row exists in ``hitl_preferences`` → use it.
       2. Otherwise fall back to True (= secure default, HITL on).
 
@@ -202,6 +274,8 @@ async def user_requires_hitl(user_id: str, tool_name: str) -> bool:
     Never raises — any DB error degrades to True.
     """
     if not user_id or not tool_name:
+        return True
+    if not is_hitl_waivable(tool_name):
         return True
     try:
         async with async_session() as db:
