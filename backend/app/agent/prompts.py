@@ -67,6 +67,7 @@ Intégrité des actions :
 - Ne reformule jamais le contenu d'un email/document/fichier avant d'avoir appelé l'outil de lecture (gmail_read_email, docs_read_document, drive_read_file, notes_read). Pas de paraphrase "plausible".
 - Appelle les outils via le tool-calling natif. N'écris JAMAIS de blocs `<function_calls>`, `<tool_use>`, JSON de function call, ni pseudo-code Python dans le texte : ces formats s'affichent à l'utilisateur, ils ne s'exécutent pas.
 - Retour d'outil = vérité absolue. Un ToolMessage qui commence par "Erreur", "Error", "HttpError", "échec", "not found" signifie ÉCHEC — n'annonce jamais un succès dans ce cas. Reprends l'erreur, explique-la brièvement, propose une alternative.
+- Écriture ou acte engageant (créer, modifier, envoyer, publier) : avant d'annoncer le succès, RELIS la cible exacte avec l'outil de lecture correspondant. Un appel d'outil réussi n'est pas une tâche réussie. Cible vide ou inchangée = l'écriture a échoué : dis-le, ne conclus pas.
 - Distinction rappel récurrent (scheduler_create_task avec cron) vs événement unique (calendar_create_event). Notification push ELY = scheduler_create_task avec channel="app".
 - "Oui" de confirmation après proposition d'action → appelle l'outil IMMÉDIATEMENT, sans re-annoncer.
 
@@ -172,6 +173,60 @@ Format des réponses texte (quand aucun tool n'est pertinent) :
 Utilisation des tools — priorité absolue :
 - Dès que la demande matche un tool, APPELLE-le directement via function calling. N'annonce pas. N'écris pas de code Python pour simuler un tool call.
 """
+
+# ⚠️ POURQUOI « RELIS LA CIBLE » EST DANS « Intégrité des actions » (02/09).
+#
+# Ely a créé un tableur, écrit dedans, annoncé le travail fait. L'écriture
+# avait échoué en HTTP 400. L'utilisateur a découvert le fichier vide en
+# l'ouvrant.
+#
+# Les trois vérifications du dépôt regardent toutes ailleurs :
+#   - `completion_guard` attrape l'affirmation NON ÉTAYÉE par un appel d'outil.
+#     Ici l'outil a bien été appelé : l'affirmation est étayée, et fausse.
+#   - La boucle de conformité (`agent/conformity.py`) confronte le résultat à
+#     la demande, au prix d'un second appel de modèle, et elle échoue OUVERT
+#     par contrat : juge indisponible, le tour passe.
+#   - La ligne juste au-dessus ne couvre que les retours qui COMMENCENT par
+#     « Erreur ». Un 200 qui n'a rien écrit ne dit rien.
+#
+# Aucune ne regarde la CIBLE. C'est la consigne d'Hermes
+# (`<external_state_verification>`), portée ici. Elle attrape toute une classe
+# d'échecs muets : le tableur vide, le fichier « mis à jour » qui ne l'est pas,
+# la ligne ajoutée au mauvais onglet.
+#
+# ⚠️ CE QU'ELLE COÛTE — la première rédaction disait « aucun appel
+# supplémentaire », et c'était faux (relu le 02/09). Chaque écriture gagne un
+# appel d'OUTIL de plus, la relecture, dont le retour doit être réinjecté :
+# donc aussi une itération d'inférence de plus dans le tour. Ce qu'elle évite,
+# c'est un appel de MODÈLE-JUGE — le second appel que paie
+# `agent/conformity.py`. Le seul coût MESURÉ ici est celui des caractères du
+# prompt (+281, ~70 tokens par tour, cf. `tests/test_system_prompt_size.py`) ;
+# le coût dominant — un outil et une itération sur les tours qui écrivent —
+# n'a pas été mesuré.
+#
+# ⚠️ Elle nomme les outils par leur NATURE (écriture, engageant, au sens de
+# `agent/tool_nature.py`) et pas par une liste. Une liste d'outils écrite dans
+# un prompt périme au premier ajout, et un prompt faux est pire qu'un prompt
+# vague — raison pour laquelle aucun COMPTE d'outils ne figure ici non plus.
+# (La première rédaction de ce commentaire annonçait « 211 outils » pour
+# justifier de ne rien figer. Le registre en compte 201. L'argument n'avait
+# pas besoin du chiffre ; il avait juste besoin de ne pas mentir.)
+#
+# ⚠️ Un prompt reste une CONSIGNE, pas un verrou (invariant 3). Elle ne
+# remplace ni le garde-fou de complétion ni la boucle de conformité : elle
+# couvre le trou qu'aucun des deux ne voit, en amont et sans second appel de
+# modèle.
+#
+# ⚠️ `agent/compact_prompt.py` NE L'A PAS, et c'est un REPORT, pas un
+# non-sujet. Ce prompt-là sert le chemin COMPLET quand le modèle actif est
+# local (`is_local_openai_llm`), avec le profil d'outils `compact` : 85 outils,
+# dont `gmail_send_email`, `drive_create_file` et `desktop_delete_file`. Il
+# porte déjà une règle anti-faux-succès (« JAMAIS de faux succès »), et elle
+# souffre du MÊME trou : elle ne mord que sur un retour contenant « erreur »
+# ou vide, jamais sur un 200 qui n'a rien écrit. Ce qui retient l'ajout est la
+# latence locale — ce prompt existe pour tenir ~300 tokens sur un petit modèle
+# — et pas une absence d'outils d'écriture de ce côté.
+
 
 # ⚠️ POURQUOI CE PROMPT PARLE AUTANT DE `find_tool` (23/08).
 #

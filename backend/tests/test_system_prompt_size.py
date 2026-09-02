@@ -27,9 +27,24 @@ import re
 
 
 # Hard ceiling — anything above this should be flagged as regrowth that
-# needs the audit doc updated first. Leave ~15% headroom over the
-# current value (~12.5k) so a small rule addition doesn't break CI.
-_MAX_CHARS = 15_000
+# needs the audit doc updated first.
+#
+# ⚠️ RELEVÉ LE 02/09/2026, ET C'EST LA GARDE QUI L'A SIGNALÉ.
+#
+# La marge de 2 500 caractères posée le 23/05 a été consommée entre-temps : le
+# prompt pesait 14 901 caractères sur 15 000 (99,3 %) avant que l'audit n'y
+# porte la consigne de relecture d'Hermes (« un appel d'outil réussi n'est pas
+# une tâche réussie », +281 caractères, ~70 tokens par tour). Toute règle
+# ajoutée, quelle qu'elle soit, faisait donc rougir la CI.
+#
+# Décision consciente, comme la docstring l'exige : le plafond passe à 15 500,
+# soit ~300 caractères de marge : de quoi ne pas casser la CI sur une
+# correction de formulation, pas de quoi loger une section de plus.
+#
+# ⚠️ LA MARGE N'EST PLUS UN MATELAS. Le prochain ajout doit venir avec une
+# passe de compaction, pas avec un troisième relèvement : c'est en relevant
+# sans regarder que le prompt est passé de 12 500 à 14 901.
+_MAX_CHARS = 15_500
 
 # Soft floor — under this we're probably missing critical rules. Set
 # very generously below the current value to catch only a major loss.
@@ -41,7 +56,7 @@ def _load_prompt() -> str:
     return _SYSTEM_PROMPT_BASE
 
 
-def test_system_prompt_is_under_15k_chars() -> None:
+def test_system_prompt_stays_under_the_ceiling() -> None:
     prompt = _load_prompt()
     assert len(prompt) <= _MAX_CHARS, (
         f"_SYSTEM_PROMPT_BASE grew back to {len(prompt)} chars (max "
