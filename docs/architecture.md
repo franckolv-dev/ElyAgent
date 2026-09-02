@@ -78,7 +78,7 @@ Deux principes dans cette boucle :
 
 ## Les outils
 
-**200 outils** avec les drapeaux par défaut — le compte reproductible. Deux
+**201 outils** avec les drapeaux par défaut — le compte reproductible. Deux
 choses s'y ajoutent selon la configuration :
 
 - **+10** si le client MCP est activé (`mcp_client_v2_enabled`, éteint par
@@ -277,7 +277,7 @@ l'invariant « un repli doit se voir ».
 | Voix | WebSocket |
 | Extension Chrome | pilotage de votre vrai navigateur |
 | Bureau | application dédiée |
-| Mobile | Android, iOS |
+| Mobile | archivé le 02/09/2026 — voir [archive/README.md](../archive/README.md) |
 | MCP | Ely est **client** (`mcp__serveur__outil`) **et serveur** (`/api/mcp`) |
 
 Les cinq surfaces conversationnelles passent par le **même** runtime que le chat

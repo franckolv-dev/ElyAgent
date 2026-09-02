@@ -22,6 +22,17 @@ POST   /api/arena/vote         record the user's vote and update ELO
 GET    /api/arena/leaderboard  read the global ELO leaderboard
 GET    /api/arena/history      read the user's recent matches
 GET    /api/arena/models       list models currently available in the pool
+
+Garde : utilisateur connecté, PAS administrateur — c'est un choix (relecture
+02/09/2026). L'Arena est un outil PERSONNEL : le match part du prompt de
+l'appelant, ``record_vote`` refuse le vote d'un tiers (403), l'historique est
+filtré par ``user_id``, et aucune route ne modifie un réglage d'instance
+(``/models`` ne fait que lister les fournisseurs déjà configurés). Le
+classement ELO n'est lu nulle part ailleurs dans le backend : il ne pilote
+aucun routage. La barre latérale doit donc montrer ``/arena`` à tout le monde
+(voir ``frontend/src/components/layout/nav.ts``) ; l'avoir rangée sous le
+groupe ADMINISTRATEUR la laissait injoignable pour la plupart des comptes
+alors que ces routes leur répondent.
 """
 from __future__ import annotations
 

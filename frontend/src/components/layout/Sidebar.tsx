@@ -13,14 +13,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck, LogOut,
-  Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
-  Download, X, ChevronDown, BookOpen, Target, Brain, Compass,
-  Sparkles, ClipboardCheck, Stethoscope, Undo2, BrainCircuit, type LucideIcon,
+  LogOut, Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
+  Download, X, ChevronDown,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
+import { NAV, isGroup, type NavEntry } from "./nav";
 
 interface RecentConv {
   id: string;
@@ -29,50 +28,6 @@ interface RecentConv {
 }
 
 const PAGE_SIZE = 50;
-
-type NavLeaf = { href: string; labelKey: string; icon: LucideIcon; admin?: boolean };
-type NavGroup = { groupKey: string; labelKey: string; icon: LucideIcon; admin?: boolean; children: NavLeaf[] };
-type NavEntry = NavLeaf | NavGroup;
-
-const isGroup = (e: NavEntry): e is NavGroup => "children" in e;
-
-// Sidebar nav (refonte 2026-06-04) — flat top-level + collapsible accordion
-// groups, so the list stays short and "Admin" is reachable without scrolling.
-// Arena dropped (unused). Candidates moved to /me/learning/* (was 404ing under
-// the backend-owned /admin/learning/* namespace — see that page's header).
-const NAV: NavEntry[] = [
-  { href: "/chat",      labelKey: "navChat",      icon: MessageSquare },
-  { href: "/missions",  labelKey: "navMissions",  icon: Target },
-  { href: "/scheduled", labelKey: "navScheduled", icon: Clock },
-  { href: "/knowledge", labelKey: "navKnowledge", icon: BookOpen },
-  {
-    groupKey: "skills", labelKey: "navGroupSkills", icon: Sparkles,
-    children: [
-      { href: "/me/learning",            labelKey: "navLearning",           icon: Brain },
-      { href: "/me/learning/skills",     labelKey: "navLearningSkills",     icon: Sparkles },
-      { href: "/me/learning/candidates", labelKey: "navLearningCandidates", icon: ClipboardCheck, admin: true },
-      { href: "/me/learning/tool-gaps",  labelKey: "navLearningToolGaps",   icon: Search, admin: true },
-      { href: "/me/learning/incidents",  labelKey: "navLearningIncidents",  icon: Stethoscope, admin: true },
-    ],
-  },
-  {
-    groupKey: "analysis", labelKey: "navGroupAnalysis", icon: LayoutDashboard,
-    children: [
-      { href: "/dashboard", labelKey: "navDashboard",  icon: LayoutDashboard },
-      { href: "/me/state",  labelKey: "navUserState",  icon: Compass },
-      { href: "/me/memories", labelKey: "navMemories", icon: BrainCircuit },
-      { href: "/me/reversible-actions", labelKey: "navReversibleActions", icon: Undo2 },
-    ],
-  },
-  { href: "/settings", labelKey: "navSettings", icon: Settings },
-  {
-    groupKey: "admin", labelKey: "navGroupAdmin", icon: Shield, admin: true,
-    children: [
-      { href: "/security", labelKey: "navSecurity", icon: ShieldCheck },
-      { href: "/admin",    labelKey: "navAdmin",    icon: Shield },
-    ],
-  },
-];
 
 // Longest-prefix match so nested routes (e.g. /me/learning vs
 // /me/learning/skills) highlight exactly one item.

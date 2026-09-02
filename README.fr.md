@@ -210,7 +210,9 @@ FastAPI · LangGraph · Next.js · SQLite (Alembic seul fait foi sur le schéma)
 Qdrant · nginx · Squid pour le filtrage des sorties · Docker Compose.
 
 Surfaces : web, API REST, Telegram, Slack, Discord, WhatsApp, voix par
-WebSocket, extension Chrome, application de bureau, Android et iOS.
+WebSocket, extension Chrome et application de bureau. Les applications
+Android et iOS sont archivées depuis le 02/09/2026 — voir
+[archive/README.md](archive/README.md).
 
 ---
 

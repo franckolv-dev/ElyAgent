@@ -34,12 +34,13 @@ alembic/versions/__pycache__/
 data/*.db
 TO_DELETE/
 
-# Android build artifacts
-android/.gradle/
-android/.kotlin/
-android/app/build/
-android/build/
-android/local.properties
+# Artefacts de build Android — les deux arbres sont archives sous
+# archive/mobile/ depuis le 02/09/2026 (voir archive/README.md). Les motifs
+# suivent le chemin d'archive pour qu'un reveil ne recommite pas de build.
+archive/mobile/**/.gradle/
+archive/mobile/**/.kotlin/
+archive/mobile/**/build/
+archive/mobile/**/local.properties
 *.apk
 *.aab
 
@@ -49,14 +50,15 @@ android/local.properties
 
 # Secrets Firebase — NE PAS COMMITER
 backend/firebase/
-android/app/google-services.json
+archive/mobile/**/google-services.json
 *.json.secret
 *-firebase-adminsdk-*.json
 .aider*
 .mcp.json
 
 # Runtime data (should never be committed)
-# Using /data/ anchor to avoid matching android/.../data/ (Kotlin package)
+# Using /data/ anchor to avoid matching the Kotlin `data` package under
+# archive/mobile/.../com/ely/agent/data/
 /data/
 /logs/
 # Exception : track the empty data/ssh placeholder so the docker-compose
