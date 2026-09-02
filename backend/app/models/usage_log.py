@@ -18,7 +18,7 @@
 """Usage log model — tracks LLM token usage and skill invocations."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text
+from sqlalchemy import Column, String, Integer, Float, DateTime, Index, Text
 from app.database import Base
 
 
@@ -77,3 +77,20 @@ class UsageLog(Base):
     cached_input_tokens = Column(Integer, default=0)
     cache_creation_tokens = Column(Integer, default=0)
     context_breakdown = Column(Text, nullable=True)
+
+    # ⚠️ CE QUE ÇA CORRIGE (audit 02/09/2026) : `user_id` et `timestamp`
+    # étaient indexés SÉPARÉMENT, alors que les six lecteurs de cette table
+    # filtrent sur les DEUX — les cinq agrégations de analytics_service
+    # (résumé, usage quotidien, par skill, HITL, par fournisseur) et le
+    # garde-budget (budget_guard, appelé à chaque tour) :
+    #
+    #     where user_id = ? and timestamp >= ?
+    #
+    # SQLite ne retient qu'un index par table et par requête : il prenait
+    # celui de `user_id` puis balayait TOUTES les lignes de l'utilisateur
+    # pour n'en garder qu'une fenêtre de dates. 11 280 lignes en prod, et la
+    # table ne fait que grossir. L'ordre des colonnes n'est pas décoratif :
+    # égalité d'abord (`user_id`), intervalle ensuite (`timestamp`).
+    __table_args__ = (
+        Index("ix_usage_logs_user_timestamp", "user_id", "timestamp"),
+    )
