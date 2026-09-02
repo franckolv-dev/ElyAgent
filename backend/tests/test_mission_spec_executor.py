@@ -217,6 +217,17 @@ async def test_eval_applies_skip_handler_and_undeclared_degrades(spec_mission) -
     await msr.ensure_step_run(mid, "enrich", 0, "Delta")
     await msr.ensure_step_run(mid, "enrich", 1, "Omega")
 
+    # L'item 0 a réellement cherché. Depuis le 31/08/2026, `not_found` est
+    # refusé tant qu'aucun outil n'a tourné sur l'item : deux sociétés
+    # avaient été consignées « aucun contact trouvé » sans être regardées.
+    # Ce test-ci porte sur l'APPLICATION du handler, pas sur ce garde-fou.
+    from app.services import mission_service as _ms
+    await _ms.add_step(
+        mid, phase="act", tool_name="web_search", tool_input={},
+        tool_output="rien", thought="Étape « [Item 1 : Delta] cherche »",
+        success=True, duration_ms=1,
+    )
+
     plan_json = {
         "from_spec": True,
         "steps": [{

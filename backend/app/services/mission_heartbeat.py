@@ -59,9 +59,85 @@ _tick_semaphore = asyncio.Semaphore(MISSION_TICK_CONCURRENCY)
 # temps, même si un tick dure plus longtemps que l'intervalle de beat.
 _in_flight: set[str] = set()
 
+# Combien de fois un tick peut être REPORTÉ pour panne passagère du
+# fournisseur LLM avant qu'on renonce. Le report protège le travail déjà
+# fait ; la borne évite une mission « en cours » pour toujours, qui serait
+# pire qu'un échec franc parce que muette.
+MAX_PROVIDER_RETRIES = int(os.environ.get("MISSION_MAX_PROVIDER_RETRIES", "5"))
+
+# Signatures d'un fournisseur qui demande d'attendre, pas d'un graphe cassé.
+# Volontairement textuelles : l'exception remonte des couches LangChain sous
+# des types très divers (`APIStatusError`, `RuntimeError`, wrappers maison),
+# et c'est le code HTTP qui porte le sens, pas la classe Python.
+_PANNES_PASSAGERES = (
+    "429", "rate limit", "rate_limit", "too many requests", "quota",
+    "502", "503", "504", "bad gateway", "service unavailable",
+    "gateway timeout", "overloaded", "timeout", "timed out",
+    "connection reset", "connection error",
+)
+
+# Attente entre deux essais : le fournisseur nous demande de ralentir, on
+# ralentit vraiment. Le premier report suffit souvent (fenêtre de débit
+# glissante), les suivants supposent une panne plus large.
+_ATTENTE_PAR_ESSAI = (2, 5, 15, 30, 60)
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _est_passagere(exc: BaseException) -> bool:
+    """L'erreur vient-elle du fournisseur, et se résoudra-t-elle seule ?
+
+    Le 31/08/2026, `{'message': 'Provider returned error', 'code': 429}` a
+    tué une mission qui venait d'étendre son foreach en 5 sociétés, d'écrire
+    son historique et de créer son tableur. Vingt-cinq minutes de travail
+    perdues sur une limite de débit.
+    """
+    texte = f"{type(exc).__name__} {exc}".lower()
+    return any(signe in texte for signe in _PANNES_PASSAGERES)
+
+
+def _attente_du_report(essai: int) -> timedelta:
+    """Minutes à attendre avant le report n°`essai` (1-indexé)."""
+    index = min(max(essai, 1), len(_ATTENTE_PAR_ESSAI)) - 1
+    return timedelta(minutes=_ATTENTE_PAR_ESSAI[index])
+
+
+async def _reporter_le_tick(mission_id: str, essai: int) -> None:
+    """Repousse `next_tick_at` et mémorise le nombre de reports."""
+    from sqlalchemy import update
+
+    from app.database import async_session
+    from app.models.mission import Mission
+
+    async with async_session() as db:
+        await db.execute(
+            update(Mission).where(Mission.id == mission_id).values(
+                next_tick_at=_utcnow() + _attente_du_report(essai),
+                provider_retries=essai,
+            )
+        )
+        await db.commit()
+
+
+async def _oublier_les_reports(mission_id: str) -> None:
+    """Remet le compteur à zéro après un tick réussi.
+
+    Sans ça, un 429 par jour finirait par tuer une mission qui va bien.
+    """
+    from sqlalchemy import update
+
+    from app.database import async_session
+    from app.models.mission import Mission
+
+    async with async_session() as db:
+        await db.execute(
+            update(Mission).where(
+                Mission.id == mission_id, Mission.provider_retries != 0,
+            ).values(provider_retries=0)
+        )
+        await db.commit()
 
 
 async def _tick_one_mission(mission_id: str, user_id: str, goal: str) -> dict:
@@ -285,10 +361,35 @@ async def _process_one_mission(mission) -> None:
                 logger.info("Mission %s: tick done in %.1fs (iter=%s, done=%s)",
                             mid, duration, result.get("iteration"), result.get("done"))
             except Exception as exc:
+                # Une limite de débit n'est pas un bug : elle se résout en
+                # attendant. Tuer la mission jetterait tout son travail —
+                # c'est ce qui est arrivé le 31/08/2026, sur un 429, après
+                # 25 minutes utiles. Même raisonnement que le budget
+                # quotidien du user, vingt lignes plus haut.
+                _essai = (mission.provider_retries or 0) + 1
+                if _est_passagere(exc) and _essai <= MAX_PROVIDER_RETRIES:
+                    _attente = _attente_du_report(_essai)
+                    logger.warning(
+                        "Mission %s: panne passagère du fournisseur (%s) — "
+                        "tick reporté de %d min (report %d/%d)",
+                        mid, exc, int(_attente.total_seconds() // 60),
+                        _essai, MAX_PROVIDER_RETRIES,
+                    )
+                    await _reporter_le_tick(mid, _essai)
+                    return
                 logger.exception("Mission %s: tick crashed: %s", mid, exc)
-                await mission_service.fail_mission(mid, f"graph crashed: {exc}")
+                # L'échec NOMME la cause : après plusieurs reports, ce n'est
+                # plus la mission qui est en tort, c'est le fournisseur.
+                _raison = (
+                    f"fournisseur indisponible après {MAX_PROVIDER_RETRIES} "
+                    f"report(s) : {exc}"
+                    if _est_passagere(exc) else f"graph crashed: {exc}"
+                )
+                await mission_service.fail_mission(mid, _raison)
                 await _notify_terminal(mission, "failed", f"Erreur d'exécution : {exc}")
                 return
+
+            await _oublier_les_reports(mid)
 
             # Decide what's next
             if result.get("done") and result.get("final_summary"):
