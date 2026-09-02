@@ -36,9 +36,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     google_credentials: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     telegram_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
-    whatsapp_phone: Mapped[str | None] = mapped_column(String(20), nullable=True, unique=True, default=None)
-    slack_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
-    discord_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True, default=None)
+    # ⚠️ AUDIT 02/09/2026 : `whatsapp_phone`, `slack_id` et `discord_id` ont été
+    # retirés avec leurs canaux (archive/canaux) — plus aucun lecteur dans le
+    # code. Les COLONNES restent dans les bases déjà déployées : les supprimer
+    # est une migration à décider, pas un effet de bord de ce ménage.
     fcm_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # UI / agent reply language. ISO 639-1 code. Default "fr" — Éli was
     # designed in French. The frontend sets this when the user clicks the
@@ -51,8 +52,6 @@ class User(Base):
     #   "ely_android" — native Android app (FCM)
     #   "ntfy"        — ntfy push (lockscreen action buttons, no app needed)
     #   "telegram"    — Telegram bot inline keyboard
-    #   "discord"     — Discord DM with reactions
-    #   "slack"       — Slack DM with Block Kit
     #   "web_only"    — only the web frontend (silent on phone)
     #   "all" / null  — broadcast to every linked channel (default)
     # The web frontend is ALWAYS notified regardless of this preference,

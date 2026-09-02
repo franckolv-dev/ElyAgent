@@ -88,8 +88,7 @@ The larger families:
 - **Memory** — typed recall, vector search, full-text search over past
   conversations
 - **Scheduling** — recurring tasks
-- **Channels** — Telegram, Slack, Discord, WhatsApp, all on the same runtime as
-  the web chat
+- **Channels** — Telegram, on the same runtime as the web chat
 - **MCP** — Ely is both a client of external MCP servers and an MCP server
   herself
 
@@ -158,7 +157,7 @@ Full walkthrough: **[docs/installation.md](docs/installation.md)** (French).
 
 ## Approval, and where it actually lives
 
-**46 tools** require your approval by name. On top of that, the **content** of a
+**44 tools** require your approval by name. On top of that, the **content** of a
 request can trigger a check — a transfer, a purchase, a deletion, a checkout
 page.
 
@@ -204,9 +203,10 @@ API, a service. Otherwise it becomes a skill: a written procedure, not new code.
 FastAPI · LangGraph · Next.js · SQLite (Alembic is the sole schema authority) ·
 Qdrant · nginx · Squid for egress filtering · Docker Compose.
 
-Surfaces: web, REST API, Telegram, Slack, Discord, WhatsApp, voice over
-WebSocket, a Chrome extension and a desktop app. The Android and iOS apps
-were archived on 2026-09-02 — see [archive/README.md](archive/README.md).
+Surfaces: web, REST API, Telegram, voice over WebSocket, a Chrome extension
+and a desktop app. The Android and iOS apps, along with the WhatsApp, Slack
+and Discord bridges, were archived on 2026-09-02 — see
+[archive/README.md](archive/README.md).
 
 ---
 

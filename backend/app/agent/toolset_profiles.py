@@ -275,7 +275,7 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
 # ⛔ Le 30/07, mesuré : 206 outils enregistrés, 87 joignables, **119 hors
 # d'atteinte**. Seize familles entières absentes — Sheets (0/9), Docs (0/7),
 # PDF (0/4), Maps (0/4), YouTube, QR codes, `os_*`, `system_*`, `trainer_*`,
-# `watchdog_*`, WhatsApp… Une conversation avec un profil ne pouvait ni ouvrir
+# `watchdog_*`… Une conversation avec un profil ne pouvait ni ouvrir
 # un tableur ni lire un PDF, y compris `pdf_to_docx` construit en juillet.
 #
 # La liste n'a pas dérivé : elle a été **conçue** comme un sous-ensemble
@@ -288,8 +288,9 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
 # ET si la moitié TROU progresse nettement. Sur gpt-5.6-terra et gpt-5.6-sol :
 # justesse inchangée ou −2 appels sur 60, et le trou passe de 0 % à 86,7 %.
 #
-# 👉 **Le mécanisme est CONSERVÉ à dessein.** Cinq surfaces l'appellent (chat,
-# voix, Telegram, Slack, Discord) ; le champ porte un second sens (attribution
+# 👉 **Le mécanisme est CONSERVÉ à dessein.** Trois surfaces l'appellent (chat,
+# voix, Telegram — Slack et Discord sont partis le 02/09/2026, archive/canaux) ;
+# le champ porte un second sens (attribution
 # d'architecture dans `usage_instrumentation`) ; et le retour arrière tient en
 # une entrée : remettre ici le tuple des 84 noms. Pas de migration, pas de
 # schéma, pas de données touchées. Le défaut n'était pas le mécanisme, c'était

@@ -75,7 +75,7 @@ _PATTERNS: dict[str, re.Pattern] = {
 #   3. SSH (commandes serveur)
 #   4. Config système / API brute (modifications silencieuses)
 #   5. Contrôle OS (sécurité du système local)
-#   6. Communications externes (WhatsApp) + partage externe (Drive share)
+#   6. Partage externe (Drive share)
 #
 # Les actions NON-HITL :
 #   - calendar_* create/update : c'est SON calendrier
@@ -117,9 +117,7 @@ ALWAYS_CRITICAL_TOOLS: frozenset[str] = frozenset({
     "desktop_write_file",
     "desktop_move_file",
     "desktop_create_dir",
-    # ── 6. Communications externes + partage ──
-    "whatsapp_send",
-    "whatsapp_send_template",
+    # ── 6. Partage externe ──
     "drive_share_file",
 })
 
@@ -141,7 +139,7 @@ NEVER_AUTONOMOUS_TOOLS: frozenset[str] = frozenset({
     "contacts_delete", "contacts_batch_operations",
     # Leaves the building / third party
     "gmail_send_email", "gmail_reply_email", "gmail_send_with_attachment",
-    "whatsapp_send", "whatsapp_send_template", "drive_share_file",
+    "drive_share_file",
     # Security / system / unrestricted escape hatches
     "ssh_execute", "vault_unlock", "vault_set_secret", "save_constraint",
     "mcp_validate_and_deploy", "gmail_update_settings",

@@ -43,8 +43,8 @@ def _utcnow() -> datetime:
 class HitlRequest(Base):
     __tablename__ = "hitl_requests"
 
-    # L'action_id court (uuid4[:8]) déjà utilisé par les boutons Telegram,
-    # Discord, Slack et les tokens signés — c'est lui la clé naturelle.
+    # L'action_id court (uuid4[:8]) déjà utilisé par les boutons Telegram
+    # et les tokens signés — c'est lui la clé naturelle.
     action_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(
         String, ForeignKey("users.id"), nullable=False, index=True

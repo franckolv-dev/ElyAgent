@@ -78,7 +78,7 @@ Deux principes dans cette boucle :
 
 ## Les outils
 
-**201 outils** avec les drapeaux par défaut — le compte reproductible. Deux
+**199 outils** avec les drapeaux par défaut — le compte reproductible. Deux
 choses s'y ajoutent selon la configuration :
 
 - **+10** si le client MCP est activé (`mcp_client_v2_enabled`, éteint par
@@ -157,7 +157,7 @@ garde, ou si le **contenu de ses arguments** déclenche une alerte.
 
 ```
 garde par NOM       hitl_preferences.LOCKED_HITL_TOOLS
-                  ∪ security_filter.ALWAYS_CRITICAL_TOOLS      → 46 outils
+                  ∪ security_filter.ALWAYS_CRITICAL_TOOLS      → 44 outils
 garde par CONTENU   security_filter._CRITICAL_KEYWORDS
                     (« supprimer », « virement », « checkout », « panier »…)
 ```
@@ -273,15 +273,18 @@ l'invariant « un repli doit se voir ».
 |---|---|
 | Web | Next.js, port 3000 |
 | API | FastAPI, port 8000 |
-| Canaux | Telegram, Slack, Discord, WhatsApp |
+| Canaux | Telegram |
 | Voix | WebSocket |
 | Extension Chrome | pilotage de votre vrai navigateur |
 | Bureau | application dédiée |
 | Mobile | archivé le 02/09/2026 — voir [archive/README.md](../archive/README.md) |
+| WhatsApp / Slack / Discord | archivés le 02/09/2026, zéro appel en cinq mois — voir [archive/README.md](../archive/README.md) |
 | MCP | Ely est **client** (`mcp__serveur__outil`) **et serveur** (`/api/mcp`) |
 
-Les cinq surfaces conversationnelles passent par le **même** runtime que le chat
-web : mêmes outils appris, même mémoire, mêmes préférences.
+Les trois surfaces conversationnelles — chat web, voix, Telegram — passent par
+le **même** runtime : mêmes outils appris, même mémoire, mêmes préférences.
+Elles étaient cinq avant le 02/09/2026 : Slack et Discord sont partis avec
+leurs ponts.
 
 ---
 

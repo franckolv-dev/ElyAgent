@@ -46,12 +46,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.database import async_session
 from app.models.failure_case import FailureCase
 from app.models.learned_skill import LearnedSkill, SkillSource, SkillStatus
+from app.services.learning.failure_capture import SIGNAL_TOOL_ABSENT
 from app.services.learning.tier_s import (
     estimate_cost_usd,
     get_tier_s_llm,
@@ -294,6 +296,36 @@ def parse_playbook_response(raw: str) -> dict[str, Any] | None:
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
+def _motif_deja_pourvu(user_id: str):
+    """EXISTS corrélé : une procédure interdit déjà d'en écrire une pour ce motif.
+
+    Miroir exact des deux gardes (``procedure_perimee_pour_ce_motif`` et
+    ``candidate_en_attente_pour_ce_motif``), écrit en une sous-requête pour
+    que le lot puisse écarter ces motifs SANS les charger.
+    """
+    procedure = aliased(LearnedSkill)
+    source = aliased(FailureCase)
+    return (
+        select(1)
+        .select_from(source)
+        .join(procedure, source.learned_skill_id == procedure.id)
+        .where(
+            source.pattern_hash == FailureCase.pattern_hash,
+            procedure.user_id == user_id,
+            or_(
+                procedure.status == SkillStatus.CANDIDATE,
+                and_(
+                    procedure.status.in_({SkillStatus.STALE, SkillStatus.ARCHIVED}),
+                    procedure.use_count == 0,
+                    procedure.pinned.is_(False),
+                ),
+            ),
+        )
+        .correlate(FailureCase)
+        .exists()
+    )
+
+
 async def _fetch_unprocessed_cases(
     db: AsyncSession, user_id: str, batch_size: int,
 ) -> list[list[FailureCase]]:
@@ -301,6 +333,14 @@ async def _fetch_unprocessed_cases(
 
     Sorting heuristic V1 : the cluster with the MOST recent activity
     first, then by case count. Cap at ``batch_size`` clusters.
+
+    ⚠️ LES MANQUES DÉJÀ POURVUS N'ENTRENT PAS (02/09/2026). Un
+    ``tool_absent`` dont le motif a déjà une procédure ne peut rien produire
+    ici — et le lot ne peut pas non plus le classer (ce serait le sortir de
+    « Capacités manquantes » sans rien écrire en échange, cf.
+    ``_classer_sans_rediger``). Laissé dans la fenêtre, il occuperait une des
+    N places à chaque tick de ``learned_skills_autocreate``, toutes les
+    30 minutes, pour toujours. On l'écarte à la source.
     """
     result = await db.execute(
         select(FailureCase)
@@ -308,6 +348,10 @@ async def _fetch_unprocessed_cases(
             FailureCase.user_id == user_id,
             FailureCase.processed_at.is_(None),
             FailureCase.pattern_hash.is_not(None),
+            or_(
+                FailureCase.signal_table != SIGNAL_TOOL_ABSENT,
+                ~_motif_deja_pourvu(user_id),
+            ),
         )
         .order_by(FailureCase.created_at.desc())
         .limit(200)  # window — never more than 200 rows
@@ -441,6 +485,119 @@ async def _draft_skill_for_cluster(
     return skill, info
 
 
+async def procedure_perimee_pour_ce_motif(
+    db: AsyncSession, user_id: str, pattern_hash: str | None,
+) -> str | None:
+    """Nom d'une procédure déjà écrite pour ce motif, morte SANS avoir servi.
+
+    ⚠️ LA BOUCLE QUI A PRODUIT LE STOCK (audit 02/09/2026).
+
+        98 compétences apprises — dont 43 PÉRIMÉES, 13 archivées
+
+    Le curateur fait passer ``active → stale → archived`` ce qui ne sert pas,
+    mais rien n'empêchait le rédacteur de réécrire, pour le MÊME
+    ``pattern_hash``, la jumelle de celle qui venait de périmer sans avoir
+    servi une seule fois. Un motif qui se reproduit relançait donc la roue :
+    nouveau cas → nouveau lot → nouvelle procédure → nouvelle péremption, et
+    du tier-S dépensé à chaque tour.
+
+    ``use_count > 0`` désarme le garde : une procédure périmée APRÈS avoir
+    servi prouve que le motif se couvre par un document — elle mérite d'être
+    réécrite. ``pinned`` aussi : l'utilisateur a dit de la garder.
+
+    Ne supprime rien : les procédures périmées appartiennent à l'utilisateur.
+    """
+    if not pattern_hash:
+        return None
+    return (await db.execute(
+        select(LearnedSkill.name)
+        .join(FailureCase, FailureCase.learned_skill_id == LearnedSkill.id)
+        .where(
+            FailureCase.pattern_hash == pattern_hash,
+            LearnedSkill.user_id == user_id,
+            LearnedSkill.status.in_({SkillStatus.STALE, SkillStatus.ARCHIVED}),
+            LearnedSkill.use_count == 0,
+            LearnedSkill.pinned.is_(False),
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+
+
+async def candidate_en_attente_pour_ce_motif(
+    db: AsyncSession, user_id: str, pattern_hash: str | None,
+) -> str | None:
+    """Nom d'une procédure CANDIDATE déjà écrite pour ce motif, non tranchée.
+
+    ⚠️ LE TROU QUE LE GARDE « PÉRIMÉE » LAISSAIT OUVERT (02/09/2026).
+
+    ``procedure_perimee_pour_ce_motif`` ne voit que ``stale`` et ``archived``,
+    et ``skill_curator`` ne fait transiter que ``active → stale → archived`` :
+    une CANDIDATE jamais validée ne devient donc JAMAIS périmée. Or la
+    fabrique gelée écrit une candidate à chaque manque et pose
+    ``processed_at`` — à la récurrence suivante, ``record_tool_absent`` (qui
+    ne dédoublonne que sur les cas NON traités) consigne un cas neuf, et une
+    seconde procédure partait pour le même motif sans qu'aucun garde ne la
+    voie. Tant que l'humain ne tranchait pas, geler la fabrique MULTIPLIAIT
+    les procédures au lieu de les remplacer.
+
+    Pas de seuil d'âge : ce qui bloque n'est pas l'ancienneté, c'est la
+    décision qui manque. ``rejected`` ne bloque pas (le motif redevient
+    rédigeable), ``active`` non plus (le motif est couvert et servi).
+    """
+    if not pattern_hash:
+        return None
+    return (await db.execute(
+        select(LearnedSkill.name)
+        .join(FailureCase, FailureCase.learned_skill_id == LearnedSkill.id)
+        .where(
+            FailureCase.pattern_hash == pattern_hash,
+            LearnedSkill.user_id == user_id,
+            LearnedSkill.status == SkillStatus.CANDIDATE,
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+
+
+async def _classer_sans_rediger(cluster: list[FailureCase], motif: str) -> list[int]:
+    """Marque des cas traités sans écrire de procédure. Rend les cas classés.
+
+    Sans ce marquage, le lot représenterait le même motif à chaque tick et
+    occuperait la place d'un motif jamais vu (le lot prend les N grappes les
+    plus récentes).
+
+    ⚠️ JAMAIS UN ``tool_absent`` (02/09/2026). Les lignes de cette famille
+    SONT la vue « Capacités manquantes » (``signal_table == 'tool_absent'``
+    + ``processed_at IS NULL``, cf. ``routers/learning_skills.py``) : les
+    classer les sortirait de l'écran où l'utilisateur garde la main, sans
+    rien écrire en échange — ni procédure, ni ``learned_skill_id``, ni motif.
+    C'est la règle déjà tenue par ``draft_playbook_for_gap`` ; le lot
+    nocturne la partage, et ``_fetch_unprocessed_cases`` les écarte à la
+    source pour qu'ils n'occupent pas non plus une place.
+
+    ⚠️ Ce filtre DOUBLE celui de la source : aujourd'hui aucune grappe du lot
+    ne peut plus contenir un ``tool_absent`` pourvu. Ne pas le lire comme du
+    code mort — les deux gardes se masquaient mutuellement, et retirer l'un
+    laissait la suite verte. ``test_le_classement_nocturne_epargne_un_manque_
+    dans_une_grappe_mixte`` exerce celui-ci directement, pour qu'il ne parte
+    pas sans qu'un test le dise.
+    """
+    case_ids = [fc.id for fc in cluster if fc.signal_table != SIGNAL_TOOL_ABSENT]
+    if not case_ids:
+        return []
+    async with async_session() as db:
+        await db.execute(
+            update(FailureCase)
+            .where(FailureCase.id.in_(case_ids))
+            .values(processed_at=datetime.now(timezone.utc))
+        )
+        await db.commit()
+    logger.info(
+        "skill_creator: motif déjà couvert par la procédure %r — "
+        "%d cas classés sans réécriture", motif, len(case_ids),
+    )
+    return case_ids
+
+
 async def draft_playbook_for_gap(case_id: int, user_id: str) -> dict[str, Any]:
     """Un playbook pour CE manque précis, tout de suite.
 
@@ -494,6 +651,53 @@ async def draft_playbook_for_gap(case_id: int, user_id: str) -> dict[str, Any]:
             # Déjà couvert par le lot nocturne ou par un tour précédent.
             # Réécrire produirait un doublon que le curateur devrait trier.
             info["status"] = "already_processed"
+            return info
+
+        async with async_session() as db:
+            perimee = await procedure_perimee_pour_ce_motif(
+                db, user_id, fc.pattern_hash,
+            )
+        if perimee:
+            # ⚠️ ON NE CLASSE PAS LE CAS ICI (02/09/2026).
+            #
+            # Le classement sert au lot NOCTURNE : il l'empêche de re-occuper
+            # une de ses N places avec le même motif. Sur le chemin du manque,
+            # il n'y a pas de place à protéger — et il coûtait cher : le cas
+            # sortait de la vue par défaut des « Capacités manquantes »
+            # (`processed_at IS NULL`) sans qu'aucune procédure ne le comble.
+            # Le manque disparaissait de l'écran où l'utilisateur garde la
+            # main, définitivement : un motif dont la première procédure est
+            # morte à zéro usage ne serait plus jamais ni rédigé ni montré.
+            #
+            # Les reprises sont déjà bornées ailleurs : `record_tool_absent`
+            # dédoublonne sur les cas NON traités (le même manque rend le même
+            # `case_id`) et `_attempted_cases` interdit une seconde tentative
+            # dans le même boot.
+            logger.info(
+                "skill_creator: manque #%s — motif déjà couvert par la "
+                "procédure périmée %r, pas de réécriture ; le cas reste "
+                "ouvert dans « Capacités manquantes »", case_id, perimee,
+            )
+            info["status"] = "deja_perimee"
+            info["procedure_perimee"] = perimee
+            return info
+
+        async with async_session() as db:
+            en_attente = await candidate_en_attente_pour_ce_motif(
+                db, user_id, fc.pattern_hash,
+            )
+        if en_attente:
+            # Une procédure attend déjà une décision humaine pour ce motif :
+            # en écrire une seconde ne comble rien, ça ajoute une ligne de
+            # plus à trancher. Le cas reste ouvert — la main est à l'humain,
+            # et c'est en validant la candidate qu'il la lui rend.
+            logger.info(
+                "skill_creator: manque #%s — la procédure %r attend déjà une "
+                "décision pour ce motif, pas de seconde rédaction",
+                case_id, en_attente,
+            )
+            info["status"] = "candidate_en_attente"
+            info["procedure_en_attente"] = en_attente
             return info
 
         skill, draft = await _draft_skill_for_cluster([fc], user_id)
@@ -572,6 +776,31 @@ async def run_skill_creator_batch(
     now = datetime.now(timezone.utc)
     for cluster in clusters:
         summary["clusters_processed"] += 1
+
+        # Ce motif a-t-il déjà une procédure qui interdit d'en écrire une
+        # seconde ? (02/09) Deux formes : morte sans avoir servi, ou candidate
+        # qui attend encore une décision humaine.
+        async with async_session() as db:
+            perimee = await procedure_perimee_pour_ce_motif(
+                db, user_id, cluster[0].pattern_hash,
+            )
+            en_attente = (
+                None if perimee
+                else await candidate_en_attente_pour_ce_motif(
+                    db, user_id, cluster[0].pattern_hash,
+                )
+            )
+        if perimee or en_attente:
+            await _classer_sans_rediger(cluster, perimee or en_attente)
+            summary["drafts"].append({
+                "status": "deja_perimee" if perimee else "candidate_en_attente",
+                "pattern_hash": cluster[0].pattern_hash,
+                "case_ids": [fc.id for fc in cluster],
+                ("procedure_perimee" if perimee else "procedure_en_attente"):
+                    perimee or en_attente,
+            })
+            continue
+
         skill, info = await _draft_skill_for_cluster(cluster, user_id)
         summary["drafts"].append(info)
         if skill is None:

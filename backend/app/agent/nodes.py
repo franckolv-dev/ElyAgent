@@ -18,6 +18,8 @@
 import asyncio
 import json
 import logging
+from contextvars import ContextVar
+from typing import Any, Optional
 import os
 import re
 
@@ -33,7 +35,7 @@ from app.skills.preferences_runtime import (
 )
 from app.services.hitl_manager import get_hitl_manager
 from app.services.memory_manager import get_memory_manager
-from app.services.llm_provider import get_llm, get_fallback_llms
+from app.services.llm_provider import get_fallback_llms
 from app.services import fallback_manager as _fb
 from app.services import system_prompt_cache as _spc
 from app.services import frozen_memory as _frozen_mem
@@ -41,6 +43,58 @@ from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
 logger = logging.getLogger(__name__)
+
+
+# ── La frontière d'envoi du prompt système (02/09/2026) ─────────────────────
+#
+# Filtre PII que l'APPELANT tient déjà pour ce tour. Les missions n'utilisent
+# pas le registre par `conversation_id` mais une clé préfixée
+# (`mission:<id>`, cf. `agent/missions/pii.py`) : sans ce canal, ce module
+# ouvrirait un SECOND vault sur la même conversation, et les placeholders
+# posés ici seraient irrésolubles — ou pire, résolus vers la mauvaise valeur
+# — au moment de rendre le résumé à l'utilisateur.
+#
+# Posée par l'appelant AVANT d'invoquer le graphe ; les ContextVars sont
+# copiées à la création de chaque tâche asyncio, donc elle traverse LangGraph.
+FILTRE_PII_DU_TOUR: ContextVar[Optional[SecurityFilter]] = ContextVar(
+    "FILTRE_PII_DU_TOUR", default=None,
+)
+
+
+def prompt_systeme_sortant(system: str, llm: Any, conversation_id: str) -> str:
+    """Le prompt système tel qu'il a le droit de QUITTER la machine.
+
+    L'invariant de souveraineté d'Ely ne portait que sur les MESSAGES : chaque
+    surface (chat, voix, canaux, planificateur) anonymise ce que l'utilisateur
+    a tapé, personne n'anonymisait le prompt système — qui porte pourtant le
+    profil, les souvenirs et les contraintes, c'est-à-dire l'essentiel de ce
+    qu'Ely sait de quelqu'un.
+
+    La frontière est le RÉSEAU, pas le prompt : un modèle qui tourne sur cette
+    machine reçoit le clair, parce que l'anonymiser ne protégerait rien et lui
+    coûterait de la qualité (un petit modèle local raisonne mal sur
+    « [EMAIL_0] »). Tout le reste passe par le filtre.
+
+    Posée ICI plutôt qu'à la composition du prompt parce que c'est le seul
+    endroit qui connaît le modèle RÉELLEMENT retenu : la voie compacte, la
+    voie complète, le SLM et les replis convergent tous vers un `ainvoke`.
+
+    Échoue FERMÉ : rien n'est rattrapé. Une anonymisation qui lève tue le
+    tour, elle ne le laisse pas partir en clair.
+    """
+    from app.services.qwen_no_think import is_local_openai_llm
+
+    if is_local_openai_llm(llm):
+        return system
+    filtre = FILTRE_PII_DU_TOUR.get()
+    if filtre is None:
+        from app.services.conversation_filters import get_filter
+
+        # Sans conversation, pas de vault partagé : un filtre neuf plutôt que
+        # `get_filter("")`, qui serait un vault COMMUN à tous les tours sans
+        # identité — la fuite d'à côté.
+        filtre = get_filter(conversation_id) if conversation_id else SecurityFilter()
+    return filtre.anonymize(system, ner_detection=False)
 
 
 async def _no_interactions() -> list[dict]:
@@ -829,13 +883,47 @@ def create_agent_node():
             # Decide compact-vs-full once based on the active LLM family.
             # Compact path is used for small local LLMs (LM Studio, llama.cpp
             # on localhost) and stays uncached because it's already short
-            # (~300 tokens) — the cache benefit is marginal there.
-            from app.services.qwen_no_think import is_local_openai_llm
+            # (~430 tokens) — the cache benefit is marginal there.
+            #
+            # 02/09/2026 — l'aiguillage se décidait sur `get_llm()`, le LLM
+            # PAR DÉFAUT, alors que l'inférence part sur `get_llm_for_tier`
+            # quelques centaines de lignes plus bas. « Défaut local + tier
+            # COMPLEX cloud » EST la configuration d'Ely : le prompt compact
+            # (430 tokens, sans une seule des règles de conduite du socle)
+            # partait donc chez zhipu / anthropic, profil en clair, pendant
+            # que la voie complète — la seule que le correctif de
+            # souveraineté fermait — n'était jamais empruntée.
+            #
+            # On interroge le modèle qui va RÉPONDRE. `classify_complexity`
+            # est une fonction pure sans appel réseau, et le LLM du tier est
+            # rangé sous la MÊME clé de cache que plus bas : cette résolution
+            # anticipée ne construit rien deux fois.
+            #
+            # Limite connue : si un repli est déjà actif pour la conversation,
+            # le modèle retenu plus bas sera celui du repli, pas celui du
+            # tier. L'aiguillage peut donc rater la forme du prompt — mais pas
+            # la souveraineté : `prompt_systeme_sortant` tranche, lui, sur le
+            # modèle réellement retenu.
             from app.agent.compact_prompt import build_compact_system_prompt
+            from app.services.qwen_no_think import is_local_openai_llm
+            from app.services.llm_provider import (
+                classify_complexity as _classify_pour_la_voie,
+                get_llm_for_tier as _llm_du_tier_pour_la_voie,
+            )
 
             try:
-                _llm_for_detect = get_llm()
-            except Exception:
+                _tier_pour_la_voie = _classify_pour_la_voie(user_query)
+                _cle_voie = f"{_tier_pour_la_voie.value}:base"
+                if _cle_voie not in _tier_llm_cache:
+                    _tier_llm_cache[_cle_voie] = _llm_du_tier_pour_la_voie(
+                        _tier_pour_la_voie,
+                    )
+                _llm_for_detect = _tier_llm_cache[_cle_voie]
+            except Exception as _voie_exc:  # noqa: BLE001
+                logger.warning(
+                    "[voie] modèle du tier non résolu (%s) — prompt COMPLET "
+                    "par défaut", _voie_exc,
+                )
                 _llm_for_detect = None
             _use_compact = (
                 _llm_for_detect is not None
@@ -1050,7 +1138,14 @@ def create_agent_node():
                     )
                 response = await asyncio.wait_for(
                     _slm_runtime.ainvoke(
-                        [{"role": "system", "content": system}]
+                        # Le tier A est CONFIGURABLE : « SLM » ne veut pas dire
+                        # « local ». Sa frontière d'envoi est la même que celle
+                        # du chemin général (02/09/2026). Le gabarit SLM ne
+                        # porte pas la mémoire, mais il porte le bloc de
+                        # vocabulaire personnel et l'addendum e-mail.
+                        [{"role": "system", "content": prompt_systeme_sortant(
+                            system, _slm_base, _conv_id_fb,
+                        )}]
                         + _slm_fitted
                     ),
                     timeout=settings.slm_timeout,
@@ -1590,8 +1685,13 @@ def create_agent_node():
                 # Ancrage du mandat — cf. le commentaire du chemin SLM.
                 preserve_first=bool(state.get("automated_task")),
             )
+            # La frontière d'envoi (02/09/2026) : à partir d'ici, `system`
+            # n'est plus ce qu'on envoie — `_systeme_envoye` l'est. Les replis
+            # plus bas repartent de `_invoke_msgs`, donc ils héritent du même
+            # traitement, mais chacun ré-évalue pour SON fournisseur.
+            _systeme_envoye = prompt_systeme_sortant(system, _base_llm, _conv_id_fb)
             _invoke_msgs = (
-                [{"role": "system", "content": system}]
+                [{"role": "system", "content": _systeme_envoye}]
                 + _fitted
             )
             # P2 — ventilation du contexte (port de Hermes v0.19). C'est ICI
@@ -1610,7 +1710,9 @@ def create_agent_node():
                 )
                 _ctx_breakdown = compact_breakdown(
                     compute_context_breakdown(
-                        system_prompt=system,
+                        # Ce qui est ENVOYÉ, pas ce qui a été composé : le
+                        # tableau de bord doit ventiler la requête réelle.
+                        system_prompt=_systeme_envoye,
                         tools=_filtered_tools if _bind_tools_flag else [],
                         messages=_fitted,
                         # `model_used` est toujours défini ici ; on réutilise
@@ -1853,6 +1955,25 @@ def create_agent_node():
                 # different provider that doesn't understand it.
                 _fallback_msgs = strip_no_think(_invoke_msgs)
 
+                def _pour_le_repli(_msgs: list, _llm_cible: Any) -> list:
+                    """Le prompt système du repli est celui que SON modèle a
+                    le droit de recevoir (02/09/2026).
+
+                    Sans ça, le trou le plus vicieux du chemin : la garde H-1
+                    existe précisément pour envoyer chez un modèle CLOUD ce
+                    qu'un modèle LOCAL vient de rater. Le prompt avait été
+                    composé — et laissé en clair — pour la tête locale.
+                    """
+                    _rendu = list(_msgs)
+                    if _rendu and isinstance(_rendu[0], dict) and _rendu[0].get("role") == "system":
+                        _rendu[0] = {
+                            **_rendu[0],
+                            "content": prompt_systeme_sortant(
+                                system, _llm_cible, _conv_id_fb,
+                            ),
+                        }
+                    return _rendu
+
                 # Walk forward through the chain until a provider answers or
                 # the chain is exhausted. Each provider is given ONE attempt;
                 # subsequent failures advance again. This loop is bounded by
@@ -1906,7 +2027,8 @@ def create_agent_node():
                             else:
                                 _new_with_tools = _new_llm
                             response = await ainvoke_with_deadline(
-                                _new_with_tools, _fallback_msgs, tier=_tier, surface="general-fallback")
+                                _new_with_tools, _pour_le_repli(_fallback_msgs, _new_llm),
+                                tier=_tier, surface="general-fallback")
                             logger.warning(
                                 "[fallback] succeeded with %r", _new_provider_id,
                             )
@@ -1962,7 +2084,8 @@ def create_agent_node():
                                 else fallback_llm
                             )
                             response = await ainvoke_with_deadline(
-                                _legacy_with_tools, _fallback_msgs, tier=_tier, surface="general-legacy")
+                                _legacy_with_tools, _pour_le_repli(_fallback_msgs, fallback_llm),
+                                tier=_tier, surface="general-legacy")
                             logger.info(
                                 "[fallback] legacy succeeded with %s", fallback_label,
                             )

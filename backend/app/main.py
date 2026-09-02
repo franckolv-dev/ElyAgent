@@ -60,14 +60,11 @@ from app.models import community_skill as _community_skill  # ensure CommunitySk
 from app.models import vault as _vault_models      # ensure VaultConfig + VaultEntry tables
 from app.models import conversation as _conversation  # ensure Conversation + Message tables
 from app.models import user_memory as _user_memory    # ensure UserMemoryLog + UserProfile tables
-from app.models import arena as _arena                 # ensure ArenaMatch + ArenaElo tables
 from app.routers import auth, chat, hosts, admin, health
 from app.routers import validation, tts, scheduler as scheduler_router
 from app.routers import google as google_router
 from app.routers import skills as skills_router
 from app.routers import transcribe as transcribe_router
-from app.routers import whatsapp_webhook as whatsapp_router
-from app.routers import whatsapp_web as whatsapp_web_router
 from app.routers import channels as channels_router
 from app.routers import missions as missions_router
 from app.routers import upload as upload_router
@@ -86,7 +83,6 @@ from app.routers import settings_llm as settings_llm_router
 from app.routers import marketplace as marketplace_router
 from app.routers import setup as setup_router
 from app.routers import voice as voice_router
-from app.routers import arena as arena_router
 from app.routers.desktop import ws_router as desktop_ws_router, api_router as desktop_api_router
 from app.routers.browser_extension import ws_router as bext_ws_router, api_router as bext_api_router
 from app.routers import extension_tokens as extension_tokens_router
@@ -481,36 +477,6 @@ async def lifespan(app: FastAPI):
     except Exception:
         _startup_logger.warning("Telegram bot failed to start — channel disabled", exc_info=True)
 
-    # Start Slack bot if configured
-    from app.channels.slack_bot import start_slack_bot, stop_slack_bot
-    try:
-        await start_slack_bot()
-    except Exception:
-        _startup_logger.warning("Slack bot failed to start — channel disabled", exc_info=True)
-
-    # Start Discord bot if configured
-    from app.channels.discord_bot import start_discord_bot, stop_discord_bot
-    try:
-        await start_discord_bot()
-    except Exception:
-        _startup_logger.warning("Discord bot failed to start — channel disabled", exc_info=True)
-
-    # Load WhatsApp linked users
-    from app.channels.whatsapp import load_linked_whatsapp_users
-    try:
-        await load_linked_whatsapp_users()
-    except Exception:
-        _startup_logger.warning("WhatsApp linked users failed to load", exc_info=True)
-
-    # Resume WhatsApp Web (neonize) sessions that were active before restart.
-    # Non-blocking: if neonize isn't installed or fails to init, the channel
-    # is simply disabled — the Meta Cloud channel and other channels keep working.
-    try:
-        from app.channels.whatsapp_web import load_existing_sessions
-        await load_existing_sessions()
-    except Exception:
-        _startup_logger.warning("WhatsApp Web sessions failed to resume", exc_info=True)
-
     # Start scheduled tasks
     from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
     try:
@@ -640,8 +606,6 @@ async def lifespan(app: FastAPI):
     await stop_scheduler()
     await stop_watchdog()
     await stop_telegram_bot()
-    await stop_slack_bot()
-    await stop_discord_bot()
     await get_browser_manager().stop()
     # Close mission checkpointer (AsyncSqliteSaver) cleanly so the
     # SQLite WAL is flushed before the container exits.
@@ -699,10 +663,8 @@ app.include_router(transcribe_router.router, prefix="/api", tags=["transcribe"])
 app.include_router(upload_router.router, prefix="/api", tags=["upload"])
 # Attachments (MEDIA: sentinel files served back to the chat UI)
 app.include_router(attachments_router.router)
-app.include_router(whatsapp_router.router, prefix="/api", tags=["whatsapp"])
-# WhatsApp Web bridge (unofficial, QR-paired) — prefix already baked into the router
-app.include_router(whatsapp_web_router.router)
-# Unified admin API for Telegram / Discord / Slack config from Settings UI
+# Admin API for the Telegram channel, configurable from the Settings UI.
+# Slack / Discord / WhatsApp ont quitté ce routeur le 02/09/2026 (archive/canaux).
 app.include_router(channels_router.router)
 # Goal-driven Persistence Loop (Plan→Act→Eval→Replan, Phase 1 skeleton)
 app.include_router(missions_router.router)
@@ -750,7 +712,6 @@ app.include_router(marketplace_router.router, prefix="/api/marketplace", tags=["
 app.include_router(settings_llm_router.router)
 app.include_router(setup_router.router, prefix="/api", tags=["setup"])
 app.include_router(voice_router.router, prefix="/ws", tags=["voice"])
-app.include_router(arena_router.router)
 app.include_router(desktop_ws_router, prefix="/ws", tags=["desktop"])
 app.include_router(desktop_api_router, prefix="/api", tags=["desktop"])
 app.include_router(bext_ws_router, prefix="/ws", tags=["browser-extension"])

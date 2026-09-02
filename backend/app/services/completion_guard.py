@@ -126,11 +126,8 @@ DESTRUCTIVE_TOOLS: frozenset[str] = frozenset({
     "desktop_delete_file",
     "desktop_write_file",
     "desktop_move_file",
-    # WhatsApp / Telegram / Discord / Slack send
-    "whatsapp_send_message",
+    # Telegram send
     "telegram_send_message",
-    "discord_send_message",
-    "slack_send_message",
     # Notes / Docs / Sheets
     "notes_create",
     "notes_delete",

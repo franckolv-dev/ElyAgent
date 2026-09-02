@@ -19,7 +19,7 @@
 
 When the agent wants to execute a critical action:
 1. A push notification is fanned out to every linked channel (Android FCM,
-   Telegram, Discord, Slack, web WebSocket).
+   Telegram, web WebSocket).
 2. Execution is paused (asyncio.Event) for up to TIMEOUT_SECONDS.
 3. The user taps one of: Allow / Deny (once) / Ban (always).
 4. The matching webhook endpoint resolves the event.
@@ -42,6 +42,7 @@ import httpx
 
 from app.config import get_settings
 from app.services.background_tasks import spawn
+from app.services.hitl_channels import DEFAULT_CHANNEL, normalize_channel
 
 logger = logging.getLogger(__name__)
 
@@ -200,14 +201,21 @@ class HITLManager:
         #   - None / "all" → legacy broadcast (every linked channel)
         #   - "web_only"   → only the WebSocket frontend (silent on phone)
         #   - specific     → just that channel + frontend (always for UI sync)
-        preferred = "all"
+        #
+        # ⚠️ 02/09/2026 — la valeur est NORMALISÉE ici, pas seulement à
+        # l'affichage. La colonne peut porter le nom d'un canal depuis retiré
+        # (« discord », « slack ») : lue telle quelle, aucun des trois envois
+        # ci-dessous ne s'arme et l'éventail tombe à zéro. Sur un chemin sans
+        # navigateur (mission, tâche planifiée) plus rien ne prévient
+        # l'utilisateur, et la demande expire toute seule en auto-refus.
+        preferred = DEFAULT_CHANNEL
         try:
             from app.database import async_session as _async_session
             from app.models.user import User as _U
             async with _async_session() as _db:
                 _u = await _db.get(_U, user_id) if user_id else None
-                if _u and _u.hitl_preferred_channel:
-                    preferred = _u.hitl_preferred_channel
+                if _u:
+                    preferred = normalize_channel(_u.hitl_preferred_channel)
         except Exception as _exc:
             logger.debug("HITL channel preference lookup failed: %s — defaulting to 'all'", _exc)
 
@@ -219,8 +227,6 @@ class HITLManager:
         send_telegram = preferred in ("all", "telegram")
         send_ntfy     = preferred in ("all", "ntfy")
         send_fcm      = preferred in ("all", "ely_android")
-        send_discord  = preferred in ("all", "discord")  # currently no-op until _send_discord
-        send_slack    = preferred in ("all", "slack")    # currently no-op until _send_slack
 
         if send_telegram:
             tasks.append(self._send_telegram(user_id, action_id, description))
@@ -244,7 +250,7 @@ class HITLManager:
 
         logger.info(
             "HITL %s dispatched (channel=%s, fan-out=%d)",
-            action_id, preferred, sum([send_telegram, send_ntfy, send_fcm, send_discord, send_slack]),
+            action_id, preferred, sum([send_telegram, send_ntfy, send_fcm]),
         )
 
         try:
@@ -269,7 +275,7 @@ class HITLManager:
 
     async def resolve(self, action_id: str, decision: str, reason: str | None = None) -> bool:
         """Enregistre la décision humaine. Appelée par le routeur de validation
-        et par les boutons Telegram / Discord / Slack.
+        et par les boutons Telegram.
 
         V0-2 — deux chemins, un seul verdict :
 

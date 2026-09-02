@@ -362,7 +362,7 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
         )
 
         # Deliver result to all configured channels (email, telegram,
-        # whatsapp, discord, slack, ntfy + always-on web fallback).
+        # ntfy + always-on web fallback).
         await _deliver_result(task, ai_content)
 
         logger.info("Scheduled task '%s' completed", task.name)
@@ -411,7 +411,7 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
 async def _deliver_result(task: ScheduledTask, content: str) -> None:
     """Deliver task result to the configured channel.
 
-    Channels supported : telegram, whatsapp, discord, slack, email, ntfy.
+    Channels supported : telegram, email, ntfy.
     Default ("web" or unknown) → push via WebSocket if connected, AND
     always persist a Message in a dedicated `[Tâches planifiées]`
     conversation so the user sees the result on next login (mirrors the
@@ -419,6 +419,12 @@ async def _deliver_result(task: ScheduledTask, content: str) -> None:
 
     Each channel is attempted independently and errors are logged but
     don't block the others.
+
+    ⚠️ AUDIT 02/09/2026 : les branches whatsapp / discord / slack sont parties
+    sous ``archive/canaux`` (zéro appel en cinq mois). Une tâche encore
+    enregistrée sur l'un de ces canaux n'est PAS perdue : `chan` inconnu
+    retombe sur le repli web, qui persiste toujours le résultat dans la
+    conversation `[Tâches planifiées]`.
     """
     chan = (task.channel or "web").lower()
     header = f"📋 *Tâche planifiée : {task.name}*\n\n"
@@ -444,53 +450,6 @@ async def _deliver_result(task: ScheduledTask, content: str) -> None:
                 logger.warning("Task %s telegram: bot not running", task.id)
         except Exception as exc:
             logger.warning("Failed Telegram delivery for task %s: %s", task.id, exc)
-
-    # ── WhatsApp (self-chat via neonize bridge) ──
-    elif chan == "whatsapp":
-        try:
-            from app.channels.whatsapp_web import _sessions as _wa_sessions, send_text
-            sess = _wa_sessions.get(task.user_id)
-            if sess and sess.get("status") == "linked" and sess.get("phone"):
-                ok = await send_text(sess["phone"], full, from_user_id=task.user_id)
-                delivered = bool(ok)
-            else:
-                logger.warning("Task %s whatsapp: no linked WhatsApp Web session", task.id)
-        except Exception as exc:
-            logger.warning("Failed WhatsApp delivery for task %s: %s", task.id, exc)
-
-    # ── Discord (DM the linked user) ──
-    elif chan == "discord":
-        try:
-            from app.channels import discord_bot as _dc
-            if getattr(_dc, "_discord_client", None) and _dc._discord_client.is_ready():
-                # Reverse-lookup Discord user_id from ELY user_id
-                dc_id = next((did for did, uid in _dc._linked_users.items() if uid == task.user_id), None)
-                if dc_id:
-                    user = await _dc._discord_client.fetch_user(int(dc_id))
-                    for i in range(0, len(full), 2000):  # Discord message cap
-                        await user.send(full[i:i + 2000])
-                    delivered = True
-                else:
-                    logger.warning("Task %s discord: user %s has no linked Discord account", task.id, task.user_id)
-        except Exception as exc:
-            logger.warning("Failed Discord delivery for task %s: %s", task.id, exc)
-
-    # ── Slack (DM the linked user) ──
-    elif chan == "slack":
-        try:
-            from app.channels import slack_bot as _sl
-            if getattr(_sl, "_slack_app", None):
-                slack_uid = next((sid for sid, uid in _sl._linked_users.items() if uid == task.user_id), None)
-                if slack_uid:
-                    open_resp = await _sl._slack_app.client.conversations_open(users=slack_uid)
-                    chan_id = open_resp["channel"]["id"]
-                    for i in range(0, len(full), 4000):
-                        await _sl._slack_app.client.chat_postMessage(channel=chan_id, text=full[i:i + 4000])
-                    delivered = True
-                else:
-                    logger.warning("Task %s slack: user %s has no linked Slack account", task.id, task.user_id)
-        except Exception as exc:
-            logger.warning("Failed Slack delivery for task %s: %s", task.id, exc)
 
     # ── Email (via user's Gmail OAuth credentials) ──
     elif chan == "email":

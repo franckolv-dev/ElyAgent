@@ -40,7 +40,7 @@ class UsageLog(Base):
     # Context
     skill_used = Column(String, nullable=True)     # which skill/tool was invoked
     conversation_id = Column(String, nullable=True)
-    channel = Column(String, default="web")        # "web", "telegram", "whatsapp"
+    channel = Column(String, default="web")        # "web", "telegram"
 
     # HITL
     hitl_decision = Column(String, nullable=True)  # "allow", "deny", "ban", None

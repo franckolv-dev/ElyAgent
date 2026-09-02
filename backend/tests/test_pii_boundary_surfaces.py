@@ -60,9 +60,7 @@ def test_filters_proxy_exposes_get():
 # ── 2. Sous-agents spécialistes ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "mod_name", ["telegram_bot", "slack_bot", "discord_bot", "whatsapp"]
-)
+@pytest.mark.parametrize("mod_name", ["telegram_bot"])
 def test_channel_uses_shared_registry(mod_name):
     """Chaque canal doit utiliser le registre par ``conversation_id`` — un
     dict local par id de plateforme (ou un filtre jetable) rend les
@@ -95,9 +93,7 @@ def test_content_blocks_flatten_then_deanonymize():
     assert sf.deanonymize(content_to_text(blocks)) == f"Mail envoyé à {EMAIL}"
 
 
-@pytest.mark.parametrize(
-    "mod_name", ["telegram_bot", "slack_bot", "discord_bot", "whatsapp"]
-)
+@pytest.mark.parametrize("mod_name", ["telegram_bot"])
 def test_channel_flattens_content_before_deanonymize(mod_name):
     """Chaque canal doit extraire la réponse via ``content_to_text(...)`` —
     l'accès brut ``invoke_result["messages"][-1].content`` passé tel quel à

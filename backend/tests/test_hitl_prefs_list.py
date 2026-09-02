@@ -74,5 +74,5 @@ def test_settings_page_renders_all_categories_as_accordions():
     # …as collapsible accordions.
     assert "setOpenCats" in src
     # labels for the previously-dropped categories exist
-    for token in ('os:', 'whatsapp:', 'mcp:', 'save:'):
+    for token in ('os:', 'mcp:', 'save:'):
         assert token in src, f"missing group label {token}"

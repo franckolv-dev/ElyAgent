@@ -72,7 +72,7 @@ If you self-host ELY, **at minimum** :
 1. **Generate a strong `JWT_SECRET_KEY`** : `openssl rand -hex 32` (the default is `CHANGE-ME-...` and the app refuses to start with it in production)
 2. **Run behind HTTPS** : Cloudflare Tunnel, Caddy, nginx with Let's Encrypt — never expose port 8000 directly
 3. **Lock down `CORS_ORIGINS`** : never use `*` in production
-4. **Rotate your channel tokens periodically** (Telegram, Discord, Slack, WhatsApp Business)
+4. **Rotate your channel tokens periodically** (Telegram)
 5. **Don't commit `.env`** : it's in `.gitignore` for a reason
 6. **Run as non-root** : the Docker image already does (`USER appuser`), don't override with `--user root`
 7. **Backup regularly** : Qdrant snapshot is automated nightly at 02:00 (`qdrant_backup` job), but verify the file lands in `data/backups/`

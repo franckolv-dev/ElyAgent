@@ -515,10 +515,19 @@ async def abort(
 
 @router.post("/{mission_id}/tick", response_model=dict)
 async def tick(mission_id: str, current_user: User = Depends(get_current_user)) -> dict:
-    """Run ONE iteration of the persistence loop (debug / manual trigger).
+    """Un réveil manuel de la mission (debug / bouton « Tick »).
 
-    Phase 1 : runs the SKELETON graph and returns the resulting state.
-    Phase 2 : will be the same endpoint but with real planning/acting/eval.
+    ⚠️ Passe par le MÊME aiguillage que le heartbeat (02/09/2026). Avant, cet
+    endpoint compilait `build_mission_graph()` en dur : depuis que la mission
+    libre tourne sur la boucle du chat, un Tick pressé lançait l'AUTRE moteur
+    sur une mission qui n'est pas dessus.
+
+    ⚠️ Et il prend `_in_flight`, le garde-fou par mission du heartbeat. Tant
+    que les deux chemins étaient le même graphe sur le même checkpointer,
+    leurs écritures se sérialisaient. Ce sont maintenant deux moteurs
+    distincts : un Tick pressé pendant qu'un passage est en vol ferait
+    tourner plan/act/eval EN PARALLÈLE, sur les mêmes `mission_steps` et le
+    même `complete_mission`.
     """
     m = await _own_or_404(mission_id, current_user)
     if m.status in {"completed", "failed", "aborted"}:
@@ -530,12 +539,21 @@ async def tick(mission_id: str, current_user: User = Depends(get_current_user)) 
         await mission_service.fail_mission(mission_id, reason)
         raise HTTPException(status_code=400, detail=f"Budget dépassé : {reason}")
 
-    # Compile graph with checkpointer
-    from app.agent.missions.checkpointer import get_mission_checkpointer
-    from app.agent.missions.graph import build_mission_graph
+    # ⚠️ 02/09/2026 — le budget LLM QUOTIDIEN du compte, distinct de celui de
+    # la mission ci-dessus. Le heartbeat l'applique (mission_heartbeat.py,
+    # A-6b) ; ce bouton ne l'appliquait pas, et il déclenche désormais un
+    # passage COMPLET (plusieurs outils, plusieurs appels de modèle) là où il
+    # ne lançait qu'un tour de graphe. Un Tick pressé sur un compte à sec
+    # dépensait donc quand même. On refuse (429) au lieu de reporter : un
+    # geste manuel n'a pas de `next_tick_at` à repousser, et la mission n'est
+    # pas tuée — elle reprendra au prochain battement.
+    from app.services.budget_guard import check_user_budget
 
-    cp = await get_mission_checkpointer()
-    graph = build_mission_graph().compile(checkpointer=cp)
+    quotidien = await check_user_budget(current_user.id)
+    if quotidien:
+        raise HTTPException(
+            status_code=429, detail=f"Budget quotidien épuisé : {quotidien}",
+        )
 
     # Ensure status reflects we're working
     if m.status == "draft":
@@ -544,30 +562,55 @@ async def tick(mission_id: str, current_user: User = Depends(get_current_user)) 
         except ValueError:
             pass
 
-    initial_state = {
-        "mission_id": mission_id,
-        "user_id": current_user.id,
-        "goal": m.goal,
-    }
-    config = {"configurable": {"thread_id": mission_id}}
+    from app.services.mission_heartbeat import (
+        _est_passagere,
+        _in_flight,
+        _tick_one_mission,
+    )
 
+    # Prise SYNCHRONE (pas d'await entre le test et l'ajout), comme au
+    # dispatch du heartbeat : c'est ce qui rend le garde-fou atomique.
+    if mission_id in _in_flight:
+        raise HTTPException(
+            status_code=409,
+            detail="Un passage de cette mission est déjà en cours.",
+        )
+    _in_flight.add(mission_id)
     try:
-        result = await graph.ainvoke(initial_state, config=config)
-    except Exception as exc:
-        logger.exception("Mission %s tick failed: %s", mission_id, exc)
-        await mission_service.fail_mission(mission_id, f"graph error: {exc}")
-        raise HTTPException(status_code=500, detail=f"Tick a échoué: {exc}")
-
-    # Note : the nodes themselves persist MissionStep rows (plan/act/eval/replan).
-    # We don't double-log here. We only handle the terminal transition.
-
-    # If the graph signaled done, complete the mission
-    if result.get("done") and result.get("final_summary"):
         try:
-            await mission_service.complete_mission(mission_id, result["final_summary"])
-        except ValueError:
-            # already terminal, ignore
-            pass
+            result = await _tick_one_mission(mission_id, current_user.id, m.goal)
+        except Exception as exc:
+            logger.exception("Mission %s tick failed: %s", mission_id, exc)
+            if _est_passagere(exc):
+                # Une limite de débit n'est pas un bug de la mission : le
+                # heartbeat REPORTE le tick au lieu de la tuer (c41d758). Un
+                # Tick manuel ne doit pas faire pire, d'autant que le passage
+                # vient de consigner au carnet ce qu'il avait déjà fait.
+                raise HTTPException(
+                    status_code=503, detail=f"Fournisseur indisponible : {exc}",
+                )
+            await mission_service.fail_mission(mission_id, f"graph error: {exc}")
+            raise HTTPException(status_code=500, detail=f"Tick a échoué: {exc}")
+
+        # Note : the nodes themselves persist MissionStep rows (plan/act/eval/replan).
+        # We don't double-log here. We only handle the terminal transition.
+
+        # If the graph signaled done, complete the mission
+        #
+        # ⚠️ 02/09/2026 — la clôture est DANS la portée de `_in_flight`. Le
+        # heartbeat tient le garde-fou pendant tout `_process_one_mission`,
+        # clôture comprise ; le relâcher avant `complete_mission` laissait une
+        # fenêtre étroite mais réelle où un battement pouvait dépêcher un tick
+        # neuf sur une mission en cours de clôture, sur les mêmes
+        # `mission_steps`.
+        if result.get("done") and result.get("final_summary"):
+            try:
+                await mission_service.complete_mission(mission_id, result["final_summary"])
+            except ValueError:
+                # already terminal, ignore
+                pass
+    finally:
+        _in_flight.discard(mission_id)
 
     return {
         "iteration": result.get("iteration"),

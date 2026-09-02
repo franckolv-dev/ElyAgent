@@ -3,14 +3,14 @@ FROM python:3.12-slim
 # System deps required by :
 # - Playwright/Chromium headless
 # - RAG legacy .doc extraction (antiword)
-# - python-magic / neonize (libmagic1) for WhatsApp Web media type detection
+# ⚠️ `libmagic1` est parti le 02/09/2026 avec neonize : python-magic n'était
+#    tiré que par lui (dépendance transitive), aucun `import magic` dans app/.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libasound2 libpango-1.0-0 libpangocairo-1.0-0 \
     fonts-liberation wget ca-certificates \
     antiword \
-    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -24,21 +24,10 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies (no editable install in production)
 RUN uv sync --frozen --no-dev --no-editable
 
-# ── Post-sync bump for WhatsApp Web (neonize) ─────────────────────────
-# WhatsApp rejects older protocol versions with `err-client-outdated` (405).
-# neonize >= 0.3.17.post0 is required but pulls protobuf >= 6.32 which
-# conflicts with the deprecated `google-generativeai` package (still in
-# our deps for Imagen/Vision). We force-install neonize on top of the
-# locked env — protobuf 7 remains wire-compatible with existing Gemini
-# calls, so this is runtime-safe.
-# TODO: migrate image_tool.py / vision_skill.py / image_skill.py to the
-# new `google-genai` SDK, then this override can be removed.
-RUN uv pip install --force-reinstall "neonize>=0.3.17.post0" "protobuf>=6.32.1"
-
 # ── Couche 2 PII NER — install opt-in (PII_NER_ENABLED) ───────────────
 # Le package gliner tire torch (~800 Mo installés) : on ne l'embarque QUE
 # si le build est lancé avec PII_NER_INSTALL=1 (via .env, cf. docker-compose
-# build args). Installé hors lockfile comme neonize — gliner pousse
+# build args). Installé HORS lockfile — gliner pousse
 # transformers/torch que le projet ne veut pas dans ses deps par défaut.
 # Le modèle ONNX int8 lui-même n'est PAS dans l'image : il est exporté sur
 # l'hôte (scripts/export_gliner_onnx.py) vers ./data/pii_ner, monté en volume.
@@ -103,9 +92,10 @@ COPY --chown=appuser scripts/ ./scripts/
 EXPOSE 8000
 
 # `uv run --no-sync` launches uvicorn from the venv without re-resolving
-# dependencies. This is critical because the post-sync neonize upgrade
-# introduces a protobuf version that `uv run` would want to "fix" by
-# reverting to the locked version → breaks WhatsApp.
+# dependencies. Reste nécessaire pour l'install opt-in de `gliner` (PII NER),
+# posée hors lockfile juste au-dessus : `uv run` la « corrigerait » en
+# revenant à l'environnement verrouillé. Le contournement neonize/protobuf qui
+# motivait ce drapeau à l'origine est parti le 02/09/2026 (archive/canaux).
 # --ws-ping-* : keepalive protocole des WS (daemon ELY Desktop notamment) —
 # valeurs = défauts uvicorn actuels, pinnées pour qu'un changement de défaut
 # ne supprime pas silencieusement le ping ni la détection de socket mort.

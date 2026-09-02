@@ -146,13 +146,13 @@ def should_withhold(messages: list[BaseMessage]) -> set[str]:
 #    dépendrait d'une formulation — donc se recasserait tout seul.
 _TOOLS_PAR_CANAL: dict[str, frozenset[str]] = {
     "telegram": frozenset({"telegram_send_message"}),
-    "whatsapp": frozenset({"whatsapp_send", "whatsapp_send_template"}),
     # ⚠️ `email` est ABSENT à dessein. Livrer le résultat d'une tâche à son
     # propriétaire et envoyer un mail à un tiers ne sont pas le même acte :
     # `gmail_send_email` adresse un destinataire quelconque, et le retirer
     # casserait « fais le point et envoie-le au comptable ».
-    # ⚠️ `discord`, `slack`, `ntfy` aussi — le planificateur y livre par son
-    # propre code, aucun outil équivalent n'existe. Rien à retirer.
+    # ⚠️ `ntfy` aussi — le planificateur y livre par son propre code, aucun
+    # outil équivalent n'existe. Rien à retirer. (`whatsapp`, `discord` et
+    # `slack` ont quitté le planificateur le 02/09/2026 — archive/canaux.)
 }
 
 

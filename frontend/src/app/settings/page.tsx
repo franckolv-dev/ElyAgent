@@ -345,137 +345,21 @@ export default function SettingsPage() {
   // laziness, but a code reviewer flagged it as TDZ-fragile).
   const { toasts, push } = useToasts();
 
-  // ── WhatsApp Web session state (QR-pairing adapter) ───────────────────
-  const [waWebStatus, setWaWebStatus] = useState<{
-    status: string;
-    qr_png_b64?: string | null;
-    phone?: string | null;
-    last_error?: string | null;
-  }>({ status: "not_started" });
-  const [waWebLoading, setWaWebLoading] = useState(false);
-  const waWebPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Fetch current WhatsApp Web status (on mount + when user lands on integrations)
-  const refreshWaWebStatus = useCallback(async () => {
-    try {
-      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/status`);
-      if (res.ok) setWaWebStatus(await res.json());
-    } catch {/* silent */}
-  }, []);
-
-  // Start a new session (or resume) — usually triggers QR generation
-  const handleWaWebStart = useCallback(async () => {
-    setWaWebLoading(true);
-    try {
-      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/start`, { method: "POST" });
-      if (res.ok) {
-        setWaWebStatus(await res.json());
-        // Poll status every 2s while pending_qr (to detect when user scans)
-        if (waWebPollRef.current) clearInterval(waWebPollRef.current);
-        waWebPollRef.current = setInterval(refreshWaWebStatus, 2000);
-      } else {
-        push("error", t("waStartFailed"));
-      }
-    } catch {
-      push("error", t("waNetworkError"));
-    } finally {
-      setWaWebLoading(false);
-    }
-  }, [refreshWaWebStatus, t, push]);
-
-  // Alternative pairing: phone number → 8-char code (when QR scan fails)
-  const [waPhoneInput, setWaPhoneInput] = useState("");
-  const [waPairCode, setWaPairCode] = useState<string | null>(null);
-  const handleWaWebPairPhone = useCallback(async () => {
-    const phone = waPhoneInput.trim();
-    if (!phone) {
-      push("error", t("waEnterPhone"));
-      return;
-    }
-    setWaWebLoading(true);
-    setWaPairCode(null);
-    try {
-      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/pair-phone`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone_number: phone }),
-      });
-      const data = await res.json();
-      if (res.ok && data.code) {
-        setWaPairCode(data.code);
-        push("success", t("waCodeGenerated", { code: data.code }));
-        // Start polling in case we weren't already
-        if (waWebPollRef.current) clearInterval(waWebPollRef.current);
-        waWebPollRef.current = setInterval(refreshWaWebStatus, 2000);
-      } else {
-        push("error", data.error || t("waCodeFailed"));
-      }
-    } catch {
-      push("error", t("networkError"));
-    } finally {
-      setWaWebLoading(false);
-    }
-  }, [waPhoneInput, refreshWaWebStatus, t, push]);
-
-  // Log out / unlink — wipes the local session
-  const handleWaWebLogout = useCallback(async () => {
-    if (!confirm(t("waLogoutConfirm"))) return;
-    setWaWebLoading(true);
-    try {
-      const res = await authFetch(`${API_URL}/api/whatsapp-web/session/logout`, { method: "POST" });
-      if (res.ok) {
-        setWaWebStatus({ status: "not_started" });
-        if (waWebPollRef.current) clearInterval(waWebPollRef.current);
-        push("success", t("waDisconnected"));
-      }
-    } finally {
-      setWaWebLoading(false);
-    }
-  }, [t, push]);
-
-  // Stop polling when paired, clean up on unmount
-  useEffect(() => {
-    if (waWebStatus.status === "linked" && waWebPollRef.current) {
-      clearInterval(waWebPollRef.current);
-      waWebPollRef.current = null;
-    }
-    return () => {
-      if (waWebPollRef.current) clearInterval(waWebPollRef.current);
-    };
-  }, [waWebStatus.status]);
-
-  // Auto-refresh status when user switches to integrations or channels tab
-  useEffect(() => {
-    if (activeTab === "integrations" || activeTab === "channels") {
-      refreshWaWebStatus();
-    }
-  }, [activeTab, refreshWaWebStatus]);
-
-  // ── Telegram / Discord / Slack channel config state ─────────────────────
-  // Each channel keeps its own status (configured? bot alive?) + form inputs.
+  // ── Telegram channel config state ───────────────────────────────────────
+  // ⚠️ AUDIT 02/09/2026 : cet onglet pilotait quatre canaux. WhatsApp (pont
+  // neonize QR + Meta Cloud), Discord et Slack sont partis sous
+  // `archive/canaux` — zéro appel de modèle en cinq mois de production. Leurs
+  // formulaires n'offraient qu'un endroit où coller un jeton sans effet.
   const [tgStatus, setTgStatus] = useState<{ configured: boolean; bot_username?: string | null; running: boolean }>({ configured: false, running: false });
   const [tgToken, setTgToken] = useState("");
   const [tgBusy, setTgBusy] = useState(false);
 
-  const [dcStatus, setDcStatus] = useState<{ configured: boolean; running: boolean }>({ configured: false, running: false });
-  const [dcToken, setDcToken] = useState("");
-  const [dcBusy, setDcBusy] = useState(false);
-
-  const [slStatus, setSlStatus] = useState<{ configured: boolean; has_bot_token: boolean; has_app_token: boolean }>({ configured: false, has_bot_token: false, has_app_token: false });
-  const [slBotToken, setSlBotToken] = useState("");
-  const [slAppToken, setSlAppToken] = useState("");
-  const [slBusy, setSlBusy] = useState(false);
-
   const refreshChannelsStatus = useCallback(async () => {
     try {
-      const [tg, dc, sl] = await Promise.all([
-        authFetch(`${API_URL}/api/channels/telegram/status`).then((r) => r.ok ? r.json() : null).catch(() => null),
-        authFetch(`${API_URL}/api/channels/discord/status`).then((r) => r.ok ? r.json() : null).catch(() => null),
-        authFetch(`${API_URL}/api/channels/slack/status`).then((r) => r.ok ? r.json() : null).catch(() => null),
-      ]);
+      const tg = await authFetch(`${API_URL}/api/channels/telegram/status`)
+        .then((r) => r.ok ? r.json() : null)
+        .catch(() => null);
       if (tg) setTgStatus(tg);
-      if (dc) setDcStatus(dc);
-      if (sl) setSlStatus(sl);
     } catch {/* silent */}
   }, []);
 
@@ -512,69 +396,6 @@ export default function SettingsPage() {
       push("success", t("tgDisabled"));
       await refreshChannelsStatus();
     } finally { setTgBusy(false); }
-  }, [refreshChannelsStatus, t, push]);
-
-  const handleDcSave = useCallback(async () => {
-    const token = dcToken.trim();
-    if (!token) { push("error", t("dcPasteToken")); return; }
-    setDcBusy(true);
-    try {
-      const res = await authFetch(`${API_URL}/api/channels/discord/save`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-      const data = await res.json();
-      if (res.ok && data.saved) {
-        push("success", t("dcConfigured", { username: data.bot_username ?? "OK" }));
-        setDcToken("");
-        await refreshChannelsStatus();
-      } else {
-        push("error", data.detail || t("invalidToken"));
-      }
-    } catch { push("error", t("dcNetworkError")); }
-    finally { setDcBusy(false); }
-  }, [dcToken, refreshChannelsStatus, t, push]);
-
-  const handleDcDisable = useCallback(async () => {
-    if (!confirm(t("dcDisableConfirm"))) return;
-    setDcBusy(true);
-    try {
-      await authFetch(`${API_URL}/api/channels/discord/disable`, { method: "POST" });
-      push("success", t("dcDisabled"));
-      await refreshChannelsStatus();
-    } finally { setDcBusy(false); }
-  }, [refreshChannelsStatus, t, push]);
-
-  const handleSlSave = useCallback(async () => {
-    const bot = slBotToken.trim();
-    const app = slAppToken.trim();
-    if (!bot || !app) { push("error", t("slTokensRequired")); return; }
-    setSlBusy(true);
-    try {
-      const res = await authFetch(`${API_URL}/api/channels/slack/save`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bot_token: bot, app_token: app }),
-      });
-      const data = await res.json();
-      if (res.ok && data.saved) {
-        push("success", t("slConfigured"));
-        setSlBotToken(""); setSlAppToken("");
-        await refreshChannelsStatus();
-      } else {
-        push("error", data.detail || t("invalidTokens"));
-      }
-    } catch { push("error", t("slNetworkError")); }
-    finally { setSlBusy(false); }
-  }, [slBotToken, slAppToken, refreshChannelsStatus, t, push]);
-
-  const handleSlDisable = useCallback(async () => {
-    if (!confirm(t("slDisableConfirm"))) return;
-    setSlBusy(true);
-    try {
-      await authFetch(`${API_URL}/api/channels/slack/disable`, { method: "POST" });
-      push("success", t("slDisabled"));
-      await refreshChannelsStatus();
-    } finally { setSlBusy(false); }
   }, [refreshChannelsStatus, t, push]);
 
   // Initialise admin role and default tab once mounted (client-side only).
@@ -1864,8 +1685,8 @@ export default function SettingsPage() {
             )}
 
             {/* ================================================================
-                TAB: Channels — WhatsApp / Telegram / Discord / Slack
-                Each card: status badge · help toggle · form · action buttons
+                TAB: Channels — Telegram
+                Card: status badge · help toggle · form · action buttons
             ================================================================ */}
             {activeTab === "channels" && (
             <section className="space-y-8">
@@ -1874,130 +1695,6 @@ export default function SettingsPage() {
                 <p className="tab-intro">
                   {t("channelsIntro")}
                 </p>
-              </div>
-
-              {/* ── WhatsApp Web ───────────────────────────────────────── */}
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="brand-logo" style={{ width: 32, height: 32, fontSize: 13, fontWeight: 700 }}>W</span>
-                  <h3 className="text-base font-semibold text-text-primary">WhatsApp</h3>
-                  {waWebStatus.status === "linked" && (
-                    <span className="badge accent">
-                      <CheckCircle className="w-2.5 h-2.5" /> {waWebStatus.phone ? t("waLinkedPhone", { phone: waWebStatus.phone }) : t("waLinked")}
-                    </span>
-                  )}
-                  {waWebStatus.status === "pending_qr" && (
-                    <span className="badge warning">
-                      {t("waWaitingScan")}
-                    </span>
-                  )}
-                  {waWebStatus.status === "error" && (
-                    <span className="badge danger">
-                      <XCircle className="w-2.5 h-2.5" /> {t("waErrorBadge")}
-                    </span>
-                  )}
-                </div>
-
-                <div className="section-block">
-                  <p className="text-[11px] text-text-muted">
-                    {t.rich("waIntro", { strong: (chunks) => <strong>{chunks}</strong> })}
-                  </p>
-
-                  {/* Pending QR — big so iPhone cameras decode reliably */}
-                  {waWebStatus.status === "pending_qr" && waWebStatus.qr_png_b64 && (
-                    <div className="flex flex-col items-center gap-3 py-2">
-                      <img
-                        src={`data:image/png;base64,${waWebStatus.qr_png_b64}`}
-                        alt={t("waQrAlt")}
-                        className="w-[420px] h-[420px] max-w-full rounded bg-white p-3 border border-border-dim"
-                      />
-                      <p className="text-[11px] text-text-muted text-center max-w-xs">
-                        {t("waQrInstructions")}
-                      </p>
-                    </div>
-                  )}
-
-                  {waWebStatus.status === "error" && waWebStatus.last_error && (
-                    <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5">
-                      {waWebStatus.last_error}
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-1">
-                    {waWebStatus.status === "linked" ? (
-                      <button
-                        onClick={handleWaWebLogout}
-                        disabled={waWebLoading}
-                        className="btn danger"
-                      >
-                        {waWebLoading ? "..." : t("waDisconnect")}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleWaWebStart}
-                        disabled={waWebLoading || waWebStatus.status === "pending_qr"}
-                        className="btn primary"
-                      >
-                        {waWebLoading ? "..." : waWebStatus.status === "pending_qr" ? t("waScanInProgress") : t("waLinkMy")}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Alternative: pair by phone code */}
-                  {waWebStatus.status !== "linked" && waWebStatus.status !== "not_started" && (
-                    <details className="pt-2 border-t border-border-dim">
-                      <summary className="text-[11px] text-text-muted cursor-pointer hover:text-text-secondary">
-                        {t("waQrFailedTitle")}
-                      </summary>
-                      <div className="mt-3 space-y-2">
-                        <p className="text-[11px] text-text-muted">
-                          {t.rich("waPhoneIntro", {
-                            code: (chunks) => <code className="text-cyber-cyan">{chunks}</code>,
-                            strong: (chunks) => <strong>{chunks}</strong>,
-                          })}
-                        </p>
-                        <div className="flex gap-2">
-                          <input
-                            type="tel"
-                            value={waPhoneInput}
-                            onChange={(e) => setWaPhoneInput(e.target.value)}
-                            placeholder="33612345678"
-                            className="input"
-                          />
-                          <button
-                            onClick={handleWaWebPairPhone}
-                            disabled={waWebLoading || !waPhoneInput.trim()}
-                            className="btn primary"
-                          >
-                            {waWebLoading ? "..." : t("waGetCode")}
-                          </button>
-                        </div>
-                        {waPairCode && (
-                          <div className="text-center py-3 bg-cyber-cyan/5 border border-cyber-cyan/20 rounded">
-                            <div className="text-[10px] uppercase tracking-wider text-cyber-cyan/70 mb-1">{t("waCodeLabel")}</div>
-                            <div className="text-2xl font-mono font-bold text-cyber-cyan tracking-widest">{waPairCode}</div>
-                            <div className="text-[10px] text-text-muted mt-1">{t("waCodeValidity")}</div>
-                          </div>
-                        )}
-                      </div>
-                    </details>
-                  )}
-
-                  <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
-                    <summary className="cursor-pointer hover:text-text-secondary">{t("waHowItWorks")}</summary>
-                    <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                      <li>{t.rich("waStep1", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
-                      <li>{t("waStep2")}</li>
-                      <li>{t("waStep3")}</li>
-                      <li>{t.rich("waStep4", { em: (chunks) => <em>{chunks}</em> })}</li>
-                    </ol>
-                  </details>
-
-                  <p className="text-[10px] text-text-muted flex items-start gap-1.5 pt-2 border-t border-border-dim">
-                    <ShieldCheck className="w-3 h-3 shrink-0 mt-0.5 text-amber-400" />
-                    {t("waUnofficialNote")}
-                  </p>
-                </div>
               </div>
 
               {/* ── Telegram ──────────────────────────────────────────── */}
@@ -2080,158 +1777,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* ── Discord ──────────────────────────────────────────── */}
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="brand-logo" style={{ width: 32, height: 32, fontSize: 13, fontWeight: 700 }}>D</span>
-                  <h3 className="text-base font-semibold text-text-primary">Discord</h3>
-                  {dcStatus.configured && dcStatus.running && (
-                    <span className="badge accent">
-                      <CheckCircle className="w-2.5 h-2.5" /> {t("active")}
-                    </span>
-                  )}
-                  {dcStatus.configured && !dcStatus.running && (
-                    <span className="badge warning">
-                      {t("configuredButStopped")}
-                    </span>
-                  )}
-                  {!dcStatus.configured && (
-                    <span className="badge">
-                      {t("notConfiguredBadge")}
-                    </span>
-                  )}
-                </div>
-
-                <div className="section-block">
-                  <p className="text-[11px] text-text-muted">
-                    {t.rich("dcIntro", {
-                      strong: (chunks) => <strong>{chunks}</strong>,
-                      em: (chunks) => <em>{chunks}</em>,
-                      code: (chunks) => <code className="text-cyber-cyan">{chunks}</code>,
-                    })}
-                  </p>
-
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="password"
-                      value={dcToken}
-                      onChange={(e) => setDcToken(e.target.value)}
-                      placeholder={dcStatus.configured ? t("dcTokenPlaceholderConfigured") : t("dcTokenPlaceholder")}
-                      className="input mono"
-                      style={{ maxWidth: 480 }}
-                    />
-                    <button
-                      onClick={handleDcSave}
-                      disabled={dcBusy || !dcToken.trim()}
-                      className="btn primary"
-                      style={{ whiteSpace: "nowrap" }}
-                    >
-                      {dcBusy ? "..." : dcStatus.configured ? t("update") : t("enable")}
-                    </button>
-                    {dcStatus.configured && (
-                      <button
-                        onClick={handleDcDisable}
-                        disabled={dcBusy}
-                        className="btn danger"
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {t("disable")}
-                      </button>
-                    )}
-                  </div>
-
-                  <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
-                    <summary className="cursor-pointer hover:text-text-secondary">{t("howToConfigure")}</summary>
-                    <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                      <li>{t.rich("dcHelpStep1", { link: (chunks) => <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">{chunks}</a> })}</li>
-                      <li>{t.rich("dcHelpStep2", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
-                      <li>{t.rich("dcHelpStep3", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
-                      <li>{t.rich("dcHelpStep4", { strong: (chunks) => <strong>{chunks}</strong>, em: (chunks) => <em>{chunks}</em> })}</li>
-                      <li>{t.rich("dcHelpStep5", { strong: (chunks) => <strong>{chunks}</strong>, em: (chunks) => <em>{chunks}</em> })}</li>
-                      <li>{t.rich("dcHelpStep6", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
-                      <li>{t.rich("dcHelpStep7", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
-                    </ol>
-                  </details>
-                </div>
-              </div>
-
-              {/* ── Slack ────────────────────────────────────────────── */}
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="brand-logo" style={{ width: 32, height: 32, fontSize: 13, fontWeight: 700 }}>S</span>
-                  <h3 className="text-base font-semibold text-text-primary">Slack</h3>
-                  {slStatus.configured && (
-                    <span className="badge accent">
-                      <CheckCircle className="w-2.5 h-2.5" /> {t("configuredBadge")}
-                    </span>
-                  )}
-                  {!slStatus.configured && (
-                    <span className="badge">
-                      {t("notConfiguredBadge")}
-                    </span>
-                  )}
-                </div>
-
-                <div className="section-block">
-                  <p className="text-[11px] text-text-muted">
-                    {t.rich("slIntro", {
-                      strong: (chunks) => <strong>{chunks}</strong>,
-                      code: (chunks) => <code className="text-cyber-cyan">{chunks}</code>,
-                    })}
-                  </p>
-
-                  <input
-                    type="password"
-                    value={slBotToken}
-                    onChange={(e) => setSlBotToken(e.target.value)}
-                    placeholder={slStatus.has_bot_token ? t("slBotTokenPlaceholderConfigured") : t("slBotTokenPlaceholder")}
-                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 font-mono"
-                  />
-                  <input
-                    type="password"
-                    value={slAppToken}
-                    onChange={(e) => setSlAppToken(e.target.value)}
-                    placeholder={slStatus.has_app_token ? t("slAppTokenPlaceholderConfigured") : t("slAppTokenPlaceholder")}
-                    className="w-full text-xs bg-bg-primary border border-border-dim rounded px-3 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 font-mono"
-                  />
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSlSave}
-                      disabled={slBusy || !slBotToken.trim() || !slAppToken.trim()}
-                      className="btn primary"
-                    >
-                      {slBusy ? "..." : slStatus.configured ? t("update") : t("enable")}
-                    </button>
-                    {slStatus.configured && (
-                      <button
-                        onClick={handleSlDisable}
-                        disabled={slBusy}
-                        className="btn danger"
-                      >
-                        {t("disable")}
-                      </button>
-                    )}
-                  </div>
-
-                  <details className="pt-2 border-t border-border-dim text-[11px] text-text-muted">
-                    <summary className="cursor-pointer hover:text-text-secondary">{t("howToConfigure")}</summary>
-                    <ol className="mt-2 space-y-1 pl-3 list-decimal">
-                      <li>{t.rich("slHelpStep1", {
-                        link: (chunks) => <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline">{chunks}</a>,
-                        strong: (chunks) => <strong>{chunks}</strong>,
-                        em: (chunks) => <em>{chunks}</em>,
-                      })}</li>
-                      <li>{t.rich("slHelpStep2", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
-                      <li>{t.rich("slHelpStep3", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
-                      <li>{t.rich("slHelpStep4", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
-                      <li>{t.rich("slHelpStep5", { strong: (chunks) => <strong>{chunks}</strong>, code: (chunks) => <code>{chunks}</code> })}</li>
-                      <li>{t.rich("slHelpStep6", { strong: (chunks) => <strong>{chunks}</strong> })}</li>
-                      <li>{t.rich("slHelpStep7", { code: (chunks) => <code className="text-cyber-cyan">{chunks}</code> })}</li>
-                    </ol>
-                  </details>
-                </div>
-              </div>
             </section>
             )}
 

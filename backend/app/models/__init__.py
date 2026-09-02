@@ -52,7 +52,6 @@ from app.models.io_tool_dispatch import IoToolDispatch
 # dependency explicit so ``Base.metadata.create_all`` sees their tables on a
 # fresh DB (notably in CI's in-memory sqlite, where nothing else imports
 # them before tests run).
-from app.models.arena import ArenaMatch, ArenaElo
 from app.models.community_skill import CommunitySkill
 from app.models.feedback import Feedback
 from app.models.llm_instance import LLMInstance
@@ -80,7 +79,7 @@ __all__ = [
     "FailureCase", "LearnedSkill", "SkillStatus", "SkillSource",
     "IoToolDispatch",
     # Newly explicit (side-effect imports promoted to first-class)
-    "ArenaMatch", "ArenaElo", "CommunitySkill", "Feedback", "LLMInstance",
+    "CommunitySkill", "Feedback", "LLMInstance",
     "MCPServer", "MCPTool", "MCPToolPermission", "IdempotencyRecord",
     "Note", "ScheduledTask", "SkillPreference", "SystemConfig",
     "UsageLog", "UserMemoryLog", "UserProfile", "VaultConfig", "VaultEntry",

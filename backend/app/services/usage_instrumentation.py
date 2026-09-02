@@ -223,7 +223,7 @@ async def record_turn_usage(
 ) -> None:
     """Enregistre coût + latence + architecture d'un tour **bufferisé**.
 
-    Pensé pour les surfaces sans flux d'événements (Telegram, Slack, Discord),
+    Pensé pour les surfaces sans flux d'événements (Telegram),
     qui n'écrivaient jusqu'ici **aucune ligne d'usage** — l'architecture à
     sous-agents était donc totalement invisible dans les chiffres.
 

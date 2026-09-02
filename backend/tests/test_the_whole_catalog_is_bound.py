@@ -19,7 +19,8 @@ INJOIGNABLES           119
 ```
 
 Sheets (0/9), Docs (0/7), PDF (0/4), Maps (0/4), YouTube, QR codes, `os_*`,
-`system_*`, `trainer_*`, `watchdog_*`, WhatsApp, plus `ssh`, `analyze`,
+`system_*`, `trainer_*`, `watchdog_*`, WhatsApp (partie le 02/09/2026 —
+archive/canaux), plus `ssh`, `analyze`,
 `briefing`, `python`, `telegram`, `delegate`. Une conversation avec un profil
 ne pouvait ni ouvrir un tableur, ni lire un PDF — y compris `pdf_to_docx`,
 construit en juillet.
@@ -100,7 +101,7 @@ def test_an_empty_or_unknown_profile_also_reaches_everything():
 
 @pytest.mark.parametrize("famille", [
     "sheets_", "docs_", "pdf_", "maps_", "youtube_", "qrcode_",
-    "os_", "system_", "trainer_", "watchdog_", "whatsapp_",
+    "os_", "system_", "trainer_", "watchdog_",
 ])
 def test_the_sixteen_missing_families_are_reachable(famille: str):
     """Chaque famille absente est nommée : un compte global masquerait un trou."""

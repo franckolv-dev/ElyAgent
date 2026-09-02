@@ -72,13 +72,30 @@ class _Recorder:
 
 
 @pytest.mark.asyncio
-async def test_flag_off_short_circuits(monkeypatch):
+async def test_flag_off_freezes_the_factory_without_silencing_the_loop(monkeypatch):
+    """⚠️ CE PIN A ÉTÉ RETOURNÉ (02/09/2026), pas supprimé.
+
+    Il vérifiait qu'un drapeau OFF fasse `return None` en première ligne. Or
+    ce court-circuit-là éteignait AUSSI la voie document : le manque restait
+    consigné dans « Capacités manquantes » et personne n'écrivait la procédure
+    qui l'aurait comblé — la branche morte du 24/08, un cran plus haut.
+
+    Ce que le drapeau doit faire : retirer l'issue « outil » de l'aiguillage.
+    Ce qu'il ne doit plus faire : rendre l'apprentissage muet.
+    """
     _patch_flag(monkeypatch, False)
     gen = _Recorder({"status": "created"})
     monkeypatch.setattr(
         "app.services.learning.tool_creator.generate_and_persist_tool", gen)
-    assert await atg.maybe_generate_for_gap(1, "capacité x", "u1") is None
-    assert gen.calls == []
+    redaction = _Recorder({"status": "drafted", "skill_name": "capacite-x"})
+    monkeypatch.setattr(
+        "app.services.learning.skill_creator.draft_playbook_for_gap", redaction)
+
+    sortie = await atg.maybe_generate_for_gap(1, "capacité x", "u1")
+
+    assert gen.calls == [], "la fabrique a tourné malgré le gel"
+    assert len(redaction.calls) == 1, "le gel a rendu la boucle muette"
+    assert sortie and sortie["status"] == "drafted"
 
 
 @pytest.mark.asyncio

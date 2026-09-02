@@ -52,24 +52,32 @@ dependencies = [
     "mcp>=1.0.0",
     "langchain-mcp-adapters>=0.1.0",
     "pyautogui>=0.9.54",
-    "slack-bolt[async]>=1.20.0",
-    "discord.py>=2.4.0",
     "croniter>=2.0.0",
-    # WhatsApp Web bridge (unofficial multi-device, QR-code pairing).
-    # neonize is a Python wrapper around whatsmeow (Go). It uses the real
-    # WhatsApp mobile protocol via WebSocket, no Chromium required.
-    # ⚠ Alternative to Meta Cloud API (which we keep too in whatsapp.py).
-    # Licence: AGPL v3 for neonize itself — fine for self-hosted personal use.
+    # ── Bibliothèques « baked » de la sandbox, côté BACKEND ────────────────
+    # `v3_declarations.BAKED_LIBS` = {httpx, beautifulsoup4, lxml} : ce qu'un
+    # outil généré de profil « io » a le droit d'importer. Le hic, découvert
+    # le 02/09/2026 : l'étape de fumée (`smoke_sandbox`) exécute l'outil dans
+    # un sous-processus lancé avec `sys.executable` — l'interpréteur du
+    # BACKEND, pas l'image sandbox. Les trois doivent donc être installées
+    # des DEUX côtés. `httpx` était déclarée ; `beautifulsoup4` et `lxml` ne
+    # l'étaient pas et n'arrivaient ici que par des chaînes transitives.
     #
-    # IMPORTANT: WhatsApp rejects older protocol versions with
-    # `err-client-outdated` (405). You need neonize >= 0.3.17.post0 as of
-    # 2026-04-24. BUT that version requires protobuf>=6.x which conflicts
-    # with the deprecated `google-generativeai` package (still pinned to
-    # protobuf<5). Workaround : we install neonize post-sync via
-    # `POST_SYNC_INSTALL` in the Dockerfile, bypassing the lockfile.
-    # Proper fix (TODO): migrate 3 files from google-generativeai to
-    # the new google-genai SDK which supports protobuf 6.
-    "neonize>=0.3.0",
+    # ⚠️ Correction du 02/09/2026 (relecture) : les deux cas ne sont PAS le
+    # même. Seule `beautifulsoup4` disparaissait avec neonize — c'était sa
+    # seule provenance (neonize → linkpreview → beautifulsoup4), et un outil
+    # « io » l'important aurait passé la porte des dépendances pour échouer à
+    # la fumée sur un ImportError. `lxml`, elle, arrivait par
+    # `duckduckgo-search` ET `python-docx`, deux dépendances directes qui
+    # restent : elle survivait au retrait. Elle est déclarée quand même pour
+    # que l'invariant « BAKED_LIBS ⊆ dépendances du backend » cesse de
+    # reposer sur des chaînes transitives que personne ne surveille.
+    "beautifulsoup4>=4.13.0",
+    "lxml>=5.0.0",
+    # ⚠️ AUDIT 02/09/2026 : `slack-bolt`, `discord.py` et `neonize` sont partis
+    # avec leurs canaux (archive/canaux) — zéro appel de modèle en cinq mois.
+    # neonize emportait avec lui le conflit protobuf qui obligeait le Dockerfile
+    # à réinstaller le paquet HORS lockfile après `uv sync --frozen` : ce
+    # contournement disparaît, `uv.lock` redevient la vérité complète.
     "pillow>=11.3.0",
     # Sprint 4b V2 — static checks (ruff + mypy) for the generated-@tool
     # validation pipeline. These run IN-PROCESS at skill-generation time

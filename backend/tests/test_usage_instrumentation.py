@@ -11,7 +11,7 @@ Constat qui motive ce lot (`docs_internes/v2_mesure_architectures.md`) :
 - `usage_logs` compte 8 938 lignes et **ne porte aucune latence**. Le critère
   n° 1 de la décision mono-agent / sous-agents n'est donc pas mesurable.
 - `usage_logs` ne porte **aucune ligne de canal** : `log_usage` n'est appelé
-  ni depuis `telegram_bot.py`, ni `slack_bot.py`, ni `discord_bot.py`. Même
+  ni depuis `telegram_bot.py`. Même
   avec du trafic, l'architecture à sous-agents resterait invisible.
 - Rien n'indique **quelle architecture** a servi un tour. Or trois cohabitent :
   mono-agent (chat web), sous-agents (canaux, voix) et graphe plat (les 815
@@ -234,14 +234,14 @@ async def test_record_turn_usage_never_breaks_a_delivered_answer():
     from app.services.usage_instrumentation import record_turn_usage
 
     await record_turn_usage(
-        user_id="", conversation_id=None, channel="slack",
+        user_id="", conversation_id=None, channel="telegram",
         result="pas un état", started_at=0.0,
     )
 
 
 # ---------------------------------- les canaux doivent enfin écrire quelque chose
 
-@pytest.mark.parametrize("bot", ["telegram_bot", "slack_bot", "discord_bot"])
+@pytest.mark.parametrize("bot", ["telegram_bot"])
 def test_channel_bots_record_their_usage(bot):
     """Aujourd'hui aucun des trois n'appelle `log_usage` : l'architecture à
     sous-agents est invisible dans les chiffres. Pin source-grep — le banc

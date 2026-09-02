@@ -60,7 +60,6 @@ interface SetupStatus {
     ollama: { available: boolean };
   };
   telegram: { configured: boolean };
-  whatsapp: { configured: boolean };
   is_first_launch: boolean;
 }
 

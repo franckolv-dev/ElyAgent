@@ -490,9 +490,6 @@ interface ChannelStatus {
 }
 interface ActiveChannelsResponse {
   telegram: ChannelStatus;
-  discord: ChannelStatus;
-  slack: ChannelStatus;
-  whatsapp: ChannelStatus;
   ely_android: ChannelStatus;
   ntfy: ChannelStatus;
 }
@@ -558,9 +555,6 @@ function ChannelsPanel() {
       <h4>CANAUX ACTIFS</h4>
       <Row label="ANDROID"  status={data?.ely_android} />
       <Row label="TELEGRAM" status={data?.telegram} />
-      <Row label="WHATSAPP" status={data?.whatsapp} />
-      <Row label="DISCORD"  status={data?.discord} />
-      <Row label="SLACK"    status={data?.slack} />
       <Row label="NTFY"     status={data?.ntfy} />
     </div>
   );

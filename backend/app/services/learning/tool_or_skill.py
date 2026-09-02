@@ -49,10 +49,27 @@ pour ne jamais retenir une réponse — ici le doute ne fabrique rien.
 Rien n'est perdu : le gap reste consigné dans « Capacités manquantes » avec son
 bouton manuel, donc l'utilisateur garde la main. Générer à tort coûte un outil
 mort de plus, et c'est précisément ce que ce lot supprime.
+
+⚠️ L'ARBITRAGE PENCHE VERS LE DOCUMENT (02/09/2026)
+-----------------------------------------------------
+La mesure de cinq mois : 98 compétences apprises, 43 périmées, 3 graduées.
+Deux réglages du critère, tirés de là :
+
+1. **Le prompt** dit désormais qu'un outil ne se justifie que si AUCUNE
+   procédure écrite ne peut décrire la marche à suivre avec les outils
+   existants. Composer des outils déjà là, c'est une procédure ; il ne faut
+   un outil que pour une action qu'aucun outil existant n'atteint.
+
+2. **La lecture du verdict** était « OUTIL est-il quelque part dans la
+   réponse ? ». Un juge hésitant — « OUTIL ou COMPETENCE, difficile à dire »
+   — fabriquait donc un outil, parce que le mot y figurait et qu'il était
+   testé en premier. Le contrat demande UN mot : seul un verdict qui s'y
+   tient, et qui ne mentionne pas l'autre issue, fabrique.
 """
 from __future__ import annotations
 
 import logging
+import unicodedata
 
 from langchain_core.messages import HumanMessage
 
@@ -78,10 +95,18 @@ Ce n'est PAS une question de difficulté. Traduire un contrat juridique est
 difficile et reste du texte. Poster un message d'une ligne est trivial et
 demande une action.
 
-Réponds par un seul mot, sans rien d'autre :
+Ce n'est PAS non plus une question de longueur : si la marche à suivre peut
+s'ÉCRIRE sous forme de procédure — des étapes numérotées, en s'appuyant sur
+les outils dont l'assistante dispose déjà — alors c'est une COMPETENCE, même
+si la procédure compte dix étapes. Un OUTIL ne se justifie que pour une
+action qu'aucune procédure ne peut décrire, parce qu'aucun outil existant ne
+l'atteint.
 
-  OUTIL        une action est nécessaire, le texte seul ne suffit pas
-  COMPETENCE   un modèle peut la fournir en produisant du texte
+Réponds par un seul mot, sans rien d'autre, et par COMPETENCE si tu hésites :
+
+  OUTIL        une action hors de portée de toute procédure écrite
+  COMPETENCE   un modèle la fournit en produisant du texte, ou une procédure
+               la décrit avec les outils existants
 """
 
 
@@ -148,24 +173,40 @@ async def needs_a_tool(capability: str, *, user_id: str = "", **_: object) -> bo
     except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
         logger.debug("outil-ou-compétence : usage non consigné (%s)", exc)
 
-    verdict = content_to_text(getattr(response, "content", response)).strip().upper()
-    if _OUTIL in verdict:
+    verdict = _sans_accent(
+        content_to_text(getattr(response, "content", response))
+    ).strip().upper()
+    # Le contrat demande UN mot. On lit donc le PREMIER, et on refuse dès que
+    # l'autre issue est mentionnée : « OUTIL ou COMPETENCE » est une hésitation
+    # déguisée, et l'hésitation ne fabrique pas (réglage 02/09/2026). Les
+    # accents sont retirés avant comparaison — « COMPÉTENCE » ne contient pas
+    # « COMPETENCE », et ce verdict-là partait dans la branche « hors contrat ».
+    mots = verdict.replace("*", " ").replace(".", " ").split()
+    premier = mots[0].strip(",:;!-") if mots else ""
+    if premier == _OUTIL and _COMPETENCE not in verdict:
         logger.info("outil-ou-compétence : « %.60s » → OUTIL (action requise)", texte)
         return True
     if _COMPETENCE in verdict:
         logger.info(
             "outil-ou-compétence : « %.60s » → COMPÉTENCE — pas de génération, "
-            "un modèle suffit", texte,
+            "une procédure ou un modèle suffit", texte,
         )
         return False
 
-    # Ni l'un ni l'autre : le juge n'a pas suivi le contrat. On ne fabrique pas
-    # sur du bavardage.
+    # Ni l'un ni l'autre, ou un OUTIL noyé dans une phrase : le juge n'a pas
+    # suivi le contrat. On ne fabrique pas sur du bavardage.
     logger.info(
         "outil-ou-compétence : verdict hors contrat (%.40s) — « %.60s » non "
         "fabriquée", verdict, texte,
     )
     return False
+
+
+def _sans_accent(texte: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", texte)
+        if unicodedata.category(c) != "Mn"
+    )
 
 
 __all__ = ["needs_a_tool"]

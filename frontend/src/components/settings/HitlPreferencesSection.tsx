@@ -125,7 +125,7 @@ export function HitlPreferencesSection() {
     const prefix = p.tool_name.split("_")[0];
     (grouped[prefix] = grouped[prefix] || []).push(p);
   }
-  const groupOrder = ["gmail", "calendar", "drive", "docs", "sheets", "tasks", "contacts", "ssh", "desktop", "os", "whatsapp", "mcp", "vault", "save"];
+  const groupOrder = ["gmail", "calendar", "drive", "docs", "sheets", "tasks", "contacts", "ssh", "desktop", "os", "mcp", "vault", "save"];
   const groupLabels: Record<string, string> = {
     gmail: "Gmail",
     calendar: "Google Calendar",
@@ -137,14 +137,13 @@ export function HitlPreferencesSection() {
     ssh: "SSH",
     desktop: "Bureau / fichiers locaux",
     os: "Contrôle OS",
-    whatsapp: "WhatsApp",
     mcp: "MCP",
     vault: "Coffre-fort",
     save: "Mémoire / contraintes",
   };
   // Render EVERY present category — known ones in groupOrder, then any extra
-  // prefix appended (so no tool is silently dropped, as os_/whatsapp_/mcp_/
-  // save_ were before — bug found 2026-06-04).
+  // prefix appended (so no tool is silently dropped, as os_/mcp_/save_ were
+  // before — bug found 2026-06-04).
   const orderedGroups = [
     ...groupOrder.filter((g) => grouped[g]?.length),
     ...Object.keys(grouped).filter((g) => !groupOrder.includes(g)).sort(),

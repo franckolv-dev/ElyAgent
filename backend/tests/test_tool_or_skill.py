@@ -116,6 +116,64 @@ async def test_the_judge_is_asked_the_right_question(judge):
 
 
 @pytest.mark.asyncio
+async def test_un_verdict_qui_hesite_penche_vers_la_procedure(judge):
+    """⚠️ L'ARBITRAGE PENCHE VERS LE DOCUMENT (02/09/2026).
+
+    Avant ce lot, la lecture du verdict était « OUTIL est-il quelque part dans
+    la réponse ? ». Un juge hésitant — « OUTIL ou COMPETENCE, difficile à
+    dire » — fabriquait donc un outil : le mot OUTIL apparaissait, et il
+    passait en premier dans la lecture.
+
+    98 compétences apprises et 43 périmées plus tard, le doute doit produire
+    une procédure : elle coûte des caractères plafonnés, l'outil coûte un
+    schéma JSON à chaque tour, pour toujours.
+    """
+    from app.services.learning.tool_or_skill import needs_a_tool
+
+    judge("OUTIL ou COMPETENCE, difficile à dire ici")
+    assert await needs_a_tool("archiver une note quelque part") is False
+
+
+@pytest.mark.asyncio
+async def test_un_verdict_delaye_ne_fabrique_pas_non_plus(judge):
+    """« Je dirais qu'il faut un OUTIL » n'est pas le mot unique demandé.
+
+    Le contrat du prompt est UN mot. Une phrase autour du mot est un juge qui
+    raisonne à voix haute, donc qui hésite — et l'hésitation ne fabrique plus.
+    """
+    from app.services.learning.tool_or_skill import needs_a_tool
+
+    judge("Je dirais qu'il faut plutôt un OUTIL pour ça")
+    assert await needs_a_tool("classer des fichiers") is False
+
+
+@pytest.mark.asyncio
+async def test_une_action_franche_reste_un_outil(judge):
+    """Le pendant, sinon le lot ne fait que tout éteindre : un verdict net sur
+    une capacité qui exige une action rend toujours « outil »."""
+    from app.services.learning.tool_or_skill import needs_a_tool
+
+    judge("OUTIL")
+    assert await needs_a_tool("téléverser un fichier sur un serveur SFTP") is True
+
+
+@pytest.mark.asyncio
+async def test_le_juge_est_prevenu_quune_procedure_peut_decrire_laction(judge):
+    """Le critère écrit dans le prompt : un outil ne se justifie que si AUCUNE
+    procédure ne peut décrire la marche à suivre avec les outils existants."""
+    from app.services.learning.tool_or_skill import needs_a_tool
+
+    j = judge("COMPETENCE")
+    await needs_a_tool("préparer un devis à partir d'un tableau")
+
+    prompt = j.prompts[0].lower()
+    assert "procédure" in prompt, (
+        "le juge n'est pas prévenu qu'une procédure peut couvrir le besoin — "
+        "il tranchera comme avant"
+    )
+
+
+@pytest.mark.asyncio
 async def test_an_unreadable_verdict_does_not_build_a_tool(judge):
     """Le doute ne fabrique rien. Rien n'est perdu — le gap reste consigné
     avec son bouton manuel."""
@@ -191,6 +249,11 @@ async def test_a_skill_shaped_gap_never_reaches_the_generator(monkeypatch):
         "app.skills.builtin.find_tool_skill.capability_has_existing_tool",
         _none_existing,
     )
+    monkeypatch.setattr(
+        "app.services.learning.skill_creator.draft_playbook_for_gap",
+        _drafted,
+    )
+    _fabrique_ouverte(monkeypatch)
     atg.reset_attempts()
 
     out = await atg.maybe_generate_for_gap(101, "résumer un texte", "u1")
@@ -227,11 +290,25 @@ async def test_an_action_shaped_gap_still_reaches_the_generator(monkeypatch):
     monkeypatch.setattr(
         "app.services.learning.candidate_notify.notify_candidate", _noop_notify,
     )
+    _fabrique_ouverte(monkeypatch)
     atg.reset_attempts()
 
     await atg.maybe_generate_for_gap(102, "envoyer un SMS", "u1")
 
     assert genere["n"] == 1
+
+
+def _fabrique_ouverte(monkeypatch):
+    """⚠️ Ces deux pins mesurent l'ARBITRAGE, pas le drapeau (02/09/2026).
+
+    Depuis le gel de la fabrique, ``auto_tool_generation_enabled`` est destiné
+    à valoir False par défaut : sans cette ouverture explicite, les deux tests
+    passeraient au vert par le gel, sans jamais atteindre le juge qu'ils
+    prétendent mesurer.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "auto_tool_generation_enabled", True)
 
 
 async def _none_existing(capability, user_id=None):
@@ -240,3 +317,7 @@ async def _none_existing(capability, user_id=None):
 
 async def _noop_notify(*a, **k):
     return None
+
+
+async def _drafted(*a, **k):
+    return {"status": "drafted", "skill_name": "resumer-un-texte"}

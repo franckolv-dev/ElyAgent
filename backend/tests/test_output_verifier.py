@@ -276,7 +276,7 @@ def test_from_result_non_dict_defaults_to_no_tools():
     """Defensive: a malformed / non-dict result → tools=[] → an unbacked
     completion claim is still caught rather than silently trusted."""
     out = verify_outcome_from_result(
-        None, _LYING, surface="whatsapp", record_signal=False
+        None, _LYING, surface="telegram", record_signal=False
     )
     assert out.blocked is True
 
@@ -286,7 +286,7 @@ def test_from_result_derives_tools_for_backing():
     a non-destructive tool does not back a completion claim."""
     invoke_result = {"messages": _ai_with_tool("github_repo_stats")}
     out = verify_outcome_from_result(
-        invoke_result, _LYING, surface="discord", record_signal=False
+        invoke_result, _LYING, surface="scheduler", record_signal=False
     )
     assert out.blocked is True  # read-only tool doesn't back "j'ai supprimé"
 
@@ -306,9 +306,6 @@ _WIRED_SURFACES = [
     ("app/routers/chat.py", "verify_outcome"),
     ("app/routers/voice.py", 'surface="voice"'),
     ("app/channels/telegram_bot.py", 'surface="telegram"'),
-    ("app/channels/slack_bot.py", 'surface="slack"'),
-    ("app/channels/discord_bot.py", 'surface="discord"'),
-    ("app/channels/whatsapp.py", 'surface="whatsapp"'),
     ("app/services/scheduler.py", 'surface="scheduler"'),
     ("app/mcp_server.py", 'surface="mcp"'),
 ]
@@ -331,9 +328,6 @@ def test_buffered_surfaces_use_the_result_helper():
     tools-in-turn list via verify_outcome_from_result, not pass [] blindly."""
     for rel_path in (
         "app/channels/telegram_bot.py",
-        "app/channels/slack_bot.py",
-        "app/channels/discord_bot.py",
-        "app/channels/whatsapp.py",
         "app/services/scheduler.py",
         "app/mcp_server.py",
     ):

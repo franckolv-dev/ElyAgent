@@ -35,7 +35,7 @@ class AuditLog(Base):
     result_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Champs ajoutés — Phase 2.3 : traçabilité étendue
-    channel: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)   # "web" | "telegram" | "slack" | "discord" | "api"
+    channel: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)   # "web" | "telegram" | "api"
     tool_used: Mapped[str | None] = mapped_column(String(100), nullable=True)             # nom de l'outil agent invoqué
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)             # IPv4 ou IPv6
     created_at: Mapped[datetime] = mapped_column(

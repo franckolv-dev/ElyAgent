@@ -118,11 +118,22 @@ class Settings(BaseSettings):
     llm_deadline_router_s: float = 10.0
 
     # C4-2 — auto-génération d'outils sur capacité manquante consignée.
-    # ON par défaut (arbitrage 19/07) : la sortie est TOUJOURS une candidate —
-    # la validation humaine reste le verrou avant tout binding. Kill-switch :
-    # passer à false. Une tentative max par gap et par boot (garde in-process),
-    # pré-check sémantique anti-doublon avant de dépenser du tier-S.
-    auto_tool_generation_enabled: bool = True
+    #
+    # GELÉE PAR DÉFAUT depuis le 02/09/2026 — la mesure de cinq mois de
+    # production : 98 compétences apprises, 43 périmées, 3 graduées, et ZÉRO
+    # exécution d'outil en bac à sable. La voie « outil » ne produit rien qui
+    # serve ; une capacité manquante devient donc une PROCÉDURE (document
+    # Markdown), pas du code.
+    #
+    # Le drapeau gèle la FABRIQUE, il ne rend pas l'apprentissage muet : le
+    # manque est toujours consigné et une rédaction part toujours (voir
+    # `auto_tool_generation.maybe_generate_for_gap`). Le remettre à true
+    # rebranche le chemin outil à l'identique — le code reste dormant, pas
+    # mort. La sortie reste alors TOUJOURS une candidate : la validation
+    # humaine est le verrou avant tout binding (arbitrage 19/07). Une
+    # tentative max par gap et par boot (garde in-process), pré-check
+    # sémantique anti-doublon avant de dépenser du tier-S.
+    auto_tool_generation_enabled: bool = False
 
     # Garde-fou « outil long » (incident 24/07 : 2 h 52 de traduction PDF dans
     # un tour de chat, résultat perdu). Sur une surface INTERACTIVE, un outil
@@ -279,21 +290,8 @@ class Settings(BaseSettings):
     # Telegram bot (optionnel — configurer via Admin ou .env)
     telegram_bot_token: str = ""
 
-    # WhatsApp Cloud API (optional)
-    whatsapp_phone_number_id: str = ""
-    whatsapp_access_token: str = ""
-    whatsapp_webhook_verify_token: str = "ely-whatsapp-verify"
-    whatsapp_app_secret: str = ""
-
     # Firebase Cloud Messaging (optional — Android push notifications)
     firebase_credentials_path: str = ""
-
-    # Slack bot (optional — configurer via Admin ou .env)
-    slack_bot_token: str = ""      # xoxb-... Bot User OAuth Token
-    slack_app_token: str = ""      # xapp-... App-Level Token (Socket Mode)
-
-    # Discord bot (optional — configurer via Admin ou .env)
-    discord_bot_token: str = ""    # Bot Token from Discord Developer Portal
 
     # ── Client MCP universel (chantier 2026-06) ───────────────────────────
     # Interrupteur maître du sous-système « client MCP v2 » : outils
@@ -400,6 +398,21 @@ class Settings(BaseSettings):
     # mandat) arrive en J2 — J1 ne fait que valider et stocker le contrat.
     autonomous_missions_enabled: bool = False
 
+    # ── La mission libre tourne sur la boucle du chat (02/09/2026) ────────
+    # Une mission sans `spec_yaml` est exécutée comme un tour de chat
+    # automatisé (app/agent/missions/chat_loop.py) au lieu de la machine à
+    # états plan/act/eval/replan : un seul fil de conversation par passage,
+    # le carnet de bord pour mémoire entre deux réveils, les budgets de la
+    # mission pour bornes.
+    #
+    # ON PAR DÉFAUT, et c'est un choix. L'ancien chemin est ce qu'on répare
+    # depuis vingt-trois lots sans y arriver ; le laisser par défaut ferait
+    # de la correction une option que personne n'active. Le rayon
+    # d'explosion est borné : les missions STRUCTURÉES (spec_yaml) gardent
+    # leur exécuteur, intact. `MISSIONS_ON_CHAT_LOOP=false` ramène l'ancien
+    # chemin sans redéploiement de code.
+    missions_on_chat_loop: bool = True
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
@@ -425,19 +438,6 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_SECRET_KEY doit faire au moins 32 caractères. "
                 f"Actuelle : {len(self.jwt_secret_key)} caractères."
-            )
-
-        # Enforce non-default WhatsApp verify token ONLY when WhatsApp is actively
-        # configured (phone_number_id is set). If WhatsApp is not used, the default
-        # token is harmless since the webhook will never be called.
-        _WA_DEFAULT = "ely-whatsapp-verify"
-        if (
-            self.whatsapp_phone_number_id
-            and self.whatsapp_webhook_verify_token == _WA_DEFAULT
-        ):
-            raise ValueError(
-                "WHATSAPP_WEBHOOK_VERIFY_TOKEN must be changed from its default value "
-                "when WhatsApp is configured. Set a secure random token in your .env file."
             )
 
         # Auto-enable cookie_secure when any CORS origin uses HTTPS,
