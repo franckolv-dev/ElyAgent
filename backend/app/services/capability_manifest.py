@@ -113,6 +113,138 @@ _OVERRIDES: dict[str, CapabilityManifest] = {
         compensation="restore_parents",    # restaure les anciens parents (snapshot)
         derived=False,
     ),
+    # ── « Annuler partout » (audit du 02/09/2026) ───────────────────────────
+    # INVARIANT PRÉSERVÉ : aucune de ces surcharges ne change l'approbation.
+    # ``gmail_trash_emails`` est déjà dans ALWAYS_CRITICAL_TOOLS (→ ALWAYS) ;
+    # toutes les autres restent sur ce que la dérivation donnait (RISK_BASED).
+    # On n'ajoute qu'une chose : de quoi défaire.
+    #
+    # ⚠️ « compensation déclarée » ne veut pas dire « annulation garantie ». La
+    # fenêtre dure sept jours, et trois de ces compensations REFUSENT de
+    # s'exécuter si la cible a changé depuis (libellé qui classe des messages,
+    # événement qui a gagné des invités, note écrite depuis) : le revert lève
+    # alors ``CompensationRefused`` et l'entrée passe en ``revert_failed``.
+    # Toute surface qui affiche « annulable » doit dire « annulable, sauf si… ».
+    "gmail_trash_emails": CapabilityManifest(
+        id="gmail_trash_emails", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION, Effect.DESTRUCTIVE],
+        data_writes=["remote_email"],
+        permissions=["google.gmail.modify"],
+        approval=Approval.ALWAYS,
+        compensation="untrash_messages",   # la corbeille Gmail EST le snapshot
+        derived=False,
+    ),
+    "gmail_create_label": CapabilityManifest(
+        id="gmail_create_label", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["gmail_label"],
+        permissions=["google.gmail.labels"],
+        approval=Approval.RISK_BASED,
+        compensation="delete_created_label",
+        derived=False,
+    ),
+    "calendar_create_event": CapabilityManifest(
+        id="calendar_create_event", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["calendar_event"],
+        permissions=["google.calendar.events"],
+        approval=Approval.RISK_BASED,
+        compensation="delete_created_event",
+        derived=False,
+    ),
+    "drive_create_file": CapabilityManifest(
+        id="drive_create_file", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        compensation="trash_created_file",
+        derived=False,
+    ),
+    "drive_create_folder": CapabilityManifest(
+        id="drive_create_folder", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        # ⚠️ Pas d'`idempotency` ici, bien que l'outil réutilise un dossier de
+        # même nom : la déclarer ferait rejouer un résultat en CACHE au lieu
+        # d'exécuter l'outil (cf. idempotency_store). Ce lot n'ajoute que de
+        # quoi défaire, il ne touche pas à l'exécution.
+        compensation="trash_created_folder",
+        derived=False,
+    ),
+    "drive_upload_local_file": CapabilityManifest(
+        id="drive_upload_local_file", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        compensation="trash_created_file",
+        derived=False,
+    ),
+    "drive_copy_file": CapabilityManifest(
+        id="drive_copy_file", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        compensation="trash_created_file",   # la COPIE, jamais l'original
+        derived=False,
+    ),
+    "sheets_create_spreadsheet": CapabilityManifest(
+        id="sheets_create_spreadsheet", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        compensation="trash_created_file",
+        derived=False,
+    ),
+    "docs_create_document": CapabilityManifest(
+        id="docs_create_document", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["remote_file"],
+        permissions=["google.drive.write"],
+        approval=Approval.RISK_BASED,
+        compensation="trash_created_file",
+        derived=False,
+    ),
+    "tasks_create": CapabilityManifest(
+        id="tasks_create", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["task"],
+        permissions=["google.tasks.write"],
+        approval=Approval.RISK_BASED,
+        compensation="delete_created_task",
+        derived=False,
+    ),
+    "tasks_complete": CapabilityManifest(
+        id="tasks_complete", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["task"],
+        permissions=["google.tasks.write"],
+        approval=Approval.RISK_BASED,
+        compensation="restore_task_status",   # instantané : le statut d'avant
+        derived=False,
+    ),
+    "contacts_create": CapabilityManifest(
+        id="contacts_create", origin="builtin",
+        effects=[Effect.EXTERNAL_MUTATION],
+        data_writes=["contact"],
+        permissions=["google.contacts.write"],
+        approval=Approval.RISK_BASED,
+        compensation="delete_created_contact",
+        derived=False,
+    ),
+    "notes_create": CapabilityManifest(
+        id="notes_create", origin="builtin",
+        effects=[Effect.LOCAL_ONLY],          # la base d'Ely, rien chez un tiers
+        data_writes=["local_note"],
+        approval=Approval.RISK_BASED,
+        compensation="delete_created_note",
+        derived=False,
+    ),
     # Témoin de lecture sûre : aucun effet de bord, jamais de confirmation.
     "web_search": CapabilityManifest(
         id="web_search", origin="builtin",
