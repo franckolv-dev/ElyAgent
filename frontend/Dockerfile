@@ -22,6 +22,13 @@ ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 
 RUN npm run build
 
+# ⚠️ CE QUE ÇA CORRIGE (02/09) : la version du service worker etait bumpee a la
+# main, donc jamais. Elle est reecrite ici a partir de .next/BUILD_ID — apres le
+# build (avant, le fichier n'existe pas) et avant que le runner ne copie
+# public/. Le script sort en erreur s'il ne peut rien garantir : un estampilleur
+# muet ramenerait le ChunkLoadError post-deploiement.
+RUN node scripts/stamp-sw-version.mjs
+
 # ---- Runner ----
 FROM node:22-alpine AS runner
 WORKDIR /app

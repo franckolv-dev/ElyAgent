@@ -205,9 +205,20 @@ journaux :
 make logs | grep -i alembic
 ```
 
-⚠️ **Après une modification du frontend**, incrémentez la version dans
-`frontend/public/sw.js`. Sans ça, le *service worker* servira l'ancien bundle et
-vous obtiendrez une erreur de chargement de fragment.
+ℹ️ **Le cache du *service worker* se purge tout seul.** Vous n'avez rien à
+incrémenter après une modification du frontend : la construction de l'image
+appelle `frontend/scripts/stamp-sw-version.mjs`, qui réécrit la version dans
+`frontend/public/sw.js` à partir de `.next/BUILD_ID` — l'identifiant que Next.js
+régénère à chaque build. La version change donc exactement quand les empreintes
+de fragments peuvent avoir changé, et le *service worker* purge ses anciens
+caches en s'activant.
+
+⚠️ **Si vous éditez cette ligne à la main, gardez le marqueur de fin de ligne.**
+La cible du remplacement est la ligne `const VERSION = "…"; // ely:build-stamp`
+de `frontend/public/sw.js`. Sans ce commentaire `ely:build-stamp`, le script ne
+trouve plus quoi estampiller et **s'arrête en erreur** : la construction de
+l'image échoue. C'est volontaire — un estampilleur qui sort en silence
+ramènerait l'erreur de chargement de fragment sans prévenir.
 
 ---
 
@@ -225,8 +236,22 @@ ailleurs.
 identifiez **l'image qu'il nomme** : ce n'est pas nécessairement celle que vous
 supposez.
 
-**Erreur de chargement après déploiement du frontend.** Version de
-`frontend/public/sw.js` non incrémentée.
+**Erreur de chargement après déploiement du frontend.** L'estampillage de la
+version du *service worker* n'a pas été appliqué : le frontend a été servi sans
+passer par la construction de l'image (`npm run build` seul n'appelle pas le
+script), ou `frontend/public/sw.js` a été déployé tel quel avec sa valeur de
+repli `ely-sw-dev`. Vérifiez la valeur servie :
+
+```bash
+curl -s http://localhost:3000/sw.js | grep 'const VERSION'
+```
+
+Elle doit ressembler à `ely-sw-<version du paquet>-<BUILD_ID>`. Si c'est
+`ely-sw-dev`, reconstruisez l'image (`make build`).
+
+**La construction du frontend s'arrête sur `ely:build-stamp`.** Quelqu'un a
+réécrit la ligne de version de `frontend/public/sw.js` sans reconduire le
+commentaire `// ely:build-stamp` en fin de ligne. Remettez-le.
 
 **Une dépendance ajoutée n'est pas dans l'image.** `uv.lock` fait foi, pas
 `pyproject.toml` seul. Lancez `uv lock`, reconstruisez, et vérifiez l'import
