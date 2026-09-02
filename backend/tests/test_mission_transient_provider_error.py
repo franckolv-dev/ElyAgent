@@ -52,15 +52,11 @@ _ERREUR_429 = {"message": "Provider returned error", "code": 429}
 
 @pytest_asyncio.fixture
 async def mission():
-    from sqlalchemy import delete
-
     from app.database import async_session, init_db
-    from app.models.mission import (
-        Mission, MissionDailyCounter, MissionPlan, MissionStep, MissionStepRun,
-    )
     from app.models.user import User
     from app.services import mission_service
     from app.services.alembic_runner import ensure_migrations
+    from tests._user_cleanup import purge_user
 
     await init_db()
     await ensure_migrations()
@@ -74,19 +70,10 @@ async def mission():
     )
     await mission_service.start_mission(m.id)
     yield uid, m.id
-    async with async_session() as db:
-        # Les CINQ tables filles, pas seulement celles qu'on croit avoir
-        # remplies : `fail_mission` en écrit que ce test ne crée pas
-        # lui-même, et la contrainte de clé étrangère ne pardonne pas
-        # (leçon de #354).
-        for modele in (MissionDailyCounter, MissionStepRun, MissionStep,
-                       MissionPlan):
-            await db.execute(delete(modele).where(modele.mission_id == m.id))
-        await db.execute(delete(Mission).where(Mission.user_id == uid))
-        u = await db.get(User, uid)
-        if u is not None:
-            await db.delete(u)
-        await db.commit()
+    # Nettoyage dérivé du schéma : trois fixtures de suite ont oublié une
+    # table fille et fait rougir la CI. Voir tests/_user_cleanup.py.
+    await purge_user(uid)
+
 
 
 async def _tick_qui_leve(monkeypatch, mid: str, uid: str, exc: Exception):
