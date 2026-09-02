@@ -41,6 +41,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from app.config import get_settings
+from app.services.background_tasks import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +230,17 @@ class HITLManager:
         await asyncio.gather(*tasks, return_exceptions=True)
 
         if send_fcm:
-            asyncio.create_task(self._send_fcm(user_id, action_id, "hitl", description, {}))
+            # ⚠️ CE QUE ÇA CORRIGE (audit 02/09) : c'était un
+            # `asyncio.create_task` nu. La boucle événementielle ne garde
+            # qu'une référence FAIBLE sur la tâche : sous pression du GC, la
+            # notification pouvait être ramassée EN VOL — l'utilisateur
+            # n'était jamais prévenu qu'on attendait son approbation, et la
+            # demande expirait toute seule en « timeout ». `spawn` garde une
+            # référence forte et journalise l'échec au lieu de le perdre.
+            spawn(
+                self._send_fcm(user_id, action_id, "hitl", description, {}),
+                label="hitl.push_fcm",
+            )
 
         logger.info(
             "HITL %s dispatched (channel=%s, fan-out=%d)",

@@ -50,6 +50,7 @@ import logging
 from sqlalchemy import event
 
 from app.models.conversation import Message
+from app.services.background_tasks import spawn
 from app.services.messages_fts_store import get_messages_fts_store
 
 logger = logging.getLogger(__name__)
@@ -59,16 +60,24 @@ def _schedule_index(message_id: str, conversation_id: str, role: str,
                     text: str, created_at_ts: int) -> None:
     """Fire-and-forget the async indexing.
 
-    Called from the synchronous ``after_insert`` event. We use
-    ``asyncio.create_task`` if a loop is running, or fall back to a
-    new event loop in a thread otherwise (covers the rare case of a
-    Message being created during synchronous bootstrap).
+    Called from the synchronous ``after_insert`` event. On a running loop we
+    hand the coroutine to ``background_tasks.spawn``; otherwise we fall back
+    to a new event loop in a thread (covers the rare case of a Message being
+    created during synchronous bootstrap).
+
+    ⚠️ (audit 02/09) ce site était un `loop.create_task` NU. La boucle ne
+    garde qu'une référence FAIBLE sur la tâche : sous pression du
+    ramasse-miettes, le message n'entrait jamais dans l'index et « tu te
+    souviens de… » ne pouvait plus le retrouver. C'est le trou que la
+    docstring de `background_tasks` cite comme motif d'existence du module ;
+    il y avait survécu.
     """
     try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_do_index(
-            message_id, conversation_id, role, text, created_at_ts,
-        ))
+        asyncio.get_running_loop()
+        spawn(
+            _do_index(message_id, conversation_id, role, text, created_at_ts),
+            label="messages_fts.index",
+        )
     except RuntimeError:
         # No running loop — bootstrap path. Use a separate thread with
         # its own loop so we don't block the caller and the index still

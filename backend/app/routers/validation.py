@@ -32,7 +32,6 @@ so each action_id is also bound to a short-lived HMAC token (see
 with an extra `?t=<token>` query string and bypass the JWT check — the
 token itself proves the caller received the legitimate push notification.
 """
-import asyncio
 import hmac
 import hashlib
 import logging
@@ -96,9 +95,14 @@ async def _resolve(
         raise HTTPException(status_code=404, detail="Action not found or already resolved")
 
     # Log HITL decision for dashboard analytics (non-critical, fire-and-forget)
+    # ``spawn`` et non ``asyncio.create_task`` : la boucle ne garde qu'une
+    # référence FAIBLE sur une tâche détachée, donc le GC pouvait l'emporter
+    # en vol — la décision HITL disparaissait du tableau de bord sans trace.
+    # ``spawn`` retient la tâche et journalise son exception.
     try:
         from app.services.analytics_service import log_usage
-        asyncio.create_task(log_usage(
+        from app.services.background_tasks import spawn
+        spawn(log_usage(
             user_id=current_user.id if current_user else owner_id,
             model="",
             provider="hitl",

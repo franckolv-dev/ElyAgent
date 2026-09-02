@@ -104,200 +104,44 @@ from app.services.memory_manager import get_memory_manager
 from app.services.fts_store import get_fts_store
 from app.services.messages_fts_store import get_messages_fts_store
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    import logging as _logging
-    # Make sure INFO-level logs from app.* modules are visible (default
-    # uvicorn config leaves non-uvicorn loggers at WARNING). We need INFO
-    # for the ⏱ TIMING[...] diagnostic lines from the agent pipeline.
-    _logging.getLogger("app").setLevel(_logging.INFO)
-    _startup_logger = _logging.getLogger("app.startup")
 
-    # Install the in-memory log ring buffer so the `system_get_logs`
-    # tool can let the agent introspect its own runtime. Must be done
-    # BEFORE any other module logs anything we want captured.
-    from app.services.log_buffer import install_handler as _install_log_buffer
-    _install_log_buffer()
-
-    # Verrou mono-process (A-7, revue 2026-06-10) — AVANT init_db : deux
-    # process sur la même base = create_all/ALTER en race + HITL/registres
-    # split-brain. Échec de boot explicite plutôt que corruption silencieuse.
-    from app.services.singleton_guard import acquire_singleton_lock
-    acquire_singleton_lock()
-
-    # Register all built-in skills BEFORE the agent graph is built
-    from app.skills.builtin import register_all
-    register_all()
-
-    await init_db()
-
-    # B-4 (revue 2026-06-10) — Alembic : stampe la base sur la baseline au
-    # premier boot, applique les révisions postérieures ensuite. Toute
-    # évolution de schéma future passe par `alembic revision --autogenerate`
-    # au lieu d'allonger _safe_columns. Best-effort : un échec ne tue pas
-    # le boot.
-    from app.services.alembic_runner import ensure_migrations
-    await ensure_migrations()
-
-    # B-11 (revue 2026-06-10) — chiffre en une passe les secrets encore en
-    # clair (system_config is_secret + llm_instances.api_key). Idempotent.
-    # AVANT load_llm_settings_from_db pour que les lectures déchiffrent.
-    from app.services.system_config import migrate_plaintext_secrets
-    await migrate_plaintext_secrets()
-
-    # Load LLM provider/model/key overrides from DB into in-memory runtime
-    from app.services.llm_provider import load_llm_settings_from_db
-    await load_llm_settings_from_db()
-
-    # Load mono-agent toggle (admin: Paramètres → Routage)
-    from app.services.mono_agent import load_mono_agent_flag
-    await load_mono_agent_flag()
-
-    await get_memory_manager().init_collections()
-    await get_fts_store().init()
-    # Sprint 1 — Memory recall: messages_fts indexes the literal messages
-    # of every conversation for cross-session retrieval. Separate from
-    # memory_fts (which indexes extracted facts).
-    await get_messages_fts_store().init()
-    # Auto-indexer event hook (SQLAlchemy after_insert on Message)
-    from app.services.messages_fts_indexer import install_indexer as _install_msg_indexer
-    _install_msg_indexer()
-
-    # Init RAG knowledge collection
-    from app.services.rag_service import get_rag_service
-    await get_rag_service().init_collection()
-
-    # Start Telegram bot if configured
-    from app.channels.telegram_bot import start_telegram_bot, stop_telegram_bot
-    try:
-        await start_telegram_bot()
-    except Exception:
-        _startup_logger.warning("Telegram bot failed to start — channel disabled", exc_info=True)
-
-    # Start Slack bot if configured
-    from app.channels.slack_bot import start_slack_bot, stop_slack_bot
-    try:
-        await start_slack_bot()
-    except Exception:
-        _startup_logger.warning("Slack bot failed to start — channel disabled", exc_info=True)
-
-    # Start Discord bot if configured
-    from app.channels.discord_bot import start_discord_bot, stop_discord_bot
-    try:
-        await start_discord_bot()
-    except Exception:
-        _startup_logger.warning("Discord bot failed to start — channel disabled", exc_info=True)
-
-    # Load WhatsApp linked users
-    from app.channels.whatsapp import load_linked_whatsapp_users
-    try:
-        await load_linked_whatsapp_users()
-    except Exception:
-        _startup_logger.warning("WhatsApp linked users failed to load", exc_info=True)
-
-    # Resume WhatsApp Web (neonize) sessions that were active before restart.
-    # Non-blocking: if neonize isn't installed or fails to init, the channel
-    # is simply disabled — the Meta Cloud channel and other channels keep working.
-    try:
-        from app.channels.whatsapp_web import load_existing_sessions
-        await load_existing_sessions()
-    except Exception:
-        _startup_logger.warning("WhatsApp Web sessions failed to resume", exc_info=True)
-
-    # Start scheduled tasks
-    from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
-    try:
-        await load_and_schedule_tasks()
-    except Exception:
-        _startup_logger.warning("Scheduler failed to load tasks", exc_info=True)
-
-    # Contrôle de réalité de la configuration (26/07/2026). Confronte ce qui
-    # est RÉELLEMENT configuré — instances LLM, outils bindés — aux tables du
-    # code. Ajouté après avoir découvert que get_context_window() renvoyait
-    # 8 192 tokens pour tous les modèles pendant des mois, sans une erreur.
-    try:
-        from app.services.config_reality import log_config_reality
-        await log_config_reality()
-    except Exception:
-        _startup_logger.debug("Contrôle de réalité ignoré", exc_info=True)
-
-    # Sonde des têtes de chaîne — elle EXERCE les services au lieu de vérifier
-    # qu'ils sont constructibles. Le contrôle ci-dessus était vert le 30 et le
-    # 31/07 pendant que `kimi-k3` rendait 400 à chaque appel et que SearchCans
-    # répondait « 200 OK » sans un résultat.
-    #
-    # Lancée en TÂCHE DE FOND : elle fait de vrais appels réseau (jusqu'à 40 s
-    # par tête). Le démarrage n'a pas à les attendre — un diagnostic qui
-    # retarde le service qu'il diagnostique se paie deux fois.
-    try:
-        import asyncio as _aio
-        from app.services.service_probe import log_service_probe
-        _aio.ensure_future(log_service_probe())
-    except Exception:
-        _startup_logger.debug("Sonde des têtes ignorée", exc_info=True)
-
-    # Start watchdog service
-    from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
-    try:
-        await load_and_schedule_watch_tasks()
-    except Exception:
-        _startup_logger.warning("Watchdog failed to start", exc_info=True)
-
-    # Ensure uploads directory exists
-    from app.routers.upload import UPLOADS_DIR
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Start headless browser (graceful no-op if playwright is not installed)
-    from app.services.browser_manager import get_browser_manager
-    try:
-        await get_browser_manager().start()
-    except Exception:
-        _startup_logger.warning("Browser manager failed to start — web browsing disabled", exc_info=True)
-
-    # Load external MCP servers (graceful: no crash if none configured or SDK absent)
-    from app.services.mcp_client import get_mcp_client_manager
-    try:
-        await get_mcp_client_manager().reload_all()
-    except Exception:
-        _startup_logger.warning("MCP client manager failed to load", exc_info=True)
-
-    # Chauffe du SLM — charge le modèle en RAM pour épargner un démarrage à
-    # froid à la première question. ⚠️ `warmup_slm` REND LA MAIN aussitôt : il
-    # ne fait que poser une tâche de fond. Le 08/08, il était attendu ici, son
-    # backoff brûlait 62 s sur un serveur local injoignable, et le healthcheck
-    # du compose (15 s + 3 × 30 s) déclarait le conteneur mort alors qu'Ely
-    # finissait par démarrer. Un confort optionnel ne prend pas le service en
-    # otage — ne pas remettre d'`await` ici.
-    from app.services.slm_warmup import warmup_slm
-    await warmup_slm()  # non bloquant par construction — voir le module
-
-    # Couche 2 PII NER (GLiNER ONNX int8) — chargée au boot UNIQUEMENT si
-    # PII_NER_ENABLED est posé (défaut off). Fail-open : tout échec laisse
-    # la couche 1 regex seule (comportement historique), avec un log
-    # explicite de la marche à suivre (export ONNX / rebuild).
-    from app.services.pii_ner import load_ner_engine as _load_ner, pii_ner_enabled as _pii_ner_on
-    if _pii_ner_on():
-        try:
-            import asyncio as _asyncio
-            await _asyncio.to_thread(_load_ner)
-        except Exception:
-            _startup_logger.warning(
-                "PII NER layer failed to load — couche 2 désactivée, couche 1 regex intacte",
-                exc_info=True,
-            )
-
-    # Load approved community skills into the skill registry
-    from app.services.marketplace import get_marketplace_service
-    try:
-        await get_marketplace_service().load_approved_skills()
-    except Exception:
-        _startup_logger.warning("Community skills failed to load", exc_info=True)
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Planificateurs de maintenance — fabriques testables
+#
+# ⚠️ CE QUE ÇA CORRIGE (audit 02/09) : ces deux planificateurs étaient
+# construits `AsyncIOScheduler()` nu, au milieu du `lifespan`. Deux défauts.
+#
+#  1. Les garde-fous manquaient. `services/scheduler._job_defaults()` prétend
+#     les poser « pour couvrir AUSSI les jobs enregistrés ailleurs » : c'est
+#     faux, un `job_defaults` appartient à SON instance de planificateur. Les
+#     crons de maintenance héritaient donc du `misfire_grace_time = 1 s`
+#     d'APScheduler.
+#
+#     Le mécanisme réel (vérifié en inspectant les deux planificateurs) : ils
+#     tournent sur le `MemoryJobStore` par défaut. Un redémarrage du conteneur
+#     ne peut donc PAS produire d'occurrence manquée — les jobs sont ré-ajoutés
+#     à neuf et leur `next_run_time` est recalculé à partir de maintenant. Ce
+#     qui rate une occurrence, c'est une boucle événementielle réveillée en
+#     retard : processus gelé, machine suspendue, boucle saturée. Passé une
+#     seconde de retard, APScheduler abandonnait l'occurrence — le sauvetage
+#     SQLite de 02:30 ne repassait qu'au lendemain. Il en restait une trace
+#     (`apscheduler.executors.default` journalise « Run time of job … was
+#     missed by … » en WARNING) : ce qui manquait n'est pas le log, c'est le
+#     RATTRAPAGE. Les deux autres garde-fous (`coalesce`, `max_instances = 1`)
+#     valaient déjà ça chez APScheduler 3.11 — seul
+#     `scheduler_misfire_grace_seconds` (1 h) change quelque chose.
+#  2. Rien n'était vérifiable sans démarrer toute l'application. Les fabriques
+#     ci-dessous rendent un planificateur GARNI mais PAS DÉMARRÉ : un test lit
+#     les jobs et leurs garde-fous sans toucher au réseau ni à la base.
+# ─────────────────────────────────────────────────────────────────────────────
+def _build_vault_scheduler():
+    """Crons vault / sécurité / indexation — construit, PAS démarré."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from app.services.scheduler import _job_defaults
 
     # Schedule vault auto-lock (every 5 minutes — locks idle vaults after AUTO_LOCK_MINUTES)
     from app.services.vault_service import get_vault_service
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
-    _vault_scheduler = AsyncIOScheduler()
+    _vault_scheduler = AsyncIOScheduler(job_defaults=_job_defaults())
     _vault_scheduler.add_job(
         get_vault_service().auto_lock_expired,
         trigger="interval",
@@ -329,19 +173,26 @@ async def lifespan(app: FastAPI):
         trigger="interval",
         hours=1,
         id="watched_folders_autoindex",
-        # Skip if a previous tick is still running (large folder = long scan)
-        max_instances=1,
-        coalesce=True,
+        # Le « ne pas superposer deux scans » (max_instances=1, coalesce) vient
+        # maintenant de _job_defaults() — inutile de le reposer ici.
     )
 
-    _vault_scheduler.start()
+    return _vault_scheduler
+
+
+def _build_memory_scheduler():
+    """Crons mémoire, sauvegardes et boucles d'apprentissage — PAS démarré."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from app.services.scheduler import _job_defaults
+
+    _startup_logger = _logging.getLogger("app.startup")
 
     # Schedule user memory consolidation — twice a day to keep the backlog
     # manageable (one run at 03:00 + a booster at 15:00). At ~80 new raw
     # facts per active day, a single 2000-cap run is more than enough but
     # the afternoon pass prevents long gaps if the nightly run fails.
     from app.services.memory_service import consolidate_all_users
-    _memory_scheduler = AsyncIOScheduler()
+    _memory_scheduler = AsyncIOScheduler(job_defaults=_job_defaults())
     _memory_scheduler.add_job(
         consolidate_all_users,
         trigger="cron",
@@ -526,6 +377,223 @@ async def lifespan(app: FastAPI):
         id="learned_skills_autocreate",
     )
 
+    # Mission heartbeat — ticks active missions periodically.
+    # See app/services/mission_heartbeat.py for the loop logic.
+    from app.services.mission_heartbeat import (
+        heartbeat_tick as _mission_heartbeat,
+        HEARTBEAT_INTERVAL_SECONDS as _hb_interval,
+    )
+    _memory_scheduler.add_job(
+        _mission_heartbeat,
+        trigger="interval",
+        seconds=_hb_interval,
+        id="mission_heartbeat",
+        # coalesce / max_instances=1 (« un seul battement à la fois ») sont
+        # désormais dans _job_defaults() — voir _build_memory_scheduler.
+    )
+    _startup_logger.info("[missions] heartbeat scheduled every %ds", _hb_interval)
+
+    return _memory_scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import logging as _logging
+    # Make sure INFO-level logs from app.* modules are visible (default
+    # uvicorn config leaves non-uvicorn loggers at WARNING). We need INFO
+    # for the ⏱ TIMING[...] diagnostic lines from the agent pipeline.
+    _logging.getLogger("app").setLevel(_logging.INFO)
+    _startup_logger = _logging.getLogger("app.startup")
+
+    # Install the in-memory log ring buffer so the `system_get_logs`
+    # tool can let the agent introspect its own runtime. Must be done
+    # BEFORE any other module logs anything we want captured.
+    from app.services.log_buffer import install_handler as _install_log_buffer
+    _install_log_buffer()
+
+    # Verrou mono-process (A-7, revue 2026-06-10) — AVANT init_db : deux
+    # process sur la même base = create_all/ALTER en race + HITL/registres
+    # split-brain. Échec de boot explicite plutôt que corruption silencieuse.
+    from app.services.singleton_guard import acquire_singleton_lock
+    acquire_singleton_lock()
+
+    # Register all built-in skills BEFORE the agent graph is built
+    from app.skills.builtin import register_all
+    register_all()
+
+    await init_db()
+
+    # B-4 (revue 2026-06-10) — Alembic : stampe la base sur la baseline au
+    # premier boot, applique les révisions postérieures ensuite. Toute
+    # évolution de schéma future passe par `alembic revision --autogenerate`
+    # au lieu d'allonger _safe_columns. Best-effort : un échec ne tue pas
+    # le boot.
+    from app.services.alembic_runner import ensure_migrations
+    await ensure_migrations()
+
+    # B-11 (revue 2026-06-10) — chiffre en une passe les secrets encore en
+    # clair (system_config is_secret + llm_instances.api_key). Idempotent.
+    # AVANT load_llm_settings_from_db pour que les lectures déchiffrent.
+    from app.services.system_config import migrate_plaintext_secrets
+    await migrate_plaintext_secrets()
+
+    # Load LLM provider/model/key overrides from DB into in-memory runtime
+    from app.services.llm_provider import load_llm_settings_from_db
+    await load_llm_settings_from_db()
+
+    # Load mono-agent toggle (admin: Paramètres → Routage)
+    from app.services.mono_agent import load_mono_agent_flag
+    await load_mono_agent_flag()
+
+    await get_memory_manager().init_collections()
+    await get_fts_store().init()
+    # Sprint 1 — Memory recall: messages_fts indexes the literal messages
+    # of every conversation for cross-session retrieval. Separate from
+    # memory_fts (which indexes extracted facts).
+    await get_messages_fts_store().init()
+    # Auto-indexer event hook (SQLAlchemy after_insert on Message)
+    from app.services.messages_fts_indexer import install_indexer as _install_msg_indexer
+    _install_msg_indexer()
+
+    # Init RAG knowledge collection
+    from app.services.rag_service import get_rag_service
+    await get_rag_service().init_collection()
+
+    # Start Telegram bot if configured
+    from app.channels.telegram_bot import start_telegram_bot, stop_telegram_bot
+    try:
+        await start_telegram_bot()
+    except Exception:
+        _startup_logger.warning("Telegram bot failed to start — channel disabled", exc_info=True)
+
+    # Start Slack bot if configured
+    from app.channels.slack_bot import start_slack_bot, stop_slack_bot
+    try:
+        await start_slack_bot()
+    except Exception:
+        _startup_logger.warning("Slack bot failed to start — channel disabled", exc_info=True)
+
+    # Start Discord bot if configured
+    from app.channels.discord_bot import start_discord_bot, stop_discord_bot
+    try:
+        await start_discord_bot()
+    except Exception:
+        _startup_logger.warning("Discord bot failed to start — channel disabled", exc_info=True)
+
+    # Load WhatsApp linked users
+    from app.channels.whatsapp import load_linked_whatsapp_users
+    try:
+        await load_linked_whatsapp_users()
+    except Exception:
+        _startup_logger.warning("WhatsApp linked users failed to load", exc_info=True)
+
+    # Resume WhatsApp Web (neonize) sessions that were active before restart.
+    # Non-blocking: if neonize isn't installed or fails to init, the channel
+    # is simply disabled — the Meta Cloud channel and other channels keep working.
+    try:
+        from app.channels.whatsapp_web import load_existing_sessions
+        await load_existing_sessions()
+    except Exception:
+        _startup_logger.warning("WhatsApp Web sessions failed to resume", exc_info=True)
+
+    # Start scheduled tasks
+    from app.services.scheduler import load_and_schedule_tasks, stop_scheduler
+    try:
+        await load_and_schedule_tasks()
+    except Exception:
+        _startup_logger.warning("Scheduler failed to load tasks", exc_info=True)
+
+    # Contrôle de réalité de la configuration (26/07/2026). Confronte ce qui
+    # est RÉELLEMENT configuré — instances LLM, outils bindés — aux tables du
+    # code. Ajouté après avoir découvert que get_context_window() renvoyait
+    # 8 192 tokens pour tous les modèles pendant des mois, sans une erreur.
+    try:
+        from app.services.config_reality import log_config_reality
+        await log_config_reality()
+    except Exception:
+        _startup_logger.debug("Contrôle de réalité ignoré", exc_info=True)
+
+    # Sonde des têtes de chaîne — elle EXERCE les services au lieu de vérifier
+    # qu'ils sont constructibles. Le contrôle ci-dessus était vert le 30 et le
+    # 31/07 pendant que `kimi-k3` rendait 400 à chaque appel et que SearchCans
+    # répondait « 200 OK » sans un résultat.
+    #
+    # Lancée en TÂCHE DE FOND : elle fait de vrais appels réseau (jusqu'à 40 s
+    # par tête). Le démarrage n'a pas à les attendre — un diagnostic qui
+    # retarde le service qu'il diagnostique se paie deux fois.
+    #
+    # ⚠️ (audit 02/09) `ensure_future` nu : la boucle ne garde qu'une référence
+    # FAIBLE sur la tâche, qui peut donc être ramassée EN VOL — la sonde qui a
+    # rattrapé deux pannes de fournisseur mourrait en silence, exception
+    # comprise. `spawn` la retient jusqu'à la fin et journalise son échec.
+    try:
+        from app.services.background_tasks import spawn
+        from app.services.service_probe import log_service_probe
+        spawn(log_service_probe(), label="startup.service_probe")
+    except Exception:
+        _startup_logger.debug("Sonde des têtes ignorée", exc_info=True)
+
+    # Start watchdog service
+    from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
+    try:
+        await load_and_schedule_watch_tasks()
+    except Exception:
+        _startup_logger.warning("Watchdog failed to start", exc_info=True)
+
+    # Ensure uploads directory exists
+    from app.routers.upload import UPLOADS_DIR
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Start headless browser (graceful no-op if playwright is not installed)
+    from app.services.browser_manager import get_browser_manager
+    try:
+        await get_browser_manager().start()
+    except Exception:
+        _startup_logger.warning("Browser manager failed to start — web browsing disabled", exc_info=True)
+
+    # Load external MCP servers (graceful: no crash if none configured or SDK absent)
+    from app.services.mcp_client import get_mcp_client_manager
+    try:
+        await get_mcp_client_manager().reload_all()
+    except Exception:
+        _startup_logger.warning("MCP client manager failed to load", exc_info=True)
+
+    # Chauffe du SLM — charge le modèle en RAM pour épargner un démarrage à
+    # froid à la première question. ⚠️ `warmup_slm` REND LA MAIN aussitôt : il
+    # ne fait que poser une tâche de fond. Le 08/08, il était attendu ici, son
+    # backoff brûlait 62 s sur un serveur local injoignable, et le healthcheck
+    # du compose (15 s + 3 × 30 s) déclarait le conteneur mort alors qu'Ely
+    # finissait par démarrer. Un confort optionnel ne prend pas le service en
+    # otage — ne pas remettre d'`await` ici.
+    from app.services.slm_warmup import warmup_slm
+    await warmup_slm()  # non bloquant par construction — voir le module
+
+    # Couche 2 PII NER (GLiNER ONNX int8) — chargée au boot UNIQUEMENT si
+    # PII_NER_ENABLED est posé (défaut off). Fail-open : tout échec laisse
+    # la couche 1 regex seule (comportement historique), avec un log
+    # explicite de la marche à suivre (export ONNX / rebuild).
+    from app.services.pii_ner import load_ner_engine as _load_ner, pii_ner_enabled as _pii_ner_on
+    if _pii_ner_on():
+        try:
+            import asyncio as _asyncio
+            await _asyncio.to_thread(_load_ner)
+        except Exception:
+            _startup_logger.warning(
+                "PII NER layer failed to load — couche 2 désactivée, couche 1 regex intacte",
+                exc_info=True,
+            )
+
+    # Load approved community skills into the skill registry
+    from app.services.marketplace import get_marketplace_service
+    try:
+        await get_marketplace_service().load_approved_skills()
+    except Exception:
+        _startup_logger.warning("Community skills failed to load", exc_info=True)
+
+
+    _vault_scheduler = _build_vault_scheduler()
+    _vault_scheduler.start()
+
     # Jalon 1 (portage Hermes) — seed the playbook library so it's never
     # cold (Hermes ships 89 SKILL.md ; Ely shipped zero). Idempotent +
     # best-effort : a passing playbook is reusable from day one.
@@ -540,22 +608,7 @@ async def lifespan(app: FastAPI):
     except Exception as _seed_exc:  # never block boot on seeding
         _startup_logger.warning("[skills] seed playbooks load failed: %s", _seed_exc)
 
-    # Mission heartbeat — ticks active missions periodically.
-    # See app/services/mission_heartbeat.py for the loop logic.
-    from app.services.mission_heartbeat import (
-        heartbeat_tick as _mission_heartbeat,
-        HEARTBEAT_INTERVAL_SECONDS as _hb_interval,
-    )
-    _memory_scheduler.add_job(
-        _mission_heartbeat,
-        trigger="interval",
-        seconds=_hb_interval,
-        id="mission_heartbeat",
-        coalesce=True,        # if missed beats, only run once
-        max_instances=1,      # never run two beats concurrently
-    )
-    _startup_logger.info("[missions] heartbeat scheduled every %ds", _hb_interval)
-
+    _memory_scheduler = _build_memory_scheduler()
     _memory_scheduler.start()
 
     # MCP server (J2): the Streamable-HTTP session manager must run while the
