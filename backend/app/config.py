@@ -134,6 +134,29 @@ class Settings(BaseSettings):
     long_tool_handoff_enabled: bool = True
     long_tool_soft_deadline_s: float = 90.0
 
+    # Plafond QUOTIDIEN de dépense d'escalade, par utilisateur, en dollars.
+    #
+    # ⚠️ CE QUE ÇA CORRIGE (audit 02/09/2026) : sur 30 jours de production,
+    # `escalation:panel` pèse 68 appels pour 1,29 $ — le PREMIER poste de coût
+    # du produit, devant tout le reste (la conformité coûte 0 $, elle tourne au
+    # forfait ; l'extraction mémoire 0,23 $). Le déclencheur (stagnation
+    # mesurée) et le plafond PAR DEMANDE (`escalation.METERED_BUDGET_USD`)
+    # étaient déjà bons ; rien ne bornait le CUMUL. Soixante-huit escalades
+    # dans le mois, ou dix dans la même journée, passaient chacune sous le
+    # plafond par demande et personne ne voyait la somme.
+    #
+    # 0,25 $ : la dépense mesurée vaut 0,043 $ par jour en moyenne (1,29 $ /
+    # 30 j) et un appel de panel 0,019 $ — le plafond laisse donc passer
+    # environ trois escalades complètes dans la même journée, soit six fois
+    # l'usage constaté. Il ne gêne pas une journée normale et borne un
+    # emballement à ~7 $ par mois au lieu de rien du tout. Seules les lignes
+    # d'escalade sont comptées et la vérification a lieu AVANT de payer : la
+    # première escalade d'une journée passe toujours.
+    #
+    # 0 (ou négatif) désactive le plafond. Surcharge :
+    # ESCALATION_DAILY_BUDGET_USD.
+    escalation_daily_budget_usd: float = 0.25
+
     # Auth
     jwt_secret_key: str = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
     jwt_algorithm: str = "HS256"

@@ -77,12 +77,22 @@ Budget — décision de Franck
 ----------------------------
     « Si le modèle est de type forfait (GPT 5.6), pas de plafond et si c'est
       via API, on établira un plafond par demande et qu'Ely me le dise. »
+
+⚠️ Le plafond par demande ne bornait pas le CUMUL (audit 02/09/2026)
+---------------------------------------------------------------------
+Mesuré sur 30 jours : ``escalation:panel`` = 68 appels pour 1,29 $, PREMIER
+poste de coût du produit. Chacune de ces escalades tenait sous
+``METERED_BUDGET_USD`` — c'est leur somme qui n'avait aucune borne. Un plafond
+QUOTIDIEN par utilisateur s'ajoute donc au plafond par demande, lu dans ce que
+le produit mesure déjà (``usage_logs``, lignes ``escalation:*``) plutôt que
+dans un compteur parallèle qui divergerait au premier redémarrage.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from langchain_core.messages import HumanMessage
 
@@ -190,6 +200,71 @@ def is_flat_rate(model: str) -> bool:
         logger.debug("escalade : tarifs illisibles (%s)", exc)
         return False
     return price is not None and price[0] == 0.0 and price[1] == 0.0
+
+
+async def get_today_escalation_spend_usd(user_id: str) -> float:
+    """Ce que les escalades de CE user ont coûté depuis minuit UTC.
+
+    On relit la vérité qui existe : ``usage_logs.cost_usd``, filtré sur les
+    lignes que ``_consigner`` écrit déjà (``escalation:panel`` et
+    ``escalation:juge``). Ouvrir un compteur dédié donnerait deux chiffres pour
+    un seul montant, et celui qui vit en mémoire repart à zéro à chaque
+    redémarrage — c'est-à-dire exactement quand on aurait besoin de lui.
+
+    Le reste du tour n'est pas compté : un tour d'agent ordinaire n'a pas à
+    fermer la porte du panel.
+
+    ⚠️ Ne rattrape PAS ses erreurs — c'est l'appelant qui décide de laisser
+    passer (cf. ``_daily_cap_reached``).
+    """
+    from sqlalchemy import func, select
+
+    from app.database import async_session
+    from app.models.usage_log import UsageLog
+
+    minuit = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    async with async_session() as db:
+        row = await db.execute(
+            select(func.coalesce(func.sum(UsageLog.cost_usd), 0.0)).where(
+                UsageLog.user_id == user_id,
+                UsageLog.timestamp >= minuit,
+                UsageLog.skill_used.like("escalation:%"),
+            )
+        )
+        return float(row.scalar_one() or 0.0)
+
+
+async def _daily_cap_reached(user_id: str) -> bool:
+    """Le plafond quotidien mord-il pour ce user ?
+
+    **Échouer OUVERT**, comme tout ce fichier : sans ``user_id`` (canal sans
+    utilisateur identifié) ou si la base ne répond pas, on laisse passer. Le
+    plafond est un garde-fou de coût, pas une barrière de sécurité — le priver
+    d'une escalade pour une panne de lecture coûterait la qualité sans rien
+    économiser.
+    """
+    from app.config import get_settings
+
+    plafond = float(get_settings().escalation_daily_budget_usd or 0.0)
+    if plafond <= 0 or not user_id:
+        return False
+    try:
+        depense = await get_today_escalation_spend_usd(user_id)
+    except Exception as exc:  # noqa: BLE001 — une panne de lecture ne refuse pas
+        logger.warning("escalade : budget du jour illisible (%s) — on laisse passer", exc)
+        return False
+    if depense < plafond:
+        return False
+    # Une garde silencieuse est une garde qu'on croit cassée : quand l'escalade
+    # disparaît, le journal doit dire pourquoi et avec quel montant.
+    logger.info(
+        "escalade : plafond quotidien atteint — %.4f $ déjà dépensés "
+        "aujourd'hui sur %.2f $ autorisés ; pas de panel",
+        depense, plafond,
+    )
+    return True
 
 
 def _panel_members(size: int = MAX_PANEL_SIZE) -> list[tuple[str, object]]:
@@ -396,6 +471,7 @@ async def escalate_to_panel(
         return None
 
     retenus, ecartes, cout = [], [], 0.0
+    factures = 0
     for instance_id, llm in members:
         name = _model_name(llm, instance_id)
         if is_flat_rate(name):
@@ -407,12 +483,31 @@ async def escalate_to_panel(
             ecartes.append(name)
             continue
         cout += estime
+        factures += 1
         retenus.append((name, llm))
+
+    # Le plafond CUMULÉ, en plus du plafond par demande — et seulement si
+    # quelque chose se paie. Un panel entièrement au forfait ne coûte rien : le
+    # soumettre à un plafond en dollars interdirait une escalade GRATUITE, donc
+    # retirerait de la qualité sans rien économiser. Le juge sort du même
+    # ``retenus``, il ne peut pas être facturé quand aucun membre ne l'est.
+    #
+    # ⚠️ 02/09/2026 : la première version RENDAIT None dès qu'UN membre se
+    # payait — elle emportait les membres au forfait avec lui, c'est-à-dire
+    # exactement l'escalade gratuite que le paragraphe ci-dessus refuse
+    # d'interdire. On fait donc comme le plafond PAR DEMANDE juste au-dessus :
+    # on ÉCARTE ce qui se paie, on remet le coût estimé à zéro, et la garde
+    # « moins de deux modèles » plus bas tranche sur ce qui reste.
+    if factures and await _daily_cap_reached(user_id):
+        ecartes.extend(name for name, _ in retenus if not is_flat_rate(name))
+        retenus = [couple for couple in retenus if is_flat_rate(couple[0])]
+        cout = 0.0
 
     if len(retenus) < 2:
         logger.info(
-            "escalade : plafond de %.2f $ atteint — %d modèle(s) retenu(s), pas de panel",
-            METERED_BUDGET_USD, len(retenus),
+            "escalade : plafonds appliqués — %d modèle(s) retenu(s), "
+            "%d écarté(s) ; pas de panel",
+            len(retenus), len(ecartes),
         )
         return None
 
@@ -533,6 +628,7 @@ __all__ = [
     "METERED_BUDGET_USD",
     "PanelResult",
     "escalate_to_panel",
+    "get_today_escalation_spend_usd",
     "is_flat_rate",
     "should_escalate",
 ]
