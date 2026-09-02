@@ -303,6 +303,41 @@ def _split_on_content_budget(playbooks: list) -> tuple[list, list]:
     return detailed, listed_only
 
 
+def playbook_names_in_block(block: str) -> list[str]:
+    """Les playbooks dont la PROCÉDURE a été écrite dans ce bloc injecté.
+
+    Lit le texte que le modèle a eu SOUS LES YEUX — le snapshot mémoire figé
+    d'une conversation le conserve — plutôt que de rejouer la sélection.
+
+    Ajoutée le 02/09/2026 pour ``playbook_usage``, et la reconstruction
+    qu'elle remplace n'était pas seulement plus chère : la sélection est
+    ordonnée par ``use_count``, que ce compteur écrit. Une procédure sous la
+    coupe n'était jamais livrée en entier, donc jamais comptée, donc jamais
+    remontée — un zéro fabriqué, que le curateur finissait par archiver.
+
+    Deux catégories sont hors de ce que rend cette fonction, par construction
+    du bloc et non par filtrage : un ``python_tool`` n'y est que NOMMÉ (il est
+    bindé, jamais récité), et une procédure hors budget de contenu n'y laisse
+    que son titre en puce. Ni l'une ni l'autre n'a livré de marche à suivre.
+
+    Vit ici, à côté de ``_skill_with_content`` qui écrit ces titres : le jour
+    où le format change, les deux se corrigent d'un seul regard.
+    """
+    corps = (block or "").split("<learned_skills>", 1)
+    if len(corps) < 2:
+        return []
+    noms: list[str] = []
+    for ligne in corps[1].split("</learned_skills>", 1)[0].splitlines():
+        if not ligne.startswith("### "):
+            continue
+        titre = ligne[4:].split(" — ", 1)[0].strip()
+        if titre.endswith("(nouveau)"):
+            titre = titre[: -len("(nouveau)")].strip()
+        if titre:
+            noms.append(titre)
+    return noms
+
+
 def _skill_with_content(s, now: datetime) -> str:
     """Un playbook rendu ENTIER : son titre, puis sa procédure.
 

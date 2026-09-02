@@ -66,11 +66,17 @@ from __future__ import annotations
 
 import json
 import logging
+import unicodedata
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agent.helpers.message_content import content_to_text
-from app.models.learned_skill import LearnedSkill, SkillSource, SkillStatus
+from app.models.learned_skill import (
+    LearnedSkill,
+    SkillContentFormat,
+    SkillSource,
+    SkillStatus,
+)
 from app.services.llm_deadline import ainvoke_with_deadline
 
 logger = logging.getLogger(__name__)
@@ -94,7 +100,9 @@ CE QUI A FINALEMENT FONCTIONNÉ :
 
 Outils réellement appelés : {outils}
 
-Écris un playbook réutilisable, au format exact ci-dessous et RIEN d'autre :
+Écris un playbook réutilisable, au format exact ci-dessous et RIEN d'autre. \
+Les CINQ rubriques sont obligatoires : un document qui en oublie une part à la \
+validation humaine marqué comme incomplet.
 
 ---
 name: <identifiant-en-kebab-case, 3 à 6 mots>
@@ -102,27 +110,93 @@ description: <une phrase : à quoi sert cette procédure>
 ---
 
 ## Quand l'appliquer
-<les conditions de déclenchement, concrètes. Dis aussi quand NE PAS l'appliquer.>
+<les conditions de déclenchement, concrètes>
+
+## Ne pas appliquer quand
+<les cas voisins où cette procédure ferait du dégât ou perdrait du temps>
 
 ## Procédure
 1. <étape, en nommant les outils exacts et leurs paramètres décisifs>
 2. <…>
 
-## Vérifier
-<comment savoir que le résultat est bon — de préférence une mesure>
+## Pièges
+<ce qui t'a fait trébucher cette fois-ci, et comment on le repère>
+
+## Terminé quand
+<le critère qui dit que c'est fini — de préférence une mesure>
 
 Règles :
 - Écris pour un modèle qui exécutera, pas pour un humain qui lira.
 - La leçon est dans la CORRECTION, pas dans la tâche : sans elle, tu écrirais \
 « fais le travail », ce qui ne vaut rien.
 - N'invente aucun outil ni paramètre qui n'apparaît pas ci-dessus.
-- Reste sous 25 lignes.
+- Reste sous 30 lignes.
 """
+
+# Les cinq choses que le produit promet à qui relit une procédure : quand
+# l'employer, quand s'abstenir, les étapes, les pièges, et le critère de fin.
+#
+# ⚠️ Pourquoi c'est CONTRÔLÉ et pas seulement demandé (02/09/2026) :
+# ``parse_playbook_response`` ne valide que le frontmatter (name +
+# description). Un document réduit à « ## Procédure — fais le travail »
+# entrait donc au catalogue avec la même apparence qu'une vraie procédure.
+# Personne ne le promouvait, et il finissait périmé — une des fabriques des
+# 43 compétences périmées sur 98.
+#
+# Le contrôle AVERTIT, il ne jette pas : voir ``draft_skill_from_success``.
+# L'appel de modèle est déjà payé quand on le lit, et l'humain qui valide est
+# mieux placé qu'une liste de titres pour dire si le document vaut quelque
+# chose — à condition qu'on lui dise ce qui manque.
+REQUIRED_SECTIONS = (
+    "Quand l'appliquer",
+    "Ne pas appliquer quand",
+    "Procédure",
+    "Pièges",
+    "Terminé quand",
+)
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Le déclencheur
 # ──────────────────────────────────────────────────────────────────────
+
+
+def _sans_ornement(texte: str) -> str:
+    """Minuscules, sans accent, apostrophe droite — pour comparer des titres.
+
+    Un modèle qui écrit « ## PROCEDURE » ou « ## Termine quand » a bien écrit
+    la rubrique : recaler son document là-dessus serait de la pédanterie
+    d'encodage, et on jetterait des procédures valides.
+    """
+    plie = unicodedata.normalize("NFKD", (texte or "").lower().replace("’", "'"))
+    return "".join(c for c in plie if not unicodedata.combining(c))
+
+
+def playbook_section_titles(body: str) -> list[str]:
+    """Les titres de rubrique du document, TELS QU'ÉCRITS.
+
+    Sert à dire ce qu'on a lu quand il manque une rubrique : « il manque
+    Pièges » sans montrer les titres reçus ne permet pas de distinguer une
+    dérive de formulation d'un document réellement amputé.
+    """
+    return [
+        ligne.lstrip("#").strip()
+        for ligne in (body or "").splitlines()
+        if ligne.lstrip().startswith("#")
+    ]
+
+
+def missing_playbook_sections(body: str) -> list[str]:
+    """Les rubriques obligatoires que ce document ne porte pas.
+
+    On lit les LIGNES DE TITRE, pas le corps : « je n'ai pas trouvé de piège »
+    au milieu d'un paragraphe ne vaut pas une rubrique « Pièges ».
+    """
+    titres = [_sans_ornement(t) for t in playbook_section_titles(body)]
+    return [
+        rubrique for rubrique in REQUIRED_SECTIONS
+        if not any(_sans_ornement(rubrique) in titre for titre in titres)
+    ]
 
 
 def should_propose_skill_from_success(*, conforme: bool, retries: int) -> bool:
@@ -246,6 +320,37 @@ async def draft_skill_from_success(user_id: str, messages: list) -> LearnedSkill
         logger.info("skill_from_success : réponse non exploitable, rien enregistré")
         return None
 
+    # Une rubrique manquante AVERTIT, elle ne jette plus (02/09/2026).
+    #
+    # La version précédente refusait tout le document. Or l'appel de modèle a
+    # DÉJÀ été passé et facturé : une simple dérive de formulation (« ## Écueils »
+    # au lieu de « ## Pièges ») brûlait un appel par tour sans jamais produire
+    # de candidat, et aucune surface ne le montrait — une porte muette est plus
+    # coûteuse que le demi-document qu'elle prétend écarter.
+    #
+    # La vraie porte est ailleurs et n'a pas bougé : le document sort en
+    # CANDIDATE, un humain le lit avant qu'il n'entre au catalogue. On lui dit
+    # donc ce qui manque, dans la raison qu'il a sous les yeux — pas seulement
+    # dans un journal.
+    manquantes = missing_playbook_sections(parsed["body"])
+    raison = (
+        "Tirée d'un succès vérifié : la demande n'était pas satisfaite au "
+        "premier essai, et la reprise a fonctionné. La procédure décrit ce "
+        "qui a comblé l'écart."
+    )
+    if manquantes:
+        titres = playbook_section_titles(parsed["body"])
+        logger.warning(
+            "skill_from_success : rubriques manquantes (%s) — proposé quand "
+            "même. Titres lus : %s",
+            ", ".join(manquantes), " | ".join(titres) or "aucun",
+        )
+        raison += (
+            " ⚠️ Document incomplet : il manque " + ", ".join(manquantes)
+            + ". Rubriques réellement écrites : "
+            + (", ".join(titres) if titres else "aucune") + "."
+        )
+
     return LearnedSkill(
         user_id=user_id,
         name=parsed["name"],
@@ -254,17 +359,20 @@ async def draft_skill_from_success(user_id: str, messages: list) -> LearnedSkill
         frontmatter_json=json.dumps(parsed["frontmatter"], ensure_ascii=False),
         status=SkillStatus.CANDIDATE,
         source=SkillSource.AUTO_GENERATED,
+        # Déclaré, jamais laissé au DEFAULT de la colonne : la voie document
+        # produit du Markdown, jamais du code, et ça doit se lire sur la ligne
+        # avant même qu'elle touche la base.
+        content_format=SkillContentFormat.MARKDOWN_PLAYBOOK,
         iteration_count=1,
-        rationale=(
-            "Tirée d'un succès vérifié : la demande n'était pas satisfaite au "
-            "premier essai, et la reprise a fonctionné. La procédure décrit ce "
-            "qui a comblé l'écart."
-        ),
+        rationale=raison,
     )
 
 
 __all__ = [
+    "REQUIRED_SECTIONS",
     "build_success_skill_prompt",
     "draft_skill_from_success",
+    "missing_playbook_sections",
+    "playbook_section_titles",
     "should_propose_skill_from_success",
 ]
