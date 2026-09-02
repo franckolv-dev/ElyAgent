@@ -788,6 +788,17 @@ export const api = {
     fetchAPI(`/api/me/reversible-actions/${id}/undo`, { method: "POST" }) as Promise<{
       ok: boolean; capability_id: string | null; verified: boolean | null;
     }>,
+
+  // ── Transparence (audit 02/09/2026) ─────────────────────────────────────
+  /** Le contrat visible : ce qu'Ely a le droit de faire, pour cet utilisateur. */
+  transparencyContract: () =>
+    fetchAPI("/api/me/transparency/contract") as Promise<TransparencyContract>,
+
+  /** Le registre de sortie. `days` est plafonné côté backend (92) : au-delà,
+   *  la page cesserait de répondre à « aujourd'hui » et redeviendrait de
+   *  l'analytique sur une table qui ne fait que grossir. */
+  transparencyEgress: (days: number) =>
+    fetchAPI(`/api/me/transparency/egress?days=${days}`) as Promise<TransparencyEgress>,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1199,4 +1210,159 @@ export interface Patch {
   critic_model: string | null;
   applied_at: string | null;
   created_at: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Transparence — le contrat visible + le registre de sortie (audit 02/09/2026)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Régime d'approbation d'un outil. TROIS valeurs et non un booléen : la
+ *  différence entre « toujours » et « selon les arguments » EST le contrat.
+ *
+ *  ⚠️ RÉALIGNÉ LE 02/09/2026. Ce régime vient désormais du MANIFESTE de
+ *  capacité — la source que la passerelle consulte réellement — et non plus
+ *  d'une liste voisine qui disait la même chose autrement. `waived` a
+ *  disparu (une dispense n'est pas un régime : elle se lit dans
+ *  `waiver_reason`), `never` est apparu. Mesuré : les deux dérivations
+ *  divergeaient sur 23 outils. */
+export type ApprovalRegime = "always" | "risk_based" | "never";
+
+/** Ce que l'utilisateur a écrit lui-même dans ses préférences HITL. */
+export type UserHitlPreference = "waived" | "rearmed";
+
+export interface ContractTool {
+  name: string;
+  /** LECTURE | ECRITURE | ENGAGEANT */
+  effect: string;
+  /** L'outil tranche-t-il des choix de forme à la place de l'utilisateur ? */
+  arbitrates: boolean;
+  approval: ApprovalRegime;
+  /** La dispense que la PASSERELLE exécute, quand il y en a une : elle
+   *  s'ajoute au régime au lieu de le remplacer. */
+  waiver_reason: string | null;
+  /** La dispense dépend-elle des arguments de l'appel — un mail adressé à
+   *  sa propre adresse, par exemple — plutôt que d'être inconditionnelle ? */
+  waiver_conditional: boolean;
+  /** False pour les passe-plats `*_raw_api_call` : aucun clic ne les dispense. */
+  waivable: boolean;
+  /** Une compensation RÉELLEMENT exécutable existe. */
+  revertible: boolean;
+  compensation: string | null;
+  user_preference: UserHitlPreference | null;
+  /** False = la préférence est en base mais la résolution l'ignore. */
+  user_preference_effective: boolean;
+}
+
+export interface ContractFamily {
+  family: string;
+  tools: number;
+  by_effect: Record<string, number>;
+  approval_always: number;
+  items: ContractTool[];
+}
+
+export interface ContractMandate {
+  mission_id: string;
+  title: string;
+  status: string;
+  autonomy_state: string | null;
+  unreadable: boolean;
+  autonomy: string | null;
+  on_unforeseen: string | null;
+  llm_tier: string | null;
+  tools_allow: string[];
+  budgets: Record<string, number>;
+}
+
+export interface TransparencyContract {
+  generated_at: string;
+  summary: {
+    tools: number;
+    by_effect: Record<string, number>;
+    approval_always: number;
+    approval_risk_based: number;
+    approval_never: number;
+    approval_waived_by_instance: number;
+    arbitrating: number;
+    revertible: number;
+    /** ⚠️ Le compte ci-dessus dit ce qui est OUTILLÉ, pas ce qui est
+     *  enregistré : drapeau éteint, rien n'entre au journal et rien n'est
+     *  réellement annulable. La page doit le dire. */
+    revertible_journal_enabled: boolean;
+    never_waivable: number;
+    waived_by_user: number;
+    rearmed_by_user: number;
+    /** Dispenses écrites en base que la résolution neutralise. */
+    neutralized_user_waivers: string[];
+    /** Doit rester vide — ce qu'elle porterait serait une régression. */
+    unguarded_engaging: string[];
+  };
+  instance_waivers: { tool: string; reason: string; conditional: boolean }[];
+  families: ContractFamily[];
+  mandates: ContractMandate[];
+}
+
+/** local = servi par la machine ; unknown = le journal ne sait pas dire.
+ *  Ranger `unknown` en local flatterait le chiffre qu'on mesure. */
+export type EgressKind = "local" | "cloud" | "unknown";
+
+export interface EgressDay {
+  day: string;
+  local: number;
+  cloud: number;
+  unknown: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface EgressDestination {
+  provider: string;
+  kind: EgressKind;
+  models: string[];
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface TransparencyEgress {
+  window_days: number;
+  max_window_days: number;
+  since: string;
+  totals: {
+    calls: number;
+    local_calls: number;
+    cloud_calls: number;
+    unknown_calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+  };
+  by_day: EgressDay[];
+  destinations: EgressDestination[];
+  purposes: { skill: string | null; calls: number; input_tokens: number }[];
+  channels: { channel: string; calls: number }[];
+  composition: {
+    /** Sur combien d'appels porte la ventilation — un pourcentage tiré de
+     *  trois tours ne doit pas passer pour la vérité de la fenêtre. */
+    sampled_calls: number;
+    sample_cap: number;
+    categories: { key: string; tokens: number; share: number }[];
+  };
+  /** Le plafond de la liste des usages : elle est tronquée, et le dire est
+   *  la même discipline que `sample_cap` juste au-dessus. */
+  purposes_cap: number;
+  masking: {
+    /** Les chemins où un masquage se lit à la frontière du modèle. */
+    applied_on: { path: string; what: string }[];
+    /** ⚠️ Ceux qui envoient du texte BRUT. Une page de transparence dit
+     *  « ici » et « pas là » ; un booléen à `true` codé en dur disait
+     *  « partout », et c'était faux (relecture du 02/09/2026). */
+    not_applied_on: { path: string; what: string }[];
+    regex_categories: string[];
+    ner_enabled: boolean;
+    /** TOUJOURS false : rien en base ne dit qu'une valeur a été remplacée
+     *  pendant CE tour. La page l'annonce au lieu de l'inventer. */
+    substitutions_measured: boolean;
+  };
 }

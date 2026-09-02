@@ -19,7 +19,7 @@
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck,
   Clock, Search, BookOpen, Target, Brain, Compass,
-  Sparkles, ClipboardCheck, Stethoscope, Undo2, BrainCircuit, Swords,
+  Sparkles, ClipboardCheck, Stethoscope, Undo2, BrainCircuit, Swords, Eye,
   type LucideIcon,
 } from "lucide-react";
 
@@ -66,6 +66,13 @@ export const NAV: NavEntry[] = [
       { href: "/me/state",  labelKey: "navUserState",  icon: Compass },
       { href: "/me/memories", labelKey: "navMemories", icon: BrainCircuit },
       { href: "/me/reversible-actions", labelKey: "navReversibleActions", icon: Undo2 },
+      // Contrat visible + registre de sortie (02/09/2026). HORS du groupe
+      // ADMINISTRATEUR, et c'est le point : `routers/transparency.py` ne
+      // demande qu'un utilisateur connecte, tout y est scope a l'appelant, et
+      // c'est A LUI que la question s'adresse — « qu'est-ce qu'Ely a le droit
+      // de faire POUR MOI ». Sous Admin, la reponse serait injoignable par
+      // celui qui la pose.
+      { href: "/transparence", labelKey: "navTransparency", icon: Eye },
       { href: "/arena",     labelKey: "navArena",     icon: Swords },
     ],
   },

@@ -729,6 +729,11 @@ from app.routers import reversible_actions as _reversible_actions_router
 app.include_router(_reversible_actions_router.router, tags=["trust"])
 # (J4) métriques du journal — /admin/reversible-actions/stats (admin only)
 app.include_router(_reversible_actions_router.admin_router, tags=["trust"])
+# Audit 02/09/2026 — le contrat visible et le registre de sortie :
+# /api/me/transparency/contract + /api/me/transparency/egress. Deux garanties
+# qu'Ely appliquait déjà sans que personne puisse les VOIR.
+from app.routers import transparency as _transparency_router
+app.include_router(_transparency_router.router, tags=["trust"])
 app.include_router(mcp_router.router, prefix="/admin", tags=["mcp"])
 # Client MCP v2 / J2 — OAuth 2.1 par utilisateur : « Se connecter » + callback.
 # Sous /api (per-user, callback joignable sans auth admin, borné par state).
