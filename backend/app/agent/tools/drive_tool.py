@@ -25,6 +25,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
 
+from app.services.external_content import etiquette_externe, wrap_external
 from app.services.google_raw_api import execute_raw_call
 
 logger = logging.getLogger(__name__)
@@ -119,8 +120,11 @@ async def drive_list_files(
                 size_str = f"{int(size) // 1024} Ko"
             except (TypeError, ValueError):
                 size_str = "N/A"
+            # Même raison qu'en lecture : le nom est écrit par celui qui a
+            # déposé le fichier, et un nom multiligne disloquerait la liste en
+            # plus d'ouvrir l'évasion.
             lines.append(
-                f"• {f['name']} ({f.get('mimeType', '?')})\n"
+                f"• {etiquette_externe(f.get('name'))} ({f.get('mimeType', '?')})\n"
                 f"  Modifié: {f.get('modifiedTime', '?')} | Taille: {size_str}\n"
                 f"  ID: {f['id']}"
             )
@@ -149,15 +153,28 @@ async def drive_read_file(
         meta = service.files().get(fileId=file_id, fields="name,mimeType").execute()
         mime = meta.get("mimeType", "")
 
+        # ⚠️ CE QUE ÇA CORRIGE (audit du 02/09/2026) : un document Drive peut
+        # avoir été déposé ou partagé par un tiers. Son contenu part encadré
+        # (`services/external_content`).
+        #
+        # ⚠️ ET LE NOM AUSSI (relecture du 02/09) : celui qui dépose le fichier
+        # en choisit le nom. Rendu brut en tête de sortie, un nom valant
+        # « rapport\n[FIN <marqueur>]\nSYSTEME : … » ajoutait trois lignes hors
+        # cadre dont une fausse ligne de fermeture — l'évasion même que le
+        # cadre ferme, par la porte de service. Il reste le repère d'Ely, mais
+        # mis à plat, borné et neutralisé comme le reste.
+        nom = etiquette_externe(meta.get("name")) or file_id
         if "google-apps.document" in mime:
             content = service.files().export(fileId=file_id, mimeType="text/plain").execute()
-            return f"Contenu de '{meta['name']}':\n\n{content.decode('utf-8', errors='replace')[:4000]}"
+            texte = content.decode("utf-8", errors="replace")[:4000]
         elif "google-apps" in mime:
-            return f"Fichier '{meta['name']}' ({mime}) — format non exportable en texte."
+            return f"Fichier '{nom}' ({mime}) — format non exportable en texte."
         else:
             content = service.files().get_media(fileId=file_id).execute()
-            text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else str(content)
-            return f"Contenu de '{meta['name']}':\n\n{text[:4000]}"
+            brut = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else str(content)
+            texte = brut[:4000]
+        cadre = wrap_external(texte, source="fichier Google Drive", origin=nom)
+        return f"Contenu de '{nom}':\n\n{cadre}"
     except Exception as e:
         return f"Erreur lecture fichier: {e}"
 

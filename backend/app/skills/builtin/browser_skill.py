@@ -42,6 +42,11 @@ Content extraction strategy
   article → main → [role="main"] → .content → #content → body
 Scripts, styles, nav, footer, ads and sidebars are stripped before
 returning text.  Content is capped at 5 000 characters.
+
+Le texte rendu par ``browser_navigate`` et ``browser_get_text`` est du
+contenu TIERS : il part encadré (``services/external_content``), comme celui
+de ``web_extract``. Le titre et l'URL courante viennent de la page eux aussi
+et passent par ``etiquette_externe``.
 """
 from __future__ import annotations
 
@@ -51,6 +56,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
 
+from app.services.external_content import etiquette_externe, wrap_external
 from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 
@@ -106,10 +112,23 @@ _EXTRACT_JS = """() => {
 }"""
 
 
-def _truncate(text: str, limit: int = 5000) -> str:
+def _truncate(text: str, limit: int = 5000, *, origin: str = "") -> str:
+    """Borne un texte de page et l'ENCADRE. Renvoie le cadre, note comprise.
+
+    ⚠️ CE QUE ÇA CORRIGE (relecture du 02/09/2026) : la surface « web » n'était
+    fermée qu'à moitié. `web_extract` encadrait son texte, mais
+    `browser_navigate` et `browser_get_text` — le MÊME Playwright, et la voie
+    DOCUMENTÉE pour « lire un article » — le rendaient nu. Un attaquant n'avait
+    qu'à faire choisir cet outil-là.
+
+    L'annonce de troncature, elle, reste HORS du cadre : elle vient d'Ely, et
+    une consigne d'Ely encadrée en « non fiable » serait ignorée par le modèle
+    au moment même où elle lui dit quoi faire.
+    """
+    cadre = wrap_external(text[:limit], source="page web", origin=origin or None)
     if len(text) <= limit:
-        return text
-    return text[:limit] + "\n\n[… contenu tronqué — utilise browser_get_text avec un sélecteur plus précis]"
+        return cadre
+    return cadre + "\n\n[… contenu tronqué — utilise browser_get_text avec un sélecteur plus précis]"
 
 
 # ------------------------------------------------------------------ #
@@ -149,10 +168,14 @@ async def browser_navigate(
         # Push a live screenshot to the frontend (fire-and-forget)
         await _push_browser_frame(page, user_id)
 
+        # Le titre est écrit par la page et l'URL courante est celle où la
+        # page a fini par emmener le navigateur (redirections comprises) :
+        # tiers tous les deux, donc mis à plat et neutralisés avant d'être
+        # rendus en tête, là où le modèle lit les repères d'Ely.
         return (
-            f"Page : {title}\n"
-            f"URL  : {current_url}\n\n"
-            + _truncate(content)
+            f"Page : {etiquette_externe(title)}\n"
+            f"URL  : {etiquette_externe(current_url)}\n\n"
+            + _truncate(content, origin=current_url)
         )
 
     except Exception as exc:
@@ -206,7 +229,7 @@ async def browser_get_text(
             return f"Aucun élément trouvé pour le sélecteur : {selector!r}"
 
         text = await element.inner_text()
-        return _truncate(text.strip(), limit=3000)
+        return _truncate(text.strip(), limit=3000, origin=page.url)
 
     except Exception as exc:
         logger.warning("browser_get_text error: %s", exc)

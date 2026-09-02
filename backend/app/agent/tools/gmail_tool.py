@@ -29,6 +29,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool, InjectedToolArg
 
+from app.services.external_content import etiquette_externe, wrap_external
 from app.services.google_raw_api import execute_raw_call
 
 logger = logging.getLogger(__name__)
@@ -249,13 +250,20 @@ async def gmail_list_emails(
             snippet = detail.get("snippet", "")[:100]
             emails.append(
                 f"ID: {msg['id']}\n"
-                f"De: {headers.get('From', 'Inconnu')}\n"
-                f"Sujet: {headers.get('Subject', 'Sans sujet')}\n"
-                f"Date: {headers.get('Date', '')}\n"
-                f"Aperçu: {snippet}"
+                f"De: {etiquette_externe(headers.get('From')) or 'Inconnu'}\n"
+                f"Sujet: {etiquette_externe(headers.get('Subject')) or 'Sans sujet'}\n"
+                f"Date: {etiquette_externe(headers.get('Date'))}\n"
+                f"Aperçu: {etiquette_externe(snippet)}"
             )
 
-        return f"{len(emails)} email(s) trouvé(s):\n\n" + "\n---\n".join(emails)
+        # ⚠️ CE QUE ÇA CORRIGE (relecture du 02/09/2026) : Sujets et aperçus
+        # sont écrits par les expéditeurs. UN cadre pour la liste entière, pas
+        # un bandeau par mail : jusqu'à 50 bandeaux noieraient la liste et
+        # coûteraient plus de tokens que les aperçus qu'ils protègent. Le
+        # compteur reste dehors, il est d'Ely.
+        return f"{len(emails)} email(s) trouvé(s):\n\n" + wrap_external(
+            "\n---\n".join(emails), source="liste d'emails reçus",
+        )
     except Exception as e:
         return f"Erreur Gmail: {e}"
 
@@ -282,12 +290,23 @@ async def gmail_read_email(
         payload = msg.get("payload", {})
         body = _extract_body(payload)
 
+        # ⚠️ CE QUE ÇA CORRIGE (audit du 02/09/2026) : le corps d'un mail est
+        # du contenu TIERS — n'importe qui peut écrire à l'utilisateur, et le
+        # mail piégé est la voie d'injection la plus banale. Il part encadré.
+        #
+        # ⚠️ ET LES EN-TÊTES AUSSI (relecture du 02/09) : De, Sujet et Date
+        # d'un mail REÇU sont écrits par l'expéditeur, pas par Ely. Ils
+        # restent hors du cadre — ce sont les repères pour retrouver le
+        # message — mais un Sujet multiligne y forgeait une fausse ligne de
+        # fermeture juste au-dessus du cadre. Même traitement que l'origine.
+        expediteur = etiquette_externe(headers.get("From")) or "Inconnu"
+        cadre = wrap_external(body[:3000], source="email reçu", origin=expediteur)
         return (
-            f"De: {headers.get('From', 'Inconnu')}\n"
-            f"À: {headers.get('To', '')}\n"
-            f"Sujet: {headers.get('Subject', 'Sans sujet')}\n"
-            f"Date: {headers.get('Date', '')}\n\n"
-            f"{body[:3000]}"
+            f"De: {expediteur}\n"
+            f"À: {etiquette_externe(headers.get('To'))}\n"
+            f"Sujet: {etiquette_externe(headers.get('Subject')) or 'Sans sujet'}\n"
+            f"Date: {etiquette_externe(headers.get('Date'))}\n\n"
+            f"{cadre}"
         )
     except Exception as e:
         return f"Erreur lecture email: {e}"
