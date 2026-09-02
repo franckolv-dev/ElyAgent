@@ -51,6 +51,9 @@ CRONS_ATTENDUS = {
         "watched_folders_autoindex",
     },
     "_build_memory_scheduler": {
+        # 02/09/2026 — l'extraction de faits est passée du fil du chat à une
+        # passe quotidienne (02:45, avant la consolidation de 03:00).
+        "memory_extraction_daily",
         "memory_consolidation_night",
         "memory_consolidation_afternoon",
         "qdrant_backup",

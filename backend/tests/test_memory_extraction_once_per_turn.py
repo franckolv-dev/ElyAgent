@@ -39,6 +39,21 @@ donc une, et sa réponse ne porte jamais de ``tool_calls`` par construction
 (l'appel se fait sans ``bind_tools``).
 
 Invariant visé, tous chemins confondus : **exactement une extraction par tour**.
+
+⚠️ CE QUI A CHANGÉ DEPUIS (02/09/2026)
+--------------------------------------
+Une extraction par tour, c'était encore trop cher : sur 30 jours glissants,
+l'extraction pesait 336 appels de modèle contre 208 demandes web réelles. Le
+chemin par tour est donc **débranché par défaut** et remplacé par une passe
+quotidienne qui groupe tout en un appel par utilisateur
+(``extract_new_facts_for_user``).
+
+Ce fichier n'est pas caduc pour autant : il pin désormais la **porte de
+sortie** ``MEMORY_EXTRACTION_PER_TURN=true``, qui rétablit le comportement
+décrit ci-dessus. Le drapeau est allumé par une fixture autouse — sans elle,
+les tests d'ordonnancement ne verraient plus rien partir, ce qui est
+justement le comportement pinné par
+``tests/test_extraction_memoire_par_lot.py``.
 """
 from __future__ import annotations
 
@@ -51,6 +66,12 @@ from app.services.memory_service import (
     maybe_spawn_fact_extraction,
     should_extract_facts,
 )
+
+
+@pytest.fixture(autouse=True)
+def _per_turn_extraction(monkeypatch):
+    """Rallume le chemin par tour : c'est lui que ce fichier décrit."""
+    monkeypatch.setenv("MEMORY_EXTRACTION_PER_TURN", "true")
 
 
 # ─────────────────────────────────────────────────────────────────────────

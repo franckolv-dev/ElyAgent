@@ -191,8 +191,23 @@ def _build_memory_scheduler():
     # manageable (one run at 03:00 + a booster at 15:00). At ~80 new raw
     # facts per active day, a single 2000-cap run is more than enough but
     # the afternoon pass prevents long gaps if the nightly run fails.
-    from app.services.memory_service import consolidate_all_users
+    from app.services.memory_service import (
+        consolidate_all_users,
+        extract_facts_for_all_users,
+    )
     _memory_scheduler = AsyncIOScheduler(job_defaults=_job_defaults())
+    # ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : l'extraction de faits partait à la
+    # FIN DE CHAQUE TOUR — 336 appels de modèle sur 30 jours, contre 208
+    # demandes web réelles. Elle est groupée : un appel par utilisateur et par
+    # jour, pour tout ce qui est nouveau. 02:45 parce que la consolidation de
+    # 03:00 doit lire les faits de cette passe — l'ordre compte.
+    _memory_scheduler.add_job(
+        extract_facts_for_all_users,
+        trigger="cron",
+        hour=2,
+        minute=45,
+        id="memory_extraction_daily",
+    )
     _memory_scheduler.add_job(
         consolidate_all_users,
         trigger="cron",
