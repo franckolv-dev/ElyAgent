@@ -64,6 +64,20 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
     # catalog tool it doesn't currently see, instead of giving up).
     "find_tool",
     "report_missing_capability",
+    # Universal — le carnet d'étapes de la conversation (02/09/2026). Sans lui,
+    # l'avancement d'une demande à plusieurs temps ne vit que dans le fil de
+    # messages, c'est-à-dire dans ce que la troncature supprime en premier :
+    # des étapes refaites, et des étapes oubliées. Il compte double sur ce
+    # profil, qui sert les petites fenêtres — c'est là que le fil se coupe le
+    # plus tôt.
+    "session_todo",
+    # Universal — pagination des sorties d'outil débordées (02/09/2026).
+    # ⚠️ Sans lui sur CE profil, le débordement est une impasse : le bloc de
+    # remplacement ORDONNE au modèle d'appeler `tool_output_read`, qu'il n'a
+    # pas. Avant, il recevait la sortie entière — grosse mais complète. Et
+    # `compact` sert les petites fenêtres : c'est le profil qui déclenche le
+    # plus de débordements, donc le dernier où l'outil peut manquer.
+    "tool_output_read",
     # Universal — memory, preferences, knowledge (always present)
     "knowledge_list",
     "knowledge_search",

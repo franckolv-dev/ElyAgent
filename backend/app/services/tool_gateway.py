@@ -104,8 +104,18 @@ class GatewayContext:
     #   n'exécute PAS l'outil (disjoncteurs J3 des missions).
     # post_execute : hook (tool_name, ok, elapsed_s, result_ou_exc) -> None
     #   (journal de bord J4).
+    # spill_large_results : False = les grandes sorties reviennent ENTIÈRES.
+    #   ⚠️ 02/09/2026 — sur le chemin des missions, la sortie d'outil n'est pas
+    #   qu'un affichage : elle est lue par l'évaluateur d'étape, ARCHIVÉE dans
+    #   MissionStepRun.output, puis relue par `_foreach_source` pour étendre un
+    #   `foreach`. Or l'évaluateur et l'expansion sont des PROMPTS, pas des
+    #   boucles d'outils : ils ne peuvent PAS appeler `tool_output_read`. Un
+    #   débordement là-bas ne masque pas la donnée, il la DÉTRUIT — un `foreach`
+    #   sur une recherche volumineuse extrairait ses items d'un aperçu tronqué,
+    #   exactement le défaut fermé les 29 et 30/08.
     needs_hitl_final: bool | None = None
     anonymize_results: bool = True
+    spill_large_results: bool = True
     pre_execute: Any = None
     post_execute: Any = None
     # Surface INTERACTIVE (un humain attend devant son écran) : un outil qui
@@ -725,7 +735,17 @@ async def execute_tool_call(
             from app.services.event_envelope import EventKind, emit
             emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
                  fingerprint=_action_fp, outcome="idempotent_cache")
-            return _tool_result(_cached, tc_id)
+            # ⚠️ 02/09/2026 — le rejeu passe par le MÊME débordement que le
+            # premier appel : sans ça, une action rejouée dans la fenêtre TTL
+            # rendait la sortie complète que le premier appel avait fait
+            # déborder. Deux tailles pour un même acte, selon l'heure.
+            _rejeu = _cached
+            if ctx.spill_large_results:
+                from app.services.tool_output_spill import spill_if_large
+                _rejeu = spill_if_large(
+                    _cached, user_id=user_id, tool_name=tool_name,
+                )
+            return _tool_result(_rejeu, tc_id)
 
     # C3b-2 — hook pré-exécution de l'appelant (disjoncteurs J3 des
     # missions) : un refus ici N'EXÉCUTE PAS l'outil. Une exception du
@@ -761,9 +781,14 @@ async def execute_tool_call(
             # reçoit un accusé au lieu du résultat (incident 24/07). Point
             # unique : tous les outils passent ici, natifs comme MCP.
             from app.services.long_running_tools import invoke_with_handoff
-            result, _handoff_notice = await invoke_with_handoff(
-                ctx, tool_name, tool, args,
-            )
+            # Le propriétaire des débordements (sorties volumineuses écrites
+            # sur disque) est posé ICI, pas passé en argument d'outil : le
+            # modèle ne doit pas pouvoir désigner un autre utilisateur.
+            from app.services.tool_output_spill import owner_scope
+            with owner_scope(user_id):
+                result, _handoff_notice = await invoke_with_handoff(
+                    ctx, tool_name, tool, args,
+                )
             if _handoff_notice is not None:
                 if meta is not None:
                     meta["handoff"] = True
@@ -825,7 +850,27 @@ async def execute_tool_call(
             # Gmail indisponible » confabulé alors que le résultat était là).
             from app.services.turn_ledger import record as _ledger_record
             _ledger_record(ctx.conversation_id, tool_name, _safe_result)
-            _msg = _tool_result(_safe_result, tc_id)
+            # ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : au-delà d'un seuil, la sortie
+            # était TRONQUÉE en amont et sa suite perdue — le modèle relançait
+            # le même outil et repayait la même troncature. Elle part désormais
+            # en entier dans un fichier ; le modèle reçoit la taille réelle, un
+            # aperçu, et de quoi pager avec `tool_output_read`.
+            # Placé APRÈS le registre de tour et avant `remember` : le secours
+            # et l'idempotence gardent le résultat COMPLET, seul le contexte du
+            # modèle est allégé. Placé après l'anonymisation aussi : quand elle
+            # a lieu (`anonymize_results`), ce qui est sur disque est masqué —
+            # mais ce n'est PAS une garantie du débordement, c'est une garantie
+            # de l'appelant (voir `tool_output_spill`, section Sécurité).
+            # `spill_large_results=False` sort les missions de ce mécanisme :
+            # leur sortie d'outil est relue par des PROMPTS qui ne peuvent pas
+            # pager.
+            _rendu = _safe_result
+            if ctx.spill_large_results:
+                from app.services.tool_output_spill import spill_if_large
+                _rendu = spill_if_large(
+                    _safe_result, user_id=user_id, tool_name=tool_name,
+                )
+            _msg = _tool_result(_rendu, tc_id)
             # P1/J3 — mémorise le résultat d'une action « supported » réussie
             # (no-op si le manifeste ne déclare pas l'idempotence).
             if _action_fp is not None:

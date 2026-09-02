@@ -632,6 +632,16 @@ async def dispatch_tool(
     # à LEUR frontière LLM (anonymize_messages) — steps et carnet restent
     # lisibles. Disjoncteurs J3 = hook pre_execute (ordre historique : après
     # le HITL, avant l'exécution) ; journal de bord J4 = hook post_execute.
+    #
+    # ⚠️ spill_large_results=False (02/09/2026) — ce que rend cette fonction
+    # n'est PAS qu'un affichage. Ça devient `last_tool_output`, que
+    # l'évaluateur d'étape lit, que `set_step_run_status` ARCHIVE dans
+    # MissionStepRun.output, et que `_foreach_source` relit pour étendre un
+    # `foreach`. Or l'évaluateur et l'expansion sont des PROMPTS : ni l'un ni
+    # l'autre ne peut appeler `tool_output_read`. Déborder ici ferait extraire
+    # les items d'un `foreach` d'un APERÇU tronqué — exactement la classe de
+    # défaut fermée les 29 et 30/08 (« résultat source vide » sur une recherche
+    # qui avait bien ramené huit sociétés).
     from app.services.tool_gateway import GatewayContext, execute_tool_call
 
     async def _budget_gate(_tn: str, _args: dict):
@@ -690,6 +700,7 @@ async def dispatch_tool(
         label="mission",
         needs_hitl_final=needs_hitl,
         anonymize_results=False,
+        spill_large_results=False,
         pre_execute=_budget_gate,
         post_execute=_journal_hook,
     )
