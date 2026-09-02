@@ -111,6 +111,21 @@ def _valider_url(url: str) -> str | None:
             f"URL refusée : « {u[:80]} ». Seuls http:// et https:// sont "
             f"acceptés — cet outil lit le web, pas le disque."
         )
+    # ⚠️ SSRF (audit du 02/09/2026). Le schéma ne suffit pas : ces outils
+    # pilotent un Chromium vers l'URL que le modèle leur donne, et
+    # `http://169.254.169.254/` (métadonnées cloud), `http://qdrant:6333`
+    # (la base vectorielle du réseau Docker) ou `http://127.0.0.1:8000` (le
+    # backend lui-même) passaient. Le garde complet existait pour le client
+    # MCP — boucle locale, lien local, adresses privées, CGNAT, formes
+    # obfusquées — et n'était branché que là. Le web, lui, reste en http.
+    from app.services.mcp_egress import MCPEgressBlocked, validate_egress_url
+    try:
+        validate_egress_url(u, require_https=False)
+    except MCPEgressBlocked as exc:
+        return (
+            f"URL refusée : « {u[:80]} » vise un hôte interne ({exc}). "
+            f"Cet outil lit le web public, pas le réseau de la machine."
+        )
     return None
 
 
