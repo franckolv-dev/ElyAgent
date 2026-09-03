@@ -138,7 +138,13 @@ def _selector_llm():
                 if inst.get("provider") not in ("lm_studio", "ollama"):
                     continue
                 if frag in (inst.get("model") or "").lower():
-                    return _make_llm_for_instance(iid)
+                    # Un tri de noms ne se tire pas au sort : à 0,7 (le défaut
+                    # de la fabrique) Ministral 3B rendait `pdf_to_docx` une
+                    # fois sur deux pour « convertir un PDF en Word » ; à zéro
+                    # le résultat est le même à chaque passe (banc 03/09/2026).
+                    # Douze noms tiennent en 256 tokens : un modèle qui
+                    # déraille s'arrête en moins d'une seconde.
+                    return _make_llm_for_instance(iid, max_tokens=256, temperature=0.0)
     except Exception as exc:  # noqa: BLE001 — un sélecteur absent n'est pas fatal
         logger.debug("sélecteur d'outils : instance introuvable (%s)", exc)
     return None
