@@ -297,6 +297,18 @@ async def _decide_hitl(ctx: GatewayContext, tool_name: str, args: dict,
         needs_hitl = manifest_requires_hitl(tool_name, _crit_desc, sf.is_critical)
     else:
         needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
+    # Un passe-plat ``*_raw_api_call`` est confirmé pour ce qu'il PEUT faire ;
+    # ce qu'il FAIT se lit dans ``method_path``. Une lecture n'a rien à
+    # confirmer (03/09/2026) — le régime du 02/09 (non dispensable) reste
+    # entier pour toute méthode qui écrit, ou dont la méthode est illisible.
+    if needs_hitl and tool_name.endswith("_raw_api_call"):
+        from app.services.google_raw_api import est_une_lecture
+        if est_une_lecture(display_args.get("method_path")):
+            logger.info(
+                "HITL skipped (appel brut en lecture) tool=%s methode=%s",
+                tool_name, display_args.get("method_path"),
+            )
+            needs_hitl = False
     # Sprint 4b V3 — période canary des outils io (design §5.6, v1.15.0) :
     # les N premières invocations d'un outil io auto-généré (egress réel,
     # nouveau chemin de code) passent par HITL avant que l'outil ne soit
