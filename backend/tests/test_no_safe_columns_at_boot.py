@@ -3,7 +3,7 @@
 # @file       backend/tests/test_no_safe_columns_at_boot.py
 # @brief      Ménage lot 2 — le boot ne rejoue plus 19 ALTER TABLE pour rien.
 #             Alembic seul fait foi sur le schéma.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du retrait de `_safe_columns`.
 

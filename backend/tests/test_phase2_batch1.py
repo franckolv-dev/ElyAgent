@@ -4,7 +4,7 @@
 # @brief      Revue multi-utilisateurs 2026-06-10, Phase 2 lot 1 — pins :
 #             B-2 (pragmas connexions FTS hors-engine), backup SQLite
 #             nocturne, B-9 (quota + purge uploads).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Phase 2 batch 1 pins (revue 2026-06-10)."""
 from __future__ import annotations

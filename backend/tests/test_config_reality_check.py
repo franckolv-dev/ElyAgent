@@ -3,7 +3,7 @@
 # @file       backend/tests/test_config_reality_check.py
 # @brief      Confronter la configuration DÉCLARÉE aux valeurs RÉELLEMENT
 #             présentes — la classe de défaut qui a coûté le plus cher.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du contrôle de réalité de la configuration.
 

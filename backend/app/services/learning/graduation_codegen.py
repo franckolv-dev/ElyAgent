@@ -5,9 +5,9 @@
 #             → fichier core + test pytest + manifest, prêts pour la PR (J5).
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.0.0
 # @link       https://github.com/franckolv-dev/ElyAgent
 #
@@ -188,8 +188,8 @@ def build_io_tool_file(skill: Any, manifest: dict[str, Any]) -> tuple[str, str]:
 #             Squid, secrets Vault résolus par utilisateur à l'appel).
 #
 # @author     Ely (auto-developing agent) — revue humaine via PR
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 #
 # PROVENANCE (gates au moment de la graduation) :
 {provenance_block}
@@ -265,8 +265,8 @@ def build_tool_file(skill: Any, manifest: dict[str, Any]) -> tuple[str, str]:
         "#             en code core par le pipeline de graduation (Sprint 4d V4).\n"
         "#\n"
         "# @author     Ely (auto-developing agent) — revue humaine via PR\n"
-        "# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved\n"
-        "# @license    Elastic License 2.0\n"
+        "# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER\n"
+        "# @license    MIT\n"
         "#\n"
         "# PROVENANCE (gates au moment de la graduation) :\n"
         f"{provenance_block}\n"
@@ -290,7 +290,7 @@ def build_io_test_file(skill: Any) -> tuple[str, str]:
 # @project    ELY — Exactly Like You
 # @file       tests/test_graduated_{slug}.py
 # @brief      Pin de graduation io — généré avec le tool (Sprint 4d V4.1).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pin du tool io gradué ``{skill.name}`` : wrapper sandbox correct.
 
@@ -349,7 +349,7 @@ def test_{slug}_smoke_invocation():
 # @project    ELY — Exactly Like You
 # @file       tests/test_graduated_{slug}.py
 # @brief      Pin de graduation — généré avec le tool (Sprint 4d V4).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pin du tool gradué ``{skill.name}`` : importable, bindable, stable."""
 from __future__ import annotations

@@ -2,7 +2,7 @@
  * @project    ELY — Exactly Like You
  * @file       frontend/scripts/stamp-sw-version.test.mjs
  * @brief      La version du service worker ne doit plus dependre d'un geste humain.
- * @license    Elastic License 2.0
+ * @license    MIT
  *
  * CE QUE CE FICHIER EPINGLE (02/09).
  *

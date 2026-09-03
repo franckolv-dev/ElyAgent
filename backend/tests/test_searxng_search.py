@@ -3,7 +3,7 @@
 # @file       backend/tests/test_searxng_search.py
 # @brief      SearXNG en tête de chaîne — une recherche auto-hébergée, sans clé
 #             et sans quota, avec les fournisseurs à crédits en repli.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du fournisseur de recherche SearXNG.
 

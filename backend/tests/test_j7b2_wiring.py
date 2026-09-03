@@ -3,7 +3,7 @@
 # @file       backend/tests/test_j7b2_wiring.py
 # @brief      Sprint 4b V2 J7b.2 — wire promoted python_tool skills into the
 #             live bind + dispatch (chat AND mission paths), flag-gated.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """J7b.2 wiring tests.
 

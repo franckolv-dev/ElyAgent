@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_env_filter.py
 # @brief      Tests for the shared env-var filter helper
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for ``env_filter.filter_safe_env`` (Sprint 4a J1.5c).
 

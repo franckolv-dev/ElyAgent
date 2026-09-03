@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_permissions_endpoints.py
 # @brief      Endpoints admin des permissions MCP par utilisateur (mcp.py).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests des endpoints ``/admin/mcp/servers/{id}/permissions``.
 

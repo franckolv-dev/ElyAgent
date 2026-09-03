@@ -3,7 +3,7 @@
 # @file       backend/tests/test_search_providers_fallback.py
 # @brief      Serper n'est plus un point de panne unique : SearchCans et Tavily
 #             prennent le relais, et un fournisseur à sec cesse d'être appelé.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de la chaîne de fournisseurs de recherche.
 

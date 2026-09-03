@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_failure_capture.py
 # @brief      Sprint 4b Phase 1 — tests for failure_cases capture from signals
-# @license    PolyForm Strict License 1.0.0
+# @license    MIT
 # =============================================================================
 """Tests for `app/services/learning/failure_capture.py` — Sprint 4b Phase 1.
 

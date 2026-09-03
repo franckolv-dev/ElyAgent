@@ -4,7 +4,7 @@
 # @brief      Revue multi-utilisateurs 2026-06-10, Phase 3 lot 1 — pins :
 #             verrou mono-process (A-7), TTL sessions navigateur (B-17),
 #             /health/deep, pool Postgres (B-5).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Phase 3 batch 1 pins (revue 2026-06-10)."""
 from __future__ import annotations

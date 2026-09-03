@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_transparency_router.py
 # @brief      Le contrat visible et le registre de sortie disent-ils vrai ?
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Deux pages de transparence, deux exigences differentes (audit du 02/09/2026).
 

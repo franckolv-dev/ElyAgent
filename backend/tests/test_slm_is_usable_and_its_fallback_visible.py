@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_slm_is_usable_and_its_fallback_visible.py
 # @brief      La voie rapide doit être rapide, et son repli doit se voir.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """L'aboutissement du 21/08 — deux défauts qui se tenaient.
 

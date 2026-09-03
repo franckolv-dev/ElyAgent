@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_the_local_tier_always_leaves_a_trace.py
 # @brief      « GPT-5.6 a répondu — est-ce gemma qui a passé la main ? »
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Une question sans réponse, le 23/08 à 21 h 07.
 

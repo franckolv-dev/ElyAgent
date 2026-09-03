@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_all_configured_models_resolve.py
 # @brief      Les 16 modèles réellement déclarés doivent tous résoudre.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de couverture des modèles réellement configurés.
 

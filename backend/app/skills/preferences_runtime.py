@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/skills/preferences_runtime.py
 # @brief      Les compétences désactivées atteignent enfin la liaison d'outils.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Ce que l'utilisateur désactive doit disparaître de la charge envoyée.
 

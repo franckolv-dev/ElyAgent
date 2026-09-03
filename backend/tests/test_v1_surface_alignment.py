@@ -3,7 +3,7 @@
 # @file       backend/tests/test_v1_surface_alignment.py
 # @brief      V1 temps 1 — les canaux et la voix passent sur le runtime unique,
 #             sans rien perdre au passage.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de l'alignement des surfaces (vague 1, temps 1 — non destructif).
 

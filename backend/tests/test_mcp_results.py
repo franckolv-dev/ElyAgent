@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_results.py
 # @brief      J3 — normalisation des résultats MCP (bornée, sûre, sans _meta).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

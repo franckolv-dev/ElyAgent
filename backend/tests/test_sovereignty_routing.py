@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_sovereignty_routing.py
 # @brief      PII-sovereignty routing — ContextVar + tier config override.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """When User.sovereignty_strict is on and a ContextVar reflects it, tier-B/C
 calls must route to the Mistral EU chain instead of the default cloud chain.

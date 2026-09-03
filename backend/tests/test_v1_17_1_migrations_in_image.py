@@ -9,7 +9,7 @@
 #             best-effort au boot (CRITICAL loggé, boot continue) → la base
 #             prod n'a jamais reçu la révision 0002 → missions.spec_yaml
 #             absente → HTTP 500 sur toute la page Missions.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins hotfix v1.17.1 (image Docker sans migrations Alembic)."""
 from __future__ import annotations

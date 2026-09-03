@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_idempotency.py
 # @brief      P1/J3 — store d'idempotence (« jamais deux fois par accident »).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

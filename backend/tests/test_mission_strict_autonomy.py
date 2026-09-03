@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_strict_autonomy.py
 # @brief      Missions autonomes J5 — mode decide (D2), consignes de mandat,
 #             anti-boucle (D4). Flag OFF ou pas de mandat ⇒ comportement inchangé.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Missions autonomes J5 — autonomie stricte (cadrage D2 + D4).
 

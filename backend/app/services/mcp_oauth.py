@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_oauth.py
 # @brief      Client MCP v2 — J2 : flow OAuth 2.1 / PKCE (découverte + échange).
-# @license    Elastic License 2.0
+# @license    MIT
 #
 # RÉSUMÉ DES CONDITIONS :
 #   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).

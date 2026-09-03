@@ -3,7 +3,7 @@
 # @file       backend/tests/test_search_degraded_and_news_tools.py
 # @brief      Ely ne présente plus une recherche dégradée comme un résultat
 #             normal, et ses outils d'actualité deviennent atteignables.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de la recherche dégradée et des outils d'actualité.
 

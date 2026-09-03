@@ -5,8 +5,8 @@
 #             d'un verdict execution_outcome enrichi des signaux faibles.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # @version    1.5.0
 # =============================================================================
 """Enregistrement enrichi des verdicts d'aboutissement — jalon J2.

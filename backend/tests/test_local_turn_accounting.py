@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_local_turn_accounting.py
 # @brief      Un tour local doit se compter, et se compter sous le bon nom.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Deux compteurs qui mentaient, découverts le 21/08 en regardant l'écran.
 

@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/agent/discovered_tools.py
 # @brief      Per-conversation registry of tools surfaced via find_tool.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Per-conversation registry of tools the model discovered via ``find_tool``.
 

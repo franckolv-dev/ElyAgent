@@ -3,7 +3,7 @@
 # @file       backend/tests/test_sprint_4b_v2_schema.py
 # @brief      Sprint 4b V2 J1 — pin the schema additions for @tool Python
 #             generation: LearnedSkill.content_format + validation_report_json.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Schema pin for Sprint 4b V2 Jalon 1 (design note J0 §4).
 

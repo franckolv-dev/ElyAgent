@@ -4,7 +4,7 @@
 # @brief      Revue multi-utilisateurs 2026-06-10, Phase 1 lot 1 — pins :
 #             B-6 (ws_registry multi-sockets), B-8 (dédup webhook Telegram),
 #             spawn() à références fortes.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Phase 1 batch 1 pins (revue 2026-06-10)."""
 from __future__ import annotations

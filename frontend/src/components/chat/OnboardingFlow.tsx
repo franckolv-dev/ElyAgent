@@ -5,8 +5,8 @@
  * @brief      Conversational onboarding flow that takes over /chat at first login.
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
  *
  * Behavior :
  *   - At /chat mount, parent checks /api/onboarding/status. If `should_show`

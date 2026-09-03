@@ -3,7 +3,7 @@
 # @file       backend/tests/test_service_probe.py
 # @brief      La sonde exerce RÉELLEMENT chaque tête de chaîne — un service
 #             constructible qui ne répond pas doit se voir au démarrage.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de la sonde de têtes de chaîne.
 

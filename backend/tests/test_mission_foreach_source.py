@@ -5,7 +5,7 @@
 #             CETTE étape-là, entière. Elle recevait le contexte général :
 #             les 8 dernières sorties mélangées, chacune coupée à 1200
 #             caractères.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La source d'un foreach est l'étape qu'il nomme (incident du 29/08/2026).
 

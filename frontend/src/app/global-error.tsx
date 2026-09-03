@@ -5,8 +5,8 @@
  * @brief      Frontière d'erreur racine — auto-récupération sur ChunkLoadError.
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
  *
  * Remplace l'écran par défaut de Next.js (« This page couldn't load », en
  * anglais) : si l'erreur est un chunk périmé après déploiement, on recharge

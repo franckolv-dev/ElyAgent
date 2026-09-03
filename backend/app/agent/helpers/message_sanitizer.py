@@ -3,7 +3,7 @@
 # @file       backend/app/agent/helpers/message_sanitizer.py
 # @brief      Sprint refactor nodes.py Phase 1.2 — message sanitizer +
 #             tool-result helper, extracted from the God Object.
-# @license    Elastic License 2.0
+# @license    MIT
 # @version    1.7.1
 # =============================================================================
 """Message-shaping helpers used by the LangGraph agent nodes.

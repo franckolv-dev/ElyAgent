@@ -4,7 +4,7 @@
 # @brief      Boucle d'auto-diagnostic J5 — correctifs validables (voie C) :
 #             propose / apply / revert / reject d'un prompt de tâche planifiée,
 #             + endpoints admin.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests J5 — patch_service + endpoints.
 

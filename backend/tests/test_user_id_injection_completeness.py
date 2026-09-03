@@ -4,7 +4,7 @@
 # @brief      CI guard — ensures every tool with InjectedToolArg user_id is
 #             listed in USER_ID_TOOLS so the runtime actually injects it.
 #
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """CI guard for InjectedToolArg user_id completeness.
 

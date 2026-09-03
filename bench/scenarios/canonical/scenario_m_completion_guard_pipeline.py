@@ -4,7 +4,7 @@
 # @brief      Sprint 3.7.3 J3 — canonical scenario M : the full anti-hallu
 #             pipe. A detected unbacked claim → record_hallucination_block →
 #             hallucination_blocks row → failure_cases capture, end to end.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Canonical scenario M — completion_guard detection → block → failure_case."""
 from __future__ import annotations

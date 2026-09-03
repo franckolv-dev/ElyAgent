@@ -4,8 +4,8 @@
 # @brief      Read-only self-introspection tools (logs, status, health)
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Read-only self-introspection tools.
 

@@ -3,7 +3,7 @@
 # @file       backend/tests/test_maintenance_rapid.py
 # @brief      Sprint 2.5 Jalon 6 — hermetic tests for the event-driven
 #             memory maintenance agent (Ministral 3B local).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for MaintenanceAgentRapid (Sprint 2.5 §4 niveau 1).
 

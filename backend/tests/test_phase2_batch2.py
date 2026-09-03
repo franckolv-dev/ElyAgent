@@ -4,7 +4,7 @@
 # @brief      Revue multi-utilisateurs 2026-06-10, Phase 2 lot 2 — pins :
 #             A-6a (rate limit branché), B-15 (cap runs/user),
 #             B-3 (heartbeat missions équitable et non bloquant).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Phase 2 batch 2 pins (revue 2026-06-10)."""
 from __future__ import annotations

@@ -5,9 +5,8 @@
 **Exactly Like You** — a self-hosted personal agent that does things, checks its
 own work, and asks before it commits you to anything.
 
-Ely is a **non-commercial personal project**, published under the Elastic
-License 2.0. Free for personal use and for internal professional use; reselling
-it as a hosted service is not permitted.
+Ely is a **non-commercial personal project**, published under the **MIT**
+licence. Do what you like with it; just keep the copyright notice.
 
 ---
 
@@ -223,13 +222,13 @@ and Discord bridges, were archived on 2026-09-02 — see
 
 ## Licence
 
-**Elastic License 2.0** — see [LICENSE](LICENSE), with a plain-language summary
-in [licence-ELY.md](licence-ELY.md) and commercial terms in
-[COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+**MIT** — see [LICENSE](LICENSE). Use it, modify it, redistribute it, sell it,
+run it as a service. The only condition is that the copyright notice and the
+licence text travel with the code.
 
-- **Allowed** — personal use, and internal professional use, free of charge.
-- **Not allowed** — reselling Ely as a hosted or managed service to third
-  parties, or stripping copyright and licence notices.
+Ely moved from Elastic License 2.0 to MIT on 3 September 2026. It is a personal
+project, not a product; a permissive licence removes every reason to hesitate
+before forking it.
 
 Trademark: [TRADEMARK.md](TRADEMARK.md). Security policy:
 [SECURITY.md](SECURITY.md).

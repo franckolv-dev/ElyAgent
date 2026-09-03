@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       frontend/vitest.config.ts
 // @brief      Harnais de test du frontend.
-// @license    Elastic License 2.0
+// @license    MIT
 // =============================================================================
 //
 // ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : le frontend n'avait AUCUN test — zero

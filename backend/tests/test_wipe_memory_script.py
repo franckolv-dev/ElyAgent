@@ -4,7 +4,7 @@
 # @brief      Sprint 2.5 Jalon 5 — pin the safety semantics of the
 #             clean-slate script. Verifies dry-run is the default and
 #             that snapshot precedes wipe when --confirm is passed.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Safety tests for `scripts/wipe_memory_for_sprint_2_5.py`.
 

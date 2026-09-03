@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_delegate_tool.py
 # @brief      Tool ``delegate`` — délégation parallèle de sous-tâches
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for the parallel-delegation tool."""
 from __future__ import annotations

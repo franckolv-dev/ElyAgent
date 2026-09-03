@@ -7,8 +7,8 @@
 #             isolated network + Squid egress proxy ACL.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """V3 counterpart of :mod:`learned_tools_runtime`. The V2 module compiles
 ``python_tool`` skills in-process (composition + stdlib only, zero I/O);

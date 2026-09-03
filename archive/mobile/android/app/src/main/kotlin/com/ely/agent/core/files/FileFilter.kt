@@ -3,7 +3,7 @@
 // @file       core/files/FileFilter.kt
 // @brief      Declarative filter applied to the scan result
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
-// @license    PolyForm Strict License 1.0.0
+// @license    MIT
 // =============================================================================
 
 package com.ely.agent.core.files

@@ -4,7 +4,7 @@
 # @brief      2026-06-04 — the HITL keyword scan must ignore deferred-instruction
 #             args (prompt/code): scheduling a task « Supprimer … » is a harmless
 #             creation, not a destructive action. (scheduler_create_task anomaly.)
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins the fix for the scheduler_create_task HITL anomaly (Franck, 2026-06-04).
 

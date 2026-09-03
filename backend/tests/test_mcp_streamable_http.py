@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_streamable_http.py
 # @brief      J2 — transport Streamable HTTP (build + garde egress).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le transport MCP moderne : Streamable HTTP.
 

@@ -3,7 +3,7 @@
 # @file       backend/tests/test_engaging_tools_are_guarded.py
 # @brief      Aucun acte engageant ne s'exécute sans que Franck l'ait voulu —
 #             et ce qui en est dispensé l'est explicitement, avec sa raison.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Lot 3 du plan de marche — fermer le trou que le lot 1 a rendu visible.
 

@@ -8,8 +8,8 @@
 #             writes JSON + Markdown summary to `bench/results/<ts>/`.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Run the canonical scenarios + emit a results artefact.
 

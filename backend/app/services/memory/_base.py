@@ -4,8 +4,8 @@
 # @brief      Shared scoring + hybrid search primitives for every typed store.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # @version    1.3.0
 # =============================================================================
 """Base class for stores that index in Qdrant + FTS5.

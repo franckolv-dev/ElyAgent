@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_ask_user.py
 # @brief      Sprint 4c J3 — hook ask_user : notification multicanal,
 #             endpoint de réponse, reprise immédiate avec injection.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Sprint 4c J3 — pins du cycle question → réponse → reprise.
 

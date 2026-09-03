@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_tool_gaps_endpoint.py
 # @brief      Admin /tool-gaps endpoints — list + mark-processed.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """find_tool Phase 2 records `tool_absent` gaps as FailureCase rows; this
 endpoint surfaces them for HITL review."""

@@ -6,8 +6,8 @@
 #             the 49 call sites are migrated to direct store usage.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # @version    1.3.0
 # =============================================================================
 """Backward-compatibility facade over the typed memory stores.

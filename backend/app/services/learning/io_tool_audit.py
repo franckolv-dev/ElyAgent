@@ -5,8 +5,8 @@
 #             python_tool dispatches.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """One function: ``record_dispatch`` — fire-and-forget audit insert.
 

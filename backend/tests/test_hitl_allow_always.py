@@ -5,7 +5,7 @@
 #             set_user_preference upsert, the nodes.py handler for the new
 #             `allow_always` decision, the validation REST route, and the
 #             4-button frontend layout in the avatar panel.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for the symmetric "Toujours autoriser" feature.
 

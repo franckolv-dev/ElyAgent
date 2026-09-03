@@ -1,15 +1,15 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_licence_service.py
-# @brief      Tests for licence_service — Elastic License v2 (info-only)
-# @license    Elastic License 2.0
+# @brief      Tests for licence_service — MIT (info-only)
+# @license    MIT
 # =============================================================================
 """Unit tests for the licence service after the 22 May 2026 pivot.
 
 Pre-pivot this suite verified tier activation (free / pro / business /
 enterprise), the click-wrap consent flow, max-user enforcement, and
 the activation-supersedes-previous invariant. None of that exists
-anymore — there is a single Elastic License v2, no activation, no
+anymore — there is a single MIT licence, no activation, no
 tiers, no max-user cap.
 
 We keep a few sanity tests :
@@ -59,7 +59,7 @@ async def session() -> AsyncSession:
 
 @pytest.mark.asyncio
 async def test_check_user_creation_always_allowed_no_users(session):
-    """Empty DB, no users yet — Elastic v2 has no cap, must allow."""
+    """Empty DB, no users yet — MIT has no cap, must allow."""
     allowed, msg = await licence_service.check_user_creation_allowed(session)
     assert allowed is True
     assert msg is None
@@ -91,9 +91,9 @@ async def test_get_licence_status_shape_is_stable(session):
     """The Settings panel + Sidebar banner read this. Pin the exact
     keys so a refactor that drops a field can't silently break the UI."""
     status = await licence_service.get_licence_status(session)
-    assert status["license"] == "elastic-license-v2"
-    assert status["name"] == "Elastic License v2"
-    assert status["url"].startswith("https://www.elastic.co/")
+    assert status["license"] == "MIT"
+    assert status["name"] == "MIT"
+    assert status["url"].startswith("https://opensource.org/")
     assert "agent-ely.fr" in status["summary_url"]
     assert isinstance(status["free_for"], list)
     assert isinstance(status["forbidden"], list)
@@ -112,7 +112,7 @@ async def test_get_licence_status_does_not_depend_on_db_rows(session):
     ))
     await session.commit()
     status = await licence_service.get_licence_status(session)
-    assert status["license"] == "elastic-license-v2"
+    assert status["license"] == "MIT"
     # No tier, max_users, customer_label leak into the response
     assert "tier" not in status
     assert "max_users" not in status

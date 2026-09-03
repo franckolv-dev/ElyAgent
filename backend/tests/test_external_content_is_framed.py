@@ -3,7 +3,7 @@
 # @file       backend/tests/test_external_content_is_framed.py
 # @brief      Le contenu venu d'un tiers arrive au modèle encadré : une page
 #             web, un onglet Chrome, un mail, un fichier Drive.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le cadre existait sur UNE surface seulement (audit du 02/09/2026).
 

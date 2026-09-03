@@ -14,8 +14,8 @@
 #             designed to make that swap a one-line change.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Drop rows whose `url` matches a privacy-sensitive domain.
 

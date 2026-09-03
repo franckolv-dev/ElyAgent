@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_skill_import.py
 # @brief      J5-B — import de playbooks SKILL.md depuis une URL
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for importing external SKILL.md playbooks (J5-B)."""
 from __future__ import annotations

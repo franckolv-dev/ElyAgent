@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_oauth_foundation.py
 # @brief      Client MCP v2 — J1 : socle OAuth (bundle Vault + resolve oauth2)
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests du socle OAuth (J1) : stockage/lecture du bundle dans le Vault du
 propriétaire + branche ``oauth2`` de ``resolve_user_headers``.

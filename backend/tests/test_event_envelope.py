@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_event_envelope.py
 # @brief      P1/J4 — bus d'événements typé : sûr (no secret/PII), corrélé.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

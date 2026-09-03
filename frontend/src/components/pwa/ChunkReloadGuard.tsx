@@ -6,8 +6,8 @@
  *             erreur de chargement de chunk JS.
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
  *
  * Pourquoi : après un rebuild du frontend, un onglet déjà ouvert garde l'ancien
  * JS en mémoire. Une navigation client-side vers une route dont le hash de chunk

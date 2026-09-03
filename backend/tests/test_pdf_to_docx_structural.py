@@ -3,7 +3,7 @@
 # @file       backend/tests/test_pdf_to_docx_structural.py
 # @brief      Reconstruire la STRUCTURE LOGIQUE d'un PDF, au lieu d'un
 #             paragraphe par ligne visuelle.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de la conversion PDF → DOCX structurelle.
 

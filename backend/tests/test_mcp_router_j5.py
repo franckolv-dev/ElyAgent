@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_router_j5.py
 # @brief      J5 — endpoints quarantaine/approbation/catalogue/import.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

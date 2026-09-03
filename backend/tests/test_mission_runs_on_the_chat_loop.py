@@ -4,7 +4,7 @@
 # @brief      Une mission libre est un chat sans humain : elle tourne sur la
 #             boucle plate, garde son carnet entre deux reveils, et ses
 #             budgets mordent toujours.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La mission libre tourne sur la boucle du chat (02/09/2026).
 

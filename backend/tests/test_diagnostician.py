@@ -4,7 +4,7 @@
 # @brief      Boucle d'auto-diagnostic J3 — diagnostiqueur (maillon 2) :
 #             classifieur à règles, parsing LLM, diagnose_execution (LLM +
 #             repli), cron run_pending_diagnoses.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests J3 — diagnostiqueur.
 

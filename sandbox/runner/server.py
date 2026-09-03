@@ -13,7 +13,7 @@
 #             code. Hardening (read-only rootfs, dropped capabilities,
 #             pids_limit, mem_limit) is enforced by the docker-compose
 #             service definition.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

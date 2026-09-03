@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_skill_from_verified_success.py
 # @brief      Une compétence naît d'un SUCCÈS constaté — pas d'un manque supposé.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le déclencheur qui manquait au funnel des compétences.
 

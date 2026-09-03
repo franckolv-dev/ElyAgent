@@ -3,7 +3,7 @@
 # @file       backend/app/agent/builders/system_prompt.py
 # @brief      Sprint refactor nodes.py Phase 4.2 — pure builders for the
 #             system-prompt segments assembled inside agent_node.
-# @license    Elastic License 2.0
+# @license    MIT
 # @version    1.7.1
 # =============================================================================
 """System prompt segment builders.

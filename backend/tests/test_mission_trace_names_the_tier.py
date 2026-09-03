@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_trace_names_the_tier.py
 # @brief      La colonne `model_used` de la trace nomme le tier réellement
 #             appelé, elle ne dit plus « medium » quoi qu'il arrive.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

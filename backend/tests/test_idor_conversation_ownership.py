@@ -5,7 +5,7 @@
 #             un user B authentifié qui rejoue le conversation_id d'un
 #             user A doit être rejeté sur les deux chemins :
 #             WS /chat (close 4003) et POST /api/me/state/recompute (404).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """IDOR regression tests — conversation ownership enforcement.
 

@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mission_transient_provider_error.py
 # @brief      Un 429 du fournisseur reporte le tick ; il ne tue pas la mission.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Une limite de débit n'est pas un bug (31/08/2026).
 

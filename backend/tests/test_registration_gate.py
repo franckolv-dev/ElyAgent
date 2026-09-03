@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_registration_gate.py
 # @brief      Sprint 4b V2 J5 — tests for the registration-safety gate.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for ``app/services/learning/registration_gate.py``.
 

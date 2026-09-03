@@ -4,7 +4,7 @@
 # @brief      Unit tests for the cross-conversation memory recall service.
 #             Sprint 1, Phase 2.
 #
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for session_search.py helpers.
 

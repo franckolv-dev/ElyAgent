@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/memory/error_store.py
 # @brief      Error memory — write-only in V1. Read path lands in Sprint 3.7.
-# @license    Elastic License 2.0
+# @license    MIT
 # @version    1.3.0
 # =============================================================================
 """Error store — Sprint 2.5 §7.

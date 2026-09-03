@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_disabling_a_skill_reaches_the_model.py
 # @brief      L'interrupteur existait. Il n'était branché sur rien.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tout était là sauf le fil (24/08).
 

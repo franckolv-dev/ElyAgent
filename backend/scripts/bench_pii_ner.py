@@ -5,8 +5,8 @@
 #             du SecurityFilter — latence, RAM résidente, qualité FR.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 #
 # Usage (venv dédié, PAS le .venv backend — gliner tire torch) :
 #   uv venv /tmp/gliner_bench_venv --python 3.12

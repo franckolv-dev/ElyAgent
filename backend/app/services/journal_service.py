@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/journal_service.py
 # @brief      Reversible Action Journal — enregistrer / annuler une action.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Service du Reversible Action Journal (substrat, suite de P1 — J1).
 

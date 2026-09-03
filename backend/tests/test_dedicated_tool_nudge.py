@@ -3,7 +3,7 @@
 # @file       backend/tests/test_dedicated_tool_nudge.py
 # @brief      C4-3 — nudge « outil dédié d'abord » : le modèle doit préférer
 #             un outil dédié (y compris appris) à un script orchestrate.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """C4-3 — pins du nudge anti-« marteau familier ».
 

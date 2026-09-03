@@ -14,7 +14,7 @@
 #             asyncio.create_subprocess_exec. The parent enforces the wall
 #             clock; this wrapper just enforces the inner CPU/memory limits
 #             via setrlimit before exec'ing user code.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

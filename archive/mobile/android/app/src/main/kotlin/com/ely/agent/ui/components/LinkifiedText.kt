@@ -4,8 +4,8 @@
 // @brief      Text composable that auto-detects URLs and makes them tappable
 //
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
-// @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-// @license    PolyForm Strict License 1.0.0
+// @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+// @license    MIT
 // @version    1.1.0
 // =============================================================================
 

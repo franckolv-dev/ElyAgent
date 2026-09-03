@@ -5,8 +5,8 @@
  * @brief      Long-lived extension-token management UI (Sprint 0.5).
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
  *
  * Replaces the "open DevTools → copy localStorage.access_token" bidouille:
  *   1. User clicks "Generate".

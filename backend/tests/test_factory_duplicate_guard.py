@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_factory_duplicate_guard.py
 # @brief      V0-4 — la fabrique cesse de refabriquer ce qu'elle a déjà fabriqué.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de l'anti-doublon de la fabrique (audit Opus 5 §3.2 et §4.4).
 

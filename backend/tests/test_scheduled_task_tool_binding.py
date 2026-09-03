@@ -3,7 +3,7 @@
 # @file       backend/tests/test_scheduled_task_tool_binding.py
 # @brief      Regression: a multi-domain scheduled task (calendar + gmail +
 #             system) must be able to bind every tool its prompt names.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pin the scheduled-task multi-domain tool-binding fix (2026-05-31).
 

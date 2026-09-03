@@ -5,8 +5,8 @@
 #             dispatches.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """One row per sandboxed io tool invocation — the operational footprint of
 the V3 path (Sprint 4b V3 J6.c §audit).

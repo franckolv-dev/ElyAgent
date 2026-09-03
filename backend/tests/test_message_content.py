@@ -3,7 +3,7 @@
 # @file       backend/tests/test_message_content.py
 # @brief      content_to_text() — aplatissement du content LangChain en texte,
 #             pin du crash missions « binding parameter: type 'list' » (codex).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du helper partagé ``agent.helpers.message_content.content_to_text``.
 

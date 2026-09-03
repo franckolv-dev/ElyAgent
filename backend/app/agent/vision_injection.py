@@ -4,8 +4,8 @@
 # @brief      Inject screenshots into agent context for vision-capable LLMs
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Vision injection — let vision-capable LLMs SEE the screenshot they just took.
 

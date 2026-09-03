@@ -3,7 +3,7 @@
 # @file       backend/tests/test_instance_pricing_and_window.py
 # @brief      Fenêtre et tarifs vivent sur l'INSTANCE, là où l'utilisateur les
 #             configure — plus dans des tables du code qui dérivent.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins des tarifs et de la fenêtre portés par l'instance.
 

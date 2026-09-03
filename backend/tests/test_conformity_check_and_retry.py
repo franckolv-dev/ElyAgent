@@ -3,7 +3,7 @@
 # @file       backend/tests/test_conformity_check_and_retry.py
 # @brief      Le retour du modèle est confronté à la demande, et relancé avec
 #             les écarts nommés s'il n'y répond pas.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Rien ne vérifiait que la réponse répondait à la demande.
 

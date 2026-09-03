@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_tool_generator.py
 # @brief      Sprint 4b V2 J6 — tests for the tier-S @tool generator.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for ``app/services/learning/tool_generator.py``.
 

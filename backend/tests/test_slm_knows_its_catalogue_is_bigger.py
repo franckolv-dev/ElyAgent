@@ -3,7 +3,7 @@
 # @file       backend/tests/test_slm_knows_its_catalogue_is_bigger.py
 # @brief      Un modèle qui ne voit pas l'outillage ne doit pas témoigner de
 #             son absence.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le 23/08, Ely a nié savoir chercher sur le web.
 

@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       frontend/eslint.config.mjs
 // @brief      Flat config ESLint du frontend Next.js.
-// @license    Elastic License 2.0
+// @license    MIT
 // =============================================================================
 //
 // ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : `npm run lint` était MORT. Le script

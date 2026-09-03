@@ -3,7 +3,7 @@
 # @file       backend/tests/test_j9_e2e_python_tool.py
 # @brief      Sprint 4b V2 J9 — end-to-end integration test of the full
 #             auto-developing-agent lifecycle for a PURE python_tool.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """J9 — the whole loop, wired together, in one test.
 

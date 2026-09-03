@@ -3,7 +3,7 @@
 # @file       backend/tests/test_kimi_temperature_family.py
 # @brief      Le garde-fou « temperature=1 » doit reconnaître la FAMILLE Kimi,
 #             pas une liste de versions qui périme à chaque sortie.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du garde-fou de température des modèles de raisonnement Moonshot.
 

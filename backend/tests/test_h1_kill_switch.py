@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_h1_kill_switch.py
 # @brief      Hotfix v1.11.1 — H-1 anti-hallucination kill-switch wiring guard
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Guards for the H-1 kill-switch (HALLUCINATION_GUARD_DISABLED).
 

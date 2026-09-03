@@ -3,7 +3,7 @@
 # @file       backend/tests/test_execution_outcome.py
 # @brief      Boucle d'auto-diagnostic J1 — signal execution_outcome +
 #             câblage (scheduler, missions) + régression visible.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests J1 — boucle d'auto-diagnostic.
 

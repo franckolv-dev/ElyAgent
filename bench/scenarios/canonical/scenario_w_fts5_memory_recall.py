@@ -5,7 +5,7 @@
 #             keyword index over memory text. store → search round-trip
 #             returns the indexed qdrant_id, with per-user isolation. Fully
 #             end-to-end (FTS5 is SQLite-native, no Qdrant needed).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Canonical scenario W — FTS5 memory keyword recall round-trip."""
 from __future__ import annotations

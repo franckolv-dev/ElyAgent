@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/memory/episodic_store.py
 # @brief      Episodic memory — past Q&A pairs (interactions collection).
-# @license    Elastic License 2.0
+# @license    MIT
 # @version    1.3.0
 # =============================================================================
 """Episodic store — past conversation exchanges (interactions collection).

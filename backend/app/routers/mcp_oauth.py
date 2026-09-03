@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/routers/mcp_oauth.py
 # @brief      Client MCP v2 — J2 : endpoints OAuth « Se connecter » + callback.
-# @license    Elastic License 2.0
+# @license    MIT
 #
 # RÉSUMÉ DES CONDITIONS :
 #   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).

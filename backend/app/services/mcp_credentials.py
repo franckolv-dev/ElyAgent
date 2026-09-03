@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_credentials.py
 # @brief      Credentials des serveurs MCP — stockés dans le Vault, jamais ici.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Gestion des credentials d'un serveur MCP distant (J4).
 

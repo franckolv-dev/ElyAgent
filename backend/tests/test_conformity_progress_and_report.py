@@ -3,7 +3,7 @@
 # @file       backend/tests/test_conformity_progress_and_report.py
 # @brief      Les reprises s'arrêtent quand elles n'avancent plus, et ce qui
 #             reste non satisfait est DIT à l'utilisateur.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Deux défauts du plafond fixe livré en #288.
 

@@ -3,8 +3,8 @@
 # @file       backend/app/routers/onboarding.py
 # @brief      REST API for the conversational onboarding flow.
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """REST API for the conversational onboarding flow.
 

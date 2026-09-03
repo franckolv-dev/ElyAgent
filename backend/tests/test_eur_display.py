@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_eur_display.py
 # @brief      Le tableau de bord affiche des euros — Franck paie en euros.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de la conversion d'affichage USD → EUR.
 

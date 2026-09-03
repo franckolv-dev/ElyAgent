@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_v3_declarations.py
 # @brief      Sprint 4b V3 J4 — tests for parsing + 3 gates of V3 declarations.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Three gates, three threat models:
 

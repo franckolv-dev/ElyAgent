@@ -3,7 +3,7 @@
 # @file       backend/tests/test_overrides_refresh_on_save.py
 # @brief      Enregistrer une instance doit appliquer ses valeurs, pas
 #             seulement les écrire en base.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du rafraîchissement des valeurs d'instance après enregistrement.
 

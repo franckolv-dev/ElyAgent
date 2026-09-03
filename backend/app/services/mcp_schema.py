@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_schema.py
 # @brief      Validation des arguments MCP contre le JSON Schema COMPLET.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Validation d'arguments sans perte + hash de définition d'outil.
 

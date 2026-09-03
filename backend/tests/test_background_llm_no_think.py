@@ -3,7 +3,7 @@
 # @file       backend/tests/test_background_llm_no_think.py
 # @brief      Robustesse des appels LLM de tâche de fond : content en blocs,
 #             bloc <think>, isolation du stream.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de l'appel LLM de tâche de fond.
 

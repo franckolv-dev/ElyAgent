@@ -4,9 +4,9 @@
 # @brief      P2 — d'où viennent les tokens d'un tour. Port de Hermes v0.19.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.0.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 #

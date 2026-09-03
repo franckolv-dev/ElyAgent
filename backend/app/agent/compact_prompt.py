@@ -4,8 +4,8 @@
 # @brief      Compact system prompt for small local LLMs (LM Studio, Ollama)
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Compact prompt mode for small local LLMs.
 

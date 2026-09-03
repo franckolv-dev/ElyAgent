@@ -7,8 +7,8 @@
  *             (JSON) and renders 5 sections + raw-markdown toggle.
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
  * @version    1.5.0
  */
 

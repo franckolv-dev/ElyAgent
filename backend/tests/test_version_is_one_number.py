@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_version_is_one_number.py
 # @brief      Quatre fichiers déclarent la version. Ils doivent dire la même.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La version d'Ely vit à QUATRE endroits, et rien ne les tenait ensemble.
 

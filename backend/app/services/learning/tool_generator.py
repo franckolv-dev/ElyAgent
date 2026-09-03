@@ -4,9 +4,9 @@
 # @brief      Sprint 4b V2 J6 — tier-S generator of @tool Python source.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Generate Python ``@tool`` source via the tier-S LLM (design note J0 §3).
 

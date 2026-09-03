@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_cached_tokens_measured.py
 # @brief      Savoir enfin si la stratégie de cache de préfixe d'Ely fonctionne.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de la mesure des tokens servis par le cache.
 

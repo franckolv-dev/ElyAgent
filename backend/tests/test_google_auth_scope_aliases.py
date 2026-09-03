@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_google_auth_scope_aliases.py
 # @brief      Fix 2026-07-18 — identity aliases filtered out of rebuilt Credentials
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Regression tests for the 2026-07-18 refresh-scope-warning fix.
 

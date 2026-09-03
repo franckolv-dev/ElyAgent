@@ -3,7 +3,7 @@
 # @file       backend/app/services/mission_workspace.py
 # @brief      Missions autonomes J4 — workspace de mission : artefacts,
 #             journal JSONL (rotation), CARNET.md (mémoire de travail).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Workspace d'une mission autonome (cadrage D5).
 

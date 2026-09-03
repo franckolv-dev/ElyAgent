@@ -7,7 +7,7 @@
 #             hallucination learning signal so every surface (web, channels,
 #             scheduler, voice) verifies identically.
 #
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for ``app.services.output_verifier``.
 

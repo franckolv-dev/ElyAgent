@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_model_metadata.py
 # @brief      Métadonnées modèles — capacités vision/contexte, wiring supports_vision
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for the model-metadata source of truth + supports_vision wiring."""
 from __future__ import annotations

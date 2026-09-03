@@ -5,7 +5,7 @@
 #             le compte Google est en français — il s'appelle « Feuille 1 ».
 #             Écrire dans un range codé en dur échoue en HTTP 400, le tableur
 #             reste vide, et l'agent croit avoir réussi.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le nom de l'onglet se LIT, il ne se devine pas (incident du 27/08/2026).
 

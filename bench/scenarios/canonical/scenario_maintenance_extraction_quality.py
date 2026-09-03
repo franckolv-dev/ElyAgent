@@ -3,7 +3,7 @@
 # @file       bench/scenarios/canonical/scenario_maintenance_extraction_quality.py
 # @brief      Examen d'extraction du tiers MAINTENANCE — gate OBLIGATOIRE avant
 #             tout changement de modèle sur ce tiers (verdict LFM2.5, 12 juin).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Examen d'extraction mémoire — le scénario qui aurait évité l'épisode LFM2.5.
 

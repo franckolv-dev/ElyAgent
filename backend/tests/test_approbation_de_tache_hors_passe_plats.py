@@ -3,8 +3,8 @@
 # @file       backend/tests/test_approbation_de_tache_hors_passe_plats.py
 # @brief      « Autoriser pour cette tâche » ne dispense pas un *_raw_api_call.
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Audit sécurité 02/09/2026, second tour — la porte voisine.
 

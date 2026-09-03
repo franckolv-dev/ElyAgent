@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_results.py
 # @brief      Normalisation des résultats MCP (CallToolResult) — bornée, sûre.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Normalisation des ``CallToolResult`` MCP avant restitution au modèle.
 

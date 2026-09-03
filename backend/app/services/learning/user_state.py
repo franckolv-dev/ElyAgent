@@ -8,8 +8,8 @@
 #             E4B local) ; failures never propagate to the caller.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # @version    1.6.0
 # =============================================================================
 """User State Vector — Sprint 3 §3.

@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_action_plan.py
 # @brief      P1/J2 — ActionPlan canonique + empreinte (« l'approuvé == l'exécuté »).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

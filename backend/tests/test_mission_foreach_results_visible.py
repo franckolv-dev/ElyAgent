@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_foreach_results_visible.py
 # @brief      Une etape qui raisonne sur le resultat d'un foreach doit voir
 #             QUEL item a abouti et lequel non.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """L'historique a retenu la société qui a échoué (31/08/2026).
 

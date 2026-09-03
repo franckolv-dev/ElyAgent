@@ -5,8 +5,8 @@
 #             pour une exécution douteuse / échouée (maillon 2).
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # @version    1.5.0
 # =============================================================================
 """Diagnostic d'exécution — boucle d'auto-diagnostic, jalon J3 (maillon 2).

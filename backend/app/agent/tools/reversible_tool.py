@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/agent/tools/reversible_tool.py
 # @brief      Outils d'annulation — « annule ce que tu viens de faire ».
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Surfaces model-facing du Reversible Action Journal (substrat / J2).
 

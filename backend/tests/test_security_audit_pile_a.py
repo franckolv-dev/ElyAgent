@@ -4,7 +4,7 @@
 # @brief      Pins des correctifs « pile A » de l'audit sécurité du 13/06 :
 #             H1 (IDOR ban_action), M2 (PII : pas de troncature silencieuse),
 #             M3 (vault vide vérifiable).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Run with:  cd backend && python -m pytest tests/test_security_audit_pile_a.py -v"""
 from __future__ import annotations

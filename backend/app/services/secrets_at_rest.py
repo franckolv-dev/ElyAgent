@@ -3,7 +3,7 @@
 # @file       backend/app/services/secrets_at_rest.py
 # @brief      Chiffrement au repos des secrets d'instance
 #             (revue multi-utilisateurs 2026-06-10, constat B-11).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """At-rest encryption for install-level secrets.
 

@@ -3,7 +3,7 @@
 # @file       backend/tests/test_pdf_plan_delegated_to_model.py
 # @brief      Ely DONNE le travail de structure au modèle cloud — c'est lui qui
 #             décide, elle contrôle.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La consigne de Franck, du 28/07/2026, verrouillée par des pins.
 

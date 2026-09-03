@@ -4,9 +4,9 @@
 # @brief      Sprint 4b Phase 2 + Backlog #19 — Tier S provider chain
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tier S — la voie LLM qui écrit les outils et les compétences d'Ely.
 

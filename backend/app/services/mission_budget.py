@@ -3,7 +3,7 @@
 # @file       backend/app/services/mission_budget.py
 # @brief      Missions autonomes J3 — disjoncteurs D4 : compteurs journaliers,
 #             seuils de notification, pause propre + snapshot.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Disjoncteurs des missions autonomes (cadrage D4, arbitrage Franck 11/07).
 

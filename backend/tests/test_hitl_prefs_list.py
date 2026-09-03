@@ -5,7 +5,7 @@
 #             (union of ALWAYS_CRITICAL_TOOLS and LOCKED_HITL_TOOLS), not just
 #             ALWAYS_CRITICAL_TOOLS — else LOCKED-only tools (gmail_move_emails)
 #             never appear on the settings page.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

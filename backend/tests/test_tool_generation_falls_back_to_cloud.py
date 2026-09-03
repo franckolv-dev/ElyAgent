@@ -3,7 +3,7 @@
 # @file       backend/tests/test_tool_generation_falls_back_to_cloud.py
 # @brief      Le modèle local tente d'abord ; s'il n'y arrive pas, le repli
 #             cloud du niveau S prend le relais.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La seconde moitié de la règle de Franck (29/07/2026).
 

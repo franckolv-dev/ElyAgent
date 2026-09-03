@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_tick_manuel_prend_le_bon_moteur.py
 # @brief      Le bouton « Tick » du routeur lancait l'AUTRE moteur, sans garde
 #             de concurrence — deux moteurs distincts sur les memes tables.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le Tick manuel doit passer par le meme aiguillage que le heartbeat.
 

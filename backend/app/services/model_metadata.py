@@ -4,9 +4,9 @@
 # @brief      Source de vérité des capacités modèles (vision/contexte/coût)
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Métadonnées modèles — capacités (vision / tools), fenêtre de contexte, coût.
 

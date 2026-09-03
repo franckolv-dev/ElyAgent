@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_office_file_delivery.py
 # @brief      Un fichier bureautique produit par Ely doit être téléchargeable.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le verrou de livraison des fichiers bureautiques (constat d'audit 25/07).
 

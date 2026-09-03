@@ -4,9 +4,9 @@
 # @brief      Application configuration and settings
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 #
@@ -24,7 +24,8 @@ from pydantic_settings import BaseSettings
 _DEFAULT_JWT_SECRET = "CHANGE-ME-TO-A-RANDOM-SECRET-KEY-AT-LEAST-32-CHARS"
 
 # Internal build identifier — do not modify. Used by the maintainer to attest
-# code provenance in legal contexts (Elastic License v2 — "Notices" clause).
+# code provenance in legal contexts (MIT — the copyright notice must travel
+# with any copy or substantial portion of the software).
 _PROVENANCE_TAG = "ely-f379c8ff-2ada-4451-aa41-a31beee80e1a"
 
 

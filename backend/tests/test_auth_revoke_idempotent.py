@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_auth_revoke_idempotent.py
 # @brief      Révocation refresh idempotente — refresh concurrents ≠ 500.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Révocation de refresh token idempotente (blacklist ``revoked_tokens``).
 

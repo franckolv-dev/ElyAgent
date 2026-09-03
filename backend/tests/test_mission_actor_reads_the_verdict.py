@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_actor_reads_the_verdict.py
 # @brief      Ce que l'evaluateur dit qu'il RESTE A FAIRE doit arriver dans
 #             le prompt de l'acteur au tour suivant.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """L'acteur rejouait l'étape sans savoir ce qu'on lui reprochait (30/08/2026).
 

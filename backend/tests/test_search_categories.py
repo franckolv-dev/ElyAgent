@@ -3,7 +3,7 @@
 # @file       backend/tests/test_search_categories.py
 # @brief      `web_search` peut viser une famille de sources — sans jamais
 #             perdre les généralistes.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du paramètre `categories` de la recherche.
 

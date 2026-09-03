@@ -2,7 +2,7 @@
 // @project    ELY — Exactly Like You
 // @file       desktop/config_test.go
 // @brief      Config parsing contract — open_browser opt-in default
-// @license    Elastic License 2.0
+// @license    MIT
 // =============================================================================
 //
 // 2026-07-18 — the daemon used to open the web UI in a new browser tab at

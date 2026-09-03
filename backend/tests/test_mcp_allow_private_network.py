@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_allow_private_network.py
 # @brief      Exposition de allow_private_network dans le schéma admin MCP.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """L'exception réseau privé/LAN (`allow_private_network`) est réglable via
 l'API admin (create/update) et renvoyée par MCPServerOut."""

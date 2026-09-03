@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_orchestrator_io_profile.py
 # @brief      Sprint 4b V3 J5 — `validate_tool_source(profile="io")` integration.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins the V3 chain order + the new gates' fail-fast behaviour + the
 backward compatibility of the default profile="pure".

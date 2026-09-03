@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_egress.py
 # @brief      Garde SSRF / DNS-rebinding pour les connexions MCP distantes.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Défense egress des serveurs MCP distants (Streamable HTTP / legacy SSE).
 

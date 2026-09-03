@@ -3,7 +3,7 @@
 # @file       backend/tests/test_find_tool.py
 # @brief      find_tool — semantic tool discovery + sticky per-conversation
 #             binding (the "tool invisible" safety net).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 from __future__ import annotations
 

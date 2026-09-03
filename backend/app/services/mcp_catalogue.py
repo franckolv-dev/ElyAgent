@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_catalogue.py
 # @brief      Persistance du catalogue d'outils MCP découverts (table mcp_tools).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Catalogue local des outils découverts sur un serveur MCP.
 

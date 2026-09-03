@@ -2,7 +2,7 @@
  * @project    ELY — Exactly Like You
  * @file       frontend/src/lib/recover.ts
  * @brief      Récupération post-déploiement après un ChunkLoadError.
- * @license    Elastic License 2.0
+ * @license    MIT
  *
  * Après un rebuild du frontend, un onglet ouvert garde l'ancien JS et réclame
  * des chunks dont le hash a changé → ChunkLoadError. Un simple `location.reload()`

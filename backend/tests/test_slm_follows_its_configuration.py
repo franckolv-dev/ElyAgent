@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_slm_follows_its_configuration.py
 # @brief      Changer le modèle du tier A doit avoir un effet, et se documenter.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Deux dettes de la série SLM, soldées le 22/08.
 

@@ -2,12 +2,12 @@
 /**
  * @project    ELY — Exactly Like You
  * @file       frontend/src/components/settings/LicenceSection.tsx
- * @brief      Licence information panel — Elastic License v2
+ * @brief      Licence information panel — MIT
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
- *             https://www.elastic.co/licensing/elastic-license
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
+ *             https://opensource.org/licenses/MIT
  *
  * @summary
  *   - Allowed   : personal use + internal business use (any org size)
@@ -17,7 +17,7 @@
  *
  * Simplified 2026-05-28 — Franck's licence pivot of 22 May 2026: ELY moved
  * from PolyForm Strict + paid tiers (Pro €490/yr, Business €1,990/yr,
- * Enterprise on quote) to a single Elastic License v2 with no tiers and
+ * Enterprise on quote) to a single permissive licence with no tiers and
  * no activation. The panel is now a static read-only info card that
  * mirrors agent-ely.fr/pricing.html. The whole tier/key activation flow
  * has been removed from the backend (see commit "chore: harmonise repo
@@ -60,12 +60,12 @@ export function LicenceSection() {
             {safe("licenseLabel", "Licence")}
           </span>
           <a
-            href="https://www.elastic.co/licensing/elastic-license"
+            href="https://opensource.org/licenses/MIT"
             target="_blank"
             rel="noopener noreferrer"
             className="text-text-primary font-medium hover:text-cyber-cyan inline-flex items-center gap-1"
           >
-            Elastic License v2
+            MIT
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>

@@ -4,7 +4,7 @@
 # @brief      Tests for the @register decorator + auto-discovery scanner.
 #             Sprint 2 — Tool registry auto-discovery.
 #
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for the @register decorator and auto-discovery scanner.
 

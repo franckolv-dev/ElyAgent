@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_egress.py
 # @brief      J2 — garde SSRF / DNS-rebinding des serveurs MCP distants.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Matrice SSRF + rebinding + pinning du transport HTTP durci.
 

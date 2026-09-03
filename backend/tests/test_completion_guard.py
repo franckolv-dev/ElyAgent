@@ -3,7 +3,7 @@
 # @file       backend/tests/test_completion_guard.py
 # @brief      Tests for the anti-hallucination completion guard.
 #
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for ``app.services.completion_guard``.
 

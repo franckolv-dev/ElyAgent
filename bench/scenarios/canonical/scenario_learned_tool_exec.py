@@ -4,7 +4,7 @@
 # @brief      Sprint 4d J1 — regression : un python_tool VALIDÉ se compile et
 #             S'EXÉCUTE. Manque relevé par l'audit V4 : le scénario S couvrait
 #             la surface API (list/pin/forget), jamais l'exécution réelle.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Canonical scenario — learned python_tool : validate → compile → invoke.
 

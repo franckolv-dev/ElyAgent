@@ -1,6 +1,6 @@
 # Trademark Policy — ELY / Éli
 
-> **TL;DR** — The source code of this project is licensed under PolyForm Strict 1.0.0 and free for personal/educational use. The **names** *"ELY"*, *"Éli"*, *"agent-ely"*, *"agent-ely.fr"* and the **visual identity** (cyberpunk avatar, logo, color scheme) are **separately protected trademarks** owned by Franck OLLIVIER. You may build with the code; you may not pretend to BE this project.
+> **TL;DR** — The source code of this project is licensed under MIT and free for any use, including commercial. The **names** *"ELY"*, *"Éli"*, *"agent-ely"*, *"agent-ely.fr"* and the **visual identity** (cyberpunk avatar, logo, color scheme) are **separately protected trademarks** owned by Franck OLLIVIER. You may build with the code; you may not pretend to BE this project.
 
 ---
 
@@ -16,13 +16,13 @@ The following marks are owned by **Franck OLLIVIER** (registered or pending regi
 | **The cyberpunk avatar** (3D wireframe head) | Figurative mark | Franck OLLIVIER |
 | **The lightning-bolt logo** | Figurative mark | Franck OLLIVIER |
 
-The trademarks are protected **independently of the source code license**. PolyForm Strict 1.0.0 grants you rights over the code; it grants you **no rights** over these marks.
+The trademarks are protected **independently of the source code license**. MIT grants you broad rights over the code; it grants you **no rights** over these marks.
 
 ---
 
 ## 2. What you CAN do
 
-- **Use the code** under PolyForm Strict 1.0.0 for personal, educational, or evaluation purposes.
+- **Use the code** under MIT, for any purpose, including commercial.
 - **Fork the repository** to build your own personal experiments (keep the marks visible only for attribution — see §4 below).
 - **Reference ELY by name** in articles, blog posts, tutorials, comparison tables — *"I tested ELY against Hermes Agent"* is fine.
 - **Submit issues, PRs, plugins, skills** that mention "ELY" in their description — that's nominative use.
@@ -31,7 +31,7 @@ The trademarks are protected **independently of the source code license**. PolyF
 ## 3. What you CANNOT do
 
 - ❌ **Distribute a fork under the name "ELY"** (or any confusingly similar name like *"Ely Pro"*, *"Ely Agent X"*, *"ElyBot"*…). Pick your own name.
-- ❌ **Sell, host as a service, or commercialise** any product called "ELY" or that uses the ELY logo / avatar without a written commercial license. This is **trademark infringement** AND a license breach (PolyForm Strict prohibits commercial use anyway).
+- ❌ **Sell, host as a service, or commercialise** any product called "ELY" or that uses the ELY logo / avatar. MIT lets you commercialise the CODE; it gives you no right to the NAME or the visual identity. Doing so is **trademark infringement** even though the licence itself allows commercial use — this is exactly where the two regimes differ.
 - ❌ **Imply endorsement** ("Powered by ELY", "Official ELY edition", "ELY Enterprise") without explicit written permission.
 - ❌ **Register confusingly similar domain names** (`ely-agent.com`, `eli-bot.io`, `agent-eli.fr` would all be considered cybersquatting).
 - ❌ **Use the cyberpunk avatar or logo** in your own product, marketing material, social media branding, or app icons.
@@ -44,7 +44,7 @@ Forking is welcome — the project is open source for a reason. But your fork mu
 
 1. **Use a different name.** Examples acceptable: *"NeuroBot"*, *"MyAgent"*, *"FranckBot-Custom"*. Examples unacceptable: anything starting with *"Ely"* or containing *"agent-ely"*.
 2. **Replace the avatar and logo** with your own. The wireframe head and lightning bolt are off-limits.
-3. **Keep the LICENSE and a NOTICE** crediting the original ELY project (PolyForm Strict requires this anyway).
+3. **Keep the LICENSE and a NOTICE** crediting the original ELY project (MIT requires the copyright notice anyway).
 4. **Make it clear it's a fork** — a line in your README like *"Fork of ELY by Franck OLLIVIER, see [original repo](https://github.com/franckolv-dev/ElyAgent)"* is sufficient.
 
 We will not pursue forks that follow these rules — that's open source done well.
@@ -58,7 +58,7 @@ If you want to:
 - Use the ELY name / avatar / logo in any marketing, OR
 - Be listed as an authorised reseller / integrator,
 
-→ Contact **[contact@agent-ely.fr](mailto:contact@agent-ely.fr)** for a commercial license. We are open to fair, simple per-seat / per-instance pricing. Most requests get a yes within a week. See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) for details.
+→ Contact **[contact@agent-ely.fr](mailto:contact@agent-ely.fr)** for written permission to use the NAME and the visual identity. The CODE needs no permission — it is MIT. Most requests get a yes within a week.
 
 ---
 

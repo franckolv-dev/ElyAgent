@@ -3,7 +3,7 @@
 # @file       backend/tests/test_producing_tools_back_a_completion_claim.py
 # @brief      Un outil qui PRODUIT un artefact étaye une affirmation de
 #             complétion — au même titre qu'un outil qui détruit.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le garde-fou criait à l'hallucination sur un travail réellement fait.
 

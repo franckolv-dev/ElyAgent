@@ -3,7 +3,7 @@
 # @file       backend/tests/test_tool_description_budget.py
 # @brief      Les descriptions d'outils repartent à CHAQUE tour : elles ont un
 #             budget, et il doit être tenu.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du budget de descriptions du profil d'outils.
 

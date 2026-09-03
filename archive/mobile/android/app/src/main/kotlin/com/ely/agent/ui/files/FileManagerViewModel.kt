@@ -3,7 +3,7 @@
 // @file       ui/files/FileManagerViewModel.kt
 // @brief      ViewModel — scan, filter, dedupe, delete
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
-// @license    PolyForm Strict License 1.0.0
+// @license    MIT
 // =============================================================================
 
 package com.ely.agent.ui.files

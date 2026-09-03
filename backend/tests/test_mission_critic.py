@@ -4,7 +4,7 @@
 # @brief      Sprint 3.7 Jalon 4 — pin the LLM-as-judge mission critic :
 #             policy B+C sampling, prompt assembly, verdict parsing,
 #             persistence, cron entry point.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for app/services/learning/mission_critic.py — Sprint 3.7 Jalon 4."""
 from __future__ import annotations

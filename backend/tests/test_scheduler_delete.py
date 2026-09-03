@@ -5,7 +5,7 @@
 #             RÉELLEMENT de la base (hard delete) + désenregistrer son cron,
 #             pas la « masquer ». Plus : ownership (pas de suppression
 #             cross-user) et toggle enabled persisté.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de l'endpoint DELETE /scheduler/{id} et du toggle enabled.
 

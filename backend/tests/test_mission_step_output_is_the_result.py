@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_step_output_is_the_result.py
 # @brief      `{{ etape.output }}` doit porter le RESULTAT de l'etape, pas la
 #             sortie brute de l'outil qu'elle a employe.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La sortie d'une étape n'est pas la sortie de son outil (30/08/2026).
 

@@ -3,7 +3,7 @@
 # @file       backend/tests/test_pdf_tool_carries_requirements.py
 # @brief      La signature de l'outil laisse enfin passer les exigences de
 #             l'utilisateur, et le rapport dit ce qui a été décidé.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le goulot mesuré, et sa levée.
 

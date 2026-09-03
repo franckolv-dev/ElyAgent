@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_skill_eval.py
 # @brief      Sprint 4b Phase 3.b — tests for the LLM-as-judge skill evaluator
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for ``app/services/learning/skill_eval.py``.
 

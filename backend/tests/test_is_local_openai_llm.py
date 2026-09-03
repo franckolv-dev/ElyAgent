@@ -6,7 +6,7 @@
 #             working cloud LLM onto its fallback for the rest of the
 #             conversation — observed in prod 2026-05-25 on DeepSeek-pro
 #             (conv e9b33b7d stuck on Claude Haiku for 1h+).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for `app.services.qwen_no_think.is_local_openai_llm`.
 

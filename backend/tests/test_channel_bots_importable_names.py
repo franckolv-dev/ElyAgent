@@ -3,7 +3,7 @@
 # @file       backend/tests/test_channel_bots_importable_names.py
 # @brief      Régression #247 : un NameError en production sur Telegram, que
 #             les pins source-grep n'ont pas vu.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pin des noms résolvables dans les bots de canaux.
 

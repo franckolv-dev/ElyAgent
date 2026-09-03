@@ -3,8 +3,8 @@
 # @file       backend/app/services/hitl_preferences.py
 # @brief      Per-user HITL preferences resolver
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Per-user HITL preferences — resolve whether a tool needs confirmation.
 

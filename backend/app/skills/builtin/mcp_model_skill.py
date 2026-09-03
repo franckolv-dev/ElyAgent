@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/skills/builtin/mcp_model_skill.py
 # @brief      Outils MCP exposés AU MODÈLE : connect / discover / call / propose.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La fonctionnalité phare : le modèle pilote lui-même le client MCP.
 

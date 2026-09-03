@@ -6,8 +6,8 @@
 #             20 May 2026 at the bench session).
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Regression — MemoryManager._time_decay accepts mixed timestamp formats.
 

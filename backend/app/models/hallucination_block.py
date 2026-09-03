@@ -6,8 +6,8 @@
 #             model claimed a destructive action it never executed.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # @version    1.5.0
 # =============================================================================
 """Persisted hallucination blocks — Sprint 3.7 §2.2.

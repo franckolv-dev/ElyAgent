@@ -3,7 +3,7 @@
 # @file       backend/app/services/bounded_cache.py
 # @brief      Cache borné LRU + TTL partagé — remplace les 4 _BoundedDict
 #             FIFO dupliqués (revue multi-utilisateurs 2026-06-10, B-7).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Bounded LRU dict with optional idle-TTL.
 

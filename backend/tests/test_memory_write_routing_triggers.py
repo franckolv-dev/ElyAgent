@@ -4,7 +4,7 @@
 # @brief      Bug terrain 2026-06-12 — « retiens mes URLs » n'appelait JAMAIS
 #             d'outil : memory_archive n'avait pas de phrases déclencheurs et
 #             aucun outil ne relisait le profil. Pins des 3 surfaces.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le LLM choisit ses outils par les DÉCLENCHEURS du docstring, pas par
 l'architecture de stockage. 7-8 « enregistre mes profils sociaux » ont produit

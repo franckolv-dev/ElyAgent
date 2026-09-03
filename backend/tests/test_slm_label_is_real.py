@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_slm_label_is_real.py
 # @brief      La voie SLM doit nommer le modèle qui a répondu, pas un réglage.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le 06/08, Franck installe Nemotron 3 nano 4B dans LM Studio et demande :
 

@@ -3,7 +3,7 @@
 # @file       backend/tests/test_who_answered_is_visible.py
 # @brief      « Il n'y a que le local qui répond » — c'était faux, et l'écran
 #             ne permettait pas de le savoir.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Deux tours d'enquête pour une conclusion fausse (24/08).
 

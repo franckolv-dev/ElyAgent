@@ -4,9 +4,9 @@
 # @brief      Ce qu'Ely DONNE au modèle, et ce qu'elle LIT de sa réponse.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 #
 # RÉSUMÉ DES CONDITIONS :

@@ -5,9 +5,9 @@
  * @brief      MCP servers — admin UI for registering external MCP tool servers
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
- *            https://www.elastic.co/licensing/elastic-license
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  *
  * Sprint 4a J2 (2026-05-27) — admin UI for the MCP client.
  *

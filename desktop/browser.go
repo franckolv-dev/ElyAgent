@@ -4,9 +4,9 @@
 // @brief      Browser automation — Playwright-based web interaction
 //
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
-// @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-// @license    Elastic License 2.0
-//            https://www.elastic.co/licensing/elastic-license
+// @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+// @license    MIT
+//            https://opensource.org/licenses/MIT
 // @version    1.2.0
 // @link       https://github.com/franckolv-dev/PhysicalAgent
 //

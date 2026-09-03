@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_llm_deadline.py
 # @brief      C3d-2 — échéance murale par appel LLM : contrat helper + câblage.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Échéances murales (C3d-2).
 

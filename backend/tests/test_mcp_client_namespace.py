@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mcp_client_namespace.py
 # @brief      Lot 0 du client MCP — namespace, garde anti-collision, args,
 #             redaction des secrets, kill switch.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests du Lot 0 (stabilisation client MCP).
 

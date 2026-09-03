@@ -5,7 +5,7 @@
 #             user-scoped, not conversation-scoped. A fact learned in one
 #             conversation must be recallable from a DIFFERENT conversation —
 #             the whole point of the cognitive memory.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Canonical scenario P — cross-conversation memory recall."""
 from __future__ import annotations

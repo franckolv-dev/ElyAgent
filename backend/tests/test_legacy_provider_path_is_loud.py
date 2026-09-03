@@ -3,7 +3,7 @@
 # @file       backend/tests/test_legacy_provider_path_is_loud.py
 # @brief      Le chemin par NOM de fournisseur impose un modèle en dur —
 #             il doit le dire.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du chemin historique de résolution par nom de fournisseur.
 

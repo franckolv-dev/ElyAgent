@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_io_tool_audit.py
 # @brief      Sprint 4b V3 J6.c.1 — IoToolDispatch model + record_dispatch service.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins:
 

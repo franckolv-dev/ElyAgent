@@ -3,7 +3,7 @@
 # @file       backend/app/agent/routing.py
 # @brief      Sprint refactor nodes.py Phase 2.1 — LangGraph routing
 #             decision + iteration budget (Hermes Chantier 9).
-# @license    Elastic License 2.0
+# @license    MIT
 # @version    1.7.1
 # =============================================================================
 """Iteration budget — Hermes Chantier 9.

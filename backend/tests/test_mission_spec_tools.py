@@ -5,7 +5,7 @@
 #             `build_plan_from_spec` posait `tool_hint: None` en dur et la
 #             mission structurée perdait le signal le plus précis de la
 #             sélection d'outil — celui dont les missions libres disposent.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """`tools:` dans une spec de mission (28/08/2026).
 

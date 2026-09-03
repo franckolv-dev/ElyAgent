@@ -3,7 +3,7 @@
 # @file       backend/tests/test_conformity_is_observable.py
 # @brief      La boucle de conformité doit laisser une trace — sinon on ne
 #             peut ni la mesurer ni la corriger.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """La vérification tournait à l'aveugle.
 

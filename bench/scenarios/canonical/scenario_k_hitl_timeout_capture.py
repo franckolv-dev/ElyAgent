@@ -6,7 +6,7 @@
 #             ni refusé) n'est PAS un refus délibéré → record_hitl_refusal
 #             l'ignore (aucun signal, aucune capture), tandis qu'un VRAI refus
 #             reste persisté ET capturé comme failure_case.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Canonical scenario K — HITL timeout ignored, genuine refusal captured.
 

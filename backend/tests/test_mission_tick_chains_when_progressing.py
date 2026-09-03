@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_tick_chains_when_progressing.py
 # @brief      Une mission qui avance ne fait pas la queue : son tick suivant
 #             est immédiat.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le temps mort entre deux actions (31/08/2026).
 

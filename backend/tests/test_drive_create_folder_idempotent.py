@@ -3,7 +3,7 @@
 # @file       backend/tests/test_drive_create_folder_idempotent.py
 # @brief      2026-06-04 — drive_create_folder must reuse an existing same-name
 #             folder instead of creating a duplicate (recurring-mission bug).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for drive_create_folder idempotence (Franck, 2026-06-03).
 

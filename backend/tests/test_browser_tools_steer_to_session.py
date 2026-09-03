@@ -3,7 +3,7 @@
 # @file       backend/tests/test_browser_tools_steer_to_session.py
 # @brief      Deux familles de navigateur, un seul nom évident — et c'est le
 #             mauvais. Les descriptions doivent aiguiller vers la bonne.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de l'aiguillage entre navigateur sans session et Chrome de l'utilisateur.
 

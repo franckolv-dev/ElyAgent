@@ -3,7 +3,7 @@
 # @file       backend/app/services/mission_antiloop.py
 # @brief      Missions autonomes J5 — anti-boucle D4 : détection d'un appel
 #             d'outil identique répété en échec (cooldown + stratégie alterne).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Anti-boucle pathologique des missions autonomes (cadrage D4).
 

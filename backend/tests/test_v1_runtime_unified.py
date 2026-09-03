@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_v1_runtime_unified.py
 # @brief      V1 temps 2 — un seul runtime d'agent, plus deux.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins du runtime unifié (vague 1, temps 2 — destructif).
 

@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_mandate_budget.py
 # @brief      Missions autonomes J3 — disjoncteurs D4 : compteurs journaliers,
 #             seuils de notification, pause propre + snapshot, reprise.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Missions autonomes J3 — pins des disjoncteurs.
 

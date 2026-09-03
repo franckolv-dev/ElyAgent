@@ -3,7 +3,7 @@
 // @file       ui/files/FileManagerScreen.kt
 // @brief      Intelligent folder browser — filters, dedupe, cleanup
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
-// @license    PolyForm Strict License 1.0.0
+// @license    MIT
 // =============================================================================
 
 package com.ely.agent.ui.files

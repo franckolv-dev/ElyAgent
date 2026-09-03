@@ -3,8 +3,8 @@
 # @file       backend/tests/test_raw_api_call_hors_preferences.py
 # @brief      Les passe-plats *_raw_api_call ne sont plus dispensables de HITL.
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Audit sécurité 2026-09-02 — la porte la plus large fermable d'un clic.
 

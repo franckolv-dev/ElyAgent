@@ -4,7 +4,7 @@
 # @brief      Provider openai-codex (abonnement ChatGPT) — import des tokens
 #             du CLI officiel, refresh auto + rotation, httpx.Auth par
 #             requête, classification fallback, builder LLM.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins provider openai-codex.
 

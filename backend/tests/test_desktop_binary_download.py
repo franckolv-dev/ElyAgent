@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_desktop_binary_download.py
 # @brief      Tests for GET /api/desktop/binaries/{filename} (forced download)
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Tests for the desktop binary download route — direct-handler style.
 

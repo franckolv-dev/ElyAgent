@@ -4,8 +4,8 @@
 # @brief      Static per-conversation toolset profiles (Hermes Chantier 1)
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
 # =============================================================================
 """Static toolset profiles — Hermes-style stable tool catalog per session.
 

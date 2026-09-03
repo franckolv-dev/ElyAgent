@@ -3,7 +3,7 @@
 # @file       backend/tests/test_extraction_memoire_par_lot.py
 # @brief      L'extraction de faits coûtait un appel de modèle par TOUR.
 #             Elle en coûte désormais un par utilisateur et par JOUR.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Le travail de fond pesait quatre fois la demande de l'utilisateur.
 

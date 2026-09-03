@@ -5,7 +5,7 @@
 # @brief      One-time backfill of messages_fts from the existing messages
 #             table. Sprint 1 — Memory recall.
 #
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Backfill the messages_fts index from the existing messages table.
 

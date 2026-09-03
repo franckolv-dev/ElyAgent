@@ -2,7 +2,7 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_ghost_tools_resolved.py
 # @brief      Quatre noms étaient bindés au profil sans exister au catalogue.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Pins de la résolution des outils fantômes.
 

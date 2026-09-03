@@ -3,7 +3,7 @@
 # @file       backend/tests/test_extension_tokens.py
 # @brief      Pure-function coverage for the extension-token helpers.
 #
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Sanity tests for the Sprint 0.5 extension-token helpers.
 

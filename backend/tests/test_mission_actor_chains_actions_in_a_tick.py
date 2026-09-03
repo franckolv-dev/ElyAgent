@@ -3,7 +3,7 @@
 # @file       backend/tests/test_mission_actor_chains_actions_in_a_tick.py
 # @brief      L'acteur enchaîne ses appels d'outils dans le tick, relit
 #             leurs résultats, et conclut l'étape en texte.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """L'acteur ne voyait jamais ce qu'il venait de faire (31/08/2026).
 

@@ -7,7 +7,7 @@
 #             son budget dessus (incident 26/08/2026, mission Prospection :
 #             drive_upload_local_file rejoué 3×, sheets_create_spreadsheet
 #             2×, 103 041 tokens consommés sans jamais avancer).
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Borne de tentatives par étape sur les missions LIBRES (hors spec)."""
 from __future__ import annotations

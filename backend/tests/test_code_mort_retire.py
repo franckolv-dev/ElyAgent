@@ -4,7 +4,7 @@
 # @brief      Ménage 02/09/2026 — deux morceaux inertes qui coûtaient quand
 #             même : une collection Qdrant créée à vide à chaque boot, et un
 #             outil de démonstration bindé dans le registre de production.
-# @license    Elastic License 2.0
+# @license    MIT
 # =============================================================================
 """Ce qui ne sert à rien coûte quand même quelque chose.
 
