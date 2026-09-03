@@ -25,12 +25,16 @@ import * as THREE from "three";
 import type { AvatarState } from "./CyberpunkAvatar";
 
 // ─── State → RGB ───────────────────────────────────────────────────────────
+// Jumelle de `HUD_COLOR` dans CyberpunkAvatar.tsx : même table, en flottants
+// pour le shader. Seul `idle` change à la refonte 09/2026 — bleu #7681ff au
+// lieu du cyan — les autres états portent le signal « elle travaille » et
+// restent intacts. Les deux tables doivent bouger ensemble.
 const COLORS: Record<AvatarState, [number, number, number]> = {
-  idle:      [0.0,  0.82, 1.0 ],
-  thinking:  [0.67, 0.0,  1.0 ],
-  speaking:  [0.0,  1.0,  0.35],
-  alert:     [1.0,  0.12, 0.22],
-  listening: [1.0,  0.82, 0.0 ],
+  idle:      [0.463, 0.506, 1.0 ],
+  thinking:  [0.67,  0.0,   1.0 ],
+  speaking:  [0.0,   1.0,   0.35],
+  alert:     [1.0,   0.12,  0.22],
+  listening: [1.0,   0.82,  0.0 ],
 };
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
@@ -282,10 +286,10 @@ function isWebGLAvailable(): boolean {
 // ─── CSS fallback when WebGL is unavailable ─────────────────────────────────
 function AvatarFallback({ state }: { state: AvatarState }) {
   const COLORS: Record<string, string> = {
-    idle: "#00d2ff", thinking: "#aa00ff", speaking: "#00ff5a",
+    idle: "#7681ff", thinking: "#aa00ff", speaking: "#00ff5a",
     alert: "#ff1e37", listening: "#ffd200",
   };
-  const color = COLORS[state] ?? "#00d2ff";
+  const color = COLORS[state] ?? "#7681ff";
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-[#060c16]">
       <div className="relative w-28 h-28 mb-4">

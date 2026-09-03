@@ -42,7 +42,9 @@ const API_URL_CHAT = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const PANEL_MIN  = 220;
 const PANEL_MAX  = 640;
 const PANEL_KEY  = "ely-avatar-width";
-const PANEL_DEFAULT = 320;   // ~33 % wider than the old 256 px
+const PANEL_DEFAULT = 320;   // la maquette dit 290, mais elle logeait une
+                             // icône SVG ; la tête 3D a besoin de ~270 px
+                             // utiles pour tenir sans être rognée.
 
 function usePanelResize() {
   const [width, setWidth] = useState<number>(PANEL_DEFAULT);
@@ -463,8 +465,9 @@ function ChatPageInner() {
 
   return (
     <AuthGuard>
-      {/* Layout refonte : header full-width au-dessus de la sidebar + main + avatar */}
-      <div className="flex flex-col h-screen overflow-hidden">
+      {/* Châssis 09/2026 : sidebar pleine hauteur, puis une colonne
+          entête + (fil de conversation | panneau avatar). */}
+      <div className="flex h-screen overflow-hidden">
         {/* Provider switch toast — Hermes Chantier 4. Discreet badge in
             top-right that fades after 6s. Lets the user know when ELY
             silently bascules from the configured primary LLM to a
@@ -496,19 +499,20 @@ function ChatPageInner() {
             </div>
           </div>
         )}
+        <Sidebar />
+
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header wsStatus={wsStatus}>
           <button
             onClick={handleToggleVoiceMode}
             title="Mode vocal"
             className={`icon-btn ${voiceConv.state.isActive ? "active" : ""}`}
           >
-            <Mic size={15} />
+            <Mic size={16} />
           </button>
         </Header>
 
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
-
           {/* `chat-thread` — le fil passe sous le reste du châssis (21/08).
               Sur le conteneur et pas sur la zone défilante seule : sinon une
               marche apparaît juste au-dessus du composeur. */}
@@ -601,10 +605,11 @@ function ChatPageInner() {
               <div className="absolute w-1 h-8 rounded-full bg-border-dim group-hover:bg-cyber-cyan/60 transition-colors opacity-0 group-hover:opacity-100" />
             </div>
 
-            <div className="avatar-panel" style={{ width: "100%", paddingLeft: 24 }}>
+            <div className="avatar-panel" style={{ width: "100%" }}>
               <AvatarPanel wsMessage={lastWsMessage} isLoading={isLoading} />
             </div>
           </div>
+        </div>
         </div>
       </div>
 

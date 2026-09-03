@@ -29,8 +29,23 @@ const AvatarScene = dynamic(
 );
 
 // ── Color palette for HUD elements ─────────────────────────────────────────
+// ⚠️ SEUL `idle` CHANGE (refonte 09/2026). L'avatar est conservé tel quel —
+// forme, animation, comportement — et c'est sa couleur AU REPOS qui passe du
+// cyan/vert d'eau au bleu de la nouvelle interface (#7681ff ≈ oklch(66 %
+// 0.19 276), la teinte 276 de `--accent-h`).
+//
+// Les quatre autres états gardent leurs couleurs : elles sont le SIGNAL
+// « elle travaille / elle parle / elle alerte / elle écoute ». Les repeindre
+// dans la même famille que le repos supprimerait précisément ce que Franck a
+// demandé de garder. `thinking` reste donc en magenta-violet : il est voisin
+// du bleu sur la roue, mais l'écart de chroma et de luminance le sépare
+// nettement du repos une fois passé au bloom.
+//
+// Ces valeurs sont EN DUR et non lues dans le CSS : elles alimentent aussi
+// les uniforms du shader (AvatarScene.COLORS), qui ne voient pas les
+// variables CSS. Les deux tables doivent bouger ensemble.
 const HUD_COLOR: Record<AvatarState, string> = {
-  idle:      "#00d2ff",
+  idle:      "#7681ff",
   thinking:  "#aa00ff",
   speaking:  "#00ff5a",
   alert:     "#ff1e37",
@@ -130,7 +145,7 @@ export function CyberpunkAvatar({
 
   return (
     <div
-      className={`relative bg-[#060c16] border border-cyber-cyan/10 overflow-hidden rounded-lg shadow-[0_0_24px_rgba(0,210,255,0.08)] ${className}`}
+      className={`relative bg-[#060c16] border border-cyber-cyan/10 overflow-hidden rounded-lg shadow-[0_0_24px_rgba(118,129,255,0.10)] ${className}`}
       style={{ minHeight: minimal ? 0 : 280 }}
     >
       {/* Three.js canvas — with WebGL error boundary */}
