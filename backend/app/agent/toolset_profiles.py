@@ -312,8 +312,26 @@ _DEFAULT_TOOLS: tuple[str, ...] = (
 #
 # Le profil `compact` existe donc pour ça — premier usage réel du mécanisme
 # qu'on a pris soin de conserver. Le nœud le choisit hors tier COMPLEX.
+# Les outils qui inspectent Ely ELLE-MÊME. Au chat, l'utilisateur a le droit
+# de demander « montre-moi les journaux » ; une mission, non : elle exécute
+# un objectif du monde, elle ne s'ausculte pas. Le 03/09/2026, une mission de
+# nettoyage de mails a passé huit passages à relire sa configuration LLM et
+# ses journaux (« fallback », « tier », « lm_studio ») sans toucher un mail —
+# chaque passage relisant dans le carnet ce que le précédent avait fait.
+_OUTILS_DE_DIAGNOSTIC: frozenset[str] = frozenset({
+    "system_get_logs", "system_check_llm_providers", "system_get_health",
+    "system_check_channels", "system_list_missions", "system_list_scheduled_tasks",
+    "system_info",
+})
+
+# Ce qu'un profil « tout le catalogue » retire quand même.
+_EXCLUS_PAR_PROFIL: dict[str, frozenset[str]] = {
+    "mission": _OUTILS_DE_DIAGNOSTIC,
+}
+
 _PROFILES: dict[str, tuple[str, ...] | None] = {
     "default": None,          # None = tout le catalogue
+    "mission": None,          # tout le catalogue, moins l'auto-diagnostic
     "compact": _DEFAULT_TOOLS,  # la liste tenue à la main, pour petites fenêtres
 }
 
@@ -428,6 +446,7 @@ def resolve_profile_tools(name: str, all_tools: Sequence) -> list:
         # l'a signalé — c'est exactement le genre de régression qu'un lot
         # « on branche tout » introduit sans bruit.
         eteints = set(_REVERSIBLE_TOOL_NAMES) - _reversible_tool_names()
+        eteints |= _EXCLUS_PAR_PROFIL.get(name, frozenset())
         return [t for t in all_tools if t.name not in eteints]
 
     wanted = set(declares)

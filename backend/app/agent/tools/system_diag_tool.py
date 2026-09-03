@@ -345,6 +345,12 @@ async def system_check_llm_providers() -> str:
         from app.config import get_settings
         s = get_settings()
         url = (getattr(s, "lm_studio_base_url", None) or "http://host.docker.internal:1234").rstrip("/")
+        # L'URL configurée finit déjà par `/v1` : on interrogeait `/v1/v1/models`,
+        # LM Studio répondait 200 avec une liste vide, et l'outil annonçait
+        # « 0 modèle disponible » — le modèle en concluait que les têtes locales
+        # étaient mortes et partait fouiller les journaux (03/09/2026).
+        if url.endswith("/v1"):
+            url = url[: -len("/v1")]
         async with httpx.AsyncClient(timeout=3) as c:
             r = await c.get(f"{url}/v1/models")
         if r.status_code == 200:

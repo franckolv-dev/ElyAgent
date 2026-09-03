@@ -94,7 +94,10 @@ _STATUTS_VIVANTS: frozenset[str] = frozenset({"running", "planning"})
 # COMPLEX (cf. app/agent/toolset_profiles.py), et une mission tourne toujours
 # sur COMPLEX. Hors COMPLEX, le nœud retombe de lui-même sur `compact` : la
 # fenêtre du modèle local ne porte pas les ~61 000 tokens de descriptions.
-_PROFIL_OUTILS: str = "default"
+# « mission » = le même catalogue complet, moins les outils d'auto-diagnostic
+# (journaux, santé, configuration des modèles) : une mission qui les a sous la
+# main s'en sert pour s'ausculter au lieu de travailler (03/09/2026).
+_PROFIL_OUTILS: str = "mission"
 
 # Ce qu'un outil refusé pour cause de budget renvoie au modèle. Un refus MUET
 # le ferait réessayer ; nommé, il conclut.

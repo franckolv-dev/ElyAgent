@@ -1064,6 +1064,11 @@ def local_models_available(base_url: str | None) -> list[str]:
     key = (base_url or "").rstrip("/")
     if not key:
         return []
+    # L'URL d'une instance LM Studio finit par `/v1` : y coller `/v1/models`
+    # donnait `/v1/v1/models`, auquel LM Studio répond 200 avec une liste
+    # vide (« Unexpected endpoint … Returning 200 anyway »). Les deux chemins
+    # sondés partent de la RACINE du serveur (03/09/2026).
+    racine = key[: -len("/v1")] if key.endswith("/v1") else key
     cache = _local_models_cache.get(key)
     now = time.monotonic()
     if cache and now - cache[0] < _LOCAL_PROBE_TTL_S:
@@ -1080,7 +1085,7 @@ def local_models_available(base_url: str | None) -> list[str]:
             ("/v1/models", lambda d: [m.get("id", "") for m in d.get("data", [])]),
         ):
             try:
-                r = httpx.get(f"{key}{chemin}", timeout=1.5)
+                r = httpx.get(f"{racine}{chemin}", timeout=1.5)
                 if r.status_code == 200:
                     noms = [n for n in extraire(r.json()) if n]
                     if noms:
