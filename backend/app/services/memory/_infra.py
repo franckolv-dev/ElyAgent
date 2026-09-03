@@ -65,7 +65,11 @@ class MemoryInfra:
         self._client = None
         self._encoder = None
         self._embed_cache: _LRUCache = _LRUCache(maxsize=2048)
-        self._embed_lock = asyncio.Lock()
+        # Un verrou PAR TEXTE (audit 02/09/2026) : le verrou global unique
+        # sérialisait tous les embeddings du processus, y compris cinq textes
+        # différents demandés par cinq stores. Le même texte demandé cinq fois
+        # reste calculé une fois ; deux textes différents avancent ensemble.
+        self._embed_locks: dict[str, asyncio.Lock] = {}
 
     @property
     def client(self):
@@ -95,13 +99,20 @@ class MemoryInfra:
         """
         if text in self._embed_cache:
             return self._embed_cache[text]
-        async with self._embed_lock:
-            if text in self._embed_cache:
-                return self._embed_cache[text]
-            result = await asyncio.to_thread(
-                lambda: list(self.encoder.embed([text]))[0].tolist()
-            )
-            self._embed_cache[text] = result
+        lock = self._embed_locks.setdefault(text, asyncio.Lock())
+        try:
+            async with lock:
+                if text in self._embed_cache:
+                    return self._embed_cache[text]
+                result = await asyncio.to_thread(
+                    lambda: list(self.encoder.embed([text]))[0].tolist()
+                )
+                self._embed_cache[text] = result
+        finally:
+            # Le dernier sorti éteint la lumière : un verrou ne vit que le
+            # temps du calcul, sinon le dict grossirait avec chaque texte vu.
+            if not lock.locked():
+                self._embed_locks.pop(text, None)
         return result
 
     async def upsert(self, collection: str, vector: list[float], payload: dict) -> str:
