@@ -228,6 +228,12 @@ async def websocket_chat(websocket: WebSocket):
 
     try:
         while True:
+            # Le client est parti pendant un tour (livraison différée par
+            # `_ws_send`) : le socket est fermé, lire dessus lève RuntimeError
+            # (« Need to call "accept" first ») et le journal le comptait
+            # comme une erreur du chat (03/09/2026).
+            if client_gone.is_set():
+                break
             data = await websocket.receive_text()
             try:
                 msg = _loads(data)
@@ -1116,10 +1122,16 @@ async def _maybe_generate_title(
             f"Utilisateur : {user_text[:500]}\n"
             f"Ely : {assistant_text[:500]}"
         )
+        # Le tier MAINTENANCE est local par défaut, mais c'est une
+        # configuration d'administrateur : le texte passe par le masque de
+        # la conversation, comme le tour lui-même (audit 02/09/2026, §9 —
+        # l'un des deux derniers chemins qui partaient en clair).
+        _sf = _get_filter(conversation_id)
+        prompt = _sf.anonymize(prompt, ner_detection=False)
         # OPTIM — générer un titre de 3 à 7 mots ne demande aucun
         # raisonnement (voir services/background_llm.py).
         from app.services.background_llm import ainvoke_background
-        raw = await ainvoke_background(llm, [HumanMessage(content=prompt)])
+        raw = _sf.deanonymize(await ainvoke_background(llm, [HumanMessage(content=prompt)]))
         title = _clean_title(raw)
         if not title:
             return
@@ -1164,6 +1176,16 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
             f"{'Utilisateur' if m.role == 'user' else 'ELY'}: {m.content[:300]}"
             for m in msgs[-30:]
         )
+        # Les messages sont stockés dé-anonymisés à dessein ; le tier
+        # MAINTENANCE est local par défaut mais c'est une configuration
+        # d'administrateur. Le transcript passe par un masque et les trois
+        # sorties se démasquent avec le même dictionnaire (audit 02/09/2026,
+        # §9 — dernier chemin en clair). Masque NEUF, pas celui du tour : la
+        # déconnexion a déjà retiré le filtre de la conversation du registre
+        # (``_filters.pop`` s'exécute avant cette tâche spawnée) ; en
+        # réclamer un au registre en laisserait un orphelin derrière soi.
+        _sf = SecurityFilter()
+        transcript = _sf.anonymize(transcript, ner_detection=False)
 
         # FIX 2026-05-06 (audit H-2): summarisation et extraction de faits
         # sont des tâches MAINTENANCE — elles doivent respecter le tier
@@ -1238,7 +1260,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         memory = get_memory_manager()
 
         # ── 1. Store holistic summary ────────────────────────────────────
-        summary = summary_resp.content.strip()
+        summary = _sf.deanonymize(summary_resp.content.strip())
         if summary:
             await memory.store_memory(
                 content=summary,
@@ -1249,7 +1271,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
 
         # ── 2. Store individual profile facts ────────────────────────────
         import json as _json
-        raw = facts_resp.content.strip()
+        raw = _sf.deanonymize(facts_resp.content.strip())
         # Strip markdown code fences if the model wrapped the JSON
         if "```" in raw:
             raw = raw.split("```")[1].lstrip("json").strip()
@@ -1276,7 +1298,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
                 )
 
         # ── 3. Store individual user preferences ─────────────────────────
-        raw_prefs = prefs_resp.content.strip()
+        raw_prefs = _sf.deanonymize(prefs_resp.content.strip())
         if "```" in raw_prefs:
             raw_prefs = raw_prefs.split("```")[1].lstrip("json").strip()
         try:
