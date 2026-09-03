@@ -368,7 +368,7 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
   const [title, setTitle]   = useState(mission?.title ?? "");
   const [goal, setGoal]     = useState(mission?.goal ?? "");
   const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 15);
-  const [budgetTok, setBudgetTok]   = useState(mission?.budget_tokens ?? 50_000);
+  const [budgetTok, setBudgetTok]   = useState(mission?.budget_tokens ?? 500_000);
   const [autonomous, setAutonomous] = useState(mission?.autonomous ?? false);
   // Sprint 4c — spec structurée optionnelle (création uniquement)
   const [specYaml, setSpecYaml] = useState("");
@@ -595,8 +595,8 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
                 {t("budgetTokens")} <span className="text-text-muted/60">{t("llmHint")}</span>
               </label>
               <input
-                type="number" min={1000} max={500_000} step={1000} value={budgetTok}
-                onChange={(e) => setBudgetTok(Math.max(1000, Math.min(500_000, +e.target.value || 1000)))}
+                type="number" min={1000} max={5_000_000} step={1000} value={budgetTok}
+                onChange={(e) => setBudgetTok(Math.max(1000, Math.min(5_000_000, +e.target.value || 1000)))}
                 className="w-full text-sm bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary focus:outline-none focus:border-cyber-cyan/40"
               />
             </div>

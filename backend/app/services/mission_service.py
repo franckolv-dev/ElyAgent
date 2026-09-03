@@ -57,7 +57,7 @@ async def create_mission(
     priority: int = 5,
     source: str = "ui",
     source_ref: Optional[str] = None,
-    budget_tokens: int = 50_000,
+    budget_tokens: int = 500_000,
     budget_iterations: int = 30,
     tick_interval_seconds: Optional[int] = None,
     deadline: Optional[datetime] = None,

@@ -44,7 +44,11 @@ class MissionCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     goal: str = Field(..., min_length=5)
     priority: int = Field(5, ge=1, le=10)
-    budget_tokens: int = Field(50_000, ge=1000, le=500_000)
+    # 03/09/2026 : une mission tourne sur la boucle du chat (#370), soit
+    # ~30 000 tokens par action avec le catalogue complet. 50 000 (plafond
+    # 500 000) datait du moteur à un outil par tick et faisait échouer
+    # toute mission en deux actions.
+    budget_tokens: int = Field(500_000, ge=1000, le=5_000_000)
     budget_iterations: int = Field(30, ge=1, le=200)
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None
@@ -67,7 +71,7 @@ class MissionUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     goal: Optional[str] = Field(None, min_length=5)
     priority: Optional[int] = Field(None, ge=1, le=10)
-    budget_tokens: Optional[int] = Field(None, ge=1000, le=500_000)
+    budget_tokens: Optional[int] = Field(None, ge=1000, le=5_000_000)
     budget_iterations: Optional[int] = Field(None, ge=1, le=200)
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None

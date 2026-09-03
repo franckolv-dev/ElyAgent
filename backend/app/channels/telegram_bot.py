@@ -231,7 +231,7 @@ async def cmd_mission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             source="channel",
             source_ref=f"telegram:{tg_id}",
             budget_iterations=15,
-            budget_tokens=80_000,
+            budget_tokens=500_000,
         )
         await mission_service.start_mission(m.id)
         await schedule_first_tick(m.id)
