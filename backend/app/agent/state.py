@@ -74,3 +74,8 @@ class AgentState(TypedDict):
     #     agent binds all the tools it was explicitly told to call.
     # Absent / False for every interactive chat turn — no behaviour change there.
     automated_task: bool
+    # 03/09/2026 — « complex » épingle le tier du tour : la boucle des
+    # missions le pose, sinon `classify_complexity` (mots-clés) envoyait un
+    # tour de mission sur le tier IMAGE dès qu'une page lue parlait d'image.
+    # Absent pour un tour de chat : le routage par la demande reste entier.
+    tier_pin: str

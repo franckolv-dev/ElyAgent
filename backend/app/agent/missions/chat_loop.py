@@ -400,6 +400,43 @@ def _preparer_carnet(mission: Any) -> None:
         logger.warning("Mission %s : carnet indisponible (%s)", mission.id, exc)
 
 
+# Les outils dont le RÉSULTAT est un état du monde à ne pas recréer : leur
+# extrait survit toujours dans le carnet, même loin dans la trace. Le
+# 03/09/2026, une reprise qui ne connaissait que des noms d'outils a recréé
+# le tableur deux fois et conclu « historique inchangé » après l'avoir mis à
+# jour.
+_OUTILS_CREATEURS: tuple[str, ...] = ("_create", "_update", "_append", "_upload", "_write", "_send")
+_EXTRAIT_MAX = 110
+
+
+def _extraits_de_trace(steps: Any, *, recents: int = 15, maxi: int = 2500) -> str:
+    """Les actions déjà jouées, avec un extrait de leur RÉSULTAT.
+
+    Toutes les actions des outils créateurs (ce qui existe désormais), plus
+    les ``recents`` dernières actions quelles qu'elles soient (où en était la
+    lecture). Une ligne par action, coupée, le tout borné à ``maxi``
+    caractères — c'est un rappel, pas une trace."""
+    actes = [s for s in steps if getattr(s, "phase", "") == "act" and getattr(s, "tool_name", None)]
+    if not actes:
+        return ""
+    retenus: list[int] = []
+    for i, s in enumerate(actes):
+        nom = str(s.tool_name)
+        if i >= len(actes) - recents or any(m in nom for m in _OUTILS_CREATEURS):
+            retenus.append(i)
+    lignes: list[str] = []
+    for i in retenus:
+        s = actes[i]
+        sortie = " ".join(str(getattr(s, "tool_output", "") or "").split())
+        if len(sortie) > _EXTRAIT_MAX:
+            sortie = sortie[:_EXTRAIT_MAX] + "…"
+        lignes.append(f"- {s.tool_name} {'✓' if getattr(s, 'success', True) else '✗'} : {sortie}")
+    texte = "\n".join(lignes)
+    if len(texte) > maxi:
+        texte = texte[: maxi - 1].rstrip() + "…"
+    return texte
+
+
 async def _amorcer_depuis_la_trace(mission_id: str) -> None:
     """Le jour du basculement, des missions tournent déjà sur l'ancien moteur.
 
@@ -418,16 +455,14 @@ async def _amorcer_depuis_la_trace(mission_id: str) -> None:
         if "**Passage " in (read_carnet(mission_id) or ""):
             return
         steps = await mission_service.list_steps(mission_id)
-        faits = [
-            f"{s.tool_name} {'✓' if s.success else '✗'}"
-            for s in steps if s.phase == "act" and s.tool_name
-        ]
-        if not faits:
+        extraits = _extraits_de_trace(steps)
+        if not extraits:
             return
         carnet_append_section(
             mission_id, "Passages",
-            "**Passage 0 (reprise de l'ancien moteur)** — actions déjà "
-            f"jouées, dans l'ordre : {', '.join(faits[-40:])}. "
+            "**Passage 0 (reprise)** — actions déjà jouées, avec ce qu'elles "
+            "ont rendu (ce qui a été créé existe : ne le recrée pas, relis-le) :\n"
+            f"{extraits}\n"
             "Vérifie ce qui existe déjà avant de le refaire.",
         )
     except Exception as exc:  # noqa: BLE001
@@ -742,6 +777,11 @@ async def run_mission_chat_passage(
                 # l'identité de la mission.
                 "conversation_id": mission_id,
                 "automated_task": True,
+                # Une mission tourne sur COMPLEX, jamais sur le tier image ni
+                # sur une tête locale (#369 pour l'ancien moteur ; ici depuis
+                # le 03/09/2026 — deux appels à 195 s et 227 s sur le Gemma
+                # local pendant « test2 »).
+                "tier_pin": "complex",
                 # Le profil COLLANT du chat, valeur « tout le catalogue »
                 # (#323). Sans lui, le nœud retombe sur le filtre de
                 # mots-clés — celui qui ne connaît ni « convertis » ni
