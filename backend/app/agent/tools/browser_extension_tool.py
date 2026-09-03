@@ -115,11 +115,17 @@ def _not_connected_msg() -> str:
     )
 
 
-async def _send_and_wait(user_id: str, command_type: str, payload: dict) -> dict:
+async def _send_and_wait(
+    user_id: str, command_type: str, payload: dict, *, timeout_s: float | None = None,
+) -> dict:
     """Send a command envelope to the user's extension and await the result.
 
     Returns the result payload as a dict (with `ok` + `data`/`error`).
-    Raises TimeoutError if no answer comes within _DEFAULT_TIMEOUT_S.
+    Answers « timeout » if nothing comes back within ``_DEFAULT_TIMEOUT_S`` —
+    or within ``timeout_s`` when the command itself waits (``wait_loaded``,
+    ``wait_for``) : la passerelle coupait à 15 s quel que soit le délai passé
+    à l'outil, et l'extension attendait encore ses 30 s (mission « test 1 »,
+    03/09/2026 : deux items sur trois abandonnés sans lire la page).
     """
     # Normalise to str — the registry keys are always str, but the agent
     # state may pass a UUID object, which would silently miss the lookup.
@@ -155,11 +161,12 @@ async def _send_and_wait(user_id: str, command_type: str, payload: dict) -> dict
         conn.pending.pop(envelope_id, None)
         return {"ok": False, "error": f"send_failed: {e}"}
 
+    _deadline = max(float(_DEFAULT_TIMEOUT_S), float(timeout_s or 0))
     try:
-        result_envelope = await asyncio.wait_for(fut, timeout=_DEFAULT_TIMEOUT_S)
+        result_envelope = await asyncio.wait_for(fut, timeout=_deadline)
     except asyncio.TimeoutError:
         conn.pending.pop(envelope_id, None)
-        return {"ok": False, "error": f"timeout after {_DEFAULT_TIMEOUT_S}s"}
+        return {"ok": False, "error": f"timeout after {_deadline:g}s"}
 
     # Result envelope shape:
     #   { ok: bool, data: <handler_response>, error: str | null }
@@ -459,9 +466,28 @@ async def browser_tab_wait_loaded(
         return "Erreur : user_id manquant."
     res = await _send_and_wait(user_id, "wait_loaded", {
         "tab_id": tab_id, "timeout_s": timeout_s,
-    })
+    }, timeout_s=timeout_s + 5)
     if not res.get("ok"):
-        return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
+        erreur = str(res.get("error", "inconnue"))
+        if erreur.startswith("timeout"):
+            # Une page qui charge en continu (LinkedIn, Gmail) n'atteint
+            # parfois jamais `complete`, alors que son DOM répond depuis
+            # longtemps — à la mission « test 1 » du 03/09/2026, le sélecteur
+            # `main` était trouvé « en 0 ms » juste après ce même délai. Un
+            # « Erreur : timeout » faisait abandonner l'item ; si l'onglet
+            # répond, on le dit et on invite à lire.
+            sonde = await _send_and_wait(user_id, "get_url", {"tab_id": tab_id})
+            if sonde.get("ok") and (sonde.get("url") or sonde.get("title")):
+                return (
+                    f"Chargement non terminé après {timeout_s} s, mais l'onglet "
+                    f"{tab_id} répond déjà :\n"
+                    f"  URL   : {sonde.get('url', 'inconnue')}\n"
+                    f"  Titre : {sonde.get('title', 'inconnu')}\n"
+                    "→ appelle browser_tab_wait_for_selector(tab_id, selector=\"main\") "
+                    "puis browser_tab_read_text : une page qui charge en continu "
+                    "n'atteint parfois jamais l'état « complete »."
+                )
+        return f"Erreur : {erreur}. {res.get('hint', '')}"
     return (
         f"Onglet {res.get('tab_id')} chargé en {res.get('waited_ms', 0)} ms :\n"
         f"  URL final : {res.get('url')}\n"
@@ -499,7 +525,7 @@ async def browser_tab_wait_for_selector(
         return "Erreur : user_id manquant."
     res = await _send_and_wait(user_id, "wait_for", {
         "tab_id": tab_id, "selector": selector, "timeout_ms": timeout_s * 1000,
-    })
+    }, timeout_s=timeout_s + 5)
     if not res.get("ok"):
         return f"Erreur : {res.get('error', 'inconnue')}. {res.get('hint', '')}"
     return (
