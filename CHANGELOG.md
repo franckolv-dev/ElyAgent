@@ -15,6 +15,51 @@ Categories used:
 
 ---
 
+## [3.0.0] — 2026-09-03
+
+> **Ely change de licence, et le moteur de missions disparaît.** Deux jours, huit lots. Un audit global (tout le dépôt, la base de production en lecture seule, Hermes en face) a produit un plan en 22 items ; ils ont été appliqués, puis relus item par item dans le code. En chemin, sept pannes de production que 4 335 tests verts ne voyaient pas — tout était dans `docker logs`.
+>
+> Version majeure pour deux ruptures : la licence passe d'Elastic 2.0 à **MIT**, et une mission libre n'a plus de moteur à part — c'est le chat, lancé sans humain.
+
+### Licence
+- **MIT** (PR #374) : `LICENSE` porte le texte MIT ; ~1 000 en-têtes réécrits (Elastic 2.0 et les PolyForm survivants du pivot de mai, archive et mobiles compris) ; le bloc « RÉSUMÉ DES CONDITIONS » qui interdisait la revente retiré de 327 fichiers — il contredisait la licence qu'il accompagnait ; « All rights reserved » retiré des `@copyright` ; `COMMERCIAL_LICENSE.md` et `licence-ELY.md` supprimés ; `license = "MIT"` déclaré dans `pyproject.toml` et `package.json` (le champ était absent des deux). Un test lit tous les fichiers suivis et refuse tout terme de l'ancienne licence. ⚠️ `graduation_codegen.py` GÉNÉRAIT l'en-tête Elastic dans chaque outil promu : le dépôt aurait recommencé à fabriquer des fichiers sous l'ancienne licence. `TRADEMARK.md` reste : la marque n'est pas le code.
+
+### Changed
+- **La mission libre est le chat sans humain** (`6de7e1f`, PR #370) : un réveil = un tour de chat sur la topologie du chat, avec mandat, disjoncteurs, journal, HITL, et un CARNET comme mémoire entre deux réveils. `MISSIONS_ON_CHAT_LOOP` ON par défaut ; une mission à `spec_yaml` garde son exécuteur (foreach, handlers, reprise après question). ⚠️ **La cause racine des vingt PR de rustines** : la mission libre était branchée sur `filter_tools_by_query`, qui laissait **UN outil sur 26**. Même trou que #323.
+- **La fabrique d'outils est gelée** (`6de7e1f`, PR #370) : `AUTO_TOOL_GENERATION_ENABLED=false`, la compétence-document (SKILL.md) est le seul produit de l'apprentissage, son usage est compté. ⚠️ Ce n'était pas une ligne de config : le drapeau coupait à deux endroits et aurait supprimé AUSSI la voie document. ⚠️ L'endpoint admin `/tool-creator/run` contournait le gel (PR #372).
+- **Trois surfaces sans usage rejoignent `archive/`** (`6de7e1f`, PR #370 ; `b3ff330`, PR #367) : WhatsApp (Meta et neonize, avec le contournement protobuf du Dockerfile), Slack, Discord, l'arène, Android, iOS, `/avatar-test`. Mesuré sur cinq mois : 0 appel. La voix est **conservée** — l'audit la comptait à zéro, faux : elle est montée dans la page de chat. ⚠️ Discord et Slack ne notifiaient rien et le journal l'affirmait (`fan-out=N` sans fonction d'envoi).
+- **Le travail de fond divisé** (`abfdd05`, `1d0ad75`, PR #367) : extraction de mémoire une fois par jour au lieu d'une par tour (336 appels en trente jours pour quelques clés injectées) ; panel d'escalade plafonné par jour sans sacrifier les modèles gratuits (premier poste de coût). La conformité, elle, était déjà correcte et coûte 0 $.
+- **Le budget d'une mission suit son moteur** (`1ef252a`, PR #371) : 500 000 tokens par défaut, plafond 5 000 000. Avec le catalogue complet, une action coûte ~30 000 tokens ; l'ancien défaut (50 000) faisait échouer toute mission en deux actions. ⚠️ Les missions déjà créées gardent leur budget.
+- **La refonte de l'interface** (`5d58a75`, PR #371) : accent bleu (teinte 276), sidebar pleine hauteur, bulles sans pastille, avatar conservé.
+- **Le journal d'annulation est ON par défaut** (`e47510c`, PR #372) : seize outils annulables, douze compensations vérifiées, et ses deux trous fermés — une action partie en tâche de fond est journalisée à son terme ; un résultat « Erreur … » ne l'est pas.
+
+### Added
+- **Portés d'Hermes** (`dca8801`, `cf0c1e5`, PR #367) : le débordement des sorties d'outils vers un fichier paginable (`tool_output_read`) ; un carnet d'étapes de conversation (`session_todo`), réinjecté à la compaction du contexte avec les seules étapes restantes (PR #372) ; « après une écriture externe, relis la cible avant de conclure », dans le prompt ET dans le juge de conformité (PR #372). ⚠️ Le débordement cassait les missions et rebordait sans fin ; corrigé avant fusion.
+- **Ce qui rend Ely unique** (`865f5a5`, `b3cbe4d`, `eaa4b5c`, PR #367) : de 3 à **16 outils annulables** (Gmail, Agenda, Sheets, Drive, Notes, Tâches — tout revert qui supprime relit sa cible et refuse si elle a changé) ; **le contrat visible** (`/transparence` : 211 outils par nature, ce qui demande un accord, ce qui s'annule, les dispenses, les mandats) ; **le registre de sortie** (ce qui a quitté la machine, sur quel modèle, avec quel masque) ; la compétence-document proposée après une tâche difficile, validée par l'humain.
+- **Un appel brut qui LIT ne demande rien** (`bea30a0`, PR #371) : la nature d'un `*_raw_api_call` est celle de sa méthode (`est_une_lecture`). Une lecture n'est ni à confirmer ni un acte accompli pour la garde anti-rejeu ; toute écriture reste non dispensable, comme décidé le 02/09.
+- **Le sélecteur d'outils local trie à température zéro** (`7d2c432`, PR #373), sur Ministral 3B : à 0,7, `pdf_to_docx` sortait une fois sur deux.
+
+### Security
+- **Trois trous fermés** (`ed46e44`, `41df3ed`, `6da2170`, PR #367) : les outils `web_*` refusent les hôtes internes (le garde anti-SSRF de MCP est enfin appelé) ; `/tts/*` exige un utilisateur connecté (rendait un MP3 sans jeton) ; un alias de compte Google inconnu refuse l'appel au lieu de partir du compte par défaut.
+- **Le contenu venu du dehors est une donnée** (`cea0f96`, PR #367 ; PR #372) : pages, onglets, mails, documents Drive, et désormais résultats et ressources MCP sont encadrés du même marqueur. ⚠️ Le cadre fuyait par les métadonnées (nom de fichier, sujet, titre d'onglet) — reproduit puis fermé.
+- **Les passe-plats `*_raw_api_call` ne se dispensent plus d'un clic** (`3fb4c6c`, PR #367) : ni « Toujours autoriser » ni « Pour cette tâche ». Le premier correctif ne fermait qu'un des deux boutons.
+- **Le substrat de confiance est actif sur une installation neuve** (`61d848e`, PR #367). ⚠️ `.env.example` remettait le drapeau à `false` : un test interdit désormais qu'un booléen de `.env.example` contredise `config.py`.
+- **Plus aucun texte en clair vers un modèle** (`54403c9`, PR #371) : le titre automatique, le résumé de fin de conversation (trois prompts) et la consolidation rapide passent par un masque. La page de transparence les listait comme trous ; sa liste est vide.
+
+### Fixed
+- **Sept pannes de production après les merges du 02/09** (PR #371) — aucune vue par la suite de tests : un 400 `invalid_encrypted_content` du tier codex basculait TOUTE la conversation sur un modèle gratuit pour vingt tours (le raisonnement chiffré illisible se retire du fil et le même modèle est rappelé) ; `session_todo` refusait les étapes écrites comme des objets ; la base de connaissances ne s'initialisait plus depuis le Sprint 2.5 (`'MemoryManager' object has no attribute 'client'`, un appel en cinq mois) ; six chemins de fond plantaient sur un `content` en liste de blocs ; la boucle WebSocket lisait un socket fermé après « client parti ».
+- **Le juge de conformité ne relançait jamais** (`eaa4b5c`, PR #367) : il écrit en français, la typographie française met une espace avant les deux-points, et « ÉCARTS : » était cherché sans espace. Tout verdict d'écart passait pour CONFORME.
+- **Le moteur de missions face à Hermes** (PR #369) : l'acteur enchaîne ses actions dans le tick (au lieu d'un outil par tick jugé par un second modèle), sur le tier COMPLEX ; une itération est une action ; re-tick immédiat quand la mission avance. ⚠️ **Un relais qui ne voit pas l'outillage ne doit pas témoigner de son absence** (#319) restait vrai ici.
+- **CI complète** (`b3d943c`, PR #367) : ESLint ressuscité (mort depuis Next 16), `next build`, premiers tests frontend, les 21 tests Go du daemon (jamais lancés), couverture mesurée, banc canonique sur chaque PR. Un vrai bug React trouvé par le linter au premier passage.
+- **Petits restes de l'audit** (PR #372) : `_FiltersProxy` et ses deux appelants ; un verrou par texte pour les embeddings au lieu d'un verrou global ; les prompts de mémoire refusent l'état des tâches ; l'extension Chrome ne promet plus un calque d'approbation qu'elle n'a jamais eu (`overlay.css` déclaré, absent) ; le « score neural » de l'avatar ne sort plus de `Math.random()`.
+
+### Ce qui n'a PAS été fait, et pourquoi
+- **Le découpage des monolithes** (`nodes.py` 2 190 lignes, `missions/nodes.py` 3 353, `llm_provider.py` 2 068…) : 13 500 lignes sur huit fichiers et 96 fichiers de tests introspectifs à convertir. Plusieurs jours, à part.
+- **Le navigateur qui apprend en te regardant** (§5.A de l'audit) : rien n'existe.
+- **La mesure du rappel mémoire avec et sans Qdrant** : demande un jeu étiqueté ; les scénarios actuels sont hermétiques par conception.
+- **Le sort du bac à sable et du proxy d'egress** : 0 exécution en cinq mois, 2 services, 3 jobs CI. Décision produit.
+- **Le drapeau « apte à l'agentique » par instance** (§4.6) : la règle vit dans la configuration, pas dans le code.
+
 ## [2.5.0] — 2026-08-24
 
 > **La voie locale devient empruntable.** Sur une même question — « trouve des sites comme Babelio » — mesuré avant et après :
