@@ -21,10 +21,6 @@ import { useRouter } from "next/navigation";
 import {
   missionsApi, type Mission, type MissionStatus, STATUS_META,
 } from "@/lib/missions";
-import {
-  MANDATE_TOOL_FAMILIES, MANDATE_FORM_DEFAULTS, buildMandateSpecYaml,
-  type MandateFormValues,
-} from "@/lib/mandate";
 
 type FilterTab = "all" | "active" | "terminal";
 
@@ -371,30 +367,11 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
   const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 15);
   const [budgetTok, setBudgetTok]   = useState(mission?.budget_tokens ?? 500_000);
   const [autonomous, setAutonomous] = useState(mission?.autonomous ?? false);
-  // Sprint 4c — spec structurée optionnelle (création uniquement)
-  const [specYaml, setSpecYaml] = useState("");
-  const [showSpec, setShowSpec] = useState(false);
-  // C6 — formulaire de mandat : génère la spec v2 (fin du piège « le mandat
-  // se déclare à la main dans le YAML »).
-  const [showMandate, setShowMandate] = useState(false);
-  const [mandate, setMandate] = useState<MandateFormValues>(MANDATE_FORM_DEFAULTS);
+  // 03/09/2026 — plus de spec YAML ni de formulaire de mandat ici : une
+  // mission se décrit par son objectif et tourne sur la boucle du chat (#370).
+  // Les missions structurées existantes restent lisibles sur leur page.
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState<string | null>(null);
-
-  const toggleFamily = (fam: string) => {
-    setMandate((m) => ({
-      ...m,
-      toolsAllow: m.toolsAllow.includes(fam)
-        ? m.toolsAllow.filter((f) => f !== fam)
-        : [...m.toolsAllow, fam],
-    }));
-  };
-
-  const generateMandateSpec = () => {
-    if (specYaml.trim() && !window.confirm(t("mandateReplaceConfirm"))) return;
-    setSpecYaml(buildMandateSpecYaml(mandate));
-    setShowSpec(true);
-  };
 
   const submit = async () => {
     if (!title.trim() || goal.trim().length < 5) {
@@ -409,8 +386,6 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
       budget_iterations: budgetIter,
       budget_tokens: budgetTok,
       autonomous,
-      // Sprint 4c — le serveur valide la spec (422 avec TOUTES les erreurs)
-      ...(!isEdit && specYaml.trim() ? { spec_yaml: specYaml } : {}),
     };
     try {
       if (isEdit) {
@@ -457,128 +432,6 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
             />
           </div>
 
-          {!isEdit && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowSpec(!showSpec)}
-                className="text-[11px] text-cyber-cyan hover:underline"
-              >
-                {showSpec ? "▾ " : "▸ "}{t("specToggle")}
-              </button>
-              {showSpec && (
-                <div className="mt-1">
-                  <textarea
-                    value={specYaml}
-                    onChange={(e) => setSpecYaml(e.target.value)}
-                    placeholder={t("specPlaceholder")}
-                    rows={10}
-                    spellCheck={false}
-                    className="w-full text-[12px] font-mono bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-cyber-cyan/40 resize-y"
-                  />
-                  <p className="text-[10px] text-text-muted mt-1">{t("specHint")}</p>
-                </div>
-              )}
-
-              {/* C6 — formulaire de mandat d'autonomie → génère la spec v2 */}
-              <div className="mt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowMandate(!showMandate)}
-                  className="text-[11px] text-cyber-cyan hover:underline"
-                >
-                  {showMandate ? "▾ " : "▸ "}{t("mandateToggle")}
-                </button>
-                {showMandate && (
-                  <div className="mt-2 space-y-2 border border-border-dim rounded p-3 bg-bg-secondary/50">
-                    <p className="text-[10px] text-text-muted">{t("mandateIntro")}</p>
-                    <div>
-                      <span className="text-[11px] text-text-muted block mb-1">{t("mandateFamilies")}</span>
-                      <div className="grid grid-cols-4 gap-x-2 gap-y-1">
-                        {MANDATE_TOOL_FAMILIES.map((fam) => (
-                          <label key={fam} className="flex items-center gap-1 text-[10px] text-text-primary cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={mandate.toolsAllow.includes(fam)}
-                              onChange={() => toggleFamily(fam)}
-                              className="accent-cyan-400 w-3 h-3"
-                            />
-                            {fam}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <label className="text-[10px] text-text-muted">
-                        {t("mandateAutonomy")}
-                        <select
-                          value={mandate.autonomy}
-                          onChange={(e) => setMandate({ ...mandate, autonomy: e.target.value as MandateFormValues["autonomy"] })}
-                          className="mt-1 w-full text-[11px] bg-bg-secondary border border-border-dim rounded px-1.5 py-1 text-text-primary"
-                        >
-                          <option value="autonomous">autonomous</option>
-                          <option value="supervised">supervised</option>
-                        </select>
-                      </label>
-                      <label className="text-[10px] text-text-muted">
-                        {t("mandateOnUnforeseen")}
-                        <select
-                          value={mandate.onUnforeseen}
-                          onChange={(e) => setMandate({ ...mandate, onUnforeseen: e.target.value as MandateFormValues["onUnforeseen"] })}
-                          className="mt-1 w-full text-[11px] bg-bg-secondary border border-border-dim rounded px-1.5 py-1 text-text-primary"
-                        >
-                          <option value="escalate">escalate</option>
-                          <option value="decide">decide</option>
-                        </select>
-                      </label>
-                      <label className="text-[10px] text-text-muted">
-                        {t("mandateLlmTier")}
-                        <select
-                          value={mandate.llmTier}
-                          onChange={(e) => setMandate({ ...mandate, llmTier: e.target.value as MandateFormValues["llmTier"] })}
-                          className="mt-1 w-full text-[11px] bg-bg-secondary border border-border-dim rounded px-1.5 py-1 text-text-primary"
-                        >
-                          <option value="">{t("mandateTierDefault")}</option>
-                          <option value="simple">simple</option>
-                          <option value="medium">medium</option>
-                          <option value="complex">complex</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="text-[10px] text-text-muted">
-                        {t("mandateBudgetTools")}
-                        <input
-                          type="number" min={1} value={mandate.dailyToolActionsNotify}
-                          onChange={(e) => setMandate({ ...mandate, dailyToolActionsNotify: Math.max(1, +e.target.value || 1) })}
-                          className="mt-1 w-full text-[11px] bg-bg-secondary border border-border-dim rounded px-1.5 py-1 text-text-primary"
-                        />
-                      </label>
-                      <label className="text-[10px] text-text-muted">
-                        {t("mandateBudgetLlm")}
-                        <input
-                          type="number" min={1} value={mandate.dailyLlmCallsNotify}
-                          onChange={(e) => setMandate({ ...mandate, dailyLlmCallsNotify: Math.max(1, +e.target.value || 1) })}
-                          className="mt-1 w-full text-[11px] bg-bg-secondary border border-border-dim rounded px-1.5 py-1 text-text-primary"
-                        />
-                      </label>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-text-muted">{t("mandateCoreHint")}</span>
-                      <button
-                        type="button"
-                        onClick={generateMandateSpec}
-                        disabled={mandate.toolsAllow.length === 0}
-                        className="text-[11px] px-2.5 py-1 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 disabled:opacity-40 shrink-0"
-                      >
-                        {t("mandateGenerate")}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
