@@ -4,7 +4,8 @@
 # @brief      Revue multi-utilisateurs 2026-06-10, Phase 1 lot 2 — pins :
 #             B-1 (lazy-load LLM non bloquant), A-5 (porte de concurrence
 #             LLM local au niveau transport httpx).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 1 batch 2 pins (revue 2026-06-10)."""
 from __future__ import annotations

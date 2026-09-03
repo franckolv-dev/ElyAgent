@@ -3,7 +3,8 @@
 # @file       backend/tests/test_escalation_daily_cap.py
 # @brief      Le panel d'escalade est le premier poste de coût du produit :
 #             il lui manquait un plafond CUMULÉ, par jour et par utilisateur.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le plafond quotidien du panel — audit du 02/09/2026.
 

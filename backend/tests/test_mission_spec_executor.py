@@ -4,7 +4,8 @@
 # @brief      Sprint 4c J2 — exécuteur de missions structurées : plan
 #             déterministe, expansion foreach, protocole EDGE_CASE,
 #             handlers, terminaison déterministe, jamais de replan.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Sprint 4c J2 — pins de l'exécuteur spec."""
 from __future__ import annotations

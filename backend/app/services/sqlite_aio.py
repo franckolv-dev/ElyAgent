@@ -3,7 +3,8 @@
 # @file       backend/app/services/sqlite_aio.py
 # @brief      Connexions aiosqlite hors-engine alignées sur les pragmas de
 #             l'engine SQLAlchemy (revue multi-utilisateurs 2026-06-10, B-2).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Out-of-engine aiosqlite connections with the SAME pragmas as the engine.
 

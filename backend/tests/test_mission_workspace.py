@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_workspace.py
 # @brief      Missions autonomes J4 — workspace de mission : journal JSONL avec
 #             rotation, CARNET.md atomique, injection contexte, branchements.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Missions autonomes J4 — pins du workspace (cadrage D5).
 

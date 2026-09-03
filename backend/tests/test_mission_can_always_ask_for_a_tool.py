@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_can_always_ask_for_a_tool.py
 # @brief      `find_tool` doit TOUJOURS etre lie : c'est le seul moyen qu'a
 #             Ely de reclamer un outil absent de sa selection.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Demander un outil ne doit pas dépendre d'un tirage sémantique (30/08/2026).
 

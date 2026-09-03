@@ -5,8 +5,9 @@
 #             perçue + correction sur 5 questions représentatives du tiers.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 #
 # Le tiers A = réponses one-shot SANS toolset bindé, face à l'utilisateur :
 # le critère est « le plus VIF qui soit correct » (le raisonnement s'achète

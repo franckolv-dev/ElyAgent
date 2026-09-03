@@ -4,7 +4,8 @@
 # @brief      Un outil de DÉCOUVERTE ne peut pas accomplir une étape. Il
 #             prépare l'action, il ne la fait pas — le confondre avec un
 #             résultat marque « done » une étape dont rien n'a été produit.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """`find_tool` ne valide jamais une étape (incident du 28/08/2026).
 

@@ -1,19 +1,19 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/licence_service.py
-# @brief      Licence service — Elastic License v2 (no tiers, no activation)
+# @brief      Licence service — MIT (no tiers, no activation)
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#             https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#             https://opensource.org/licenses/MIT
 # =============================================================================
-"""Licence service — Elastic License v2.
+"""Licence service — MIT.
 
 Pre-2026-05-28 this module implemented a tiered licensing system
 (free / pro / business / enterprise) with activation, max-user
 enforcement, click-wrap consent, and a paid licence-key column. The
-22 May 2026 pivot dropped all that in favour of a single Elastic
+22 May 2026 pivot dropped all that in favour of a single permissive
 License v2 that covers any personal use AND any internal business use,
 with no activation flow and no user cap.
 
@@ -28,7 +28,7 @@ they just get a permissive "always allowed" response now)
   Kept because ``routers/auth.py`` calls it before each user creation;
   removing the call would create needless churn.
 * ``get_licence_status(db)``  returns a fixed dict describing the
-  Elastic License v2 — consumed by ``GET /api/licence/status``.
+  MIT — consumed by ``GET /api/licence/status``.
 * ``get_active_licence(db)``  kept as a no-op alias that returns None;
   some legacy tests reference it.
 """
@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 
 
 # Stable identifier used by the status endpoint + the frontend panel.
-LICENSE_ID = "elastic-license-v2"
-LICENSE_URL = "https://www.elastic.co/licensing/elastic-license"
+LICENSE_ID = "MIT"
+LICENSE_URL = "https://opensource.org/licenses/MIT"
 LICENSE_SUMMARY_URL = "https://agent-ely.fr/pricing.html"
 
 
@@ -54,7 +54,7 @@ LICENSE_SUMMARY_URL = "https://agent-ely.fr/pricing.html"
 async def check_user_creation_allowed(
     db: AsyncSession,
 ) -> tuple[bool, Optional[str]]:
-    """Always allows user creation under Elastic License v2.
+    """Always allows user creation under MIT.
 
     Returns ``(True, None)`` unconditionally — the licence has no
     max-user cap. Kept as a function (instead of inlined ``True``) so
@@ -80,7 +80,7 @@ async def get_licence_status(db: AsyncSession) -> dict:
     """
     return {
         "license": LICENSE_ID,
-        "name": "Elastic License v2",
+        "name": "MIT",
         "url": LICENSE_URL,
         "summary_url": LICENSE_SUMMARY_URL,
         "free_for": [

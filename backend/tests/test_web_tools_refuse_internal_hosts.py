@@ -4,7 +4,8 @@
 # @brief      Les outils web refusent les hôtes internes : boucle locale,
 #             réseau privé, métadonnées cloud. Le garde existait, il n'était
 #             branché que sur MCP.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """SSRF par les outils web (audit du 02/09/2026).
 

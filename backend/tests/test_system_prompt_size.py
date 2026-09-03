@@ -4,7 +4,8 @@
 # @brief      2026-05-23 — pin the size of `_SYSTEM_PROMPT_BASE` after the
 #             Passe 1 reduction. Prevents accidental re-bloat as defensive
 #             rules get added over time.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Size guard for `_SYSTEM_PROMPT_BASE`.
 

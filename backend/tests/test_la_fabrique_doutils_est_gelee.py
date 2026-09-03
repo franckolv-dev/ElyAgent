@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_la_fabrique_doutils_est_gelee.py
 # @brief      Point 11 de l'audit — la compétence est un DOCUMENT, plus du code.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Geler la fabrique d'outils, sans rendre l'apprentissage muet (02/09/2026).
 

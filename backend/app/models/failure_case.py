@@ -4,9 +4,9 @@
 # @brief      Sprint 4b Phase 1 — replay-able failure capture
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    PolyForm Strict License 1.0.0
-#             https://polyformproject.org/licenses/strict/1.0.0/
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#             https://opensource.org/licenses/MIT
 # =============================================================================
 """Failure cases — Sprint 4b Phase 1 (auto-amélioration par création de skills).
 

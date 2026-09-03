@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_bench_base.py
 # @brief      Sprint 3.7.3 J1 — unit tests for bench/scenarios/_base.py
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin the contract of the bench scenario helper module.
 

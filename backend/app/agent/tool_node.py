@@ -5,7 +5,8 @@
 #             par appel (PII, vault, HITL, ACL, empreinte, idempotence,
 #             journal réversible, exécution, signaux) vit dans le Tool
 #             Gateway (services/tool_gateway.py) depuis C3a.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """Tool node — executes the tool_calls emitted by ``agent_node``.

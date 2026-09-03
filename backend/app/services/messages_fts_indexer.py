@@ -4,7 +4,8 @@
 # @brief      SQLAlchemy event hook: auto-index every new Message into
 #             messages_fts. Sprint 1 — Memory recall.
 #
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Auto-indexing hook for Sprint 1 — Memory recall.
 

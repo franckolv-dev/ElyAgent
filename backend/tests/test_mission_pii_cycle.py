@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_pii_cycle.py
 # @brief      Cycle PII des missions (chantier 2026-06-12) — le dernier trou
 #             documenté de la frontière souveraineté.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du cycle PII missions.
 

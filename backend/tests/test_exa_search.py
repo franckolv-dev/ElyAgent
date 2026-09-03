@@ -3,7 +3,8 @@
 # @file       backend/tests/test_exa_search.py
 # @brief      Exa en repli de la chaîne — recherche sémantique, appelée
 #             seulement quand SearXNG n'a rien rendu.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du fournisseur de recherche Exa.
 

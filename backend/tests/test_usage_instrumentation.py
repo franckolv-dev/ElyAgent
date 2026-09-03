@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_usage_instrumentation.py
 # @brief      V2-1 — rendre la latence et l'architecture d'agent mesurables.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de l'instrumentation d'usage (vague 2).
 

@@ -6,7 +6,8 @@
 #             - _refresh_user_state invalidates frozen_memory
 #             - USER_STATE_DISABLED kill-switch is honoured at call time
 #             - exceptions in compute_user_state never escape the hook
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the Sprint 3 Jalon 2 wiring (maintenance hook + invalidation)."""
 from __future__ import annotations

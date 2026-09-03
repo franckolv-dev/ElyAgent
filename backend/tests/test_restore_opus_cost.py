@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_restore_opus_cost.py
 # @brief      Rétablir le coût Claude Opus, effacé à tort par 0029.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin du rétablissement du coût Claude Opus.
 

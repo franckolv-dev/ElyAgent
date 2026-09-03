@@ -4,7 +4,8 @@
 # @brief      Sprint 2.5 §2.5.6 — pins de la surface « Mes mémoires » :
 #             cloisonnement par utilisateur, oubli complet, familles non
 #             inspectables déclarées, et ordre des routes.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce que ces tests empêchent de reperdre.
 

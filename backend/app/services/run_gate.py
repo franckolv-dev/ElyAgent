@@ -3,7 +3,8 @@
 # @file       backend/app/services/run_gate.py
 # @brief      Cap de runs agent concurrents par utilisateur
 #             (revue multi-utilisateurs 2026-06-10, constat B-15).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Per-user concurrent agent-run gate.
 

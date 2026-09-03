@@ -4,9 +4,9 @@
 # @brief      J5-B — import SKILL.md playbooks from a URL into the skill library
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Import external SKILL.md playbooks into the learned-skills library (J5-B).
 

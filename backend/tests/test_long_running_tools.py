@@ -3,7 +3,8 @@
 # @file       backend/tests/test_long_running_tools.py
 # @brief      Un outil long ne bloque plus un tour de chat : il bascule en
 #             tâche de fond, l'utilisateur est prévenu, le travail est livré.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Garde-fou « outil long » — générique à TOUS les outils (natifs et MCP).
 

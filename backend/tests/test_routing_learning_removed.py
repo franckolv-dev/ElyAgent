@@ -3,7 +3,8 @@
 # @file       backend/tests/test_routing_learning_removed.py
 # @brief      Ménage lot 1 — le routing learning n'a plus de consommateur,
 #             il ne doit plus rien coûter : ni code, ni route, ni table.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de suppression du service `routing_learning`.
 

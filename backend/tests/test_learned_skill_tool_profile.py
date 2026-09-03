@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_learned_skill_tool_profile.py
 # @brief      Sprint 4b V3 J6.a — `LearnedSkill.tool_profile` column + enum.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins three things — once they hold, every later J6 sub-PR can rely on them:
 

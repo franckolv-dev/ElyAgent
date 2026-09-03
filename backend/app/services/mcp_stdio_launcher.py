@@ -2,12 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_stdio_launcher.py
 # @brief      Client MCP v2 — J5 : launcher de confinement d'un serveur stdio.
-# @license    Elastic License 2.0
-#
-# RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
-#   - INTERDIT : Suppression des notices de copyright ou de licence.
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Launcher de confinement d'un serveur MCP stdio (J5).
 

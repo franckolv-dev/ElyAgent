@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_routing_trace.py
 # @brief      C3d-4 — RoutingDecision traçable : contrat note() + câblage.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C3d-4.
 

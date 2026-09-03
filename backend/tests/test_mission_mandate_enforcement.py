@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_mandate_enforcement.py
 # @brief      Missions autonomes J2 — enforcement du mandat : mapping
 #             outil→famille, chargement du mandat actif, gate dans dispatch_tool.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Missions autonomes J2 — pins de l'enforcement.
 

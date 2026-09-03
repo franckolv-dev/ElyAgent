@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mcp_registry.py
 # @brief      Recherche dans le registre MCP officiel (découverte uniquement).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Recherche de serveurs dans le registre MCP officiel.
 

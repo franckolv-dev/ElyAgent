@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_google_auth_expiry.py
 # @brief      Hotfix 2026-05-28 — Google OAuth expiry storage + safety-net refresh
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Regression tests for the 2026-05-28 Google OAuth hotfix.
 

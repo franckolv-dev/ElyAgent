@@ -3,7 +3,8 @@
 # @file       backend/tests/test_canaux_sans_usage_retires.py
 # @brief      Audit 02/09/2026 — WhatsApp, Slack, Discord et l'Arena quittent
 #             le chemin critique : zéro appel mesuré en cinq mois.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de retrait des surfaces sans usage.
 

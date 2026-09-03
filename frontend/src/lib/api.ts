@@ -4,16 +4,11 @@
  * @brief      API client — typed HTTP wrappers for backend endpoints
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
- *            https://www.elastic.co/licensing/elastic-license
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  * @version    1.1.0
  * @link       https://github.com/franckolv-dev/PhysicalAgent
- *
- * RÉSUMÉ DES CONDITIONS :
- *   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
- *   - INTERDIT : Revente comme SaaS / service managé à des tiers.
- *   - INTERDIT : Suppression des notices de copyright ou de licence.
  */
 import { authFetch } from "./auth";
 
@@ -368,12 +363,12 @@ export const api = {
       body: JSON.stringify(patch),
     }) as Promise<{ sovereignty_strict: boolean; mistral_configured: boolean }>,
 
-  // ── Licence (Elastic License v2 — info only since 2026-05-28 pivot) ──────
+  // ── Licence (MIT — info only depuis le pivot du 28/05/2026) ──────
   /** Static licence-info payload. Replaces the old tier-aware status. */
   licenceStatus: () =>
     fetchAPI("/api/licence/status") as Promise<{
-      license: string;       // always "elastic-license-v2"
-      name: string;          // "Elastic License v2"
+      license: string;       // toujours "MIT" (identifiant SPDX)
+      name: string;          // "MIT"
       url: string;           // canonical text
       summary_url: string;   // agent-ely.fr/pricing.html
       free_for: string[];

@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_restart_forgets_items.py
 # @brief      Redemarrer une mission doit effacer l'etat des ITEMS, et un
 #             foreach dont aucun item n'a abouti doit s'avouer abandonne.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Relancer une mission ne la rejouait pas (30/08/2026).
 

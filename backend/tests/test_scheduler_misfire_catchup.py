@@ -3,7 +3,8 @@
 # @file       backend/tests/test_scheduler_misfire_catchup.py
 # @brief      V0-1 — une occurrence manquée ne doit plus disparaître en silence :
 #             rattrapage borné au redémarrage + garde-fous APScheduler explicites.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du rattrapage d'occurrence manquée (audit Opus 5 §4.6).
 

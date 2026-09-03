@@ -5,7 +5,8 @@
 #             `mission_daily_counters` n'a pas de ON DELETE CASCADE et
 #             n'était pas supprimée explicitement — la suppression rendait
 #             un HTTP 500 « FOREIGN KEY constraint failed ».
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Suppression d'une mission : aucune ligne fille ne doit rester (28/08/2026).
 

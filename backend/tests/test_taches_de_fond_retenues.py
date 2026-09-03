@@ -3,7 +3,8 @@
 # @file       backend/tests/test_taches_de_fond_retenues.py
 # @brief      Les tâches de fond « tire et oublie » sont retenues et leurs
 #             échecs journalisés (audit 02/09).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins des tâches de fond critiques.
 

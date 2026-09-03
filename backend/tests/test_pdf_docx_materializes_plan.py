@@ -3,7 +3,8 @@
 # @file       backend/tests/test_pdf_docx_materializes_plan.py
 # @brief      Ely matérialise le balisage du modèle — mécaniquement, sans rien
 #             réinterpréter, et en chiffrant ce qu'elle a retiré.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La moitié « Ely matérialise et contrôle » du lot.
 

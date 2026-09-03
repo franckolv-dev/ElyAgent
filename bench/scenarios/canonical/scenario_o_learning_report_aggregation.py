@@ -5,7 +5,8 @@
 #             loaders aggregate ACROSS subsystems. Seed one row in each of
 #             three signal tables for a user and assert every loader surfaces
 #             its row — a regression net for the cross-loader report.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario O — learning-report multi-loader aggregation."""
 from __future__ import annotations

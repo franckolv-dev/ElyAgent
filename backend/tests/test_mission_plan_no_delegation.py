@@ -5,7 +5,8 @@
 #             il ne le DÉLÈGUE pas à une tâche planifiée. Un goal « tous les
 #             matins à 8h, fais X » doit produire un plan qui FAIT X, pas un
 #             plan qui crée une scheduler_create_task.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Run with:  cd backend && python -m pytest tests/test_mission_plan_no_delegation.py -v"""
 from __future__ import annotations

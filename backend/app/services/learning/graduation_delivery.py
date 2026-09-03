@@ -5,16 +5,11 @@
 #             commits + pull request via l'API GitHub, ou export local.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.0.0
 # @link       https://github.com/franckolv-dev/ElyAgent
-#
-# RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
-#   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 """Livraison d'une graduation — design note Sprint 4d §4.3 (canal arbitré :
 PR via API GitHub depuis le backend, 2026-06-10).

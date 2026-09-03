@@ -4,7 +4,8 @@
 # @brief      Sprint 4b V3 — intégration agent (v1.15.0) : les outils io
 #             rejoignent les deux coutures bind/dispatch + canary HITL
 #             (design note §5.6).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """v1.15.0 — pins de l'intégration agent du pipeline io.
 

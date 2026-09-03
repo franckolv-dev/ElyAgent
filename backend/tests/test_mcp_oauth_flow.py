@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_oauth_flow.py
 # @brief      Client MCP v2 — J2 : flow OAuth (découverte, PKCE, échange, endpoints)
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J2 : mécanique OAuth (service hermétique avec client HTTP factice) +
 endpoints start/callback (style direct-handler, comme test_mcp_router)."""

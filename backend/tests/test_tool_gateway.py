@@ -6,7 +6,8 @@
 #             HITL bloquant. Le comportement fin (vault, idempotence, journal,
 #             préférences) reste couvert par les suites existantes qui passent
 #             par tool_node → gateway.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests de contrat du Tool Gateway (C3a).
 

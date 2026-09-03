@@ -2,7 +2,8 @@
 // @project    ELY — Exactly Like You
 // @file       desktop/filesystem_test.go
 // @brief      Security tests for FSHandler.validatePath
-// @license    Elastic License 2.0
+// @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 //
 // Hotfix 2026-05-28 — code-review-2026_05_28.md flagged validatePath as

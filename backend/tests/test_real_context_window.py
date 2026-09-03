@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_real_context_window.py
 # @brief      Ely tronquait tout comme si chaque modèle avait 8 K de fenêtre.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la fenêtre de contexte réelle.
 

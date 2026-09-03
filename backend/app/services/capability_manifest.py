@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/capability_manifest.py
 # @brief      CapabilityManifest — fiche d'identité commune de toute capacité.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Manifeste de capacité — le premier contrat du substrat de confiance (P1/J1).
 

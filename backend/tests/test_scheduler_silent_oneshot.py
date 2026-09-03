@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_scheduler_silent_oneshot.py
 # @brief      Jalon 2 — [SILENT], one-shot @once, lifecycle tools
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the Jalon-2 scheduler upgrades.
 

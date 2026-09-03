@@ -5,7 +5,8 @@
 #             /api/me/state/recompute. Tests hit the handler functions
 #             directly (no TestClient, no auth round-trip) so they stay
 #             fast and hermetic.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/routers/user_state.py` — Sprint 3 Jalon 3."""
 from __future__ import annotations

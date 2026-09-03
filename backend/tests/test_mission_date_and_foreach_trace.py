@@ -4,7 +4,8 @@
 # @brief      Deux angles morts d'une mission STRUCTURÉE : l'acteur ignore
 #             quel jour on est, et l'expansion d'un foreach saute une étape
 #             sans rien journaliser.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La date manquante et le foreach muet (incident du 29/08/2026).
 

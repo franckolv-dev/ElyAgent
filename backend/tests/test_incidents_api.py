@@ -4,7 +4,8 @@
 # @brief      Boucle d'auto-diagnostic J4 — endpoints admin « Incidents &
 #             propositions » (list + resolve). Handlers appelés directement
 #             (pattern hermétique, cf. test_me_learning_skills).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J4 — endpoints /admin/learning/incidents.
 

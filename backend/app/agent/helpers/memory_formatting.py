@@ -3,7 +3,8 @@
 # @file       backend/app/agent/helpers/memory_formatting.py
 # @brief      Sprint refactor nodes.py Phase 1.5 — memory block formatter
 #             (Hermes Chantier 2, frozen snapshot section).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """Memory block formatter — Hermes Chantier 2.

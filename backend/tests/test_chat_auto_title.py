@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_chat_auto_title.py
 # @brief      Jalon 4 — titre de conversation généré par LLM (vs user_content[:50])
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the LLM-generated conversation title (J4)."""
 from __future__ import annotations

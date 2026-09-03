@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/memory/__init__.py
 # @brief      Typed memory subpackage — public re-exports.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Typed memory subpackage — Sprint 2.5.

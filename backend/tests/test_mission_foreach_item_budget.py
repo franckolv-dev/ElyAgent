@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_foreach_item_budget.py
 # @brief      Le budget d'avancee appartient a l'ITEM, pas au step foreach :
 #             sinon la premiere societe mange la ration des suivantes.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Une société servie, les autres affamées (31/08/2026).
 

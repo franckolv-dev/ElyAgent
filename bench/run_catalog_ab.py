@@ -6,8 +6,9 @@
 #             que parmi les 87 du profil ?
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Mesure la justesse du choix d'outil selon la TAILLE du catalogue bindé.
 

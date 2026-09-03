@@ -4,13 +4,13 @@
 # @brief      Licence table — DEPRECATED, kept for DB compatibility only
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#             https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#             https://opensource.org/licenses/MIT
 # =============================================================================
 """Licence table — DEPRECATED after the 22 May 2026 pivot.
 
-ELY no longer has tiered licensing. The current licence is Elastic
+ELY no longer has tiered licensing. The current licence is MIT
 License v2 and applies uniformly to every installation. This table is
 kept around because :
 
@@ -23,7 +23,7 @@ kept around because :
 
 DO NOT add new functionality on top of this table. If you need to
 record licence-related state in the future (e.g. a usage telemetry
-counter for an Elastic-v2-compliant feature), introduce a new table
+counter for an MIT-compliant feature), introduce a new table
 with a clear purpose and leave this one as forensic history.
 """
 from __future__ import annotations
@@ -92,7 +92,7 @@ class Licence(Base):
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Legacy click-wrap flag — required by the pre-pivot PolyForm Strict
-    # licence for the free tier. Elastic License v2 has no consent
+    # licence for the free tier. MIT has no consent
     # requirement; the column is kept so historic rows still load.
     consent_personal_use: Mapped[bool] = mapped_column(Boolean, default=False)
 

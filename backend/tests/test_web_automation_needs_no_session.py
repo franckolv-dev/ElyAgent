@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_web_automation_needs_no_session.py
 # @brief      Une tâche planifiée n'a pas de « page courante ».
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Automatisation web « un coup » — chantier de roadmap livré le 22/08.
 

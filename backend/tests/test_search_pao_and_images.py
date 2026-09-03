@@ -3,7 +3,8 @@
 # @file       backend/tests/test_search_pao_and_images.py
 # @brief      La famille `pao`, le lien vers le FICHIER image, et l'aveu quand
 #             le ciblage s'est perdu en route.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la recherche visuelle et du ciblage perdu.
 

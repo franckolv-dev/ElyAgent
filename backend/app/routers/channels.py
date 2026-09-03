@@ -4,8 +4,9 @@
 # @brief      Unified admin API for configuring chat channels from the UI
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Admin API for configuring the Telegram channel from the Settings UI.
 

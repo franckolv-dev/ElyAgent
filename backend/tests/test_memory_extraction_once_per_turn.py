@@ -3,7 +3,8 @@
 # @file       backend/tests/test_memory_extraction_once_per_turn.py
 # @brief      Régression : l'extraction de faits doit partir UNE fois par tour,
 #             pas une fois par itération de la boucle d'outils.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'extraction de faits partait à chaque itération de la boucle d'outils.
 

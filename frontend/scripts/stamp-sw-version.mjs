@@ -2,7 +2,8 @@
  * @project    ELY — Exactly Like You
  * @file       frontend/scripts/stamp-sw-version.mjs
  * @brief      Reecrit la version du service worker avec l'identifiant du build.
- * @license    Elastic License 2.0
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  *
  * ⚠️ CE QUE ÇA CORRIGE (02/09) : `public/sw.js` portait
  * `const VERSION = "ely-sw-v48"` sous la consigne « Bump this on any sw.js

@@ -3,7 +3,8 @@
 # @file       backend/app/services/external_content.py
 # @brief      Cadre unique du contenu venu de tiers : une donnée, jamais une
 #             instruction.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Encadrement du contenu tiers avant restitution au modèle.
 

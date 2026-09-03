@@ -1,6 +1,6 @@
 /* -----------------------------------------------------------------------------
  * Copyright (c) 2024 Franck OLLIVIER
- * Tous droits reserves.  PolyForm Strict License 1.0.0.
+ * MIT License.
  * -----------------------------------------------------------------------------
  * ELY service worker -- network-first for navigations, cache shell for offline.
  *

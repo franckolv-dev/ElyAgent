@@ -3,7 +3,8 @@
 # @file       backend/tests/test_whatsapp_runs_on_the_unified_runtime.py
 # @brief      WhatsApp — le dernier canal de conversation resté hors du
 #             runtime unique : ni profil d'outils, ni ligne d'usage.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du tour WhatsApp (audit du 02/09/2026).
 

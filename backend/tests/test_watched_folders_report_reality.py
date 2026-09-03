@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_watched_folders_report_reality.py
 # @brief      Un dossier « en cours de scan » depuis des mois ne scanne rien.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'indexation muette, découverte le 21/08.
 

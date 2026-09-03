@@ -5,7 +5,8 @@
 #             contrat. Les garde-fous ajoutés les 28-29/08 incrémentaient
 #             `consecutive_failures` sans distinguer le chemin spec, donc
 #             pouvaient déclencher un replan qu'elle ne doit pas connaître.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le contrat « jamais de replan sur une spec » (régression du 29/08/2026).
 

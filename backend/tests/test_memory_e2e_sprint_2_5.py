@@ -3,7 +3,8 @@
 # @file       backend/tests/test_memory_e2e_sprint_2_5.py
 # @brief      Sprint 2.5 Jalon 8 — end-to-end regression suite for the
 #             typed cognitive memory layer.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """E2E pipeline tests for the Sprint 2.5 typed memory layer.
 

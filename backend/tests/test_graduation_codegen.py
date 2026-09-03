@@ -3,7 +3,8 @@
 # @file       backend/tests/test_graduation_codegen.py
 # @brief      Sprint 4d J4 — codegen de graduation (fichier core + test +
 #             manifest), dry-run complet, garde d'unicité au chargement.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins J4 : la mécanique de conversion learned → core.
 
@@ -130,7 +131,7 @@ class TestCodegen:
         # provenance + licence
         assert "PROVENANCE" in content
         assert skill.id in content
-        assert "Elastic License 2.0" in content
+        assert "@license    MIT" in content
 
     def test_manifest_truncates_user_id(self, seeded_user):
         skill = _make_skill(seeded_user)

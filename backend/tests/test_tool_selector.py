@@ -3,7 +3,8 @@
 # @file       backend/tests/test_tool_selector.py
 # @brief      Un petit modèle local LIT les descriptions et choisit les outils
 #             pertinents — au lieu d'envoyer les 85 à chaque tour.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le contexte d'un tour ordinaire, mesuré le 29/07/2026.
 

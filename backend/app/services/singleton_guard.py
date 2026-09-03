@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/singleton_guard.py
 # @brief      Verrou mono-process au démarrage (revue 2026-06-10, A-7).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Boot-time single-process lock.
 

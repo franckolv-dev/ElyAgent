@@ -3,7 +3,8 @@
 # @file       backend/tests/test_conformity_escalates.py
 # @brief      Quand la reprise n'avance plus, la boucle ESCALADE au lieu
 #             d'abandonner.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le branchement du panel dans la boucle de conformité — lot 2.
 

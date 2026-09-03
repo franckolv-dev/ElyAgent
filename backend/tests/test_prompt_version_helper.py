@@ -3,7 +3,8 @@
 # @file       backend/tests/test_prompt_version_helper.py
 # @brief      Sprint 3.7 Jalon 3 — pin the prompt_version hash helper and
 #             its wiring into mission_steps, feedback, and error_log writes.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """prompt_version contract — Sprint 3.7 Jalon 3.
 

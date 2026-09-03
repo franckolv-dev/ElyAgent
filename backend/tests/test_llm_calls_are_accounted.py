@@ -3,7 +3,8 @@
 # @file       backend/tests/test_llm_calls_are_accounted.py
 # @brief      Un appel LLM facturé doit laisser une ligne. Ce pin cherche les
 #             chemins qui dépensent sans compter, AVANT qu'ils n'arrivent.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tout appel LLM d'une boucle de fond doit consigner sa consommation.
 

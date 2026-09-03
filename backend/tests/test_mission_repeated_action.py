@@ -5,7 +5,8 @@
 #             une mission. L'évaluateur juge si l'outil a fonctionné, pas si
 #             la mission progresse — il validait donc la même requête trois
 #             fois de suite.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Garde-fou d'action répétée (incident du 28/08/2026).
 

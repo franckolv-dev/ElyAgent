@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_spec.py
 # @brief      Sprint 4c J1 — format de mission structurée V2 : parser,
 #             validation exhaustive, colonne spec_yaml, API de création.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Sprint 4c J1 — pins du contrat de spec structurée."""
 from __future__ import annotations

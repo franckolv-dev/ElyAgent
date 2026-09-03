@@ -4,7 +4,8 @@
 # @brief      Bug terrain 2026-06-12 — « Je vais faire une recherche web » +
 #             zéro tool_call + fin de tour = réponse morte, puis confabulation
 #             (« j'attends les résultats du tool ») sur les tours suivants.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du garde « annonce sans action ».
 

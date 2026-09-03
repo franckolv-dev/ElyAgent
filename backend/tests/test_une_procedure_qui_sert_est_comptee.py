@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_une_procedure_qui_sert_est_comptee.py
 # @brief      La voie DOCUMENT : un playbook complet, proposé, et compté.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La compétence est un DOCUMENT — et on sait s'il sert.
 

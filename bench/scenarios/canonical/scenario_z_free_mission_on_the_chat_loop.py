@@ -3,7 +3,8 @@
 # @file       bench/scenarios/canonical/scenario_z_free_mission_on_the_chat_loop.py
 # @brief      Une mission LIBRE de bout en bout sur la boucle du CHAT : deux
 #             reveils, le carnet pour memoire, les budgets pour bornes.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Scénario Z — la mission libre sur la boucle du chat (02/09/2026).
 

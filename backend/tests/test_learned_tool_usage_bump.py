@@ -3,7 +3,8 @@
 # @file       backend/tests/test_learned_tool_usage_bump.py
 # @brief      Sprint 4d (gap J1) — chaque invocation d'un python_tool pur
 #             bumpe use_count/last_used_at (gate « invocations »).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin du bump d'usage à l'invocation.
 

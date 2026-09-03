@@ -3,7 +3,8 @@
 # @file       backend/tests/test_docs_match_the_code.py
 # @brief      Ménage docs — un document ne peut plus contredire le code en
 #             silence : les chiffres qu'il cite sont confrontés au registre.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Contrôles de cohérence de la documentation.
 
@@ -51,7 +52,6 @@ _DOCS: tuple[Path, ...] = (
     _REPO / "docs" / "architecture.md",
     _REPO / "docs" / "installation.md",
     _REPO / "docs" / "guide-utilisateur.md",
-    _REPO / "COMMERCIAL_LICENSE.md",
     _REPO / "ROADMAP.md",
 )
 

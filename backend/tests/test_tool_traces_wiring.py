@@ -3,7 +3,8 @@
 # @file       backend/tests/test_tool_traces_wiring.py
 # @brief      Les traces sont écrites, relues au tour suivant, et JAMAIS
 #             affichées dans le chat.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le câblage des traces d'outils — la moitié qui touche la base et l'écran.
 

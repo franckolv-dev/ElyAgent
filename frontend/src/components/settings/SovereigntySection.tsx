@@ -14,7 +14,8 @@
  *             fallback to the default chain. The admin must configure
  *             Mistral in Settings → LLM for this toggle to have an effect.
  *
- * @license    Elastic License 2.0
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  */
 
 import { useCallback, useEffect, useState } from "react";

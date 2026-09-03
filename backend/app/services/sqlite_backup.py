@@ -4,7 +4,8 @@
 # @brief      Backup nocturne des bases SQLite via VACUUM INTO + rotation
 #             (revue multi-utilisateurs 2026-06-10, §4 — Qdrant était
 #             sauvegardé chaque nuit, la VRAIE source de vérité jamais).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Nightly SQLite backups.
 

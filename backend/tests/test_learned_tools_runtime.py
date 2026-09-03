@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_learned_tools_runtime.py
 # @brief      Sprint 4b V2 J7b — runtime loader for promoted python_tool skills.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for learned_tools_runtime: flag-gated loading + compilation of a
 user's active python_tool skills into bindable tools.

@@ -3,7 +3,8 @@
 # @file       backend/tests/test_replay_shadow.py
 # @brief      C4-4 PR A — replay avant/après SHADOW : capture de la trace
 #             d'outils, passerelle en mode shadow, moteur A/B.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C4-4 — le replay shadow STRICT (arbitrage 19/07).
 

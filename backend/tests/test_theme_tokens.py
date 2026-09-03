@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_theme_tokens.py
 # @brief      Un jeton défini dans un seul thème casse l'autre en silence.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Les jetons de thème, épinglés depuis le brouillard du 21/08.
 

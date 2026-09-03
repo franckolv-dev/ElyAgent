@@ -5,7 +5,8 @@
 #             resolver. "Toujours autoriser" disables the prompt for a normal
 #             tool ; depuis #150 (2026-06-19) un outil DANGEREUX est ON par
 #             défaut mais la préférence est honorée → il PEUT être désactivé.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario I — HITL preference allow-always + dangerous-tool default.
 

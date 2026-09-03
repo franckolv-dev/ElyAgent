@@ -4,8 +4,9 @@
 // @brief      Chat screen — message list, input, conversation drawer
 //
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
-// @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-// @license    PolyForm Strict License 1.0.0
+// @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+// @license    MIT
+//            https://opensource.org/licenses/MIT
 // @version    1.1.0
 // =============================================================================
 

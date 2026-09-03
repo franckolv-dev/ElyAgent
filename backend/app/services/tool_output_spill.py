@@ -5,8 +5,9 @@
 #             est conservée EN ENTIER et paginée, au lieu d'être tronquée.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Débordement des sorties d'outil volumineuses vers un fichier de travail.
 

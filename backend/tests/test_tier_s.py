@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_tier_s.py
 # @brief      Sprint 4b Phase 2 — tests for the tier S LLM provider + budget
-# @license    PolyForm Strict License 1.0.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/services/learning/tier_s.py` — Sprint 4b Phase 2.
 

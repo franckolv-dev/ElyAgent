@@ -3,7 +3,8 @@
 # @file       backend/tests/test_pdf_layout_handoff.py
 # @brief      Ely DONNE la géométrie au modèle et MATÉRIALISE son balisage —
 #             elle ne décide plus seule de la structure.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le lot « la conversion : Ely donne et contrôle ».
 

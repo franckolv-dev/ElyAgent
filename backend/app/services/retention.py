@@ -3,7 +3,8 @@
 # @file       backend/app/services/retention.py
 # @brief      Rétention des tables de signaux à forte croissance
 #             (revue multi-utilisateurs 2026-06-10, §4 mineurs).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Nightly retention job for high-growth signal tables.
 

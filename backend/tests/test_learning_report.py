@@ -4,7 +4,8 @@
 # @brief      Sprint 3.7 V1.5 Jalon 6 — pin the /api/me/learning-report
 #             endpoint contract : 5 sections, markdown + JSON formats,
 #             window parsing, content-negotiation.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `/api/me/learning-report`.
 

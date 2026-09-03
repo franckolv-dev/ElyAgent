@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/mission_tool_families.py
 # @brief      Missions autonomes J2 — mapping outil → famille de mandat.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Rattache un nom d'outil à une famille de mandat (cadrage D1).
 

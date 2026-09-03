@@ -3,7 +3,8 @@
 # @file       backend/tests/test_pii_boundary_surfaces.py
 # @brief      C0 (audit 16/07, P0/§6.2) — frontière PII uniforme sur toutes
 #             les surfaces : sous-agents spécialistes, canaux, scheduler.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests contractuels de la frontière PII.
 

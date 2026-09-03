@@ -4,7 +4,8 @@
 # @brief      Missions autonomes J6 (C2) — activation HUMAINE du mandat
 #             (pending_validation → active) + API workspace (carnet, journal,
 #             compteurs journaliers) pour le viewer.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """J6 — le moteur d'autonomie s'allume ICI, et seulement ici.
 

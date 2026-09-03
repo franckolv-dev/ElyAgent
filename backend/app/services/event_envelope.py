@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/event_envelope.py
 # @brief      EventEnvelope — bus d'événements typé et corrélé (P1/J4).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Journal d'événements typé, corrélé, SANS secret ni PII (P1/J4).
 

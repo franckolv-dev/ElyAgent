@@ -8,7 +8,8 @@
 # budget-heartbeat (budget_guard.py Phase 5A, tracking-only). Le tracking
 # vit désormais dans analytics_service (UsageLog.cost_usd) — ce module
 # n'ajoute QUE le cap.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Per-user daily LLM budget — opt-in hard cap.
 

@@ -4,7 +4,8 @@
 # @brief      Revue multi-utilisateurs 2026-06-10, Phase 0 — pins :
 #             B-13 (PII voice), B-18 (headers + TTL token), chemin DB
 #             absolu, voix TTS câblée sur settings.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 0 hardening pins (revue 2026-06-10)."""
 from __future__ import annotations

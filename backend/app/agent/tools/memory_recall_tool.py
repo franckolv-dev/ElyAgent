@@ -4,8 +4,9 @@
 # @brief      Unified `memory_recall(type, query)` tool — Sprint 2.5 Jalon 3.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """LangChain tool exposing the unified typed-memory recall API to the LLM.

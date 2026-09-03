@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/action_plan.py
 # @brief      ActionPlan canonique + empreinte — « l'approuvé == l'exécuté ».
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Plan d'action canonique + empreinte (P1/J2).
 

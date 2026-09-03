@@ -5,8 +5,9 @@
  * @brief      Shared layout shell — Sidebar (pleine hauteur) + Header + main
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  *
  * Use everywhere except /chat (which has its own custom shell with avatar
  * panel + ChatInput dock). Wrap your page content like :

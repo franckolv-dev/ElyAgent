@@ -5,9 +5,9 @@
 #             code (stage 5 of the validation pipeline).
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Stage 5 of the V2 validation pipeline — will registering this tool be
 safe? (design note J0 §3.3, reframed.)

@@ -4,7 +4,8 @@
 # @brief      Revue multi-utilisateurs 2026-06-10, Phase 3 lot 2 — pins :
 #             B-11 (secrets chiffrés au repos) + B-12 (outils d'instance
 #             réservés au rôle admin).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 3 batch 2 pins (revue 2026-06-10)."""
 from __future__ import annotations

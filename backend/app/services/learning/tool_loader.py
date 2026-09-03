@@ -5,9 +5,9 @@
 #             python_tool source → bindable StructuredTool.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Turn a promoted ``python_tool`` skill into a live, bindable tool
 (design note J0 §3.4) — the load-bearing, riskiest step of V2: this is

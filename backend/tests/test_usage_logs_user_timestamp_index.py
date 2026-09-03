@@ -3,7 +3,8 @@
 # @file       backend/tests/test_usage_logs_user_timestamp_index.py
 # @brief      L'index composite (user_id, timestamp) que les six agrégations
 #             d'usage réclamaient depuis toujours.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin de l'index composite de ``usage_logs`` (audit 02/09/2026).
 

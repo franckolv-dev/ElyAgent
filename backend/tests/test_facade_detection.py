@@ -3,7 +3,8 @@
 # @file       backend/tests/test_facade_detection.py
 # @brief      Boucle d'auto-diagnostic J2 — heuristiques « succès de façade »
 #             (maillon 1) + câblage enrichi (scheduler, missions, fallback).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J2 — détection de succès de façade.
 

@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_reversible_j4.py
 # @brief      Substrat / J4 — verify + purge + métriques du Reversible Journal.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

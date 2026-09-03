@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_kimi_k3_window.py
 # @brief      Kimi passe en v3, avec sa vraie fenêtre d'un million de tokens.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin de la fenêtre de Kimi K3.
 

@@ -24,8 +24,9 @@
  * Sortie : ./out/<page>-<theme>-<lang>.png
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    PolyForm Strict License 1.0.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  */
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";

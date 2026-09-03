@@ -8,8 +8,9 @@
 #             (audit SOL §6.3, roadmap §12/§14).
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.0.0
 # =============================================================================
 """Common output verification step (the audit's ``OutcomeVerifier``).

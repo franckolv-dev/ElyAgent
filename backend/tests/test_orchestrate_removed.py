@@ -3,7 +3,8 @@
 # @file       backend/tests/test_orchestrate_removed.py
 # @brief      Ménage lot 5 — démantèlement du sous-système orchestrate, en
 #             relocalisant ce que d'autres en dépendaient.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du retrait d'`orchestrate` (outil + bac à sable).
 

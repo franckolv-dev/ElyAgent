@@ -3,7 +3,8 @@
 # @file       backend/tests/test_playbooks_are_loaded_not_listed.py
 # @brief      Le contenu des playbooks est CHARGÉ dans le prompt, au lieu
 #             d'être listé en espérant un `skill_view` qui n'arrive jamais.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Les playbooks étaient listés, jamais lus.
 

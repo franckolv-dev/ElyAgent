@@ -3,7 +3,8 @@
 # @file       backend/app/services/compensation_registry.py
 # @brief      Registre des compensations — l'exécuteur derrière le champ
 #             `CapabilityManifest.compensation` (jusqu'ici une simple string).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Registre de compensations du Reversible Action Journal (substrat / J1).
 

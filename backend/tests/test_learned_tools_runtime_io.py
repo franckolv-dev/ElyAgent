@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_learned_tools_runtime_io.py
 # @brief      Sprint 4b V3 J6.b.2 — runtime loader for io python_tool skills.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins the V3 runtime contract:
 

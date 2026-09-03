@@ -14,7 +14,8 @@
 #                  and in the active toolset profile (otherwise the
 #                  runtime drops user_id silently and the tools return
 #                  "user_id manquant" forever).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Functional tests for `browser_history_search`, `browser_bookmarks_search`,
 and `browser_downloads_search`."""

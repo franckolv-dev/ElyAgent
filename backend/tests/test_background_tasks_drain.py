@@ -3,7 +3,8 @@
 # @file       backend/tests/test_background_tasks_drain.py
 # @brief      Attendre que les tâches de fond en vol se terminent — arrêt
 #             propre, et fin de course dans les tests.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de ``drain()``.
 

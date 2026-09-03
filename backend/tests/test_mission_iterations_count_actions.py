@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_iterations_count_actions.py
 # @brief      Le budget d'itérations compte les tours de l'acteur, pas les
 #             lignes du journal.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Une itération est un tour de l'acteur (31/08/2026).
 

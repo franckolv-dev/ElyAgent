@@ -3,7 +3,8 @@
 // @file       core/files/FileHashing.kt
 // @brief      MD5 + perceptual dHash — for duplicate detection
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
-// @license    PolyForm Strict License 1.0.0
+// @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 
 package com.ely.agent.core.files

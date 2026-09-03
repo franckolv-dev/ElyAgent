@@ -3,7 +3,8 @@
 # @file       backend/tests/test_le_juge_ecrit_en_francais.py
 # @brief      Une espace avant les deux-points annulait toute la boucle de
 #             reprise.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le juge écrit en français, le lecteur lisait de l'anglais — 02/09/2026.
 

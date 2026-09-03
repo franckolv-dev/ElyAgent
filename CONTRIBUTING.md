@@ -1,6 +1,6 @@
 # Contributing to ELY
 
-Thanks for your interest! ELY is a personal-AI-agent project under the [Elastic License v2](LICENSE) — **free for any personal use AND any internal business use** regardless of organisation size. You can run, modify, and redistribute the software. The only restriction is offering ELY as a hosted or managed service to third parties (no SaaS resale).
+Thanks for your interest! ELY is a personal-AI-agent project under the [MIT licence](LICENSE) — free for any use, personal or commercial, with no restriction beyond keeping the copyright notice and the licence text with the code.
 
 This contribution guide focuses on what's *welcome* in PRs and how to set up a dev environment.
 
@@ -29,7 +29,7 @@ This contribution guide focuses on what's *welcome* in PRs and how to set up a d
 ### ❌ Not accepted
 
 - Code that turns ELY into a hosted SaaS for third parties (the one
-  thing the Elastic License v2 forbids)
+  thing a permissive licence still cannot make safe)
 - Removal of the licence / copyright notices from source files (also
   forbidden by the licence)
 - Code that disables HITL / security filters by default

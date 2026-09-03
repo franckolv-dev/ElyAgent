@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_todo_de_session.py
 # @brief      Sur une demande à plusieurs étapes, Ely tient sa propre liste.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le carnet d'étapes de la conversation — 02/09/2026.
 

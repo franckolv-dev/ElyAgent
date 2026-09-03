@@ -4,8 +4,9 @@
 # @brief      WhatsApp Web bridge via neonize (QR-code pairing, no Meta API)
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """WhatsApp Web channel adapter via neonize (whatsmeow port).
 

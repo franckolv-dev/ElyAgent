@@ -3,7 +3,8 @@
 # @file       backend/tests/test_sandbox_client_live.py
 # @brief      Sprint 4b V3 J2.d — OPTIONAL live integration test against a
 #             running sandbox runner.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """End-to-end test of the client against a real sandbox runner.
 

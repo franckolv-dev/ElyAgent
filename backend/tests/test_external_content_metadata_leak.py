@@ -3,7 +3,8 @@
 # @file       backend/tests/test_external_content_metadata_leak.py
 # @brief      Le cadre fuyait par les MÉTADONNÉES : nom de fichier, Sujet,
 #             titre d'onglet, titre de page.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce que le cadre laissait dehors (relecture du 02/09/2026).
 

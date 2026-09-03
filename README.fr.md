@@ -5,9 +5,8 @@
 **Exactly Like You** — un agent personnel auto-hébergé qui agit, vérifie son
 propre travail, et demande avant de vous engager.
 
-Ely est un **projet personnel non commercial**, publié sous Elastic License 2.0.
-Usage personnel et professionnel interne libres ; la revente comme service
-hébergé n'est pas autorisée.
+Ely est un **projet personnel non commercial**, publié sous licence **MIT**.
+Faites-en ce que vous voulez ; gardez simplement la notice de copyright.
 
 ---
 
@@ -228,13 +227,13 @@ WhatsApp, Slack et Discord, sont archivés depuis le 02/09/2026 — voir
 
 ## Licence
 
-**Elastic License 2.0** — voir [LICENSE](LICENSE), avec un résumé en langage
-clair dans [licence-ELY.md](licence-ELY.md) et les conditions commerciales dans
-[COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+**MIT** — voir [LICENSE](LICENSE). Utilisez-la, modifiez-la, redistribuez-la,
+vendez-la, hébergez-la comme service. La seule condition est que la notice de
+copyright et le texte de licence voyagent avec le code.
 
-- **Autorisé** — usage personnel, et usage professionnel interne, gratuitement.
-- **Interdit** — revendre Ely comme service hébergé ou managé à des tiers, et
-  retirer les notices de copyright ou de licence.
+Ely est passée de l'Elastic License 2.0 à MIT le 3 septembre 2026. C'est un
+projet personnel, pas un produit ; une licence permissive retire toute raison
+d'hésiter avant de la forker.
 
 Marque : [TRADEMARK.md](TRADEMARK.md). Politique de sécurité :
 [SECURITY.md](SECURITY.md).

@@ -3,7 +3,8 @@
 # @file       backend/tests/test_anticipation.py
 # @brief      C5 — anticipation V1 : détecter les demandes récurrentes et
 #             PROPOSER une tâche planifiée (jamais exécuter seule).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C5 (P4) — anticipation en mode suggestion.
 

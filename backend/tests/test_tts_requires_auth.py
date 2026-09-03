@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_tts_requires_auth.py
 # @brief      La synthèse vocale demande un utilisateur connecté.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """`/tts/speak` et `/tts/voices` étaient sans authentification (audit du 02/09/2026).
 

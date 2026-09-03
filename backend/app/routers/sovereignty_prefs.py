@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/routers/sovereignty_prefs.py
 # @brief      REST API for the PII-sovereignty toggle.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Per-user PII-sovereignty preference.
 

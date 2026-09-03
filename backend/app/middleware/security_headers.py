@@ -3,7 +3,8 @@
 # @file       backend/app/middleware/security_headers.py
 # @brief      Standard HTTP security headers on every API response
 #             (revue multi-utilisateurs 2026-06-10, constat B-18/D1).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Standard HTTP security headers on every backend response.
 

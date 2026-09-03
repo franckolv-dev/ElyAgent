@@ -3,7 +3,8 @@
 # @file       backend/tests/test_planificateurs_maintenance_garde_fous.py
 # @brief      Les crons de maintenance de main.py portent les mêmes garde-fous
 #             que le planificateur de tâches (audit 02/09).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins des deux planificateurs de maintenance.
 

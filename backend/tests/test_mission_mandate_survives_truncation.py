@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_mandate_survives_truncation.py
 # @brief      La consigne d'une tâche planifiée ne doit pas être la première
 #             chose supprimée quand le contexte déborde.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de l'ancrage du mandat de mission.
 

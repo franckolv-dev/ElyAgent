@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_une_procedure_perimee_nest_pas_reecrite.py
 # @brief      43 compétences périmées sur 98 : arrêter d'en fabriquer d'autres.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le motif qui a déjà tué une procédure n'en mérite pas une seconde (02/09).
 

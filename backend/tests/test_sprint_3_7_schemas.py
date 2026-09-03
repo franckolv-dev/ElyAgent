@@ -5,7 +5,8 @@
 #             (hitl_refusals, hallucination_blocks, provider_switches,
 #             mission_critiques) so an accidental column rename or
 #             deletion fails the suite.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Schema pin for Sprint 3.7 V1 Jalon 1.
 

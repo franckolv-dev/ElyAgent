@@ -4,7 +4,8 @@
 # @brief      Une mission LIBRE de bout en bout : plan genere par le LLM,
 #             droit a l'erreur, abandon d'etape, replan apres echecs
 #             repetes, et un resume qui ne ment pas.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Scénario Y — la mission LIBRE de bout en bout (29/08/2026).
 

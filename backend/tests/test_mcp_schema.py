@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_schema.py
 # @brief      J3 — validation d'arguments sans perte + hash de définition.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

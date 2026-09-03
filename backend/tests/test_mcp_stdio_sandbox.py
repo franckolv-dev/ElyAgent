@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_stdio_sandbox.py
 # @brief      Client MCP v2 — J5 : sandbox des serveurs stdio (launcher/rlimits)
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J5 : confinement du spawn stdio.
 

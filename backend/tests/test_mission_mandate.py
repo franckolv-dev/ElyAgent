@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_mandate.py
 # @brief      Missions autonomes J1 — contrat du mandat : spec v2 `mandate:`,
 #             gate flag, colonnes mandate_json/autonomy_state, migration 0018.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Missions autonomes J1 — pins du contrat de mandat.
 

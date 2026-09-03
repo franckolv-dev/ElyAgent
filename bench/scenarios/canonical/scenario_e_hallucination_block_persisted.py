@@ -8,7 +8,8 @@
 #
 #             Sprint 3.7.3 J4 — retrofitted onto ``throwaway_user`` so the
 #             bench is idempotent (the inline User row used to leak).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario E — hallucination block persistence."""
 from __future__ import annotations

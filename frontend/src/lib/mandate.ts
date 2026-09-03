@@ -7,8 +7,9 @@
  *             de la modal le génèrent proprement.
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  */
 
 /** Miroir de MANDATE_TOOL_FAMILIES (backend mission_spec.py) — vocabulaire

@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_code_guard_io_profile.py
 # @brief      Sprint 4b V3 J3 — adversarial tests for the "io" guard profile.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """The `io` profile relaxes the IMPORT allow-list to include the curated
 network/parse libs (httpx, bs4, lxml). It does NOT relax anything else.

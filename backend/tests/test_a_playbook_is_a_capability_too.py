@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_a_playbook_is_a_capability_too.py
 # @brief      Une procédure apprise couvre un besoin sans coûter un schéma.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La croissance des outils, et la seule réponse qui la borne (24/08).
 

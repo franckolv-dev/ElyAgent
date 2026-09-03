@@ -6,7 +6,8 @@
 #             Snapshots every Qdrant collection (server-side), then wipes
 #             all memory data so V1 starts from a structurally clean base.
 #
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Clean slate for the typed memory subpackage — Sprint 2.5 Jalon 5.
 

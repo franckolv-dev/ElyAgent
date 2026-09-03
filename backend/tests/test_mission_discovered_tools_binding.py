@@ -4,7 +4,8 @@
 # @brief      Ce que `find_tool` surface dans une MISSION doit devenir
 #             appelable au tick suivant. Le filet existait pour le chat
 #             depuis le 23/08 ; il n'a jamais été câblé pour les missions.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Les découvertes de `find_tool` sont liées au tick suivant (28/08/2026).
 

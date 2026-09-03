@@ -5,7 +5,8 @@
 #             Vector. set_user_state is idempotent (same input → same merged
 #             output), get round-trips it, and every DEFAULT_STATE key is
 #             always present (the maintenance LLM updates one field at a time).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario U — user_state set/get idempotence + default merge."""
 from __future__ import annotations

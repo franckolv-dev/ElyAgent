@@ -1,6 +1,7 @@
 [project]
 name = "cyber-entity-backend"
-version = "2.5.0"
+version = "3.0.0"
+license = "MIT"
 description = "ELY — self-hosted AI agent backend (FastAPI + LangGraph)"
 requires-python = ">=3.12"
 dependencies = [

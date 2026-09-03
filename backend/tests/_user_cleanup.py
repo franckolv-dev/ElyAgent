@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/_user_cleanup.py
 # @brief      Supprimer un utilisateur de test SANS énumérer ses tables filles.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Nettoyage d'un utilisateur de test, dérivé du SCHÉMA et non d'une liste.
 

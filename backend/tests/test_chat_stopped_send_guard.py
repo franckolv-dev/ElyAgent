@@ -4,7 +4,8 @@
 # @brief      Incident prod 2026-07-18 — send "stopped" sur socket déjà fermée
 #             loggé en ERROR + traceback. Pin le try/except ciblé autour de la
 #             paire stopped/done du chemin d'interruption.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Régression — bruit ERROR quand le client coupe pendant un tour.
 

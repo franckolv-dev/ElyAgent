@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_item_context_isolation.py
 # @brief      Les sorties d'outil d'une AUTRE societe d'un foreach n'ont rien
 #             a faire dans le contexte de la societe courante.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Un item qui échoue contaminait tous les suivants (31/08/2026).
 

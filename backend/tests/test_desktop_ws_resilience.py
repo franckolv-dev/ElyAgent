@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_desktop_ws_resilience.py
 # @brief      Tests for desktop_registry resilience to Cloudflare tunnel blips
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests de résilience de la WebSocket ELY Desktop.
 

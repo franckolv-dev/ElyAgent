@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mission_not_found_needs_a_search.py
 # @brief      Declarer une absence sans avoir cherche n'est pas un constat.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """« Aucun contact trouvé » pour une société jamais regardée (31/08/2026).
 

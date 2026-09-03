@@ -6,7 +6,8 @@
 #             MemoryRecallService routes per-type (SEMANTIC_USER returns typed
 #             hits ; ERROR refuse d'etre lu — il n'a aucune lecture derriere
 #             lui, cf. #246 du 25/07/2026).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario V — typed memory enum + per-type recall routing."""
 from __future__ import annotations

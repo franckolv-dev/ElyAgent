@@ -5,8 +5,9 @@
 #             Qdrant client, fastembed encoder, and bounded LRU embed cache.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Lazy-initialised, process-wide singletons for the memory subpackage.

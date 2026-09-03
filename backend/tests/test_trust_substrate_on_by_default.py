@@ -3,7 +3,8 @@
 # @file       backend/tests/test_trust_substrate_on_by_default.py
 # @brief      Le substrat de confiance doit être ON par défaut, comme son
 #             commentaire voisin l'affirmait déjà.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin du défaut de ``trust_substrate_enabled`` (audit 02/09/2026).
 

@@ -3,7 +3,8 @@
 # @file       backend/tests/test_max_output_tokens.py
 # @brief      Le plafond de réponse cesse d'être 4 096 pour tout le monde —
 #             et reste cohérent avec le budget de contexte.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du plafond de tokens en sortie.
 

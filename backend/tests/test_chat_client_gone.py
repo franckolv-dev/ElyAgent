@@ -3,7 +3,8 @@
 # @file       backend/tests/test_chat_client_gone.py
 # @brief      Incident 24/07 — « client parti » ne doit plus être traité comme
 #             « stop demandé » : le tour finit son travail et notifie.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Incident réel (24/07/2026, conversation de Gert).
 

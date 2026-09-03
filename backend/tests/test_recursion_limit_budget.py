@@ -4,7 +4,8 @@
 # @brief      Hotfix 2026-06-01 — the chat recursion_limit must stay above
 #             2× MAX_AGENT_ITERATIONS so force_summary is reachable before
 #             LangGraph raises GraphRecursionError.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Guard the iteration-budget ↔ recursion-limit unit relationship.
 

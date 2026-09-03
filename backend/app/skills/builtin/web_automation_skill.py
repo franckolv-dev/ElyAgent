@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/skills/builtin/web_automation_skill.py
 # @brief      Automatisation web sans navigateur ouvert — la surface d'exposition
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Automatisation web « un coup » — chantier de la roadmap, livré le 22/08.
 

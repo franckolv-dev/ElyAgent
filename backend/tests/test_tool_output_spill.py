@@ -4,7 +4,8 @@
 # @brief      Débordement des sorties d'outil vers fichier : une grande sortie
 #             n'est plus tronquée mais conservée en entier, et le modèle peut
 #             la pager au lieu de redemander la même donnée.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Contrat du débordement des sorties volumineuses.
 

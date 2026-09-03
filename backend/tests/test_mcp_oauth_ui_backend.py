@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_mcp_oauth_ui_backend.py
 # @brief      Client MCP v2 — J4 : surface backend de l'UI OAuth (schéma + /status)
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J4 backend : exposition NON secrète d'auth_type/oauth_client_id/
 oauth_scopes (jamais le secret/cache), endpoint /status per-user, et

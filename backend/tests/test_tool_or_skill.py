@@ -3,7 +3,8 @@
 # @file       backend/tests/test_tool_or_skill.py
 # @brief      On ne fabrique un outil que si la demande exige une ACTION —
 #             sinon c'est une compétence, et un modèle suffit.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La règle posée par Franck le 29/07/2026.
 

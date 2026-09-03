@@ -5,7 +5,8 @@
 #             progressive disclosure. The tool returns an active playbook's
 #             full body (tier 2), bumps usage, returns a clear not-found for
 #             unknown names, and never leaks another user's skill.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario R — skill_view progressive disclosure + isolation."""
 from __future__ import annotations

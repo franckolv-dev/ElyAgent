@@ -3,7 +3,8 @@
 # @file       backend/tests/test_ntfy_headers.py
 # @brief      ascii_header — en-têtes ntfy sûrs (bug live 19/07 : le premier
 #             push « candidate à valider » tué par un tiret cadratin).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """httpx encode les en-têtes HTTP en ASCII : tout caractère typographique
 français (« — », guillemets, accents) tuait le push silencieusement. Le push

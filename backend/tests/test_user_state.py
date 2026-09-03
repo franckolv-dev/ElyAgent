@@ -4,7 +4,8 @@
 # @brief      Sprint 3 Jalon 1 — pin the user_state service contract :
 #             defaults always present, upsert idempotency, LLM-failure
 #             tolerance, sanitisation bounds, formatter block output.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/services/learning/user_state.py` — Sprint 3 Jalon 1."""
 from __future__ import annotations

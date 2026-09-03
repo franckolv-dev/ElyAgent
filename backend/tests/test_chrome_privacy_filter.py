@@ -6,7 +6,8 @@
 #             leaks the user's bank, doctor, or porn history into the
 #             cloud LLM prompt — the very risk the filter exists to
 #             prevent.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app.services.chrome_privacy_filter`.
 

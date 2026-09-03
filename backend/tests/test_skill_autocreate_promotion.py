@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_skill_autocreate_promotion.py
 # @brief      Jalon 1 (portage Hermes) — autonomous skill creation + promotion
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the Jalon-1 skill funnel revival.
 

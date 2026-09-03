@@ -3,7 +3,8 @@
 # @file       backend/tests/test_messages_fts_store.py
 # @brief      Unit tests for messages_fts_store. Sprint 1 — Memory recall.
 #
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Unit tests for the messages_fts cross-conversation full-text index."""
 from __future__ import annotations

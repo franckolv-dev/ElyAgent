@@ -3,7 +3,8 @@
 # @file       backend/app/services/background_tasks.py
 # @brief      Strong-referenced fire-and-forget task spawner
 #             (revue multi-utilisateurs 2026-06-10, §4 mineurs).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Strong-referenced fire-and-forget task spawner.
 

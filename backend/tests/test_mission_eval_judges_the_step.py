@@ -3,7 +3,8 @@
 # @file       backend/tests/test_mission_eval_judges_the_step.py
 # @brief      L'evaluateur juge l'ACCOMPLISSEMENT de l'etape, pas la
 #             compatibilite entre le verbe de l'etape et le type de l'outil.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Une étape peut demander plusieurs actes (30/08/2026).
 

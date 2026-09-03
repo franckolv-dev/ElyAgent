@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/models/reversible_action.py
 # @brief      ReversibleActionRecord — « Ely peut annuler ce qu'elle a fait ».
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Entrée du Reversible Action Journal (substrat, suite de P1).
 

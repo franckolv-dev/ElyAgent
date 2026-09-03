@@ -4,7 +4,8 @@
 # @brief      Sprint 3.7.3 J4 — structural regression : Sprint 4b Phase 5.b
 #             user surface. list / pin / forget round-trip on a learned
 #             skill, plus the cross-user 404 (not 403) isolation contract.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario S — learned-skills list/pin/forget lifecycle."""
 from __future__ import annotations

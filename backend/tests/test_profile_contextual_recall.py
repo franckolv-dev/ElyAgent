@@ -3,7 +3,8 @@
 # @file       backend/tests/test_profile_contextual_recall.py
 # @brief      C2-b — les faits qu'Ely a stockés redeviennent atteignables quand
 #             la question les rend pertinents.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du rappel contextuel du profil (chantier C2, « rappel à la demande »).
 

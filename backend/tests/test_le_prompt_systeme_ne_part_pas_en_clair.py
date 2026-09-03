@@ -3,7 +3,8 @@
 # @file       backend/tests/test_le_prompt_systeme_ne_part_pas_en_clair.py
 # @brief      Ce qui part vers un modele NON LOCAL est anonymise, quelle que
 #             soit la voie du prompt systeme (complete ou compacte).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La frontiere d'envoi du prompt systeme (02/09/2026).
 

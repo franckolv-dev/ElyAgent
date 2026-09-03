@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/app/skills/builtin/reversible_skill.py
 # @brief      Skill d'annulation — expose les outils du Reversible Journal.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Skill « annulation » — surfaces model-facing du Reversible Action Journal."""
 from app.skills.base import Skill, Domain

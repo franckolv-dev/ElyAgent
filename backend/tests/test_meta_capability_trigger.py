@@ -4,7 +4,8 @@
 # @brief      C4-1 — le déclencheur conversationnel du funnel de capacités :
 #             les questions MÉTA (« peux-tu créer un outil qui… ») doivent
 #             passer par find_tool, pas par une réponse conversationnelle.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C4-1 — cran 1 de la vision « capacité manquante → création → validation ».
 

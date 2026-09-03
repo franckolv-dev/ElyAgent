@@ -4,7 +4,8 @@
 # @brief      C1a (audit 16/07, §6.4/§6.6) — exactitude missions : le budget
 #             de tokens compte la consommation RÉELLE, et le tier LLM du
 #             mandat (D3) est appliqué par les nœuds plan/act/eval.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Exactitude des contrats missions.
 

@@ -3,7 +3,8 @@
 # @file       backend/tests/test_turn_ledger.py
 # @brief      C3d-3 — registre de tour + fallback honnête + classification
 #             unifiée des rotations LLM.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C3d-3.
 

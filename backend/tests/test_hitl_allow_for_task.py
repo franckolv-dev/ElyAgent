@@ -5,7 +5,8 @@
 #             HITL level: the ephemeral per-conversation approval store, the
 #             tool_node wiring (check before prompt + allow_for_task handler),
 #             and the REST route.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the third HITL level — "allow for this task".
 

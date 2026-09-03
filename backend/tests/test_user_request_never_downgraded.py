@@ -3,7 +3,8 @@
 # @file       backend/tests/test_user_request_never_downgraded.py
 # @brief      Une demande de l'utilisateur ne descend jamais sous le modèle
 #             principal, et voit toujours ses outils.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le routeur dégradait les demandes, et cachait les outils.
 

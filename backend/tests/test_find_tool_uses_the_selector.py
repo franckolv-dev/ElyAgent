@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_find_tool_uses_the_selector.py
 # @brief      L'annuaire d'Ely lit les descriptions au lieu de compter des mots.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """``find_tool`` se trompait une fois sur deux — mesuré le 29/07/2026.
 

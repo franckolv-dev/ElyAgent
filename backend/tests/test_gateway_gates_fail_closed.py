@@ -3,7 +3,8 @@
 # @file       backend/tests/test_gateway_gates_fail_closed.py
 # @brief      V0-3 — les deux gardes de sécurité de la passerelle ne
 #             disparaissent plus en silence quand leur vérification échoue.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du fail-closed des gardes de la passerelle (audit Opus 5 §4.6).
 

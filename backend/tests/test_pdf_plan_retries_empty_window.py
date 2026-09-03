@@ -3,7 +3,8 @@
 # @file       backend/tests/test_pdf_plan_retries_empty_window.py
 # @brief      Le gabarit du prompt écrivait <identifiant> — le modèle rendait
 #             <p1b0>, et une réponse PARFAITE était jetée une fois sur deux.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le défaut mesuré juste après #294 — et le faux diagnostic qu'il a failli
 faire livrer.

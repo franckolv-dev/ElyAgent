@@ -3,7 +3,8 @@
 # @file       backend/tests/test_reversible_coverage.py
 # @brief      « Annuler partout » — la couverture du journal réversible au-delà
 #             des trois compensations Drive de J1/J3 (audit du 02/09/2026).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce que ces tests protègent.
 

@@ -5,7 +5,8 @@
 #             systeme » (02/09/2026) : un seul vault PII par mission, un
 #             passage annule laisse une trace, un passage mort n'invente pas
 #             de ligne de cout.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce qui SURVIT aux deux premieres passes sur `missions/chat_loop.py`.
 

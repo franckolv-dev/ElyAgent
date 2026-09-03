@@ -2,7 +2,8 @@
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_context_breakdown.py
 # @brief      P2 — savoir enfin d'où viennent les tokens d'un tour.
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la ventilation du contexte (port de Hermes v0.19, MIT).
 

@@ -4,16 +4,11 @@
 # @brief      FastAPI application entry point
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
-#
-# RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
-#   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 
 # ── Logging configuration (FIRST, before any app import) ────────────────────
@@ -618,7 +613,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Cyber-Entity Agent API",
-    version="2.5.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 

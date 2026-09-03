@@ -5,8 +5,9 @@
  * @brief      Personal API key management UI (MCP server + API auth).
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
- * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
- * @license    Elastic License 2.0
+ * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+ * @license    MIT
+ *            https://opensource.org/licenses/MIT
  *
  * Personal API keys authenticate non-browser clients — primarily ELY's own
  * MCP server (Claude Desktop & other MCP clients). Generated once, shown once,

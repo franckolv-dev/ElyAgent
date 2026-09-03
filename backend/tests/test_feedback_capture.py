@@ -3,7 +3,8 @@
 # @file       backend/tests/test_feedback_capture.py
 # @brief      C4-5 — les 👎 rejoignent le funnel d'apprentissage :
 #             rating=-1 → FailureCase (famille user_feedback).
-# @license    Elastic License 2.0
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C4-5 (P5) — refermer la boucle de feedback.
 
