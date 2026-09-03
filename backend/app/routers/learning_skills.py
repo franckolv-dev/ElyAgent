@@ -46,6 +46,8 @@ import json
 import logging
 from typing import Any, Optional
 
+from app.config import get_settings
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -265,6 +267,26 @@ async def run_tool_creator(
     The response echoes `python_tools_enabled` so the caller knows whether a
     promoted tool would actually go live.
     """
+    # Le gel de la fabrique (02/09/2026, `auto_tool_generation_enabled`)
+    # coupait la voie automatique mais pas celle-ci : l'endpoint admin
+    # générait du code sans lire le drapeau. Même lecture défensive que
+    # `auto_tool_generation.py` — illisible vaut gelée (03/09/2026).
+    try:
+        _fabrique_ouverte = bool(get_settings().auto_tool_generation_enabled)
+    except Exception as _exc:  # noqa: BLE001
+        logger.warning("tool_creator: drapeau de fabrique illisible (%s) — gelée", _exc)
+        _fabrique_ouverte = False
+    if not _fabrique_ouverte:
+        return {
+            "status": "frozen",
+            "detail": (
+                "La fabrique d'outils est gelée (AUTO_TOOL_GENERATION_ENABLED=false) : "
+                "aucun code d'outil n'est généré, y compris à la demande d'un "
+                "administrateur. La voie ouverte est la compétence-document."
+            ),
+            "python_tools_enabled": python_tools_enabled(),
+            "attempts": [],
+        }
     # C4-2 — pré-check sémantique anti-doublon : ne pas dépenser du tier-S si
     # un outil existant couvre déjà la capacité (trou de binding, leçon
     # Drive/Sheets). `force=true` outrepasse en connaissance de cause.

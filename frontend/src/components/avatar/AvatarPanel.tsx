@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { neuralScoreForModel } from "@/lib/neuralScore";
 import { Volume2, VolumeX, ShieldAlert, Check, X, Ban } from "lucide-react";
 import { CyberpunkAvatar, AvatarState } from "./CyberpunkAvatar";
 import { TTSPlayer } from "@/lib/tts";
@@ -37,36 +38,6 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
   return String(n);
-}
-
-// ── NEURAL score per model ──────────────────────────────────────────────────
-// Reflects the capability tier of the active LLM (0-100 scale).
-// Higher = more capable / larger model.
-function neuralScoreForModel(modelUsed: string): number {
-  const m = modelUsed.toLowerCase();
-  // Anthropic
-  if (m.includes("opus"))                           return 99 + Math.random() * 0.9;
-  if (m.includes("sonnet"))                         return 94 + Math.random() * 3;
-  if (m.includes("haiku"))                          return 83 + Math.random() * 4;
-  // DeepSeek
-  if (m.includes("reasoner"))                       return 93 + Math.random() * 3;
-  if (m.includes("deepseek-chat"))                  return 81 + Math.random() * 3;
-  // Gemini
-  if (m.includes("1.5-pro") || m.includes("2.0"))  return 89 + Math.random() * 4;
-  if (m.includes("flash"))                          return 79 + Math.random() * 4;
-  // Mistral — Magistral (raisonnement)
-  if (m.includes("magistral-medium"))               return 93 + Math.random() * 3;
-  if (m.includes("magistral-small"))                return 88 + Math.random() * 3;
-  // Mistral — classiques
-  if (m.includes("mistral-large"))                  return 87 + Math.random() * 3;
-  if (m.includes("mistral-medium"))                 return 81 + Math.random() * 3;
-  if (m.includes("mistral-small"))                  return 76 + Math.random() * 3;
-  // Mistral — Ministral (léger)
-  if (m.includes("ministral-14b"))                  return 74 + Math.random() * 3;
-  if (m.includes("ministral-8b"))                   return 68 + Math.random() * 3;
-  // Ollama / local
-  if (m.includes("qwen") || m.includes("llama") || m.includes("ollama")) return 68 + Math.random() * 4;
-  return 85 + Math.random() * 5; // unknown model
 }
 
 export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {

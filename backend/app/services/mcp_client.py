@@ -815,7 +815,7 @@ def _wrap_call(local_name: str, raw_schema: dict, caller) -> "callable":
     ``caller`` (qui fait le ``tools/call`` réel), puis normalise le résultat
     (tous blocs, binaires hors-contexte, _meta jamais transmis, taille bornée)."""
     async def _call(**kwargs) -> str:
-        from app.services.mcp_results import normalize_call_result
+        from app.services.mcp_results import encadrer_pour_le_modele, normalize_call_result
         from app.services.mcp_schema import (
             MCPArgumentInvalid,
             strip_unset_optionals,
@@ -832,7 +832,9 @@ def _wrap_call(local_name: str, raw_schema: dict, caller) -> "callable":
             return f"Erreur MCP ({local_name}) : {exc}"
         try:
             result = await caller(kwargs)
-            return normalize_call_result(result, local_name=local_name)
+            return encadrer_pour_le_modele(
+                normalize_call_result(result, local_name=local_name), local_name=local_name,
+            )
         except Exception as exc:
             return f"Erreur MCP ({local_name}): {exc}"
     return _call

@@ -659,6 +659,10 @@ async def test_run_skill_creator_endpoint_passes_kwargs(_seeded_user, monkeypatc
 
 @pytest.mark.asyncio
 async def test_run_tool_creator_endpoint_creates_candidate(_seeded_user, monkeypatch):
+    # La fabrique est GELÉE par défaut depuis le 02/09/2026 ; l'endpoint la
+    # respecte depuis le 03/09. Ces tests exercent la voie OUVERTE.
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "auto_tool_generation_enabled", True)
     """Sprint 4b V2 — the /tool-creator/run endpoint generates (LLM mocked),
     runs the real 5-stage validation, persists a python_tool candidate, and
     echoes the feature-flag state."""
@@ -706,6 +710,10 @@ async def test_run_tool_creator_endpoint_creates_candidate(_seeded_user, monkeyp
 
 @pytest.mark.asyncio
 async def test_run_tool_creator_endpoint_threads_params_and_echoes_flag(_seeded_user, monkeypatch):
+    # La fabrique est GELÉE par défaut depuis le 02/09/2026 ; l'endpoint la
+    # respecte depuis le 03/09. Ces tests exercent la voie OUVERTE.
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "auto_tool_generation_enabled", True)
     """The endpoint threads every param into generate_and_persist_tool and
     echoes python_tools_enabled (True when the flag is on)."""
     from app.routers.learning_skills import ToolCreatorRunRequest, run_tool_creator

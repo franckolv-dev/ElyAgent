@@ -75,7 +75,7 @@ async def remote_call_tool(srv, user_id: str, remote_tool: str, args: dict,
     """Valide les args, connecte avec les credentials du propriétaire, appelle,
     normalise. La politique egress/ACL/outbound est appliquée par l'appelant."""
     from app.services.mcp_credentials import resolve_user_headers
-    from app.services.mcp_results import normalize_call_result
+    from app.services.mcp_results import encadrer_pour_le_modele, normalize_call_result
     from app.services.mcp_schema import strip_unset_optionals, validate_arguments
 
     # Même garde que le chemin in-process (incident 24/07) : un optionnel
@@ -86,7 +86,9 @@ async def remote_call_tool(srv, user_id: str, remote_tool: str, args: dict,
     async with _session(srv.url, srv.transport, headers,
                         bool(getattr(srv, "allow_private_network", False))) as session:
         result = await session.call_tool(remote_tool, args)
-    return normalize_call_result(result, local_name=local_name)
+    return encadrer_pour_le_modele(
+        normalize_call_result(result, local_name=local_name), local_name=local_name,
+    )
 
 
 # ── Resources / Prompts (J6) — lecture seule, à la demande ───────────────────
@@ -108,12 +110,14 @@ async def remote_list_resources(srv, user_id: str) -> list:
 async def remote_read_resource(srv, user_id: str, uri: str, *, local_name: str = "mcp") -> str:
     """Lit une resource distante et normalise (binaires hors-contexte, bornée)."""
     from app.services.mcp_credentials import resolve_user_headers
-    from app.services.mcp_results import normalize_resource_result
+    from app.services.mcp_results import encadrer_pour_le_modele, normalize_resource_result
 
     headers = await resolve_user_headers(user_id, srv)
     async with _session(srv.url, srv.transport, headers, _allow_private(srv)) as session:
         result = await session.read_resource(uri)
-    return normalize_resource_result(result, local_name=local_name)
+    return encadrer_pour_le_modele(
+        normalize_resource_result(result, local_name=local_name), local_name=local_name,
+    )
 
 
 async def remote_list_prompts(srv, user_id: str) -> list:

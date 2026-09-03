@@ -153,6 +153,15 @@ def normalize_call_result(
     return text or "(résultat MCP vide)"
 
 
+def encadrer_pour_le_modele(text: str, *, local_name: str) -> str:
+    """Un résultat ou une ressource MCP est une DONNÉE venue d'un serveur
+    tiers : même cadre que les pages web, les mails et les documents Drive
+    (``external_content``). Le seul chemin MCP encadré était le *prompt*
+    (bannière ci-dessous) — relecture du 03/09/2026."""
+    from app.services.external_content import wrap_external
+    return wrap_external(text, source=f"MCP {local_name}")
+
+
 def _cap(text: str, max_text_bytes: int) -> str:
     encoded = text.encode("utf-8")
     if len(encoded) > max_text_bytes:
