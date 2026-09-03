@@ -213,9 +213,12 @@ def test_skill_registered():
     assert "reversible_actions" in get_skill_registry()._skills
 
 
-def test_reversible_tool_names_empty_when_flag_off():
-    # Flag OFF par défaut → aucun outil d'annulation lié (zéro coût de prompt).
+def test_reversible_tool_names_empty_when_flag_off(monkeypatch):
+    # Flag OFF (il est ON par défaut depuis le 03/09/2026) → aucun outil
+    # d'annulation lié (zéro coût de prompt).
+    from app.config import get_settings
     from app.agent.toolset_profiles import _reversible_tool_names
+    monkeypatch.setattr(get_settings(), "reversible_journal_enabled", False)
     assert _reversible_tool_names() == set()
 
 

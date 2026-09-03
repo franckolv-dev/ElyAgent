@@ -85,6 +85,15 @@ async def snapshot_before(tool_name: str, args: dict, user_id: str) -> dict | No
         return None
 
 
+def resultat_en_echec(result: str | None) -> bool:
+    """Ce retour d'outil dit-il que l'action n'a PAS abouti ?
+
+    Même règle que la garde anti-rejeu (``replay_guard._ECHEC_PREFIXES``) :
+    une seule définition de l'échec, lue aux deux endroits qui en dépendent."""
+    from app.agent.replay_guard import _ECHEC_PREFIXES
+    return str(result or "").lstrip().lower().startswith(_ECHEC_PREFIXES)
+
+
 async def record_reversible(
     tool_name: str,
     args: dict,
@@ -102,6 +111,12 @@ async def record_reversible(
     Deux modes : *snapshot* (l'état d'avant, capturé par ``snapshot_before`` et
     passé via ``pre_snapshot``) ou *opération inverse* (``capture`` post-succès)."""
     if not _enabled() or not user_id:
+        return None
+    # Trou n°2 (nommé dans compensation_registry, fermé le 03/09/2026) : les
+    # outils d'Ely rendent leurs échecs en TEXTE (« Erreur … »), et la
+    # passerelle journalisait sans le lire. Annuler une action qui n'a pas eu
+    # lieu détruirait l'état d'avant, pas celui d'Ely.
+    if resultat_en_echec(result):
         return None
 
     from app.services.capability_manifest import get_manifest

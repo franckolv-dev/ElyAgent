@@ -71,13 +71,16 @@ async def _get(rid: str):
 
 
 @pytest.mark.asyncio
-async def test_disabled_by_default_is_noop(db_ready):
+async def test_disabled_is_noop(db_ready, monkeypatch):
+    # ON par défaut depuis le 03/09/2026 : on teste le no-op en l'ÉTEIGNANT.
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "reversible_journal_enabled", False)
     uid = f"u_{uuid.uuid4().hex}"
     try:
         rid = await js.record_reversible(
             "drive_delete_file", {"file_id": "F1"}, "ok", uid, "fp1"
         )
-        assert rid is None                       # flag OFF par défaut → rien
+        assert rid is None                       # flag OFF → rien
         assert await js.list_reversible(uid) == []
     finally:
         await _cleanup(uid)

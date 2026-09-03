@@ -82,6 +82,7 @@ récurrent, famille, lieu, outil utilisé régulièrement).
 pour cette conv précise, et le sujet de la conv lui-même.
 4. En cas de doute entre PRÉFÉRENCE et CONTEXTE, choisis CONTEXTE.
 5. En cas de doute total, NE L'EXTRAIS PAS.
+6. N'extrais JAMAIS l'état d'une tâche en cours (avancement, étape atteinte, « fait / à faire », statut d'une mission) : la mémoire retient qui est l'utilisateur, pas où en est le travail.
 
 Exemples (à appliquer LITTÉRALEMENT) :
   ✓ PRÉFÉRENCE  : "L'utilisateur préfère le tutoiement"
@@ -446,4 +447,7 @@ def schedule_consolidation(conversation_id: str, user_id: str) -> asyncio.Task |
         except Exception as exc:
             logger.debug("maintenance_rapid schedule wrapper swallowed: %s", exc)
 
-    return asyncio.create_task(_safe_run())
+    # Laisse : un ``create_task`` nu que l'appelant jetait pouvait être
+    # ramassé en vol (dernier cas du genre, relecture du 03/09/2026).
+    from app.services.background_tasks import spawn
+    return spawn(_safe_run(), label=f"maintenance-rapid-{conversation_id[:8]}")
