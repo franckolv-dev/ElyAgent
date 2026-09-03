@@ -44,15 +44,17 @@ def _fresh_conv() -> str:
 # ── 1. Registre partagé ─────────────────────────────────────────────────────
 
 
-def test_filters_proxy_exposes_get():
+def test_le_chat_lit_le_registre_partage_sans_shim():
     """factory.py appelait ``_filters.get(...)`` → AttributeError avalée par
-    un ``except: pass`` (audit P0). Le shim legacy doit exposer ``get()`` et
-    renvoyer l'instance du registre partagé."""
-    from app.routers.chat import _filters
+    un ``except: pass`` (audit P0). Le shim legacy a disparu le 03/09/2026 :
+    le chat lit le registre partagé directement, et le même appel rend la
+    même instance."""
+    from app.routers import chat as chat_mod
     from app.services.conversation_filters import get_filter
 
+    assert not hasattr(chat_mod, "_filters")
     conv = _fresh_conv()
-    sf = _filters.get(conv)
+    sf = chat_mod._get_filter(conv)
     assert sf is not None
     assert sf is get_filter(conv)
 

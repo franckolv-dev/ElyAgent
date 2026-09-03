@@ -1090,6 +1090,7 @@ def create_agent_node():
                     # Exactement le défaut du 26/07 que `config_reality` traque.
                     model=_slm_real_name(_slm_base, settings),
                     reserve_for_response=1024,
+                    conversation_id=_conv_id_fb,
                     # Ancrage du mandat : sur une tâche planifiée la consigne
                     # est messages[0], et la troncature supprime par l'avant.
                     # Sans ça, l'agent termine sans savoir ce qu'on lui
@@ -1684,6 +1685,10 @@ def create_agent_node():
                 reserve_for_response=1024,
                 # Ancrage du mandat — cf. le commentaire du chemin SLM.
                 preserve_first=bool(state.get("automated_task")),
+                # Le plan de la conversation se réinjecte à la compaction ;
+                # l'identifiant vient de l'état, pas d'une ContextVar (voir
+                # `_plan_restant`).
+                conversation_id=_conv_id_fb,
             )
             # La frontière d'envoi (02/09/2026) : à partir d'ici, `system`
             # n'est plus ce qu'on envoie — `_systeme_envoye` l'est. Les replis

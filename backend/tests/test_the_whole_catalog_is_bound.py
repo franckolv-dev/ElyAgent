@@ -121,14 +121,19 @@ def test_the_sixteen_missing_families_are_reachable(famille: str):
 # Les pins anti-régression — ce qui ne doit PAS changer
 # ---------------------------------------------------------------------------
 
-def test_a_restrictive_profile_still_restricts():
+def test_a_restrictive_profile_still_restricts(monkeypatch):
     """⚠️ LE pin qui compte.
 
     Sans lui, on « réussirait » ce lot en rendant `resolve_profile_tools`
     équivalent à `return all_tools` — le mécanisme serait mort sans que rien ne
     rougisse, et le retour arrière par configuration deviendrait impossible.
+
+    Le journal d'annulation (ON par défaut depuis le 03/09/2026) ajoute ses
+    trois outils à TOUT profil ; on l'éteint pour ne mesurer que le profil.
     """
     from app.agent import toolset_profiles as tp
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "reversible_journal_enabled", False)
 
     tous = _catalogue()
     noms = sorted(t.name for t in tous)[:3]

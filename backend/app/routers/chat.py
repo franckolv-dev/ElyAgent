@@ -71,26 +71,6 @@ from app.services.conversation_filters import (
 )
 
 
-class _FiltersProxy:
-    """Tiny shim so legacy ``_filters.setdefault(...)`` and
-    ``_filters.pop(...)`` calls keep working while we migrate to the
-    dedicated registry module."""
-
-    def setdefault(self, conversation_id: str, _default=None):
-        return _get_filter(conversation_id)
-
-    def get(self, conversation_id: str, default=None):
-        # C0 (audit 16/07 P0) : factory.py appelait ``get`` qui n'existait
-        # pas — AttributeError avalée → couture PII morte. Même sémantique
-        # get-or-create que le registre (un filtre vide désanonymise no-op).
-        return _get_filter(conversation_id)
-
-    def pop(self, conversation_id: str, default=None):
-        _discard_filter(conversation_id)
-        return default
-
-
-_filters = _FiltersProxy()
 
 
 def get_agent():
@@ -433,7 +413,7 @@ async def websocket_chat(websocket: WebSocket):
             )
 
             # Anonymize input through per-conversation filter
-            sf = _filters.setdefault(conversation_id, SecurityFilter())
+            sf = _get_filter(conversation_id)
             clean_content = sf.anonymize(user_content)
 
             # Load conversation history (last 20 exchanges = 40 messages max)
@@ -1058,7 +1038,7 @@ async def websocket_chat(websocket: WebSocket):
             except Exception:
                 # Never let the maintenance scheduling break disconnect.
                 pass
-        _filters.pop(conversation_id, None) if conversation_id else None
+        _discard_filter(conversation_id) if conversation_id else None
         # Hermes Chantier 4 — drop fallback state on disconnect so the next
         # session for this user starts on the primary again. (Stickiness is
         # PER conversation, not per user.)
@@ -1182,7 +1162,7 @@ async def _summarize_conversation(conversation_id: str, user_id: str) -> None:
         # sorties se démasquent avec le même dictionnaire (audit 02/09/2026,
         # §9 — dernier chemin en clair). Masque NEUF, pas celui du tour : la
         # déconnexion a déjà retiré le filtre de la conversation du registre
-        # (``_filters.pop`` s'exécute avant cette tâche spawnée) ; en
+        # (``_discard_filter`` s'exécute avant cette tâche spawnée) ; en
         # réclamer un au registre en laisserait un orphelin derrière soi.
         _sf = SecurityFilter()
         transcript = _sf.anonymize(transcript, ner_detection=False)

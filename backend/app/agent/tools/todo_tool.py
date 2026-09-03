@@ -172,6 +172,30 @@ def _rendu(plan: _Plan) -> str:
     return "\n".join(lignes)
 
 
+def etapes_restantes(conversation_id: str) -> str:
+    """Les étapes NON terminées du plan de cette conversation, numérotées
+    comme dans le rendu complet — ou ``""`` s'il n'y a rien à rappeler.
+
+    C'est ce que la compaction du contexte réinjecte (03/09/2026) : les
+    étapes faites en sont absentes à dessein, les rappeler ferait refaire
+    du travail déjà fait."""
+    if not conversation_id:
+        return ""
+    with _verrou:
+        plan = _registre.get(conversation_id)
+    if plan is None or not plan.taches:
+        return ""
+    lignes = []
+    for numero, texte in enumerate(plan.taches, start=1):
+        if numero in plan.faites:
+            continue
+        marqueur = MARQUEUR_EN_COURS if numero == plan.en_cours else MARQUEUR_A_FAIRE
+        lignes.append(f"  {numero}. {marqueur} {texte}")
+    if not lignes:
+        return ""
+    return "[Plan de la conversation — étapes restantes]\n" + "\n".join(lignes)
+
+
 def _refus(motif: str, plan: _Plan) -> str:
     """Un refus rend le plan INCHANGÉ avec lui : sans ça, le modèle devrait
     rappeler l'outil pour savoir ce qu'il a encore en mémoire."""

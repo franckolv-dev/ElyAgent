@@ -1,15 +1,14 @@
 /**
  * @project    ELY — Exactly Like You
  * @file       extension/chrome/src/content/content-script.js
- * @brief      Injected on every page. Reads DOM, renders HITL overlay,
- *             executes clicks/fills under explicit user approval.
+ * @brief      Injected on every page. Reads the DOM and executes the
+ *             clicks/fills the backend has already approved.
  *
- * Sprint 0 scope (current):
- *   - READ_DOM, READ_TEXT, WAIT_FOR — read-only, no approval needed.
- *   - CLICK, FILL, NAVIGATE — destructive — defer to Sprint 1
- *     (the protocol exists, the handler exists but always returns
- *      `{ ok: false, error: "not_implemented_yet" }` for safety until
- *      the HITL overlay is wired up).
+ * Trust model (03/09/2026 — no in-page overlay, and none is promised):
+ *   - READ_DOM, READ_TEXT, WAIT_FOR — read-only.
+ *   - CLICK, FILL, NAVIGATE — executed as received; approval lives
+ *     server-side (backend HITL gate, LOCKED_HITL_TOOLS) and the user
+ *     watches the tab live in their own Chrome window.
  */
 
 (function () {
@@ -86,13 +85,13 @@
 
     // Sprint 1 implementations.
     //
-    // No in-page HITL overlay (yet) — the trust model is:
+    // No in-page HITL overlay — the trust model is:
     //   - The agent only emits a click on explicit user request in chat.
     //   - The user sees the tab live in their own Chrome window.
     //   - The backend can lock specific tool names via LOCKED_HITL_TOOLS
     //     if some flow needs server-side confirmation.
-    // This is the pragmatic "ship it, the user is watching" version. The
-    // proper in-page overlay can come later without breaking the protocol.
+    // This is the "the user is watching" version, and it is the model
+    // shipped: no overlay is promised anywhere else.
     click({ selector } = {}) {
       if (!selector) return { ok: false, error: "missing_selector" };
       let nodes;

@@ -5,13 +5,11 @@
   "version": "1.8.0",
   "description": "Let ELY act in your browser, on your tabs, with explicit approval. Self-hosted AI agent — your data never leaves your machine.",
   "homepage_url": "https://agent-ely.fr",
-
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-
   "permissions": [
     "activeTab",
     "bookmarks",
@@ -21,16 +19,13 @@
     "storage",
     "tabs"
   ],
-
   "host_permissions": [
     "<all_urls>"
   ],
-
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
   },
-
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {
@@ -40,24 +35,29 @@
     },
     "default_title": "ELY — Browser Companion"
   },
-
   "options_ui": {
     "page": "src/options/options.html",
     "open_in_tab": true
   },
-
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/content-script.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/content-script.js"
+      ],
       "run_at": "document_idle"
     }
   ],
-
   "web_accessible_resources": [
     {
-      "resources": ["src/content/overlay.css", "icons/*.png"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "icons/*.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

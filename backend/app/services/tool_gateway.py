@@ -797,9 +797,30 @@ async def execute_tool_call(
             # sur disque) est posé ICI, pas passé en argument d'outil : le
             # modèle ne doit pas pouvoir désigner un autre utilisateur.
             from app.services.tool_output_spill import owner_scope
+            # Une action qui bascule en tâche de fond quitte ce pipeline avant
+            # ``record_reversible`` (plus bas) : on confie au relais ce qu'il
+            # faut journaliser si le résultat finit par arriver (03/09/2026).
+            async def _journaliser_apres_fond(resultat: Any, _fp=_action_fp,
+                                              _snap=_pre_snapshot) -> None:
+                if _fp is None or not _get_settings().reversible_journal_enabled:
+                    return
+                try:
+                    from app.services.journal_service import record_reversible
+                    _texte = _sanitize_tool_result_for_history(str(resultat or ""))
+                    # Même masque que le chemin principal (vault de la
+                    # conversation) : les deux chemins restent symétriques.
+                    if ctx.pii_filter is not None:
+                        _texte = ctx.pii_filter.anonymize(_texte, ner_detection=False)
+                    await record_reversible(
+                        tool_name, display_args, _texte, user_id, _fp, pre_snapshot=_snap,
+                    )
+                except Exception as _exc:  # noqa: BLE001 — best-effort
+                    logger.debug("journal après tâche de fond non écrit: %s", _exc)
+
             with owner_scope(user_id):
                 result, _handoff_notice = await invoke_with_handoff(
                     ctx, tool_name, tool, args,
+                    on_success=_journaliser_apres_fond,
                 )
             if _handoff_notice is not None:
                 if meta is not None:

@@ -379,10 +379,12 @@ class Settings(BaseSettings):
     # champ `CapabilityManifest.compensation` : une action mutante annulable est
     # journalisée après succès, et peut être compensée (« annuler »). Flag dédié
     # (≠ trust_substrate_enabled, ON par défaut) pour canaryer séparément.
-    # OFF par défaut ⇒ le hook d'enregistrement dans tool_node est un no-op.
+    # ON par défaut depuis le 03/09/2026 : seize outils annulables et douze
+    # compensations vérifiées (#367), la page de transparence l'affiche —
+    # « annulable en principe seulement » n'était plus tenable.
     # NB : le journal n'a de prise QUE substrat ON — c'est l'empreinte du plan
     # d'action qui déclenche son enregistrement (services/tool_gateway.py).
-    reversible_journal_enabled: bool = False
+    reversible_journal_enabled: bool = True
     # Fenêtre d'annulation : au-delà, l'entrée passe `expired` (annulation
     # refusée). 7 j par défaut, < les ~30 j de la corbeille Drive réelle.
     reversible_journal_ttl_seconds: int = 7 * 24 * 3600

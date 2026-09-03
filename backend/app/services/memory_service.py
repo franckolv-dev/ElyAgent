@@ -88,6 +88,7 @@ Réponds UNIQUEMENT avec un objet JSON de la forme :
 Types valides : "preference", "context", "event", "skill", "personal"
 Si aucun fait utile n'est détectable, réponds avec : {{"facts": []}}
 N'invente aucun fait. N'extrait que ce qui est dit EXPLICITEMENT.
+N'extrais JAMAIS l'état d'une tâche en cours (avancement, étape atteinte, « fait / à faire », statut d'une mission) : la mémoire retient qui est l'utilisateur, pas où en est le travail.
 Certaines valeurs sont masquées ([EMAIL_0], [PHONE_1], …) : recopie le masque tel quel.
 
 Fils :
@@ -120,6 +121,7 @@ Règles :
 - Utilise des clés stables et réutilisables (pas de clés trop spécifiques)
 - Si un fait existant est contredit, baisse la confidence à 0.5 ou remplace la valeur
 - N'invente pas de faits non présents dans les données brutes
+- N'extrais JAMAIS l'état d'une tâche en cours (avancement, étape atteinte, « fait / à faire », statut d'une mission) : la mémoire retient qui est l'utilisateur, pas où en est le travail.
 - Confidence entre 0.0 et 1.0
 """
 

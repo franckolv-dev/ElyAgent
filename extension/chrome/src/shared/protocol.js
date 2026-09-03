@@ -10,9 +10,9 @@
  *   - The backend issues commands (READ_DOM, CLICK, FILL, SCREENSHOT…).
  *   - The extension responds with the same `id` and a result/error.
  *   - The extension also pushes events (TAB_CHANGED, PAGE_NAVIGATED…).
- *   - Every destructive action goes through HITL: the extension renders
- *     an in-page overlay and waits for the user's explicit approval
- *     before executing. The user's choice is sent back to the backend.
+ *   - Approval of destructive actions lives SERVER-SIDE (the backend's
+ *     HITL gate and LOCKED_HITL_TOOLS): the extension only executes what
+ *     the backend has already cleared. There is no page overlay.
  *
  * Versioning:
  *   - PROTOCOL_VERSION is bumped on every breaking change to the
@@ -57,17 +57,6 @@ export const EVT = Object.freeze({
 
 // Read-only / non-destructive commands don't require HITL approval.
 // Note: OPEN_TAB and CLOSE_TAB are non-destructive — the user can always
-// see the new tab appear or be closed (no data is altered server-side).
-const READ_ONLY_CMDS = new Set([
-  CMD.PING, CMD.LIST_TABS, CMD.OPEN_TAB, CMD.CLOSE_TAB, CMD.WAIT_LOADED,
-  CMD.READ_DOM, CMD.READ_TEXT, CMD.GET_URL, CMD.SCREENSHOT, CMD.WAIT_FOR,
-  // Sprint 0.7 — Chrome v2 read-only inspectors
-  CMD.GET_HISTORY, CMD.GET_BOOKMARKS, CMD.GET_DOWNLOADS,
-]);
-
-export function isDestructive(commandType) {
-  return !READ_ONLY_CMDS.has(commandType);
-}
 
 // ── Envelope helpers ─────────────────────────────────────────────────
 let _nextId = 1;

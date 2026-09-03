@@ -125,6 +125,10 @@ n'est PAS un écart.
 - Si tu n'es pas certain qu'une exigence n'est pas satisfaite, elle l'est.
 - Ne reproche pas une limite qui a été SIGNALÉE à l'utilisateur : un résultat \
 imparfait mais annoncé comme tel répond à la demande.
+- Une écriture externe demandée (mail envoyé, fichier créé, événement posé, \
+ligne ajoutée) n'est satisfaite que si sa cible a été RELUE après coup et \
+que la relecture confirme le résultat ; un appel d'outil réussi n'est pas \
+une preuve.
 
 Réponds dans l'un de ces deux formats, et rien d'autre :
 

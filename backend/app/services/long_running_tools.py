@@ -75,6 +75,10 @@ class BackgroundJob:
     result: Any = None
     error: str | None = None
     delivered: bool = False
+    # Ce que la passerelle veut faire du résultat s'il arrive (journal
+    # d'annulation) : une action partie en fond n'était jamais journalisée
+    # (trou n°1, fermé le 03/09/2026).
+    on_success: Any = None
     _extra: dict = field(default_factory=dict)
 
     @property
@@ -158,6 +162,8 @@ async def invoke_with_handoff(
     tool_name: str,
     tool: Any,
     args: dict,
+    *,
+    on_success: Any = None,
 ) -> tuple[Any, str | None]:
     """Exécute ``tool`` ; bascule en tâche de fond au-delà du budget.
 
@@ -197,6 +203,7 @@ async def invoke_with_handoff(
         started_at=time.monotonic(),
         fingerprint=fp,
         task=task,
+        on_success=on_success,
     )
     _JOBS[job.job_id] = job
     logger.warning(
@@ -222,6 +229,13 @@ def _on_job_done(job: BackgroundJob, task: Any) -> None:
         "[long_tool] job=%s (%s) terminé en %.0fs — ok=%s",
         job.job_id, job.tool_name, job.elapsed_s, job.ok,
     )
+    if job.ok and job.on_success is not None:
+        try:
+            from app.services.background_tasks import spawn as _spawn
+            _spawn(job.on_success(job.result), label=f"long-tool-journal-{job.job_id}")
+        except Exception as exc:  # noqa: BLE001 — journaliser ne bloque pas la livraison
+            logger.warning("[long_tool] suite du succès non planifiée (job=%s) : %s",
+                           job.job_id, exc)
     try:
         from app.services.background_tasks import spawn
         # Contexte détaché : la livraison fait ses PROPRES appels LLM (reprise
