@@ -49,7 +49,10 @@ class MissionCreate(BaseModel):
     # 500 000) datait du moteur à un outil par tick et faisait échouer
     # toute mission en deux actions.
     budget_tokens: int = Field(500_000, ge=1000, le=5_000_000)
-    budget_iterations: int = Field(30, ge=1, le=200)
+    # 03/09/2026 : sur la boucle du chat une page LinkedIn vaut cinq actions
+    # (ouvrir, attendre, sélecteur, texte, HTML) ; « test2 » a épuisé 100
+    # itérations sans conclure. Défaut 100, plafond 1 000.
+    budget_iterations: int = Field(100, ge=1, le=1000)
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None
     autonomous: bool = False
@@ -72,7 +75,7 @@ class MissionUpdate(BaseModel):
     goal: Optional[str] = Field(None, min_length=5)
     priority: Optional[int] = Field(None, ge=1, le=10)
     budget_tokens: Optional[int] = Field(None, ge=1000, le=5_000_000)
-    budget_iterations: Optional[int] = Field(None, ge=1, le=200)
+    budget_iterations: Optional[int] = Field(None, ge=1, le=1000)
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None
     autonomous: Optional[bool] = None

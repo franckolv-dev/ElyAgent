@@ -364,7 +364,7 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
   const isEdit = !!mission;
   const [title, setTitle]   = useState(mission?.title ?? "");
   const [goal, setGoal]     = useState(mission?.goal ?? "");
-  const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 15);
+  const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 100);
   const [budgetTok, setBudgetTok]   = useState(mission?.budget_tokens ?? 500_000);
   const [autonomous, setAutonomous] = useState(mission?.autonomous ?? false);
   // 03/09/2026 — plus de spec YAML ni de formulaire de mandat ici : une
@@ -439,8 +439,8 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
                 {t("budgetIterations")} <span className="text-text-muted/60">{t("maxTicks")}</span>
               </label>
               <input
-                type="number" min={1} max={200} value={budgetIter}
-                onChange={(e) => setBudgetIter(Math.max(1, Math.min(200, +e.target.value || 1)))}
+                type="number" min={1} max={1000} value={budgetIter}
+                onChange={(e) => setBudgetIter(Math.max(1, Math.min(1000, +e.target.value || 1)))}
                 className="w-full text-sm bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary focus:outline-none focus:border-cyber-cyan/40"
               />
             </div>
