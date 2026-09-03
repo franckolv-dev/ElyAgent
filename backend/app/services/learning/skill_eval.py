@@ -276,7 +276,10 @@ async def evaluate_skill(skill_id: str) -> dict[str, Any]:
             HumanMessage(content=_compose_judge_prompt(skill, cases)),
         ]
         response = await llm.ainvoke(messages)
-        raw = getattr(response, "content", "") or ""
+        from app.agent.helpers.message_content import content_to_text
+        # Responses API (gpt-5.6) : `content` arrive en LISTE de blocs ;
+        # passé tel quel au dé-anonymiseur, `.replace` plantait (03/09/2026).
+        raw = content_to_text(getattr(response, "content", "") or "")
     except Exception as exc:
         out["status"] = "llm_call_failed"
         out["rationale"] = f"{type(exc).__name__}: {exc}"

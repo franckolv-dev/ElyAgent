@@ -281,17 +281,22 @@ class RAGService:
     def __init__(self) -> None:
         self._mm = get_memory_manager()
 
+    # Le client Qdrant, l'encodeur et le cache d'embeddings vivent dans
+    # ``MemoryInfra`` depuis le Sprint 2.5 (#324) ; le manager les porte sous
+    # ``_infra``. Lire ``self._mm.client`` levait AttributeError au démarrage
+    # (« Failed to init knowledge collection ») et à chaque requête de la base
+    # de connaissances — vu en production le 03/09/2026.
     @property
     def client(self):
-        return self._mm.client
+        return self._mm._infra.client
 
     @property
     def encoder(self):
-        return self._mm.encoder
+        return self._mm._infra.encoder
 
     async def _embed(self, text: str) -> list[float]:
-        """Reuse the memory_manager embedding with its LRU cache."""
-        return await self._mm._embed(text)
+        """Reuse the memory infra embedding with its LRU cache."""
+        return await self._mm._infra.embed(text)
 
     # ------------------------------------------------------------------
     # Collection initialisation

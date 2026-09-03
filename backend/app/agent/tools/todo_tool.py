@@ -78,6 +78,7 @@ Elle demande de toucher au nœud agent, en chantier par ailleurs.
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -122,7 +123,26 @@ _verrou = threading.Lock()
 _registre: dict[str, _Plan] = {}
 
 
-def _normaliser(taches: list[str]) -> tuple[str, ...]:
+# Un modèle qui écrit ses étapes comme des objets (``{"id": 5, "texte": …}``)
+# plutôt que des chaînes — vu en production le 03/09/2026 — se faisait refuser
+# tout le plan par le schéma. On lit le champ qui porte le texte ; à défaut,
+# la forme JSON de l'objet, lisible et stable.
+_CLES_DE_TEXTE: Final[tuple[str, ...]] = (
+    "texte", "text", "title", "titre", "tache", "task", "label", "name",
+)
+
+
+def _texte_de(brute: object) -> str:
+    if isinstance(brute, dict):
+        for cle in _CLES_DE_TEXTE:
+            valeur = brute.get(cle)
+            if isinstance(valeur, str):
+                return valeur          # vide compris : c'est une étape vide
+        return json.dumps(brute, ensure_ascii=False)
+    return str(brute or "")
+
+
+def _normaliser(taches: list[str | dict]) -> tuple[str, ...]:
     """Une étape par ligne, coupée, sans entrée vide.
 
     Les sauts de ligne sont écrasés : une étape qui s'étale sur trois lignes
@@ -131,7 +151,7 @@ def _normaliser(taches: list[str]) -> tuple[str, ...]:
     """
     propres: list[str] = []
     for brute in taches:
-        texte = " ".join(str(brute or "").split())
+        texte = " ".join(_texte_de(brute).split())
         if texte:
             propres.append(texte[:_MAX_LONGUEUR])
     return tuple(propres)
@@ -170,7 +190,7 @@ def _refus(motif: str, plan: _Plan) -> str:
 )
 @tool
 async def session_todo(
-    taches: list[str] | None = None,
+    taches: list[str | dict] | None = None,
     en_cours: int | None = None,
     faites: list[int] | None = None,
     a_refaire: list[int] | None = None,
