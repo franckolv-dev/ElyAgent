@@ -508,6 +508,14 @@ async def lifespan(app: FastAPI):
         spawn(log_service_probe(), label="startup.service_probe")
     except Exception:
         _startup_logger.debug("Sonde des têtes ignorée", exc_info=True)
+    # Sonde du pool de connexions (03/09/2026) : quand il sature, le journal
+    # nomme les tâches en vol au lieu de n'afficher que « limit reached ».
+    try:
+        from app.services.background_tasks import spawn as _spawn_pool
+        from app.services.pool_watch import surveiller_le_pool
+        _spawn_pool(surveiller_le_pool(), label="pool.watch")
+    except Exception:
+        _startup_logger.debug("Sonde du pool ignorée", exc_info=True)
 
     # Start watchdog service
     from app.services.watchdog_service import load_and_schedule_watch_tasks, stop_watchdog
