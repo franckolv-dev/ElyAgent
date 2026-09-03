@@ -223,6 +223,7 @@ async def runtime_metrics(admin: User = Depends(require_admin)):
     topologie interne."""
     from app.services import ws_registry
     from app.services.background_tasks import pending_count
+    from app.database import pool_status
     from app.services.conversation_filters import filter_count
     from app.services.mission_heartbeat import _in_flight as _missions_in_flight
     from app.services.run_gate import _semaphores as _run_semaphores
@@ -246,6 +247,8 @@ async def runtime_metrics(admin: User = Depends(require_admin)):
         "ws_sockets_total": sum(len(s) for s in ws_registry._registry.values()),
         "background_tasks_pending": pending_count(),
         "missions_ticks_in_flight": len(_missions_in_flight),
+        # 03/09/2026 — le pool a saturé sans que rien ne le dise.
+        "db_pool": pool_status(),
         "users_with_run_slots": len(_run_semaphores),
         "pii_filters_active": filter_count(),
         "frozen_memory_snapshots": snapshots,

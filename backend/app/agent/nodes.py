@@ -1292,7 +1292,13 @@ def create_agent_node():
                 classify_complexity, get_llm_for_tier, ComplexityTier,
                 build_llm_for_provider, get_tier_config,
             )
-            _tier = classify_complexity(user_query)
+            # Une mission tourne sur COMPLEX (#369) — la boucle du chat ne
+            # l'avait pas : `classify_complexity` lisait des mots-clés dans la
+            # consigne reconstruite (« image », « photo ») et envoyait le tour
+            # sur le tier IMAGE, ce jour-là un modèle local à 227 s par appel
+            # (mission « test2 », 03/09/2026).
+            _pin = str(state.get("tier_pin") or "").strip().lower()
+            _tier = ComplexityTier.COMPLEX if _pin == "complex" else classify_complexity(user_query)
 
             # ── Hermes Chantier 4 — fallback chain bootstrap ─────────────
             # Capture (or recreate) the per-conversation FallbackState. The

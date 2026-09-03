@@ -35,6 +35,16 @@ def _make_engine():
     # SQLite-specific tuning — safe to apply, ignored for PostgreSQL URLs.
     if url.startswith("sqlite"):
         from sqlalchemy import event
+        # 03/09/2026 — le pool par défaut (5 + 10) a saturé pendant une
+        # mission de 96 actions : toute l'API en 500 cinq minutes durant,
+        # base libre. La revue de juin l'avait jugé « premier goulot
+        # invisible » — pour Postgres seulement. Une connexion aiosqlite est
+        # un thread : cinquante ne coûtent rien. Une base en mémoire (tests)
+        # vit sur un StaticPool, qui n'a pas de taille.
+        _pool_kwargs = (
+            {} if ":memory:" in url or url.rstrip("/").endswith("sqlite+aiosqlite:")
+            else {"pool_size": 20, "max_overflow": 30, "pool_timeout": 30}
+        )
         _engine = create_async_engine(
             url,
             echo=False,
@@ -42,6 +52,7 @@ def _make_engine():
                 "timeout": 30,          # busy-wait up to 30s instead of raising immediately
                 "check_same_thread": False,
             },
+            **_pool_kwargs,
         )
         # Enable WAL mode and increase cache on every new connection.
         # WAL allows concurrent readers while a write is in progress —
@@ -72,6 +83,24 @@ def _make_engine():
 
 engine = _make_engine()
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+def pool_status() -> dict:
+    """Ce que le pool tient en ce moment — lu par `/admin/metrics` et par la
+    sonde `pool_watch`. Zéros si le pool ne sait pas répondre (StaticPool)."""
+    pool = getattr(engine.sync_engine, "pool", None) or getattr(engine, "pool", None)
+    def _lire(nom: str) -> int:
+        try:
+            return int(getattr(pool, nom)())
+        except Exception:  # noqa: BLE001 — un pool sans cette mesure rend 0
+            return 0
+    return {
+        "size": _lire("size"),
+        "max_overflow": int(getattr(pool, "_max_overflow", 0) or 0),
+        "checked_out": _lire("checkedout"),
+        "checked_in": _lire("checkedin"),
+        "overflow": _lire("overflow"),
+    }
 
 
 async def get_db() -> AsyncSession:
