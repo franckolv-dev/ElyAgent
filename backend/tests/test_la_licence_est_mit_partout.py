@@ -76,7 +76,10 @@ def test_les_manifestes_declarent_mit():
 def test_aucun_fichier_suivi_ne_porte_les_termes_de_l_ancienne_licence():
     fautifs: list[str] = []
     for chemin in _fichiers_suivis():
-        if chemin.name in _HISTOIRE:
+        # Ce fichier-ci porte les termes interdits dans sa liste : il se
+        # prendrait lui-même en défaut (vu en CI, pas en local où il n'était
+        # pas encore suivi par git).
+        if chemin.name in _HISTOIRE or chemin == Path(__file__).resolve():
             continue
         try:
             texte = chemin.read_text(encoding="utf-8")
