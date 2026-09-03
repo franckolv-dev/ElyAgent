@@ -364,6 +364,26 @@ def _summarise_dropped(messages: Sequence[BaseMessage | dict]) -> str:
 # Public API                                                           #
 # ------------------------------------------------------------------ #
 
+def _plan_restant(conversation_id: str | None) -> str:
+    """Les étapes non terminées du plan de cette conversation, ou ``""``.
+
+    L'identifiant vient de l'APPELANT (``state["conversation_id"]`` du nœud
+    agent) : ``CURRENT_CONVERSATION_ID`` n'est posée que dans le nœud d'outils,
+    et LangGraph exécute chaque nœud dans sa propre tâche — lue depuis le
+    nœud agent, la variable est vide (relecture du 03/09/2026, sonde à
+    l'appui). Elle ne sert que de repli. Ne lève jamais."""
+    try:
+        from app.agent.tools.todo_tool import etapes_restantes
+        cid = conversation_id
+        if not cid:
+            from app.agent.tool_context import CURRENT_CONVERSATION_ID
+            cid = CURRENT_CONVERSATION_ID.get() or ""
+        return etapes_restantes(cid)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("plan de conversation non réinjecté : %s", exc)
+        return ""
+
+
 def _contains_text(messages: list[BaseMessage | dict], needle: str) -> bool:
     """True si *needle* figure déjà dans l'un des messages.
 
@@ -388,6 +408,7 @@ def fit_messages_to_context(
     max_tokens: int | None = None,
     reserve_for_response: int | None = None,
     preserve_first: bool = False,
+    conversation_id: str | None = None,
 ) -> list[BaseMessage | dict]:
     """Trim *messages* so they fit within the model's context window.
 
@@ -556,6 +577,13 @@ def fit_messages_to_context(
     # creating a new one — same protection, no alternation violation.
     # (Audit 2026-05-07 — bug observed on ministral-3-8b-instruct.)
     summary_text = _summarise_dropped(dropped)
+    # Le plan de la conversation (``session_todo``) vit dans le fil, donc dans
+    # ce que la troncature supprime en premier : on le réinjecte avec le
+    # résumé, étapes restantes seulement (03/09/2026).
+    if dropped:
+        plan = _plan_restant(conversation_id)
+        if plan:
+            summary_text = f"{summary_text}\n\n{plan}" if summary_text else plan
     if summary_text:
         summary_cost = estimate_tokens(summary_text) + 4
         if running + summary_cost <= available:
