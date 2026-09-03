@@ -4,6 +4,7 @@
 # @brief      C2-a — ce qu'Ely voit de son utilisateur est choisi sur l'utilité,
 #             plus sur la répétition.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la sélection du profil injecté (audit §4.3 / chantier C2).
 

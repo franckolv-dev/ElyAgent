@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_outbound.py
 # @brief      Politique de données sortantes pour les appels MCP.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Un appel MCP = une SORTIE de données vers un tiers (cadrage §11.3).
 

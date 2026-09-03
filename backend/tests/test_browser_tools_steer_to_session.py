@@ -4,6 +4,7 @@
 # @brief      Deux familles de navigateur, un seul nom évident — et c'est le
 #             mauvais. Les descriptions doivent aiguiller vers la bonne.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de l'aiguillage entre navigateur sans session et Chrome de l'utilisateur.
 

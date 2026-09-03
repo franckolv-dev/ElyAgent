@@ -3,6 +3,7 @@
 # @file       backend/tests/test_env_filter.py
 # @brief      Tests for the shared env-var filter helper
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``env_filter.filter_safe_env`` (Sprint 4a J1.5c).
 

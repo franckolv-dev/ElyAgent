@@ -5,6 +5,7 @@
 #             fournis par le modèle arrivaient à None et étaient refusés par
 #             la validation de schéma, un par un.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Incident réel (24/07/2026, conversation de Gert).
 

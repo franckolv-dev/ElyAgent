@@ -4,6 +4,7 @@
 # @brief      Le modèle local tente d'abord ; s'il n'y arrive pas, le repli
 #             cloud du niveau S prend le relais.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La seconde moitié de la règle de Franck (29/07/2026).
 

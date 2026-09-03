@@ -3,6 +3,7 @@
 # @file       backend/tests/test_skill_eval.py
 # @brief      Sprint 4b Phase 3.b — tests for the LLM-as-judge skill evaluator
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/skill_eval.py``.
 

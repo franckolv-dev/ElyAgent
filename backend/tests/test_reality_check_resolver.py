@@ -3,6 +3,7 @@
 # @file       backend/tests/test_reality_check_resolver.py
 # @brief      Contrôler ce que le système UTILISE, pas ce qu'il DÉCLARE.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du contrôle de réalité côté résolveur.
 

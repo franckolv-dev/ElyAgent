@@ -7,6 +7,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 #
 # Usage (venv dédié, PAS le .venv backend — gliner tire torch) :
 #   uv venv /tmp/gliner_bench_venv --python 3.12

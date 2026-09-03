@@ -5,6 +5,7 @@
 #             H1 (IDOR ban_action), M2 (PII : pas de troncature silencieuse),
 #             M3 (vault vide vérifiable).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Run with:  cd backend && python -m pytest tests/test_security_audit_pile_a.py -v"""
 from __future__ import annotations

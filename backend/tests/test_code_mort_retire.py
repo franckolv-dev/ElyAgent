@@ -5,6 +5,7 @@
 #             même : une collection Qdrant créée à vide à chaque boot, et un
 #             outil de démonstration bindé dans le registre de production.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce qui ne sert à rien coûte quand même quelque chose.
 

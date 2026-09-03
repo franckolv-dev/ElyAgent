@@ -3,6 +3,7 @@
 # @file       backend/migrations/env.py
 # @brief      Environnement Alembic async (B-4, revue 2026-06-10).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Alembic async environment.
 

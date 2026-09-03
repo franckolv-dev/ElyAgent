@@ -3,6 +3,7 @@
 # @file       backend/tests/test_todo_de_session.py
 # @brief      Sur une demande à plusieurs étapes, Ely tient sa propre liste.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le carnet d'étapes de la conversation — 02/09/2026.
 

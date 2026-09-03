@@ -4,6 +4,7 @@
 # @brief      Sprint refactor nodes.py Phase 4.1 — pure builder for the
 #             per-user memory snapshot spliced into the system prompt.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """Memory snapshot builder — Hermes Chantier 2.

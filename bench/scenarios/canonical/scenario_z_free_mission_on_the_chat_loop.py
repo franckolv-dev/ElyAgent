@@ -4,6 +4,7 @@
 # @brief      Une mission LIBRE de bout en bout sur la boucle du CHAT : deux
 #             reveils, le carnet pour memoire, les budgets pour bornes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Scénario Z — la mission libre sur la boucle du chat (02/09/2026).
 

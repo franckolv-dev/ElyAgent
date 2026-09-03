@@ -3,6 +3,7 @@
 # @file       backend/tests/test_backfill_usage_costs.py
 # @brief      Les coûts historiques sont recalculés avec les vrais tarifs.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la reprise des coûts déjà écrits dans ``usage_logs``.
 

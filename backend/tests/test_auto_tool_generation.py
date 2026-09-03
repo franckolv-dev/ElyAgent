@@ -4,6 +4,7 @@
 # @brief      C4-2 — auto-génération sur capacité manquante : garde-fous,
 #             pré-check anti-doublon, notification, câblages.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C4-2 — le « vrai auto de bout en bout » (backlog #57, enfin câblé).
 

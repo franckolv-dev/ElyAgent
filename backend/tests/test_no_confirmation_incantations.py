@@ -4,6 +4,7 @@
 # @brief      Ménage lot 3 — une docstring ne promet plus une confirmation.
 #             La garde est le mécanisme ; le texte n'en était que le décor.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du retrait des « ALWAYS ask user confirmation » de docstrings.
 

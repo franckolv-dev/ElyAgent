@@ -8,6 +8,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Backward-compatibility facade over the typed memory stores.

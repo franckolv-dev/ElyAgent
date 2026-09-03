@@ -5,6 +5,7 @@
 #             endpoint contract : 5 sections, markdown + JSON formats,
 #             window parsing, content-negotiation.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `/api/me/learning-report`.
 

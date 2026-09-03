@@ -4,6 +4,7 @@
 # @brief      Boucle d'auto-diagnostic J1 — signal execution_outcome +
 #             câblage (scheduler, missions) + régression visible.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J1 — boucle d'auto-diagnostic.
 

@@ -4,6 +4,7 @@
 # @brief      Ely matérialise le balisage du modèle — mécaniquement, sans rien
 #             réinterpréter, et en chiffrant ce qu'elle a retiré.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La moitié « Ely matérialise et contrôle » du lot.
 

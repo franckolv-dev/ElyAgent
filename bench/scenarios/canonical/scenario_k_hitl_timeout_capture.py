@@ -7,6 +7,7 @@
 #             l'ignore (aucun signal, aucune capture), tandis qu'un VRAI refus
 #             reste persisté ET capturé comme failure_case.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario K — HITL timeout ignored, genuine refusal captured.
 

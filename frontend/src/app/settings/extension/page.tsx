@@ -7,6 +7,7 @@
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
  * @license    MIT
+ *            https://opensource.org/licenses/MIT
  *
  * Replaces the "open DevTools → copy localStorage.access_token" bidouille:
  *   1. User clicks "Generate".

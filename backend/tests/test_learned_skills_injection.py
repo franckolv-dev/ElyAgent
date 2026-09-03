@@ -3,6 +3,7 @@
 # @file       backend/tests/test_learned_skills_injection.py
 # @brief      Sprint 4b Phase 4.b — active_skills + skill_view tool + prompt injection
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the active-skills injection layer (Phase 4.b).
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_eur_display.py
 # @brief      Le tableau de bord affiche des euros — Franck paie en euros.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la conversion d'affichage USD → EUR.
 

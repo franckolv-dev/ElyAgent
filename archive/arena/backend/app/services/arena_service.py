@@ -9,11 +9,6 @@
 #            https://opensource.org/licenses/MIT
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
-#
-# RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
-#   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 """Arena service -- run head-to-head prompts against two LLMs and update ELO.
 

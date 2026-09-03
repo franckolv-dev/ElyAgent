@@ -5,6 +5,7 @@
 #             defaults always present, upsert idempotency, LLM-failure
 #             tolerance, sanitisation bounds, formatter block output.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/services/learning/user_state.py` — Sprint 3 Jalon 1."""
 from __future__ import annotations

@@ -11,6 +11,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.5.0
 # =============================================================================
 """prompt_version hash — Sprint 3.7 §3.

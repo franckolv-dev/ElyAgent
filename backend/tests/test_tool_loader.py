@@ -3,6 +3,7 @@
 # @file       backend/tests/test_tool_loader.py
 # @brief      Sprint 4b V2 J7a — tests for the safe in-process tool compiler.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/tool_loader.compile_tool_source``.
 

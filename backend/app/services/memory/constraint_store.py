@@ -3,6 +3,7 @@
 # @file       backend/app/services/memory/constraint_store.py
 # @brief      Security constraints — permanent rules learned from user refusals.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Constraint store — Qdrant `security_constraints` (no decay)."""

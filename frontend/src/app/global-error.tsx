@@ -7,6 +7,7 @@
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
  * @license    MIT
+ *            https://opensource.org/licenses/MIT
  *
  * Remplace l'écran par défaut de Next.js (« This page couldn't load », en
  * anglais) : si l'erreur est un chunk périmé après déploiement, on recharge

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_static_checks.py
 # @brief      Sprint 4b V2 J3 — tests for the ruff + mypy pipeline stages.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/static_checks.py``.
 

@@ -4,6 +4,7 @@
 # @brief      Boucle d'auto-diagnostic J2 — heuristiques « succès de façade »
 #             (maillon 1) + câblage enrichi (scheduler, missions, fallback).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J2 — détection de succès de façade.
 

@@ -5,6 +5,7 @@
 #             clean-slate script. Verifies dry-run is the default and
 #             that snapshot precedes wipe when --confirm is passed.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Safety tests for `scripts/wipe_memory_for_sprint_2_5.py`.
 

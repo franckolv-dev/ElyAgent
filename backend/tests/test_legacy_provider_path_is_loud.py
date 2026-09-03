@@ -4,6 +4,7 @@
 # @brief      Le chemin par NOM de fournisseur impose un modèle en dur —
 #             il doit le dire.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du chemin historique de résolution par nom de fournisseur.
 

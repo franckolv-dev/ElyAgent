@@ -3,6 +3,7 @@
 # @file       backend/tests/test_slm_warmup_never_blocks_boot.py
 # @brief      Un modèle optionnel injoignable ne doit pas coûter le service.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'incident du 08/08/2026 — Ely ne démarre plus.
 

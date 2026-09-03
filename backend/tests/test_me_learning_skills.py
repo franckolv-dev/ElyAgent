@@ -6,6 +6,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/routers/me_learning_skills.py` — Sprint 4b Phase 5.b.
 

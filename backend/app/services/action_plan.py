@@ -3,6 +3,7 @@
 # @file       backend/app/services/action_plan.py
 # @brief      ActionPlan canonique + empreinte — « l'approuvé == l'exécuté ».
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Plan d'action canonique + empreinte (P1/J2).
 

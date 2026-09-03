@@ -3,6 +3,7 @@
 # @file       backend/tests/test_office_file_delivery.py
 # @brief      Un fichier bureautique produit par Ely doit être téléchargeable.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le verrou de livraison des fichiers bureautiques (constat d'audit 25/07).
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_reversible_journal.py
 # @brief      Substrat / J1 — Reversible Action Journal (record / undo).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_une_procedure_qui_sert_est_comptee.py
 # @brief      La voie DOCUMENT : un playbook complet, proposé, et compté.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La compétence est un DOCUMENT — et on sait s'il sert.
 

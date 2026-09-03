@@ -5,6 +5,7 @@
 #             B-11 (secrets chiffrés au repos) + B-12 (outils d'instance
 #             réservés au rôle admin).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 3 batch 2 pins (revue 2026-06-10)."""
 from __future__ import annotations

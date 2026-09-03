@@ -4,6 +4,7 @@
 # @brief      Un outil qui PRODUIT un artefact étaye une affirmation de
 #             complétion — au même titre qu'un outil qui détruit.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le garde-fou criait à l'hallucination sur un travail réellement fait.
 

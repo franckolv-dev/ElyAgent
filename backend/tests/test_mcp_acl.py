@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_acl.py
 # @brief      J4 — ACL MCP : isolation multi-user, admin instance, risque→HITL.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

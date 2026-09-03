@@ -4,6 +4,7 @@
 # @brief      Ely DONNE le travail de structure au modèle cloud — c'est lui qui
 #             décide, elle contrôle.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La consigne de Franck, du 28/07/2026, verrouillée par des pins.
 

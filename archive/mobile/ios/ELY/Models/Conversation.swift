@@ -9,11 +9,6 @@
 //             https://opensource.org/licenses/MIT
 // @version    1.1.0
 // @link       https://github.com/franckolv-dev/PhysicalAgent
-//
-// RÉSUMÉ DES CONDITIONS :
-//   - AUTORISÉ : Utilisation personnelle, éducative et tests privés.
-//   - INTERDIT : Toute utilisation commerciale sans accord préalable.
-//   - INTERDIT : Redistribution de versions modifiées de ce code.
 // =============================================================================
 
 import Foundation

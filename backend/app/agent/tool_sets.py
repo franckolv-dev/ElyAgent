@@ -9,11 +9,6 @@
 #            https://opensource.org/licenses/MIT
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
-#
-# RESUME DES CONDITIONS :
-#   - AUTORISE : Utilisation personnelle, educative et tests prives.
-#   - INTERDIT : Toute utilisation commerciale sans accord prealable.
-#   - INTERDIT : Redistribution de versions modifiees de ce code.
 # =============================================================================
 """Canonical tool-name sets used for credential injection and tool filtering.
 

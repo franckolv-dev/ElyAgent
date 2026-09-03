@@ -3,6 +3,7 @@
 # @file       backend/tests/test_tool_gaps_endpoint.py
 # @brief      Admin /tool-gaps endpoints — list + mark-processed.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """find_tool Phase 2 records `tool_absent` gaps as FailureCase rows; this
 endpoint surfaces them for HITL review."""

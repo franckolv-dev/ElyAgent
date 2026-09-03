@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_allow_private_network.py
 # @brief      Exposition de allow_private_network dans le schéma admin MCP.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'exception réseau privé/LAN (`allow_private_network`) est réglable via
 l'API admin (create/update) et renvoyée par MCPServerOut."""

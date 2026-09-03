@@ -5,6 +5,7 @@
 #             les questions MÉTA (« peux-tu créer un outil qui… ») doivent
 #             passer par find_tool, pas par une réponse conversationnelle.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C4-1 — cran 1 de la vision « capacité manquante → création → validation ».
 

@@ -4,6 +4,7 @@
 // @brief      Declarative filter applied to the scan result
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 
 package com.ely.agent.core.files

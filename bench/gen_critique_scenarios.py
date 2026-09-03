@@ -24,6 +24,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Generate (or list) the critique-replay canonical scenarios.
 
@@ -299,6 +300,7 @@ def _render_scenario(idx: int, profile: dict[str, Any]) -> str:
 #             edit by hand. Change the CATALOGUE there and re-run --write. ***
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Critique-replay scenario CRIT-{idx:02d} — {title}."""
 from __future__ import annotations

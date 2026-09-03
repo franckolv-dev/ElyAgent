@@ -4,6 +4,7 @@
 # @brief      Missions autonomes J1 — contrat du mandat : spec v2 `mandate:`,
 #             gate flag, colonnes mandate_json/autonomy_state, migration 0018.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Missions autonomes J1 — pins du contrat de mandat.
 

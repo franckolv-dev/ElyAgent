@@ -3,6 +3,7 @@
 # @file       backend/app/models/idempotency.py
 # @brief      IdempotencyRecord — « jamais deux fois par accident » (P1/J3).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Enregistrement d'idempotence : une action déjà exécutée (par sa clé) n'est
 pas ré-exécutée tant que l'enregistrement n'a pas expiré.

@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_remote.py
 # @brief      Connexion MCP distante À LA DEMANDE (chemin model-facing).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Connexion/découverte/appel distants à la demande, avec identité utilisateur.
 

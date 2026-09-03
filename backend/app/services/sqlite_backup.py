@@ -5,6 +5,7 @@
 #             (revue multi-utilisateurs 2026-06-10, §4 — Qdrant était
 #             sauvegardé chaque nuit, la VRAIE source de vérité jamais).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Nightly SQLite backups.
 

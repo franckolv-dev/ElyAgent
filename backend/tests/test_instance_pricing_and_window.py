@@ -4,6 +4,7 @@
 # @brief      Fenêtre et tarifs vivent sur l'INSTANCE, là où l'utilisateur les
 #             configure — plus dans des tables du code qui dérivent.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins des tarifs et de la fenêtre portés par l'instance.
 

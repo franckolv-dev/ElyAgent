@@ -3,6 +3,7 @@
 # @file       backend/tests/test_indexing_needs_nothing_launched.py
 # @brief      L'indexation ne doit dépendre d'aucun programme à lancer.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La suite de l'enquête du 21/08 — cette fois on traite la CAUSE.
 

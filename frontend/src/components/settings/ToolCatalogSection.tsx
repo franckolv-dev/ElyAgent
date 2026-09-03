@@ -3,6 +3,7 @@
  * @file       frontend/src/components/settings/ToolCatalogSection.tsx
  * @brief      Ce que chaque outil coûte à chaque tour, et ce qu'il a servi.
  * @license    MIT
+ *            https://opensource.org/licenses/MIT
  * ============================================================================
  *
  * ⚠️ POURQUOI CET ÉCRAN EXISTE (24/08).

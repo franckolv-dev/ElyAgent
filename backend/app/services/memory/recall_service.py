@@ -4,6 +4,7 @@
 # @brief      MemoryRecallService — unified `recall(type, query)` API over
 #             the 5 typed stores.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Unified `memory_recall(type, query)` — Sprint 2.5 §3.

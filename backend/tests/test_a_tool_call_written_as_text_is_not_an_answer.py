@@ -3,6 +3,7 @@
 # @file       backend/tests/test_a_tool_call_written_as_text_is_not_an_answer.py
 # @brief      « find_tool("…") » affiché à l'utilisateur en guise de réponse.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le 23/08, Ely a répondu par un appel de fonction.
 

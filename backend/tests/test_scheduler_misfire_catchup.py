@@ -4,6 +4,7 @@
 # @brief      V0-1 — une occurrence manquée ne doit plus disparaître en silence :
 #             rattrapage borné au redémarrage + garde-fous APScheduler explicites.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du rattrapage d'occurrence manquée (audit Opus 5 §4.6).
 

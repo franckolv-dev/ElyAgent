@@ -3,6 +3,7 @@
 // @file       frontend/eslint.config.mjs
 // @brief      Flat config ESLint du frontend Next.js.
 // @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 //
 // ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : `npm run lint` était MORT. Le script

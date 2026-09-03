@@ -4,6 +4,7 @@
 # @brief      Sprint 4b V3 J7+J8 (v1.16.0) — le tool_creator génère le
 #             profil io ; la revue admin expose les déclarations V3.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """v1.16.0 — pins du générateur io (J7) et de la revue déclarations (J8)."""
 from __future__ import annotations

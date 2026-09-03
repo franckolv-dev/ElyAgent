@@ -4,6 +4,7 @@
 # @brief      Sprint 4b V2 J9 — end-to-end integration test of the full
 #             auto-developing-agent lifecycle for a PURE python_tool.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """J9 — the whole loop, wired together, in one test.
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_sandbox_client.py
 # @brief      Sprint 4b V3 J2.d — backend client for the python_tool sandbox.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Cover every outcome branch the runner can return, plus the network-level
 failure modes (sandbox down, HTTP timeout, malformed response). All tests

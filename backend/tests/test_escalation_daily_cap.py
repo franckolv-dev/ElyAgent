@@ -4,6 +4,7 @@
 # @brief      Le panel d'escalade est le premier poste de coût du produit :
 #             il lui manquait un plafond CUMULÉ, par jour et par utilisateur.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le plafond quotidien du panel — audit du 02/09/2026.
 

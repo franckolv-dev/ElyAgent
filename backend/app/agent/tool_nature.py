@@ -9,11 +9,6 @@
 # @license    MIT
 #            https://opensource.org/licenses/MIT
 # @link       https://github.com/franckolv-dev/PhysicalAgent
-#
-# RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
-#   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 """La donnée de référence du plan de marche — lot 1, 28/07/2026.
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_skill_iteration_and_orchestrator.py
 # @brief      Sprint 4b Phase 3.c — patch loop + orchestrator + admin router
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/services/learning/skill_iteration.py`,
 `skill_orchestrator.py` and `app/routers/learning_skills.py`.

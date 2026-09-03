@@ -3,6 +3,7 @@
 # @file       backend/tests/test_ghost_tools_resolved.py
 # @brief      Quatre noms étaient bindés au profil sans exister au catalogue.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la résolution des outils fantômes.
 

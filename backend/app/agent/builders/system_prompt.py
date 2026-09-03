@@ -4,6 +4,7 @@
 # @brief      Sprint refactor nodes.py Phase 4.2 — pure builders for the
 #             system-prompt segments assembled inside agent_node.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """System prompt segment builders.

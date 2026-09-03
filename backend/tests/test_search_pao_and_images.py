@@ -4,6 +4,7 @@
 # @brief      La famille `pao`, le lien vers le FICHIER image, et l'aveu quand
 #             le ciblage s'est perdu en route.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la recherche visuelle et du ciblage perdu.
 

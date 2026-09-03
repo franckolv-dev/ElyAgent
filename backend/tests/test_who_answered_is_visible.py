@@ -4,6 +4,7 @@
 # @brief      « Il n'y a que le local qui répond » — c'était faux, et l'écran
 #             ne permettait pas de le savoir.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Deux tours d'enquête pour une conclusion fausse (24/08).
 

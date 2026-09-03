@@ -3,6 +3,7 @@
 # @file       backend/tests/test_upload_per_request_subdirs.py
 # @brief      Tests — un sous-dossier par upload (isolation des pièces jointes)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Chaque upload va dans SON sous-dossier `uploads/<user>/<uuid8>/<nom>`.
 

@@ -6,6 +6,7 @@
 #             table. Sprint 1 — Memory recall.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Backfill the messages_fts index from the existing messages table.
 

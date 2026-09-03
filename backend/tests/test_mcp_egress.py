@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_egress.py
 # @brief      J2 — garde SSRF / DNS-rebinding des serveurs MCP distants.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Matrice SSRF + rebinding + pinning du transport HTTP durci.
 

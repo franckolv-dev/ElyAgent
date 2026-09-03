@@ -4,6 +4,7 @@
 # @brief      Ménage lot 4 — un module d'erreurs MCP que personne n'a jamais
 #             importé, et dont les valeurs vivaient en dur ailleurs.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de suppression de `app/services/mcp_errors.py`.
 

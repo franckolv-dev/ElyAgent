@@ -5,6 +5,7 @@
 #             messages_fts. Sprint 1 — Memory recall.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Auto-indexing hook for Sprint 1 — Memory recall.
 

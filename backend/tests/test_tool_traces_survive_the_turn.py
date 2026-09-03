@@ -4,6 +4,7 @@
 # @brief      Ce qu'un outil a produit survit au tour — le chemin d'un fichier
 #             ne disparaît plus dès la question suivante.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le trou mesuré le 29/07/2026, et sa fermeture.
 

@@ -8,6 +8,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Shared tool filter (audit H-5, fixed 2026-05-06).
 

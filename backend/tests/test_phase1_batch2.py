@@ -5,6 +5,7 @@
 #             B-1 (lazy-load LLM non bloquant), A-5 (porte de concurrence
 #             LLM local au niveau transport httpx).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 1 batch 2 pins (revue 2026-06-10)."""
 from __future__ import annotations

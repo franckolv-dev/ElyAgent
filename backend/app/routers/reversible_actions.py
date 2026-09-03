@@ -3,6 +3,7 @@
 # @file       backend/app/routers/reversible_actions.py
 # @brief      API /api/me/reversible-actions — lister et annuler ses actions.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Surface HTTP du Reversible Action Journal (substrat / J2).
 

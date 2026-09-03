@@ -4,6 +4,7 @@
 # @brief      Le contenu des playbooks est CHARGÉ dans le prompt, au lieu
 #             d'être listé en espérant un `skill_view` qui n'arrive jamais.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Les playbooks étaient listés, jamais lus.
 

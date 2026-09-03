@@ -3,6 +3,7 @@
 # @file       backend/app/models/reversible_action.py
 # @brief      ReversibleActionRecord — « Ely peut annuler ce qu'elle a fait ».
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Entrée du Reversible Action Journal (substrat, suite de P1).
 

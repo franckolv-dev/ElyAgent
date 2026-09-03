@@ -7,6 +7,7 @@
 #             all memory data so V1 starts from a structurally clean base.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Clean slate for the typed memory subpackage — Sprint 2.5 Jalon 5.
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_registry.py
 # @brief      J6 — registre MCP : parsing, bornage anti-poisoning, zéro trust.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_llm_deadline.py
 # @brief      C3d-2 — échéance murale par appel LLM : contrat helper + câblage.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Échéances murales (C3d-2).
 

@@ -5,6 +5,7 @@
 #             zéro tool_call + fin de tour = réponse morte, puis confabulation
 #             (« j'attends les résultats du tool ») sur les tours suivants.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du garde « annonce sans action ».
 

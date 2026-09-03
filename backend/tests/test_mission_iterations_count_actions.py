@@ -4,6 +4,7 @@
 # @brief      Le budget d'itérations compte les tours de l'acteur, pas les
 #             lignes du journal.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Une itération est un tour de l'acteur (31/08/2026).
 

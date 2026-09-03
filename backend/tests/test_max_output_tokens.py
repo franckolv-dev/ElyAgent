@@ -4,6 +4,7 @@
 # @brief      Le plafond de réponse cesse d'être 4 096 pour tout le monde —
 #             et reste cohérent avec le budget de contexte.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du plafond de tokens en sortie.
 

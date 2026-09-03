@@ -14,6 +14,7 @@
 #             pids_limit, mem_limit) is enforced by the docker-compose
 #             service definition.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

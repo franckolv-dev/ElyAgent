@@ -6,6 +6,7 @@
 #             block). Both must independently wire through to failure_cases —
 #             the capture pipeline handles a chain, not just one signal.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario N — multi-signal capture chain → 2 failure_cases."""
 from __future__ import annotations

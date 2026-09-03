@@ -9,6 +9,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Use the connected ELY browser extension to act on the user's own Chrome.
 

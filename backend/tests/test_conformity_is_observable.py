@@ -4,6 +4,7 @@
 # @brief      La boucle de conformité doit laisser une trace — sinon on ne
 #             peut ni la mesurer ni la corriger.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La vérification tournait à l'aveugle.
 

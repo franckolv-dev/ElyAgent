@@ -5,6 +5,7 @@
 #             user surface. list / pin / forget round-trip on a learned
 #             skill, plus the cross-user 404 (not 403) isolation contract.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario S — learned-skills list/pin/forget lifecycle."""
 from __future__ import annotations

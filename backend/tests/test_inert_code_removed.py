@@ -4,6 +4,7 @@
 # @brief      V0-5 — ce qui n'a aucun consommateur disparaît, et ce qui promet
 #             une capacité inexistante cesse de la promettre.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la suppression du code inerte (audit Opus 5 §6.3).
 

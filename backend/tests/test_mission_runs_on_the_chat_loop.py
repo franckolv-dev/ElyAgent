@@ -5,6 +5,7 @@
 #             boucle plate, garde son carnet entre deux reveils, et ses
 #             budgets mordent toujours.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La mission libre tourne sur la boucle du chat (02/09/2026).
 

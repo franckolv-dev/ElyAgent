@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_client_stdio_lifecycle.py
 # @brief      Tests for _StdioConnection lifecycle (Sprint 4a J1.5b)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``_StdioConnection`` lifecycle (Sprint 4a J1.5b, 2026-05-27).
 

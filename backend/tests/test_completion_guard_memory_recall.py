@@ -5,6 +5,7 @@
 #             completion_guard so the assistant's honest reply to "qu'as-tu
 #             enregistré sur X ?" doesn't trigger the false positive.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Regression for completion_guard false positive on memory-recall questions.
 

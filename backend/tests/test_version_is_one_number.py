@@ -3,6 +3,7 @@
 # @file       backend/tests/test_version_is_one_number.py
 # @brief      Quatre fichiers déclarent la version. Ils doivent dire la même.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La version d'Ely vit à QUATRE endroits, et rien ne les tenait ensemble.
 

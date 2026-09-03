@@ -5,6 +5,7 @@
 #             quel jour on est, et l'expansion d'un foreach saute une étape
 #             sans rien journaliser.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La date manquante et le foreach muet (incident du 29/08/2026).
 

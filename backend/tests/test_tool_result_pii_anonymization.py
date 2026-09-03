@@ -6,6 +6,7 @@
 #             previously only covered user-TYPED PII; data the agent FETCHED
 #             (email bodies, contacts…) reached the model in clear.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """tool_node must anonymize tool results with the per-conversation
 SecurityFilter before handing them back to the model, and the same shared

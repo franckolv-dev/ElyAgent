@@ -3,6 +3,7 @@
 # @file       backend/tests/test_kimi_k3_window.py
 # @brief      Kimi passe en v3, avec sa vraie fenêtre d'un million de tokens.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin de la fenêtre de Kimi K3.
 

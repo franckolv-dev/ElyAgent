@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_acl.py
 # @brief      ACL des outils MCP — propriété, permissions, risque → HITL.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Contrôle d'accès par (utilisateur, serveur, outil) — fail-closed.
 

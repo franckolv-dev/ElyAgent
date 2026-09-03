@@ -10,11 +10,6 @@
 # @version    1.0.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 #
-# RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
-#   - INTERDIT : Suppression des notices de copyright ou de licence.
-#
 # Portage de `agent/context_breakdown.py` (hermes-agent v0.19.0,
 # Nous Research, licence MIT) — voir `docs_internes/analyse_hermes_v019.md`.
 # =============================================================================

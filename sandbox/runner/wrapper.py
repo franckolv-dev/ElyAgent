@@ -15,6 +15,7 @@
 #             clock; this wrapper just enforces the inner CPU/memory limits
 #             via setrlimit before exec'ing user code.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

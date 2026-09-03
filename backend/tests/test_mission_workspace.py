@@ -4,6 +4,7 @@
 # @brief      Missions autonomes J4 — workspace de mission : journal JSONL avec
 #             rotation, CARNET.md atomique, injection contexte, branchements.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Missions autonomes J4 — pins du workspace (cadrage D5).
 

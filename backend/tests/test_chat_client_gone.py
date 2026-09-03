@@ -4,6 +4,7 @@
 # @brief      Incident 24/07 — « client parti » ne doit plus être traité comme
 #             « stop demandé » : le tour finit son travail et notifie.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Incident réel (24/07/2026, conversation de Gert).
 

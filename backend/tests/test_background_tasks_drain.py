@@ -4,6 +4,7 @@
 # @brief      Attendre que les tâches de fond en vol se terminent — arrêt
 #             propre, et fin de course dans les tests.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de ``drain()``.
 

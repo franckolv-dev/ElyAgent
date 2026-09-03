@@ -9,6 +9,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """V3 counterpart of :mod:`learned_tools_runtime`. The V2 module compiles
 ``python_tool`` skills in-process (composition + stdlib only, zero I/O);

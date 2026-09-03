@@ -5,6 +5,7 @@
 #             policy B+C sampling, prompt assembly, verdict parsing,
 #             persistence, cron entry point.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for app/services/learning/mission_critic.py — Sprint 3.7 Jalon 4."""
 from __future__ import annotations

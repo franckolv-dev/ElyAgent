@@ -4,6 +4,7 @@
 # @brief      Sprint 4b V2 (composition N1) — the runtime engine for generated
 #             python_tools that compose other ELY tools via call_tool().
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Composition engine tests (no LLM — a hand-written composition source).
 

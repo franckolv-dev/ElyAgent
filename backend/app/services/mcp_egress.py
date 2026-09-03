@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_egress.py
 # @brief      Garde SSRF / DNS-rebinding pour les connexions MCP distantes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Défense egress des serveurs MCP distants (Streamable HTTP / legacy SSE).
 

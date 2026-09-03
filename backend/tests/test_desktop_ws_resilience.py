@@ -3,6 +3,7 @@
 # @file       backend/tests/test_desktop_ws_resilience.py
 # @brief      Tests for desktop_registry resilience to Cloudflare tunnel blips
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests de résilience de la WebSocket ELY Desktop.
 

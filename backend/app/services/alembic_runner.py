@@ -3,6 +3,7 @@
 # @file       backend/app/services/alembic_runner.py
 # @brief      Migrations Alembic au boot (B-4, revue 2026-06-10).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Boot-time Alembic integration.
 

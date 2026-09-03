@@ -4,6 +4,7 @@
 # @brief      Confronter la configuration DÉCLARÉE aux valeurs RÉELLEMENT
 #             présentes — la classe de défaut qui a coûté le plus cher.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du contrôle de réalité de la configuration.
 

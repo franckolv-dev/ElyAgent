@@ -9,6 +9,7 @@
 # vit désormais dans analytics_service (UsageLog.cost_usd) — ce module
 # n'ajoute QUE le cap.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Per-user daily LLM budget — opt-in hard cap.
 

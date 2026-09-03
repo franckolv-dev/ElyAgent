@@ -6,6 +6,7 @@
 #             output), get round-trips it, and every DEFAULT_STATE key is
 #             always present (the maintenance LLM updates one field at a time).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario U — user_state set/get idempotence + default merge."""
 from __future__ import annotations

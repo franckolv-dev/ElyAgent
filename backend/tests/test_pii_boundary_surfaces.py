@@ -4,6 +4,7 @@
 # @brief      C0 (audit 16/07, P0/§6.2) — frontière PII uniforme sur toutes
 #             les surfaces : sous-agents spécialistes, canaux, scheduler.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests contractuels de la frontière PII.
 

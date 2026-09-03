@@ -4,6 +4,7 @@
 # @brief      La sortie que l'acteur doit RECOPIER ne doit pas etre coupee
 #             a 1 200 caracteres avant qu'il la lise.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """On ne recopie pas ce qu'on ne voit pas (31/08/2026).
 

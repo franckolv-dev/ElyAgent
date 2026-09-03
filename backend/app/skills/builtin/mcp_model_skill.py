@@ -3,6 +3,7 @@
 # @file       backend/app/skills/builtin/mcp_model_skill.py
 # @brief      Outils MCP exposés AU MODÈLE : connect / discover / call / propose.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La fonctionnalité phare : le modèle pilote lui-même le client MCP.
 

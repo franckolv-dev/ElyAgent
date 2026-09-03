@@ -4,6 +4,7 @@
 # @brief      Ely ne présente plus une recherche dégradée comme un résultat
 #             normal, et ses outils d'actualité deviennent atteignables.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la recherche dégradée et des outils d'actualité.
 

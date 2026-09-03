@@ -4,6 +4,7 @@
 # @brief      Regression: a multi-domain scheduled task (calendar + gmail +
 #             system) must be able to bind every tool its prompt names.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin the scheduled-task multi-domain tool-binding fix (2026-05-31).
 

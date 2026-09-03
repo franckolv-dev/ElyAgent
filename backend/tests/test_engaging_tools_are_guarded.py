@@ -4,6 +4,7 @@
 # @brief      Aucun acte engageant ne s'exécute sans que Franck l'ait voulu —
 #             et ce qui en est dispensé l'est explicitement, avec sa raison.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Lot 3 du plan de marche — fermer le trou que le lot 1 a rendu visible.
 

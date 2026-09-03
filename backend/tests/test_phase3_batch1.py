@@ -5,6 +5,7 @@
 #             verrou mono-process (A-7), TTL sessions navigateur (B-17),
 #             /health/deep, pool Postgres (B-5).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 3 batch 1 pins (revue 2026-06-10)."""
 from __future__ import annotations

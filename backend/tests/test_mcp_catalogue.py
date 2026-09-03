@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_catalogue.py
 # @brief      J3 — classification de risque, persistance catalogue, pagination.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

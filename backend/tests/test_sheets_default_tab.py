@@ -6,6 +6,7 @@
 #             Écrire dans un range codé en dur échoue en HTTP 400, le tableur
 #             reste vide, et l'agent croit avoir réussi.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le nom de l'onglet se LIT, il ne se devine pas (incident du 27/08/2026).
 

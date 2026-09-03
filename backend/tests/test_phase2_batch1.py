@@ -5,6 +5,7 @@
 #             B-2 (pragmas connexions FTS hors-engine), backup SQLite
 #             nocturne, B-9 (quota + purge uploads).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 2 batch 1 pins (revue 2026-06-10)."""
 from __future__ import annotations

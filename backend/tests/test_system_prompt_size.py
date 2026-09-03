@@ -5,6 +5,7 @@
 #             Passe 1 reduction. Prevents accidental re-bloat as defensive
 #             rules get added over time.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Size guard for `_SYSTEM_PROMPT_BASE`.
 

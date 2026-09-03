@@ -5,6 +5,7 @@
 #             A-6b budget LLM quotidien par user (opt-in) + coûts
 #             background comptés dans UsageLog.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 2 batch 3a pins (revue 2026-06-10)."""
 from __future__ import annotations

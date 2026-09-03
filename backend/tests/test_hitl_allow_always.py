@@ -6,6 +6,7 @@
 #             `allow_always` decision, the validation REST route, and the
 #             4-button frontend layout in the avatar panel.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the symmetric "Toujours autoriser" feature.
 

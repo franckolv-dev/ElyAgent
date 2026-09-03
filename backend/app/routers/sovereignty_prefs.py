@@ -3,6 +3,7 @@
 # @file       backend/app/routers/sovereignty_prefs.py
 # @brief      REST API for the PII-sovereignty toggle.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Per-user PII-sovereignty preference.
 

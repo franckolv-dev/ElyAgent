@@ -5,6 +5,7 @@
 #             B-4 Alembic (stamp baseline + upgrade au boot, exceptions
 #             ALTER non avalées).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 3 batch 3 pins (revue 2026-06-10)."""
 from __future__ import annotations

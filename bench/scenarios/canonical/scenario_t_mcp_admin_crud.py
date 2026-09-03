@@ -6,6 +6,7 @@
 #             (HTTP 400) ; list_mcp_servers surfaces it. Complements scenario Q
 #             (raw-model round-trip) by exercising the router-level contract.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario T — MCP admin CRUD + slug-uniqueness (router layer)."""
 from __future__ import annotations

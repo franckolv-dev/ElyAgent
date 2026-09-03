@@ -4,6 +4,7 @@
 # @brief      C4-5 — les 👎 rejoignent le funnel d'apprentissage :
 #             rating=-1 → FailureCase (famille user_feedback).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C4-5 (P5) — refermer la boucle de feedback.
 

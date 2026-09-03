@@ -3,6 +3,7 @@
 # @file       backend/tests/test_only_paid_apis_cost.py
 # @brief      Seuls DeepSeek et Anthropic ont été facturés à l'appel.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la seconde reprise des coûts historiques.
 

@@ -7,6 +7,7 @@
 #             préférences) reste couvert par les suites existantes qui passent
 #             par tool_node → gateway.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests de contrat du Tool Gateway (C3a).
 

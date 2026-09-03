@@ -4,6 +4,7 @@
 // @brief      Storage Access Framework wrapper — scan, filter, dedupe, delete
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 
 package com.ely.agent.core.files

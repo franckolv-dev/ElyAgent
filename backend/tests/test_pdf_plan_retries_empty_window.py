@@ -4,6 +4,7 @@
 # @brief      Le gabarit du prompt écrivait <identifiant> — le modèle rendait
 #             <p1b0>, et une réponse PARFAITE était jetée une fois sur deux.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le défaut mesuré juste après #294 — et le faux diagnostic qu'il a failli
 faire livrer.

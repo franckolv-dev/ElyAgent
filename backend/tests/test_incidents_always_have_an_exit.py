@@ -3,6 +3,7 @@
 # @file       backend/tests/test_incidents_always_have_an_exit.py
 # @brief      Un incident qu'aucune action ne peut fermer pollue la liste à vie.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Les incidents orphelins du 21/08.
 

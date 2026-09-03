@@ -4,6 +4,7 @@
 # @brief      Robustesse des appels LLM de tâche de fond : content en blocs,
 #             bloc <think>, isolation du stream.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de l'appel LLM de tâche de fond.
 

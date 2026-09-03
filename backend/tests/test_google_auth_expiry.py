@@ -3,6 +3,7 @@
 # @file       backend/tests/test_google_auth_expiry.py
 # @brief      Hotfix 2026-05-28 — Google OAuth expiry storage + safety-net refresh
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Regression tests for the 2026-05-28 Google OAuth hotfix.
 

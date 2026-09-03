@@ -3,6 +3,7 @@
 # @file       backend/tests/test_conversation_truncate.py
 # @brief      Jalon 4 — DELETE .../messages/from-last-user (retry & édition)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the 'delete from last user message' endpoint that powers
 retry/regenerate and edit-and-resend."""

@@ -4,6 +4,7 @@
 # @brief      `{{ etape.output }}` doit porter le RESULTAT de l'etape, pas la
 #             sortie brute de l'outil qu'elle a employe.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La sortie d'une étape n'est pas la sortie de son outil (30/08/2026).
 

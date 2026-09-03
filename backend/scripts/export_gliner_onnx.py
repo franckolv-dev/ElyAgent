@@ -7,6 +7,7 @@
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
 # @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 #
 # Pourquoi un export offline : le chargement PyTorch fp32 pèse 2553 Mo de RSS
 # (bench 2026-06-10) — il ne doit JAMAIS avoir lieu dans le conteneur backend

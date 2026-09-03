@@ -5,6 +5,7 @@
 #             réseau privé, métadonnées cloud. Le garde existait, il n'était
 #             branché que sur MCP.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """SSRF par les outils web (audit du 02/09/2026).
 

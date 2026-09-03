@@ -4,6 +4,7 @@
 # @brief      Un outil long ne bloque plus un tour de chat : il bascule en
 #             tâche de fond, l'utilisateur est prévenu, le travail est livré.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Garde-fou « outil long » — générique à TOUS les outils (natifs et MCP).
 

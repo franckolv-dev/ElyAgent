@@ -3,6 +3,7 @@
 # @file       backend/tests/test_orchestrator_io_profile.py
 # @brief      Sprint 4b V3 J5 — `validate_tool_source(profile="io")` integration.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins the V3 chain order + the new gates' fail-fast behaviour + the
 backward compatibility of the default profile="pure".

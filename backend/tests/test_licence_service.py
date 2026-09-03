@@ -3,6 +3,7 @@
 # @file       backend/tests/test_licence_service.py
 # @brief      Tests for licence_service — MIT (info-only)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Unit tests for the licence service after the 22 May 2026 pivot.
 

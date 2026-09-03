@@ -3,6 +3,7 @@
 # @file       backend/app/services/learning/__init__.py
 # @brief      Sprint 3.7 — auto-improvement subpackage.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.5.0
 # =============================================================================
 """Learning subpackage — Sprint 3.7.

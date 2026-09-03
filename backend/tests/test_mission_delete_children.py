@@ -6,6 +6,7 @@
 #             n'était pas supprimée explicitement — la suppression rendait
 #             un HTTP 500 « FOREIGN KEY constraint failed ».
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Suppression d'une mission : aucune ligne fille ne doit rester (28/08/2026).
 

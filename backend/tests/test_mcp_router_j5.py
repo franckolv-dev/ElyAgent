@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_router_j5.py
 # @brief      J5 — endpoints quarantaine/approbation/catalogue/import.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

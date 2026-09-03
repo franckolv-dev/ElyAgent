@@ -4,6 +4,7 @@
 # @brief      find_tool — semantic tool discovery + sticky per-conversation
 #             binding (the "tool invisible" safety net).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

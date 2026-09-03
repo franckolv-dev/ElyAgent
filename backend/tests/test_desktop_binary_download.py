@@ -3,6 +3,7 @@
 # @file       backend/tests/test_desktop_binary_download.py
 # @brief      Tests for GET /api/desktop/binaries/{filename} (forced download)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the desktop binary download route — direct-handler style.
 

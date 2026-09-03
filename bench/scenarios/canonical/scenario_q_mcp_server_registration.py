@@ -6,6 +6,7 @@
 #             mcp_servers row, read it back, toggle enabled, and clean up.
 #             Does NOT spawn a real MCP process (that's a deep/E2E concern).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario Q — MCP server registration round-trip (DB layer)."""
 from __future__ import annotations

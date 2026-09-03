@@ -5,6 +5,7 @@
 #             contract added to chat.py so the frontend can reliably flip
 #             `isLoading=false` and the user can answer ELY's questions.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Regression tests for the chat input lock bug (2026-05-23).
 

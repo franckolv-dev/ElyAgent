@@ -4,6 +4,7 @@
 // @brief      MD5 + perceptual dHash — for duplicate detection
 // @author     Franck OLLIVIER <contact@agent-ely.fr>
 // @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 
 package com.ely.agent.core.files

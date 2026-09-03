@@ -4,6 +4,7 @@
 # @brief      2026-06-04 — gmail_save_attachments_to_drive: download a message's
 #             attachments and upload them (binary) to a Drive folder.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the new attachment→Drive tool (Franck's invoice mission needed it:
 there was no path from a Gmail attachment to a binary file on Drive —

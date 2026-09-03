@@ -5,6 +5,7 @@
 #             de tokens compte la consommation RÉELLE, et le tier LLM du
 #             mandat (D3) est appliqué par les nœuds plan/act/eval.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Exactitude des contrats missions.
 

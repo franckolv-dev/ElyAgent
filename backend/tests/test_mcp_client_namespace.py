@@ -4,6 +4,7 @@
 # @brief      Lot 0 du client MCP — namespace, garde anti-collision, args,
 #             redaction des secrets, kill switch.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests du Lot 0 (stabilisation client MCP).
 

@@ -5,6 +5,7 @@
 #             2× MAX_AGENT_ITERATIONS so force_summary is reachable before
 #             LangGraph raises GraphRecursionError.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Guard the iteration-budget ↔ recursion-limit unit relationship.
 

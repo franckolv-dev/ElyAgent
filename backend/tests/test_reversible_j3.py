@@ -3,6 +3,7 @@
 # @file       backend/tests/test_reversible_j3.py
 # @brief      Substrat / J3 — compensation par snapshot (rename/move).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

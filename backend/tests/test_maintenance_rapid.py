@@ -4,6 +4,7 @@
 # @brief      Sprint 2.5 Jalon 6 — hermetic tests for the event-driven
 #             memory maintenance agent (Ministral 3B local).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for MaintenanceAgentRapid (Sprint 2.5 §4 niveau 1).
 

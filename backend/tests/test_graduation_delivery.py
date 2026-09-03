@@ -4,6 +4,7 @@
 # @brief      Sprint 4d J5 — livraison d'une graduation : PR via API GitHub
 #             (mockée) ou export local, et le pin « jamais de demi-PR ».
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins J5.
 

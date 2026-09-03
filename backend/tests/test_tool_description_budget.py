@@ -4,6 +4,7 @@
 # @brief      Les descriptions d'outils repartent à CHAQUE tour : elles ont un
 #             budget, et il doit être tenu.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du budget de descriptions du profil d'outils.
 

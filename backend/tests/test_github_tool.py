@@ -5,6 +5,7 @@
 #             notifications). Sprint screencast prep, 2026-05-17.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app.agent.tools.github_tool``.
 

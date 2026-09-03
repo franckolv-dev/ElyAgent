@@ -4,6 +4,7 @@
 # @brief      Sprint refactor nodes.py Phase 1.4 — smart bind_tools that
 #             toggles `parallel_tool_calls` based on model family.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """Smart bind_tools — disable parallel_tool_calls for permissive / openai-family.

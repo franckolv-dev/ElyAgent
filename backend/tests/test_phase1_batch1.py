@@ -5,6 +5,7 @@
 #             B-6 (ws_registry multi-sockets), B-8 (dédup webhook Telegram),
 #             spawn() à références fortes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 1 batch 1 pins (revue 2026-06-10)."""
 from __future__ import annotations

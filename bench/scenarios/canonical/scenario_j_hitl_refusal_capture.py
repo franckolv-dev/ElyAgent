@@ -5,6 +5,7 @@
 #             denial persists a hitl_refusals row AND wires through to a
 #             failure_cases row for the skill_creator (deny_with_reason).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario J — HITL denial (user-provided) → failure_case capture."""
 from __future__ import annotations

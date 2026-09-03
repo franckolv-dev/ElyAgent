@@ -4,6 +4,7 @@
 # @brief      Ménage lot 2 — le boot ne rejoue plus 19 ALTER TABLE pour rien.
 #             Alembic seul fait foi sur le schéma.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du retrait de `_safe_columns`.
 

@@ -5,6 +5,7 @@
 #             classifieur à règles, parsing LLM, diagnose_execution (LLM +
 #             repli), cron run_pending_diagnoses.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J3 — diagnostiqueur.
 

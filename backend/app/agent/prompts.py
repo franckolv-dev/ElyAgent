@@ -7,6 +7,7 @@
 #             constants is also where the LLM-as-judge A/B variants will
 #             be plugged via `ab_testing.register_variant`.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """System prompt constants for ELY's agent nodes.

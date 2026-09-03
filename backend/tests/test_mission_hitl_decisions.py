@@ -5,6 +5,7 @@
 #             allow_for_task (and the persistent + task-scoped skips), not
 #             treat them as refusals.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Regression: the HITL feature (#38) added allow_for_task/allow_always to the
 CHAT path (tool_node) but NOT the MISSION path (missions/nodes.dispatch_tool),

@@ -3,6 +3,7 @@
 # @file       backend/app/services/event_envelope.py
 # @brief      EventEnvelope — bus d'événements typé et corrélé (P1/J4).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Journal d'événements typé, corrélé, SANS secret ni PII (P1/J4).
 

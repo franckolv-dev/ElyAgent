@@ -4,6 +4,7 @@
 # @brief      Missions autonomes J2 — enforcement du mandat : mapping
 #             outil→famille, chargement du mandat actif, gate dans dispatch_tool.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Missions autonomes J2 — pins de l'enforcement.
 

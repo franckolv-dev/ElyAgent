@@ -6,6 +6,7 @@
 #             record_tool_error, record_provider_switch) + verify the 4
 #             call sites are actually wired in nodes.py / chat.py.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for app/services/learning/signals.py — Sprint 3.7 Jalon 2.
 

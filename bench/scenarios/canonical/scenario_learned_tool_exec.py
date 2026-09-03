@@ -5,6 +5,7 @@
 #             S'EXÉCUTE. Manque relevé par l'audit V4 : le scénario S couvrait
 #             la surface API (list/pin/forget), jamais l'exécution réelle.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario — learned python_tool : validate → compile → invoke.
 

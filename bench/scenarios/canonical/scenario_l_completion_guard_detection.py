@@ -6,6 +6,7 @@
 #             tool-backed one, and (regression) does NOT flag a NEGATED claim
 #             nor a memory-recall recitation.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario L — detect_unbacked_completion_claim pure-function."""
 from __future__ import annotations

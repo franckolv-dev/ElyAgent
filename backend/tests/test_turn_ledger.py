@@ -4,6 +4,7 @@
 # @brief      C3d-3 — registre de tour + fallback honnête + classification
 #             unifiée des rotations LLM.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C3d-3.
 

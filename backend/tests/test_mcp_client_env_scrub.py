@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_client_env_scrub.py
 # @brief      Tests for _build_mcp_env (Sprint 4a J1.5c)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the MCP env scrubbing helper.
 

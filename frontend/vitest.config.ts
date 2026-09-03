@@ -3,6 +3,7 @@
 // @file       frontend/vitest.config.ts
 // @brief      Harnais de test du frontend.
 // @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 //
 // ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : le frontend n'avait AUCUN test — zero

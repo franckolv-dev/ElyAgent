@@ -3,6 +3,7 @@
 # @file       backend/tests/test_v1_runtime_unified.py
 # @brief      V1 temps 2 — un seul runtime d'agent, plus deux.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du runtime unifié (vague 1, temps 2 — destructif).
 

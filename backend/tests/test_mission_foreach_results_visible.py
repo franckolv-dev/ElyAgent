@@ -4,6 +4,7 @@
 # @brief      Une etape qui raisonne sur le resultat d'un foreach doit voir
 #             QUEL item a abouti et lequel non.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'historique a retenu la société qui a échoué (31/08/2026).
 

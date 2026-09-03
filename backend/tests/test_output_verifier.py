@@ -8,6 +8,7 @@
 #             scheduler, voice) verifies identically.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app.services.output_verifier``.
 

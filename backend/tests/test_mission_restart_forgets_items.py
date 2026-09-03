@@ -4,6 +4,7 @@
 # @brief      Redemarrer une mission doit effacer l'etat des ITEMS, et un
 #             foreach dont aucun item n'a abouti doit s'avouer abandonne.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Relancer une mission ne la rejouait pas (30/08/2026).
 

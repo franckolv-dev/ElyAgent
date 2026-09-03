@@ -5,6 +5,7 @@
 #             memory-writing LangChain tool. Catches accidental drift back to
 #             the legacy `MemoryManager.store_*` API.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin every memory write tool to its declared target store.
 

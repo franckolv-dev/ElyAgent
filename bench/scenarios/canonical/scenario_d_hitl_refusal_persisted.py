@@ -5,6 +5,7 @@
 #             HITL refusal recorded via the learning signals service
 #             lands in the `hitl_refusals` table with the expected shape.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario D — HITL refusal persistence.
 

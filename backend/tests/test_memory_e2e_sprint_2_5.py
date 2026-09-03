@@ -4,6 +4,7 @@
 # @brief      Sprint 2.5 Jalon 8 — end-to-end regression suite for the
 #             typed cognitive memory layer.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """E2E pipeline tests for the Sprint 2.5 typed memory layer.
 

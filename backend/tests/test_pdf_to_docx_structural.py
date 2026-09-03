@@ -4,6 +4,7 @@
 # @brief      Reconstruire la STRUCTURE LOGIQUE d'un PDF, au lieu d'un
 #             paragraphe par ligne visuelle.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la conversion PDF → DOCX structurelle.
 

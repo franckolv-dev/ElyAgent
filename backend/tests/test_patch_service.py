@@ -5,6 +5,7 @@
 #             propose / apply / revert / reject d'un prompt de tâche planifiée,
 #             + endpoints admin.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J5 — patch_service + endpoints.
 

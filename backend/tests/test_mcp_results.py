@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_results.py
 # @brief      J3 — normalisation des résultats MCP (bornée, sûre, sans _meta).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

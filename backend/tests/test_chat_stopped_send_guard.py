@@ -5,6 +5,7 @@
 #             loggé en ERROR + traceback. Pin le try/except ciblé autour de la
 #             paire stopped/done du chemin d'interruption.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Régression — bruit ERROR quand le client coupe pendant un tour.
 

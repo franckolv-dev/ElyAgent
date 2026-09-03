@@ -3,6 +3,7 @@
 # @file       backend/tests/test_action_plan.py
 # @brief      P1/J2 — ActionPlan canonique + empreinte (« l'approuvé == l'exécuté »).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

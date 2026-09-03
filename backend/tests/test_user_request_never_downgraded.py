@@ -4,6 +4,7 @@
 # @brief      Une demande de l'utilisateur ne descend jamais sous le modèle
 #             principal, et voit toujours ses outils.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le routeur dégradait les demandes, et cachait les outils.
 

@@ -4,6 +4,7 @@
 # @brief      Sprint 4d J4 — codegen de graduation (fichier core + test +
 #             manifest), dry-run complet, garde d'unicité au chargement.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins J4 : la mécanique de conversion learned → core.
 

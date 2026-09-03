@@ -4,6 +4,7 @@
 # @brief      Chiffrement au repos des secrets d'instance
 #             (revue multi-utilisateurs 2026-06-10, constat B-11).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """At-rest encryption for install-level secrets.
 

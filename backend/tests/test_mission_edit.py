@@ -4,6 +4,7 @@
 # @brief      2026-06-03 — PATCH /api/missions/{id} : edit a mission's params
 #             (goal, budgets, schedule) instead of delete + recreate.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the mission edit endpoint (Franck, 2026-06-03).
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_io_tool_audit.py
 # @brief      Sprint 4b V3 J6.c.1 — IoToolDispatch model + record_dispatch service.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins:
 

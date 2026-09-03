@@ -5,6 +5,7 @@
 #             spec avec `tools:` et `foreach`, plusieurs ticks du vrai
 #             graphe, une etape qui echoue, une qui reussit.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Scénario X — la chaîne mission de bout en bout (29/08/2026).
 

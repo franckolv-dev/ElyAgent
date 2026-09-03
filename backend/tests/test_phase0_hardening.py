@@ -5,6 +5,7 @@
 #             B-13 (PII voice), B-18 (headers + TTL token), chemin DB
 #             absolu, voix TTS câblée sur settings.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 0 hardening pins (revue 2026-06-10)."""
 from __future__ import annotations

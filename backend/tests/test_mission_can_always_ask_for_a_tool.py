@@ -4,6 +4,7 @@
 # @brief      `find_tool` doit TOUJOURS etre lie : c'est le seul moyen qu'a
 #             Ely de reclamer un outil absent de sa selection.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Demander un outil ne doit pas dépendre d'un tirage sémantique (30/08/2026).
 

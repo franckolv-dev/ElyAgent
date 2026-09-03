@@ -4,6 +4,7 @@
 # @brief      Les reprises s'arrêtent quand elles n'avancent plus, et ce qui
 #             reste non satisfait est DIT à l'utilisateur.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Deux défauts du plafond fixe livré en #288.
 

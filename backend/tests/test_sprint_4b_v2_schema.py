@@ -4,6 +4,7 @@
 # @brief      Sprint 4b V2 J1 — pin the schema additions for @tool Python
 #             generation: LearnedSkill.content_format + validation_report_json.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Schema pin for Sprint 4b V2 Jalon 1 (design note J0 §4).
 

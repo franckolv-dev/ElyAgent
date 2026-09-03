@@ -4,6 +4,7 @@
 # @brief      La ventilation de #255 était calculée mais n'arrivait jamais en
 #             base. Le calcul n'est pas la livraison.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du transport de la ventilation, du nœud agent jusqu'à ``usage_logs``.
 

@@ -6,6 +6,7 @@
 #             la mission progresse — il validait donc la même requête trois
 #             fois de suite.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Garde-fou d'action répétée (incident du 28/08/2026).
 

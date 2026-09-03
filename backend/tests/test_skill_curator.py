@@ -3,6 +3,7 @@
 # @file       backend/tests/test_skill_curator.py
 # @brief      Sprint 4b Phase 5.a — tests for the auto-skill curator
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/services/learning/skill_curator.py`.
 

@@ -4,6 +4,7 @@
 # @brief      Sprint 4b V2 J7b.2 — wire promoted python_tool skills into the
 #             live bind + dispatch (chat AND mission paths), flag-gated.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """J7b.2 wiring tests.
 

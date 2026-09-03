@@ -3,6 +3,7 @@
 # @file       backend/tests/test_tool_orchestrator.py
 # @brief      Sprint 4b V2 J6 — tests for the validation-chain orchestrator.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/tool_orchestrator.validate_tool_source``.
 

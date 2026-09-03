@@ -5,6 +5,7 @@
 #             Sprint 1, Phase 2.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for session_search.py helpers.
 

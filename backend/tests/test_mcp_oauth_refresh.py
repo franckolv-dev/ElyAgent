@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_oauth_refresh.py
 # @brief      Client MCP v2 — J3 : refresh / rotation / révocation OAuth.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J3 : refresh proactif + rotation, MCPAuthRequired, révocation +
 endpoint de déconnexion par utilisateur."""

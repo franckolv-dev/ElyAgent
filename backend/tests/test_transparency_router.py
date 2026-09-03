@@ -3,6 +3,7 @@
 # @file       backend/tests/test_transparency_router.py
 # @brief      Le contrat visible et le registre de sortie disent-ils vrai ?
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Deux pages de transparence, deux exigences differentes (audit du 02/09/2026).
 

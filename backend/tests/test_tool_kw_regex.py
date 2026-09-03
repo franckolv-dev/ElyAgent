@@ -7,6 +7,7 @@
 #             made small local LLMs refuse legitimate requests because
 #             they couldn't see their tools.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the `_tool_kw` regex in app/agent/nodes.py.
 

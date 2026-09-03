@@ -4,6 +4,7 @@
 # @brief      Outils à ressources d'instance réservés au rôle admin
 #             (revue multi-utilisateurs 2026-06-10, constat B-12).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Admin-only gate for instance-resource tools.
 

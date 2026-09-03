@@ -4,6 +4,7 @@
 # @brief      Audit 02/09/2026 — WhatsApp, Slack, Discord et l'Arena quittent
 #             le chemin critique : zéro appel mesuré en cinq mois.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de retrait des surfaces sans usage.
 

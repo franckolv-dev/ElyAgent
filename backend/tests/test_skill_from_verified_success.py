@@ -3,6 +3,7 @@
 # @file       backend/tests/test_skill_from_verified_success.py
 # @brief      Une compétence naît d'un SUCCÈS constaté — pas d'un manque supposé.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le déclencheur qui manquait au funnel des compétences.
 

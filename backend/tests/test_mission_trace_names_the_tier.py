@@ -4,6 +4,7 @@
 # @brief      La colonne `model_used` de la trace nomme le tier réellement
 #             appelé, elle ne dit plus « medium » quoi qu'il arrive.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

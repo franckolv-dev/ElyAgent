@@ -4,6 +4,7 @@
 # @brief      L'evaluateur juge l'ACCOMPLISSEMENT de l'etape, pas la
 #             compatibilite entre le verbe de l'etape et le type de l'outil.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Une étape peut demander plusieurs actes (30/08/2026).
 

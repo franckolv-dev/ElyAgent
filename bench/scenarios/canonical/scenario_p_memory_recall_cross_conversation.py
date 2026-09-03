@@ -6,6 +6,7 @@
 #             conversation must be recallable from a DIFFERENT conversation —
 #             the whole point of the cognitive memory.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario P — cross-conversation memory recall."""
 from __future__ import annotations

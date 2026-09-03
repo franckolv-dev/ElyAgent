@@ -4,6 +4,7 @@
 # @brief      WhatsApp — le dernier canal de conversation resté hors du
 #             runtime unique : ni profil d'outils, ni ligne d'usage.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du tour WhatsApp (audit du 02/09/2026).
 

@@ -4,6 +4,7 @@
 # @brief      Cache borné LRU + TTL partagé — remplace les 4 _BoundedDict
 #             FIFO dupliqués (revue multi-utilisateurs 2026-06-10, B-7).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Bounded LRU dict with optional idle-TTL.
 

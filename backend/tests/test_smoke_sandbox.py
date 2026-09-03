@@ -3,6 +3,7 @@
 # @file       backend/tests/test_smoke_sandbox.py
 # @brief      Sprint 4b V2 J4 — tests for the smoke-execution sandbox.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/smoke_sandbox.py``.
 

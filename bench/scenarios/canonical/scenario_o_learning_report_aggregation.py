@@ -6,6 +6,7 @@
 #             three signal tables for a user and assert every loader surfaces
 #             its row — a regression net for the cross-loader report.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario O — learning-report multi-loader aggregation."""
 from __future__ import annotations

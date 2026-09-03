@@ -3,6 +3,7 @@
 # @file       backend/tests/test_delegate_tool.py
 # @brief      Tool ``delegate`` — délégation parallèle de sous-tâches
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the parallel-delegation tool."""
 from __future__ import annotations

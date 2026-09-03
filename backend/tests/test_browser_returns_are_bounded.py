@@ -3,6 +3,7 @@
 # @file       backend/tests/test_browser_returns_are_bounded.py
 # @brief      Une page web ne part plus entière dans le contexte du modèle.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le tour à 1,76 $ et 8 minutes — mesuré le 29/07/2026.
 

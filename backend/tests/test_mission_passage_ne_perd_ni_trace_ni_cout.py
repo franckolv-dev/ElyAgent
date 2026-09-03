@@ -6,6 +6,7 @@
 #             qu'il a fait, il journalise son cout, il compte ses tokens sans
 #             usage_metadata, et son prompt systeme ne part pas en clair.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce qu'un passage de mission ne doit JAMAIS perdre en route (02/09/2026).
 

@@ -4,6 +4,7 @@
 # @brief      Sprint 4c J3 — hook ask_user : notification multicanal,
 #             endpoint de réponse, reprise immédiate avec injection.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Sprint 4c J3 — pins du cycle question → réponse → reprise.
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_oauth_foundation.py
 # @brief      Client MCP v2 — J1 : socle OAuth (bundle Vault + resolve oauth2)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests du socle OAuth (J1) : stockage/lecture du bundle dans le Vault du
 propriétaire + branche ``oauth2`` de ``resolve_user_headers``.

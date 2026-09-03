@@ -4,6 +4,7 @@
 # @brief      Sprint 2.5 Jalon 7 — helper for tools wrapped as legacy aliases
 #             of `memory_recall`. Logs a one-shot deprecation per process.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """One-shot deprecation logger for legacy memory tools.
 

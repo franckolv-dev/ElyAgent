@@ -5,6 +5,7 @@
 #             without tools, used when the iteration budget is exhausted
 #             (Hermes Chantier 9).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """Force summary node — Hermes Chantier 9.

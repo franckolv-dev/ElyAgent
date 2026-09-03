@@ -3,6 +3,7 @@
 # @file       backend/tests/test_tts_requires_auth.py
 # @brief      La synthèse vocale demande un utilisateur connecté.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """`/tts/speak` et `/tts/voices` étaient sans authentification (audit du 02/09/2026).
 

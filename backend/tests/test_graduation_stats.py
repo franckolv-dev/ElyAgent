@@ -4,6 +4,7 @@
 # @brief      Sprint 4d J1 — tool_origin à la capture + stats/gates de
 #             graduation (seuils souples 10 inv / 14 j / 7 j).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins J1 : la vérité par outil sur laquelle la graduation (J3-J5) s'appuie.
 

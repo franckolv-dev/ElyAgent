@@ -3,6 +3,7 @@
 # @file       backend/tests/test_tool_generator.py
 # @brief      Sprint 4b V2 J6 — tests for the tier-S @tool generator.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/tool_generator.py``.
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_hitl_persistence.py
 # @brief      V0-2 — une validation en attente survit au redémarrage du backend.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de la persistance HITL (audit Opus 5 §4.6).
 

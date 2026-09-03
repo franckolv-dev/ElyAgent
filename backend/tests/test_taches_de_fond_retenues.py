@@ -4,6 +4,7 @@
 # @brief      Les tâches de fond « tire et oublie » sont retenues et leurs
 #             échecs journalisés (audit 02/09).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins des tâches de fond critiques.
 

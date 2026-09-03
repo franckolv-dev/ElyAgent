@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_model_tools.py
 # @brief      J4 — outils model-facing : connect/propose/call (sécurité).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

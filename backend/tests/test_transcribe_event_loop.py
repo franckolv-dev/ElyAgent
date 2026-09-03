@@ -3,6 +3,7 @@
 # @file       backend/tests/test_transcribe_event_loop.py
 # @brief      Fix A-4 (revue 2026-06-10) — faster-whisper hors de l'event loop.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins:
 

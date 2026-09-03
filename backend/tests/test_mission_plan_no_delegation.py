@@ -6,6 +6,7 @@
 #             matins à 8h, fais X » doit produire un plan qui FAIT X, pas un
 #             plan qui crée une scheduler_create_task.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Run with:  cd backend && python -m pytest tests/test_mission_plan_no_delegation.py -v"""
 from __future__ import annotations

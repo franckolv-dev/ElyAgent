@@ -15,6 +15,7 @@
  *             Mistral in Settings → LLM for this toggle to have an effect.
  *
  * @license    MIT
+ *            https://opensource.org/licenses/MIT
  */
 
 import { useCallback, useEffect, useState } from "react";

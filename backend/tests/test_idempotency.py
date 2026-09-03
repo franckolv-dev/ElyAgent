@@ -3,6 +3,7 @@
 # @file       backend/tests/test_idempotency.py
 # @brief      P1/J3 — store d'idempotence (« jamais deux fois par accident »).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

@@ -6,6 +6,7 @@
 #             outils desktop_* — sinon l'agent ne peut ni lire ni écrire les
 #             fichiers du Mac (tâche Prospection : RTF/CSV jamais modifiés).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Run with:  cd backend && python -m pytest tests/test_tool_filter_desktop_local.py -v"""
 from __future__ import annotations

@@ -5,6 +5,7 @@
 #             Sprint 2 — Tool registry auto-discovery.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for the @register decorator and auto-discovery scanner.
 

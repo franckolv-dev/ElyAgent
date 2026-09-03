@@ -4,6 +4,7 @@
 # @brief      L'acteur enchaîne ses appels d'outils dans le tick, relit
 #             leurs résultats, et conclut l'étape en texte.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'acteur ne voyait jamais ce qu'il venait de faire (31/08/2026).
 

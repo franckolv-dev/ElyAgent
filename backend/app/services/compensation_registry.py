@@ -4,6 +4,7 @@
 # @brief      Registre des compensations — l'exécuteur derrière le champ
 #             `CapabilityManifest.compensation` (jusqu'ici une simple string).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Registre de compensations du Reversible Action Journal (substrat / J1).
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_tool_nature.py
 # @brief      Chaque outil sait ce qu'il est : mécanique, arbitre, ou engageant.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Lot 1 du plan de marche du 28/07/2026 — la donnée de référence.
 

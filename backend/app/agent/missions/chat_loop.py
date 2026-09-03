@@ -5,6 +5,7 @@
 #             boucle plate de l'agent, avec le carnet pour memoire et les
 #             budgets de la mission pour bornes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La mission libre tourne sur la boucle du chat (02/09/2026).
 

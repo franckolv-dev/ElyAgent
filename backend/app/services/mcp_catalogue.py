@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_catalogue.py
 # @brief      Persistance du catalogue d'outils MCP découverts (table mcp_tools).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Catalogue local des outils découverts sur un serveur MCP.
 

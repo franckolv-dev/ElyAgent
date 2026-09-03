@@ -5,6 +5,7 @@
 #             _execute_task pose last_status running→success / running→error,
 #             et le routeur l'expose. Donne à l'UI un retour visible.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Run with:  cd backend && python -m pytest tests/test_scheduler_status.py -v"""
 from __future__ import annotations

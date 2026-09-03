@@ -7,6 +7,7 @@
 #             conversation — observed in prod 2026-05-25 on DeepSeek-pro
 #             (conv e9b33b7d stuck on Claude Haiku for 1h+).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app.services.qwen_no_think.is_local_openai_llm`.
 

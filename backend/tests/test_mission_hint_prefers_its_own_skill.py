@@ -4,6 +4,7 @@
 # @brief      Quand l'indice d'outil d'une etape appartient a une competence,
 #             la famille de CETTE competence passe avant les homonymes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Deux navigateurs portent le meme prefixe (31/08/2026).
 

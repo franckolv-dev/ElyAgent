@@ -4,6 +4,7 @@
 # @brief      SearXNG en tête de chaîne — une recherche auto-hébergée, sans clé
 #             et sans quota, avec les fournisseurs à crédits en repli.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du fournisseur de recherche SearXNG.
 

@@ -10,6 +10,7 @@
 #             prod n'a jamais reçu la révision 0002 → missions.spec_yaml
 #             absente → HTTP 500 sur toute la page Missions.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins hotfix v1.17.1 (image Docker sans migrations Alembic)."""
 from __future__ import annotations

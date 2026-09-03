@@ -5,6 +5,7 @@
 #             propositions » (list + resolve). Handlers appelés directement
 #             (pattern hermétique, cf. test_me_learning_skills).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J4 — endpoints /admin/learning/incidents.
 

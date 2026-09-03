@@ -4,6 +4,7 @@
 # @brief      Régression #247 : un NameError en production sur Telegram, que
 #             les pins source-grep n'ont pas vu.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin des noms résolvables dans les bots de canaux.
 

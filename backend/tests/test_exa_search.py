@@ -4,6 +4,7 @@
 # @brief      Exa en repli de la chaîne — recherche sémantique, appelée
 #             seulement quand SearXNG n'a rien rendu.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du fournisseur de recherche Exa.
 

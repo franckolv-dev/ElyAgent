@@ -3,6 +3,7 @@
 # @file       backend/tests/test_slm_follows_its_configuration.py
 # @brief      Changer le modèle du tier A doit avoir un effet, et se documenter.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Deux dettes de la série SLM, soldées le 22/08.
 

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_search_chain_never_goes_mute.py
 # @brief      Un fournisseur à sec ne doit pas faire taire toute la chaîne.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de l'incident « Ely ne trouve plus rien » (31/07/2026).
 

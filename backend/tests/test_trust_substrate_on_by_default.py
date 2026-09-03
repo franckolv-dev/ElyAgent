@@ -4,6 +4,7 @@
 # @brief      Le substrat de confiance doit être ON par défaut, comme son
 #             commentaire voisin l'affirmait déjà.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin du défaut de ``trust_substrate_enabled`` (audit 02/09/2026).
 

@@ -5,6 +5,7 @@
 #             listed in USER_ID_TOOLS so the runtime actually injects it.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """CI guard for InjectedToolArg user_id completeness.
 

@@ -4,6 +4,7 @@
 # @brief      Sprint 2.5 Jalon 7 — pin the deprecation contract of the
 #             legacy memory tools.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Deprecation contract for the legacy memory tools.
 

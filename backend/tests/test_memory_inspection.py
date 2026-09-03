@@ -5,6 +5,7 @@
 #             cloisonnement par utilisateur, oubli complet, familles non
 #             inspectables déclarées, et ordre des routes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce que ces tests empêchent de reperdre.
 

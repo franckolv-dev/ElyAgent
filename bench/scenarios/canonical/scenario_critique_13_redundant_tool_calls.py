@@ -7,6 +7,7 @@
 #             edit by hand. Change the CATALOGUE there and re-run --write. ***
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Critique-replay scenario CRIT-13 — Redundant tool calls."""
 from __future__ import annotations

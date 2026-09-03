@@ -3,6 +3,7 @@
 # @file       backend/tests/test_usage_instrumentation.py
 # @brief      V2-1 — rendre la latence et l'architecture d'agent mesurables.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de l'instrumentation d'usage (vague 2).
 

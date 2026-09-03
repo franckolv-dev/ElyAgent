@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_resources.py
 # @brief      J6 — resources/prompts : outils model-facing + normalisation.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests J6 : les 4 outils resources/prompts (flag, isolation, kill_switch,
 instance→admin, stdio refusé, outbound sur get_prompt), normalisation des

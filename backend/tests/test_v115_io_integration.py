@@ -5,6 +5,7 @@
 #             rejoignent les deux coutures bind/dispatch + canary HITL
 #             (design note §5.6).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """v1.15.0 — pins de l'intégration agent du pipeline io.
 

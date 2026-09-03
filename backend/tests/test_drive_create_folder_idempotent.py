@@ -4,6 +4,7 @@
 # @brief      2026-06-04 — drive_create_folder must reuse an existing same-name
 #             folder instead of creating a duplicate (recurring-mission bug).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for drive_create_folder idempotence (Franck, 2026-06-03).
 

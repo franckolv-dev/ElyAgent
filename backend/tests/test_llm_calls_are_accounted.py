@@ -4,6 +4,7 @@
 # @brief      Un appel LLM facturé doit laisser une ligne. Ce pin cherche les
 #             chemins qui dépensent sans compter, AVANT qu'ils n'arrivent.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tout appel LLM d'une boucle de fond doit consigner sa consommation.
 

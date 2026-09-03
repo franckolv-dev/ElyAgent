@@ -4,6 +4,7 @@
 # @brief      Cycle PII des missions (chantier 2026-06-12) — le dernier trou
 #             documenté de la frontière souveraineté.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du cycle PII missions.
 

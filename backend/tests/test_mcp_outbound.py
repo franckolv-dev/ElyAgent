@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_outbound.py
 # @brief      J4 — politique de données sortantes (secrets bloqués, PII tracée).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

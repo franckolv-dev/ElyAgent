@@ -6,6 +6,7 @@
 #             returns the indexed qdrant_id, with per-user isolation. Fully
 #             end-to-end (FTS5 is SQLite-native, no Qdrant needed).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario W — FTS5 memory keyword recall round-trip."""
 from __future__ import annotations

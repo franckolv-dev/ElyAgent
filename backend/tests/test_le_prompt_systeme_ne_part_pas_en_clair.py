@@ -4,6 +4,7 @@
 # @brief      Ce qui part vers un modele NON LOCAL est anonymise, quelle que
 #             soit la voie du prompt systeme (complete ou compacte).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """La frontiere d'envoi du prompt systeme (02/09/2026).
 

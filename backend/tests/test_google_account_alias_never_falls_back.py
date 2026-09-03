@@ -4,6 +4,7 @@
 # @brief      Un alias de compte Google inconnu refuse l'appel ; il ne
 #             retombe jamais sur le compte par défaut.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le mauvais compte, en silence (audit du 02/09/2026).
 

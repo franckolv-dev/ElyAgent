@@ -3,6 +3,7 @@
 # @file       backend/app/services/idempotency_store.py
 # @brief      Store d'idempotence — « jamais deux fois par accident » (P1/J3).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Idempotence des actions, pilotée par le manifeste.
 

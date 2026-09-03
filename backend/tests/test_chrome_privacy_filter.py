@@ -7,6 +7,7 @@
 #             cloud LLM prompt — the very risk the filter exists to
 #             prevent.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app.services.chrome_privacy_filter`.
 

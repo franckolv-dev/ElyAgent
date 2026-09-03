@@ -9,6 +9,7 @@
 #             Sprint 3.7.3 J4 — retrofitted onto ``throwaway_user`` so the
 #             bench is idempotent (the inline User row used to leak).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario H — prompt_version chain."""
 from __future__ import annotations

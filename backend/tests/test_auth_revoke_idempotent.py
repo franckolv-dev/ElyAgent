@@ -3,6 +3,7 @@
 # @file       backend/tests/test_auth_revoke_idempotent.py
 # @brief      Révocation refresh idempotente — refresh concurrents ≠ 500.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Révocation de refresh token idempotente (blacklist ``revoked_tokens``).
 

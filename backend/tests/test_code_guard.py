@@ -3,6 +3,7 @@
 # @file       backend/tests/test_code_guard.py
 # @brief      Sprint 4b V2 J2 — exhaustive bypass tests for the AST guard.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/code_guard.py``.
 

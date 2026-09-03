@@ -3,6 +3,7 @@
 # @file       backend/tests/test_all_configured_models_resolve.py
 # @brief      Les 16 modèles réellement déclarés doivent tous résoudre.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de couverture des modèles réellement configurés.
 

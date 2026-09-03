@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_credentials.py
 # @brief      Credentials des serveurs MCP — stockés dans le Vault, jamais ici.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Gestion des credentials d'un serveur MCP distant (J4).
 

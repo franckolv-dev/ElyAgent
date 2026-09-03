@@ -4,6 +4,7 @@
 # @brief      Quand ça n'avance plus, Ely demande à plusieurs modèles au lieu
 #             d'abandonner — et te dit lequel a répondu, et ce que ça a coûté.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Lot 2 du plan de marche — la chaîne de repli devient un panel.
 

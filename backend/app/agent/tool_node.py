@@ -6,6 +6,7 @@
 #             journal réversible, exécution, signaux) vit dans le Tool
 #             Gateway (services/tool_gateway.py) depuis C3a.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """Tool node — executes the tool_calls emitted by ``agent_node``.

@@ -3,6 +3,7 @@
 # @file       backend/tests/test_skill_import.py
 # @brief      J5-B — import de playbooks SKILL.md depuis une URL
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for importing external SKILL.md playbooks (J5-B)."""
 from __future__ import annotations

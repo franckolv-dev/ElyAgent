@@ -3,6 +3,7 @@
 # @file       backend/tests/test_tool_creator.py
 # @brief      Sprint 4b V2 J6c — tests for the generate→validate→persist loop.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/tool_creator.generate_and_persist_tool``.
 

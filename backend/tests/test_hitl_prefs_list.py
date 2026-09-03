@@ -6,6 +6,7 @@
 #             ALWAYS_CRITICAL_TOOLS — else LOCKED-only tools (gmail_move_emails)
 #             never appear on the settings page.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

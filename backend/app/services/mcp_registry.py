@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_registry.py
 # @brief      Recherche dans le registre MCP officiel (découverte uniquement).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Recherche de serveurs dans le registre MCP officiel.
 

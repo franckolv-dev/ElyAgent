@@ -3,6 +3,7 @@
 # @file       backend/tests/test_registration_gate.py
 # @brief      Sprint 4b V2 J5 — tests for the registration-safety gate.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/services/learning/registration_gate.py``.
 

@@ -4,6 +4,7 @@
 # @brief      Le cadre fuyait par les MÉTADONNÉES : nom de fichier, Sujet,
 #             titre d'onglet, titre de page.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Ce que le cadre laissait dehors (relecture du 02/09/2026).
 

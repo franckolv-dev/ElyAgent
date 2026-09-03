@@ -4,6 +4,7 @@
 # @brief      2026-06-04 — autonomous missions auto-approve NON-floor HITL and
 #             skip floor tools (NEVER_AUTONOMOUS_TOOLS) without stalling.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Autonomous mode (Franck, 2026-06-04): a scheduled mission running at 3 a.m.
 must not stall on a HITL prompt nobody answers. With `autonomous=True`,

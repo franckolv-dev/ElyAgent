@@ -4,6 +4,7 @@
 # @brief      L'index composite (user_id, timestamp) que les six agrégations
 #             d'usage réclamaient depuis toujours.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pin de l'index composite de ``usage_logs`` (audit 02/09/2026).
 

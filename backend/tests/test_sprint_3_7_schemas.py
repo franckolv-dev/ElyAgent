@@ -6,6 +6,7 @@
 #             mission_critiques) so an accidental column rename or
 #             deletion fails the suite.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Schema pin for Sprint 3.7 V1 Jalon 1.
 

@@ -4,6 +4,7 @@
 # @brief      Unit tests for Sprint 2.5 Jalon 3 — MemoryType, MemoryHit,
 #             MemoryRecallService.recall(), and the LangChain memory_recall tool.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Sprint 2.5 Jalon 3 — recall surface tests.
 

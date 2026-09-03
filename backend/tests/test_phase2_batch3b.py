@@ -5,6 +5,7 @@
 #             B-7 (BoundedLRUDict : LRU + TTL au lieu du FIFO), vault PII
 #             unifié chat/voice, rétention des tables de signaux.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Phase 2 batch 3b pins (revue 2026-06-10)."""
 from __future__ import annotations

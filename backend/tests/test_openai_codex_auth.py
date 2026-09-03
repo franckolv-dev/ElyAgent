@@ -5,6 +5,7 @@
 #             du CLI officiel, refresh auto + rotation, httpx.Auth par
 #             requête, classification fallback, builder LLM.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins provider openai-codex.
 

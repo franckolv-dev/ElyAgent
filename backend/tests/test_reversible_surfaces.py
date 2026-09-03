@@ -3,6 +3,7 @@
 # @file       backend/tests/test_reversible_surfaces.py
 # @brief      Substrat / J2 — surfaces d'annulation (outils + API /me).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 from __future__ import annotations
 

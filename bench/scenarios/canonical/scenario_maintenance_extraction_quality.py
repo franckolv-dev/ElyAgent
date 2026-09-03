@@ -4,6 +4,7 @@
 # @brief      Examen d'extraction du tiers MAINTENANCE — gate OBLIGATOIRE avant
 #             tout changement de modèle sur ce tiers (verdict LFM2.5, 12 juin).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Examen d'extraction mémoire — le scénario qui aurait évité l'épisode LFM2.5.
 

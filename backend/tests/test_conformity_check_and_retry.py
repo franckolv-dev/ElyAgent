@@ -4,6 +4,7 @@
 # @brief      Le retour du modèle est confronté à la demande, et relancé avec
 #             les écarts nommés s'il n'y répond pas.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Rien ne vérifiait que la réponse répondait à la demande.
 

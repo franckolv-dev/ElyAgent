@@ -6,6 +6,7 @@
 #             user A doit être rejeté sur les deux chemins :
 #             WS /chat (close 4003) et POST /api/me/state/recompute (404).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """IDOR regression tests — conversation ownership enforcement.
 

@@ -4,6 +4,7 @@
 # @brief      Le bouton « Tick » du routeur lancait l'AUTRE moteur, sans garde
 #             de concurrence — deux moteurs distincts sur les memes tables.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le Tick manuel doit passer par le meme aiguillage que le heartbeat.
 

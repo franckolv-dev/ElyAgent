@@ -6,6 +6,7 @@
 #             directly (no TestClient, no auth round-trip) so they stay
 #             fast and hermetic.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/routers/user_state.py` — Sprint 3 Jalon 3."""
 from __future__ import annotations

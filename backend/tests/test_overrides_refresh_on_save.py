@@ -4,6 +4,7 @@
 # @brief      Enregistrer une instance doit appliquer ses valeurs, pas
 #             seulement les écrire en base.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du rafraîchissement des valeurs d'instance après enregistrement.
 

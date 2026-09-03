@@ -4,6 +4,7 @@
 # @brief      `web_search` peut viser une famille de sources — sans jamais
 #             perdre les généralistes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du paramètre `categories` de la recherche.
 

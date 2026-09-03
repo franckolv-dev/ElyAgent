@@ -3,6 +3,7 @@
 # @file       backend/tests/test_unreachable_local_provider.py
 # @brief      Un serveur local éteint ne doit pas capturer la chaîne de repli.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du repli quand un fournisseur LOCAL ne répond pas.
 

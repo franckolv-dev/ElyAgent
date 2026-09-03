@@ -6,6 +6,7 @@
 #             mission structurée perdait le signal le plus précis de la
 #             sélection d'outil — celui dont les missions libres disposent.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """`tools:` dans une spec de mission (28/08/2026).
 

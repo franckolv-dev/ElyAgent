@@ -4,6 +4,7 @@
 # @brief      C4-2d — spawn(detach_context=True) : les tâches de fond à
 #             appels LLM propres n'héritent pas du contexte de l'appelant.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Bug réel (19/07/2026, test B live) : ``create_task`` hérite des contextvars
 de l'appelant, et LangChain propage son arbre de callbacks par contextvars —

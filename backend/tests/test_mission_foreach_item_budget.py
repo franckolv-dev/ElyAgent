@@ -4,6 +4,7 @@
 # @brief      Le budget d'avancee appartient a l'ITEM, pas au step foreach :
 #             sinon la premiere societe mange la ration des suivantes.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Une société servie, les autres affamées (31/08/2026).
 

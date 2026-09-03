@@ -10,11 +10,6 @@
 #            https://opensource.org/licenses/MIT
 # @version    1.0.0
 # @link       https://github.com/franckolv-dev/ElyAgent
-#
-# RÉSUMÉ DES CONDITIONS :
-#   - AUTORISÉ : Usage personnel et professionnel interne (gratuit).
-#   - INTERDIT : Revente comme SaaS / service managé à des tiers.
-#   - INTERDIT : Suppression des notices de copyright ou de licence.
 # =============================================================================
 """Normalise le ``content`` d'un ``AIMessage`` LangChain en string plate.
 

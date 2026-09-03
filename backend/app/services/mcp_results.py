@@ -3,6 +3,7 @@
 # @file       backend/app/services/mcp_results.py
 # @brief      Normalisation des résultats MCP (CallToolResult) — bornée, sûre.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Normalisation des ``CallToolResult`` MCP avant restitution au modèle.
 

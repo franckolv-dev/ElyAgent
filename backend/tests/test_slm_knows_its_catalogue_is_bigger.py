@@ -4,6 +4,7 @@
 # @brief      Un modèle qui ne voit pas l'outillage ne doit pas témoigner de
 #             son absence.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le 23/08, Ely a nié savoir chercher sur le web.
 

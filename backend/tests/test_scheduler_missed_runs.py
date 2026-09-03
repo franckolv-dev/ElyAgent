@@ -4,6 +4,7 @@
 # @brief      Une occurrence manquée doit se voir, un rattrapage doit s'annoncer,
 #             et une tâche à livrable ne doit pas pouvoir se taire.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'incident du 06/08/2026 — « aucun post, aucune proposition ».
 

@@ -3,6 +3,7 @@
 # @file       backend/app/services/singleton_guard.py
 # @brief      Verrou mono-process au démarrage (revue 2026-06-10, A-7).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Boot-time single-process lock.
 

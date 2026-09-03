@@ -3,6 +3,7 @@
 # @file       backend/tests/test_the_runtime_follows_the_screen.py
 # @brief      La base dit gemma, l'écran dit gemma, LM Studio charge nemotron.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le 23/08, changer le modèle du tier A n'a rien changé.
 

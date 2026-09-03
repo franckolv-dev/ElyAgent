@@ -4,6 +4,7 @@
 # @brief      La consigne d'une tâche planifiée ne doit pas être la première
 #             chose supprimée quand le contexte déborde.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins de l'ancrage du mandat de mission.
 

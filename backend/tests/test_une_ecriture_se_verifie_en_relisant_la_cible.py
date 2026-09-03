@@ -3,6 +3,7 @@
 # @file       backend/tests/test_une_ecriture_se_verifie_en_relisant_la_cible.py
 # @brief      Un appel d'outil réussi n'est pas une tâche réussie.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le tableur créé, exporté vide (02/09/2026).
 

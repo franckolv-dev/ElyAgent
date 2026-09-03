@@ -4,6 +4,7 @@
 # @brief      Missions autonomes J5 — mode decide (D2), consignes de mandat,
 #             anti-boucle (D4). Flag OFF ou pas de mandat ⇒ comportement inchangé.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Missions autonomes J5 — autonomie stricte (cadrage D2 + D4).
 

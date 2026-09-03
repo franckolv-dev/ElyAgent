@@ -4,6 +4,7 @@
 # @brief      Tests for the anti-hallucination completion guard.
 #
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app.services.completion_guard``.
 

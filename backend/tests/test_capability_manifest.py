@@ -3,6 +3,7 @@
 # @file       backend/tests/test_capability_manifest.py
 # @brief      P1/J1 — CapabilityManifest : dérivation, surcharges, invariant HITL.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le manifeste unifie la sécurité sans la changer.
 

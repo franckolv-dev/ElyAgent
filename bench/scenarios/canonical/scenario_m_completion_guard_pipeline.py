@@ -5,6 +5,7 @@
 #             pipe. A detected unbacked claim → record_hallucination_block →
 #             hallucination_blocks row → failure_cases capture, end to end.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Canonical scenario M — completion_guard detection → block → failure_case."""
 from __future__ import annotations

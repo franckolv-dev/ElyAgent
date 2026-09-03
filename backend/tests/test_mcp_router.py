@@ -3,6 +3,7 @@
 # @file       backend/tests/test_mcp_router.py
 # @brief      Tests for the /admin/mcp/servers REST router (Sprint 4a J2)
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for ``app/routers/mcp.py`` — direct-handler style (no TestClient).
 

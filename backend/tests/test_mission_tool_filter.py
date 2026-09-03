@@ -4,6 +4,7 @@
 # @brief      Missions — filtre d'outils par step : matching lexical
 #             accent-insensible + re-rank sémantique hybride (RAG d'outils).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du filtre `_filter_tools_for_step` (missions/nodes.py).
 

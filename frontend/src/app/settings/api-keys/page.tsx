@@ -7,6 +7,7 @@
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
  * @license    MIT
+ *            https://opensource.org/licenses/MIT
  *
  * Personal API keys authenticate non-browser clients — primarily ELY's own
  * MCP server (Claude Desktop & other MCP clients). Generated once, shown once,

@@ -3,6 +3,7 @@
 // @file       desktop/filesystem_test.go
 // @brief      Security tests for FSHandler.validatePath
 // @license    MIT
+//            https://opensource.org/licenses/MIT
 // =============================================================================
 //
 // Hotfix 2026-05-28 — code-review-2026_05_28.md flagged validatePath as

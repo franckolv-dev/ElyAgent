@@ -5,9 +5,9 @@
 #             avec une sortie bornée : un tri de noms ne se tire pas au sort.
 #
 # @author     Franck OLLIVIER <contact@agent-ely.fr>
-# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
-# @license    Elastic License 2.0
-#            https://www.elastic.co/licensing/elastic-license
+# @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
+# @license    MIT
+#            https://opensource.org/licenses/MIT
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 # =============================================================================
 """Banc du 03/09/2026 sur Ministral 3B, quatre demandes, deux passes :

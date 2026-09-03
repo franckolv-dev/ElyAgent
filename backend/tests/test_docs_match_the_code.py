@@ -4,6 +4,7 @@
 # @brief      Ménage docs — un document ne peut plus contredire le code en
 #             silence : les chiffres qu'il cite sont confrontés au registre.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Contrôles de cohérence de la documentation.
 

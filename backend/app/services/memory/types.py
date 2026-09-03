@@ -4,6 +4,7 @@
 # @brief      Public types for the typed memory subpackage —
 #             `MemoryType` enum + `MemoryHit` dataclass.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Public types — Sprint 2.5 §3, §9.

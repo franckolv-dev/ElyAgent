@@ -5,6 +5,7 @@
 #             (pending_validation → active) + API workspace (carnet, journal,
 #             compteurs journaliers) pour le viewer.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """J6 — le moteur d'autonomie s'allume ICI, et seulement ici.
 

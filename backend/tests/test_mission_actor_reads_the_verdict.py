@@ -4,6 +4,7 @@
 # @brief      Ce que l'evaluateur dit qu'il RESTE A FAIRE doit arriver dans
 #             le prompt de l'acteur au tour suivant.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """L'acteur rejouait l'étape sans savoir ce qu'on lui reprochait (30/08/2026).
 

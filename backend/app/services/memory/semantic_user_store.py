@@ -3,6 +3,7 @@
 # @file       backend/app/services/memory/semantic_user_store.py
 # @brief      Stable user knowledge — facts + preferences + communication style.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Semantic-user store — stable facts about the user.

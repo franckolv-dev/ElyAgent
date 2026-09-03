@@ -4,6 +4,7 @@
 # @brief      C4-3 — nudge « outil dédié d'abord » : le modèle doit préférer
 #             un outil dédié (y compris appris) à un script orchestrate.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """C4-3 — pins du nudge anti-« marteau familier ».
 

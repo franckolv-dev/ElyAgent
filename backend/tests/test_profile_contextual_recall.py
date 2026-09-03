@@ -4,6 +4,7 @@
 # @brief      C2-b — les faits qu'Ely a stockés redeviennent atteignables quand
 #             la question les rend pertinents.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du rappel contextuel du profil (chantier C2, « rappel à la demande »).
 

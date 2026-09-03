@@ -4,6 +4,7 @@
 # @brief      Une mission qui avance ne fait pas la queue : son tick suivant
 #             est immédiat.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Le temps mort entre deux actions (31/08/2026).
 

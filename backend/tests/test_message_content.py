@@ -4,6 +4,7 @@
 # @brief      content_to_text() — aplatissement du content LangChain en texte,
 #             pin du crash missions « binding parameter: type 'list' » (codex).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Pins du helper partagé ``agent.helpers.message_content.content_to_text``.
 

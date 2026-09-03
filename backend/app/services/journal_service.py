@@ -3,6 +3,7 @@
 # @file       backend/app/services/journal_service.py
 # @brief      Reversible Action Journal — enregistrer / annuler une action.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Service du Reversible Action Journal (substrat, suite de P1 — J1).
 

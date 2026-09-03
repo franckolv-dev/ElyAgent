@@ -5,6 +5,7 @@
 #             discovery works, _render_summary is well-formed, scenarios
 #             expose the right shape (NAME + DESCRIPTION + async run).
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `bench/run_canonical.py` and the canonical scenarios.
 

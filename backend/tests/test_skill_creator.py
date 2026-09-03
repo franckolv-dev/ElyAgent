@@ -3,6 +3,7 @@
 # @file       backend/tests/test_skill_creator.py
 # @brief      Sprint 4b Phase 3.a — tests for the autonomous skill generator
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # =============================================================================
 """Tests for `app/services/learning/skill_creator.py` — Sprint 4b Phase 3.a.
 

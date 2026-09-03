@@ -4,6 +4,7 @@
 # @brief      Sprint refactor nodes.py Phase 1.2 — message sanitizer +
 #             tool-result helper, extracted from the God Object.
 # @license    MIT
+#            https://opensource.org/licenses/MIT
 # @version    1.7.1
 # =============================================================================
 """Message-shaping helpers used by the LangGraph agent nodes.
