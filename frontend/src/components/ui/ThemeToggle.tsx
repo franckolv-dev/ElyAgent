@@ -38,9 +38,9 @@ export function ThemeToggle() {
     <button
       onClick={handleToggle}
       title={theme === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}
-      className="icon-btn"
+      className="icon-btn toggle"
     >
-      {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+      {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
     </button>
   );
 }

@@ -2,7 +2,12 @@
 /**
  * @project    ELY — Exactly Like You
  * @file       frontend/src/components/layout/Sidebar.tsx
- * @brief      Sidebar — navigation menu and conversation history (refonte mai 2026)
+ * @brief      Sidebar — marque, navigation et historique (refonte 09/2026)
+ *
+ * Depuis la refonte, la sidebar monte sur toute la hauteur de la fenêtre et
+ * porte la marque, que la topbar affichait auparavant. « Nouvelle
+ * conversation » passe AU-DESSUS de la navigation : la maquette en fait
+ * l'action première de la colonne.
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
@@ -13,8 +18,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  // Les icônes de NAVIGATION ne sont plus ici : elles vivent dans `./nav`
+  // depuis que la table de navigation en a été extraite. Ne restent que
+  // celles dont la sidebar se sert POUR ELLE-MÊME — ses actions, son
+  // historique, et `Zap` pour le logo de marque que la refonte 09/2026 a
+  // fait descendre de la topbar.
   LogOut, Plus, Clock, Search, MoreHorizontal, Pencil, Trash2,
-  Download, X, ChevronDown,
+  Download, X, ChevronDown, Zap,
 } from "lucide-react";
 import { logout, isAdmin } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -201,6 +211,23 @@ export function Sidebar() {
         aria-hidden="true"
       />
       <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+      {/* Marque — reprise de la topbar à la refonte 09/2026 */}
+      <div className="brand">
+        <div className="brand-logo">
+          <Zap size={16} />
+        </div>
+        <span className="brand-name">ELY AGENT</span>
+      </div>
+
+      {/* New conversation CTA — au-dessus de la navigation */}
+      <button
+        onClick={() => router.push("/chat?new=" + Date.now())}
+        className="nav-cta"
+      >
+        <Plus size={15} />
+        <span>{t("newConversation")}</span>
+      </button>
+
       {/* Main nav — flat items + collapsible accordion groups */}
       <nav className="nav">
         {NAV.map((entry) => {
@@ -223,7 +250,7 @@ export function Sidebar() {
                     setOpenGroups((s) => ({ ...s, [entry.groupKey]: !open }))
                   }
                 >
-                  <span className="nav-icon"><GIcon size={15} /></span>
+                  <span className="nav-icon"><GIcon size={17} /></span>
                   <span style={{ flex: 1, textAlign: "left" }}>{t(entry.labelKey)}</span>
                   <ChevronDown
                     size={13}
@@ -244,7 +271,7 @@ export function Sidebar() {
                         className={`nav-item ${c.href === activeHref ? "active" : ""}`}
                         style={{ paddingLeft: 30 }}
                       >
-                        <span className="nav-icon"><CIcon size={14} /></span>
+                        <span className="nav-icon"><CIcon size={15} /></span>
                         <span>{t(c.labelKey)}</span>
                       </Link>
                     );
@@ -261,21 +288,12 @@ export function Sidebar() {
               href={entry.href}
               className={`nav-item ${entry.href === activeHref ? "active" : ""}`}
             >
-              <span className="nav-icon"><Icon size={15} /></span>
+              <span className="nav-icon"><Icon size={17} /></span>
               <span>{t(entry.labelKey)}</span>
             </Link>
           );
         })}
       </nav>
-
-      {/* New conversation CTA */}
-      <button
-        onClick={() => router.push("/chat?new=" + Date.now())}
-        className="nav-cta"
-      >
-        <Plus size={14} />
-        <span>{t("newConversation")}</span>
-      </button>
 
       {/* Recent conversations section */}
       <div className="nav-section-label">

@@ -417,7 +417,13 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
     // Wrapper transparent : on veut que la zone sous le textarea ait la
     // même couleur que la zone chat au-dessus, pas un bandeau distinct.
     // Pas de border-top, pas de fond, juste un padding pour aérer.
-    <div style={{ padding: "0", background: "transparent" }}>
+    // `.chat-column` borne le composeur à 760 px, comme le fil : les deux
+    // doivent partager le même axe, sinon le champ paraît décalé sous les
+    // messages.
+    <div
+      className="chat-column"
+      style={{ padding: "16px 0 20px", background: "transparent" }}
+    >
 
       {/* ── Input dock — chips au-dessus du textarea, icon row dessous.
             Les chips d'attachements et de capture d'écran sont placés DANS
@@ -580,9 +586,9 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
               disabled={!canSend}
               className="icon-btn"
               style={{
-                background: canSend ? "var(--accent-soft)" : "transparent",
-                color: canSend ? "var(--accent)" : "var(--text-muted)",
-                border: canSend ? "1px solid var(--accent)" : "1px solid var(--border-subtle)",
+                background: canSend ? "var(--accent)" : "var(--bg-surface-2)",
+                color: canSend ? "var(--text-on-accent)" : "var(--text-muted)",
+                border: "none",
               }}
             >
               <Send size={15} />
@@ -619,7 +625,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
 
       {/* ── Status line ── */}
       {!micError && !isTranscribing && (
-        <p className="text-[10px] text-text-muted mt-1.5 text-center">
+        <p className="ely-input-hint">
           {t("footerHelp")}
           {pendingFiles.length > 0 && !hasUploading && (
             <> · {t("attachedFiles", { count: pendingFiles.filter(p => !p.error).length })}</>
@@ -627,7 +633,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
         </p>
       )}
       {isTranscribing && (
-        <p className="text-[10px] text-cyber-cyan mt-1.5 text-center animate-pulse">{t("transcribing")}</p>
+        <p className="ely-input-hint animate-pulse" style={{ color: "var(--accent)" }}>{t("transcribing")}</p>
       )}
     </div>
   );

@@ -417,6 +417,18 @@ async def dispatch_tool(
     _crit_args = {k: v for k, v in display_args.items() if k not in INSTRUCTION_ARG_KEYS}
     _crit_desc = f"Outil: {tool_name} | Arguments: {json.dumps(_crit_args, ensure_ascii=False)}"
     needs_hitl = (tool_name in ALWAYS_CRITICAL_TOOLS) or sf.is_critical(_crit_desc)
+    # Même règle qu'au chat (``tool_gateway._decide_hitl``, 03/09/2026) : un
+    # passe-plat ``*_raw_api_call`` dont la méthode LIT n'a rien à confirmer.
+    # Ce chemin court-circuite la passerelle (``needs_hitl_final``), il doit
+    # donc porter la règle lui-même.
+    if needs_hitl and tool_name.endswith("_raw_api_call"):
+        from app.services.google_raw_api import est_une_lecture
+        if est_une_lecture(display_args.get("method_path")):
+            logger.info(
+                "Mission HITL skipped (appel brut en lecture) tool=%s methode=%s",
+                tool_name, display_args.get("method_path"),
+            )
+            needs_hitl = False
 
     # ── Gate du mandat d'autonomie (Missions autonomes J2) ────────────────
     # Sous un mandat ACTIF (flag ON + autonomy_state='active'), le HITL se

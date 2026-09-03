@@ -321,7 +321,8 @@ async def trainer_start(
                 [{"role": "system", "content": vision_system}, msg],
                 config={"callbacks": []},
             )
-            raw = response.content.strip()
+            from app.agent.helpers.message_content import content_to_text
+            raw = content_to_text(response.content).strip()
             logger.warning("Trainer vision LLM response (step %d, len=%d): %s", step, len(raw), raw[:300])
         except Exception as e:
             logger.warning("Trainer vision LLM error at step %d: %s", step, e)

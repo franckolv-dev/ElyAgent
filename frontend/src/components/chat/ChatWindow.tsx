@@ -20,7 +20,7 @@
 import { useEffect, useRef } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
-import { Zap, Bot } from "lucide-react";
+import { Zap } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 // Maps backend tool names → human-readable French labels
@@ -104,7 +104,7 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
         <div className="chat-orb">
           <Zap size={26} />
         </div>
-        <h2 className="chat-title">ELY ONLINE</h2>
+        <h2 className="chat-title">{t("title")}</h2>
         <p className="chat-welcome">{t("welcome")}</p>
         <div className="chat-suggestions">
           {SUGGESTIONS.map((s, i) => (
@@ -148,8 +148,12 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
     return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
   };
 
+  // Colonne de lecture bornée à 760 px, alignée sur le composeur : les deux
+  // partagent `.chat-column`, sinon le champ de saisie paraît décalé sous
+  // les messages.
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex-1 overflow-y-auto px-6 pt-7 pb-3">
+      <div className="chat-column flex flex-col gap-[18px]">
       {messages.map((msg, i) => {
         // Find the last user message before this assistant message (for feedback context)
         const lastUserMsg = msg.role === "assistant"
@@ -184,11 +188,8 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
 
       {/* Streaming message — tokens arriving in real time */}
       {isLoading && streamingContent && (
-        <div className="flex gap-3 message assistant streaming">
-          <div className="w-7 h-7 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
-            <Bot className="w-3.5 h-3.5 text-cyber-cyan" />
-          </div>
-          <div className="bg-bg-card border border-border-dim rounded-lg px-4 py-3 text-sm text-text-primary whitespace-pre-wrap max-w-prose">
+        <div className="flex flex-col message assistant streaming">
+          <div className="bubble-assistant whitespace-pre-wrap">
             {streamingContent}<span className="animate-pulse">▊</span>
           </div>
         </div>
@@ -196,11 +197,11 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
 
       {/* Tool execution indicator — shown when a tool is running */}
       {isLoading && activeTool && (
-        <div className="flex gap-3 items-center">
-          <div className="w-7 h-7 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
-            <Bot className="w-3.5 h-3.5 text-cyber-cyan" />
-          </div>
-          <div className="bg-bg-card border border-cyber-cyan/20 rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-xs text-cyber-cyan">
+        <div className="flex flex-col">
+          <div
+            className="bubble-trace self-start flex-row items-center gap-2.5 text-xs"
+            style={{ color: "var(--accent)" }}
+          >
             {/* Spinning ring */}
             <span className="w-3.5 h-3.5 rounded-full border-2 border-cyber-cyan/30 border-t-cyber-cyan animate-spin shrink-0" />
             {toolLabel(activeTool)}
@@ -210,16 +211,17 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
 
       {/* Thinking indicator — shown before first token and when no tool is active */}
       {isLoading && !streamingContent && !activeTool && messages[messages.length - 1]?.role !== "assistant" && (
-        <div className="flex gap-3">
-          <div className="w-7 h-7 rounded-md bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center shrink-0">
-            <Bot className="w-3.5 h-3.5 text-cyber-cyan" />
-          </div>
-          <div className="bg-bg-card border border-border-dim rounded-lg px-4 py-3 flex items-center gap-1">
+        <div className="flex flex-col">
+          <div className="bubble-assistant flex-row items-center gap-1.5 py-4">
             {[0, 1, 2].map((i) => (
               <span
                 key={i}
-                className="w-1.5 h-1.5 rounded-full bg-cyber-cyan animate-bounce"
-                style={{ animationDelay: `${i * 0.15}s` }}
+                className="w-1.5 h-1.5 rounded-full"
+                style={{
+                  background: "var(--text-muted)",
+                  animation: "pulse-dot 1s infinite",
+                  animationDelay: `${i * 0.15}s`,
+                }}
               />
             ))}
           </div>
@@ -227,6 +229,7 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
       )}
 
       <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

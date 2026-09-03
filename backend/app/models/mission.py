@@ -102,7 +102,7 @@ class Mission(Base):
     critic_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # ── Guard rails (enforced by the loop) ──
-    budget_tokens: Mapped[int] = mapped_column(Integer, default=50_000)
+    budget_tokens: Mapped[int] = mapped_column(Integer, default=500_000)
     budget_iterations: Mapped[int] = mapped_column(Integer, default=30)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     iterations_used: Mapped[int] = mapped_column(Integer, default=0)

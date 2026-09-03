@@ -15,7 +15,6 @@ import { useLocale } from "next-intl";
 import { useTransition, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Languages } from "lucide-react";
 import { setLocale } from "@/lib/locale";
 import { api } from "@/lib/api";
 
@@ -123,11 +122,9 @@ export function LangSwitcher() {
         aria-label="Language switcher"
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-1.5 px-2 py-1 rounded border border-border-dim hover:border-cyber-cyan/40 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+        className="lang-btn disabled:opacity-50"
       >
-        <Languages className="w-3.5 h-3.5" />
-        <span className="font-medium">{LABELS[current]}</span>
-        <span aria-hidden>{FLAGS[current]}</span>
+        <span>{LABELS[current]}</span>
       </button>
       {dropdown}
     </div>

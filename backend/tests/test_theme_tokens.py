@@ -73,29 +73,56 @@ def test_theme_tokens_exist_in_both_themes(css):
 
 
 def test_the_dark_ramp_matches_the_design_values(css):
-    """Les six valeurs fournies par la maquette, posées telles quelles.
+    """Les valeurs fournies par la maquette, posées telles quelles.
 
     ⚠️ Ce pin existe parce que je les ai déjà modifiées une fois « pour bien
     faire », et que c'est ce qui a produit le brouillard. Les changer à nouveau
     doit être un geste DÉLIBÉRÉ, qui casse ce test et oblige à revenir ici.
+
+    Mis à jour à la refonte 09/2026 (« Ely Agent.dc.html », claude.ai/design) :
+    la maquette repose tout le ramp en oklch sur la teinte 262, et l'accent
+    passe du cyan (h=196) au bleu-indigo (h=276). Les hex du 21/08 ont donc été
+    remplacés — délibérément, par ce commit-ci, et non dérivés « pour bien
+    faire » comme la fois précédente.
+
+    ⚠️ Le fond descend de #31363c à oklch(28 %), soit trois points de luminance
+    plus bas. Si l'ensemble paraît trop sombre à l'usage, le levier est
+    `--bg-app` SEUL : c'est la remontée des TEXTES qui avait produit le
+    brouillard d'août, pas celle des fonds.
     """
     sombre = _bloc(css, '[data-theme="dark"]')
     maquette = {
-        "--bg-app": "#31363c",
-        "--bg-surface": "#40464d",
-        "--bg-surface-2": "#4d535b",
-        "--border-default": "#565b63",
-        "--text-primary": "#e9ebee",
-        "--text-secondary": "#a1a5aa",
-        "--text-muted": "#6c6f73",
-        "--dot-off": "#7c8186",
+        "--bg-app": "oklch(28% 0.018 262)",
+        "--bg-surface": "oklch(32% 0.018 262)",
+        "--bg-surface-2": "oklch(36% 0.020 262)",
+        "--border-default": "oklch(40% 0.020 262)",
+        "--text-primary": "oklch(95% 0.006 262)",
+        "--text-secondary": "oklch(76% 0.012 262)",
+        "--text-muted": "oklch(60% 0.012 262)",
+        "--dot-off": "oklch(60% 0.012 262)",
     }
     for jeton, attendu in maquette.items():
         actuel = (sombre.get(jeton) or "").strip().lower()
         assert actuel == attendu, (
-            f"{jeton} vaut « {actuel} », la maquette du 21/08 dit « {attendu} ». "
+            f"{jeton} vaut « {actuel} », la maquette du 09/2026 dit « {attendu} ». "
             f"Si c'est voulu, mets à jour ce pin dans le même commit."
         )
+
+
+def test_the_accent_is_blue(css):
+    """La teinte de l'accent, épinglée.
+
+    Le seul changement de couleur que Franck a nommé explicitement : « du vert
+    au bleu ». Toute l'interface — jusqu'au wireframe de l'avatar — lit
+    `--accent-h`, donc cette ligne unique porte la bascule. La repasser à 196
+    (cyan) sans y penser reteindrait tout d'un coup ; ce pin l'interdit en
+    silence.
+    """
+    racine = _bloc(css, "\n:root {")
+    assert racine.get("--accent-h", "").strip() == "276", (
+        f"`--accent-h` vaut « {racine.get('--accent-h')} » ; la refonte 09/2026 "
+        f"pose 276 (bleu-indigo). 196 était le cyan d'avant."
+    )
 
 
 def test_the_conversation_thread_sits_below_the_rest(css):
@@ -105,13 +132,28 @@ def test_the_conversation_thread_sits_below_the_rest(css):
     pin vérifie donc une relation, pas une valeur, et il la vérifie dans le
     bon sens pour chaque thème.
     """
-    def lum(hexa: str) -> float:
-        h = hexa.strip().lstrip("#")
-        def canal(c: int) -> float:
-            x = c / 255
+    # La maquette 09/2026 écrit le ramp en oklch, la précédente en hex. Le pin
+    # vérifie une RELATION entre deux fonds, pas une notation : il accepte donc
+    # les deux et compare dans le même espace. Sans ça, changer d'écriture
+    # cassait le test pour une raison qui n'a rien à voir avec ce qu'il garde.
+    def lum(couleur: str) -> float:
+        c = couleur.strip().lower()
+        if c.startswith("oklch("):
+            nombres = re.findall(r"-?[\d.]+", c[6:])
+            lightness = float(nombres[0])
+            # `oklch(28% ...)` et `oklch(0.28 ...)` désignent la même chose.
+            return lightness / 100 if "%" in c.split()[0] else lightness
+        h = c.lstrip("#")
+        def canal(v: int) -> float:
+            x = v / 255
             return x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4
         r, g, b = (canal(int(h[k:k + 2], 16)) for k in (0, 2, 4))
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        # Oklab est perceptuel, la luminance relative ne l'est pas : on ramène
+        # l'hex vers la même échelle par la clarté L* approchée, sinon les deux
+        # branches ne seraient pas comparables entre elles. Ici les deux
+        # opérandes de chaque assertion partagent toujours la même notation,
+        # donc seule la MONOTONIE compte.
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) ** (1 / 3)
 
     sombre = _bloc(css, '[data-theme="dark"]')
     clair = _bloc(css, '[data-theme="light"]')

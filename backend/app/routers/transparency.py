@@ -571,33 +571,24 @@ _MASQUAGE_APPLIQUE: tuple[tuple[str, str], ...] = (
     ("missions", "agent/missions/pii.py — anonymize_messages à chaque appel"),
     ("planificateur", "services/scheduler.py — le prompt de la tâche"),
     ("resultats d'outils", "services/tool_gateway.py — re-anonymises avant retour au modele"),
+    # 03/09/2026 — les deux trous nommés le 02/09 sont fermés : chaque chemin
+    # passe par le masque de SA conversation et démasque ses sorties.
+    ("titre de conversation", "routers/chat._maybe_generate_title — masque de la conversation"),
+    ("resume de fin de conversation",
+     "routers/chat._summarize_conversation — transcript masque (masque neuf, "
+     "le tour est clos), 3 sorties demasquees"),
+    ("consolidation rapide",
+     "services/memory/maintenance_rapid._extract_facts — masque neuf, faits demasques"),
 )
 
 # ⚠️ CE QUE ÇA CORRIGE (relecture du 02/09/2026). Le champ était un booléen
 # codé en dur à True : « le masquage est appliqué avant TOUT appel de modèle ».
-# Deux chemins envoient du texte BRUT, tous deux vérifiés en relisant le code :
-#   - la génération du titre d'une conversation
-#     (``routers/chat._generate_conversation_title``) passe ``user_text`` et
-#     ``assistant_text`` tels quels dans son prompt ;
-#   - la corvée de consolidation de fin de conversation
-#     (``routers/chat._consolidate_conversation_memory``) relit les 30 derniers
-#     ``Message.content`` en base et les concatène dans trois prompts.
-# Les deux visent le tier MAINTENANCE, souvent local — mais « souvent » n'est
-# pas « toujours », et c'est justement la question à laquelle cette page
-# répond. HORS PÉRIMÈTRE de ce lot : on ne code pas leur anonymisation ici, on
-# arrête de prétendre qu'elle existe. Suite à instruire séparément.
-_MASQUAGE_ABSENT: tuple[dict[str, str], ...] = (
-    {
-        "path": "routers/chat._generate_conversation_title",
-        "what": "le titre d'une conversation est genere a partir du texte BRUT "
-                "du premier echange",
-    },
-    {
-        "path": "routers/chat._consolidate_conversation_memory",
-        "what": "la consolidation de fin de conversation relit les messages en "
-                "base et les envoie BRUTS (resume, faits, preferences)",
-    },
-)
+# Deux chemins envoyaient du texte BRUT au tier MAINTENANCE — le titre d'une
+# conversation et le résumé de fin de conversation — et la page les nommait
+# plutôt que de prétendre. Fermés le 03/09/2026 (ils figurent désormais dans
+# ``_MASQUAGE_APPLIQUE``) : la liste est vide, et le test exige que tout
+# chemin qu'on y remettrait soit NOMMÉ, jamais une affirmation absolue.
+_MASQUAGE_ABSENT: tuple[dict[str, str], ...] = ()
 
 
 def _masquage() -> dict[str, Any]:

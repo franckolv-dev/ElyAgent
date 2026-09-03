@@ -129,6 +129,7 @@
   "chat": {
     "placeholder": "Ask ELY anything…",
     "send": "Send",
+    "title": "ELY IS ONLINE",
     "suggestions": {
       "hosts": "What hosts are configured?",
       "sysinfo": "System info",

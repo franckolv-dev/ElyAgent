@@ -1084,11 +1084,12 @@ export default function SettingsPage() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header />
         <LicenceBanner />
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
           <main className="flex flex-col flex-1 overflow-hidden" style={{ background: "var(--bg-app)" }}>
 
           {/* Toast stack */}
@@ -2293,6 +2294,7 @@ export default function SettingsPage() {
           </div>{/* max-w-3xl */}
           </div>{/* overflow-y-auto tab content */}
           </main>
+        </div>
         </div>
       </div>
 

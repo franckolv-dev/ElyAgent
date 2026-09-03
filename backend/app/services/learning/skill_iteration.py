@@ -209,7 +209,10 @@ async def patch_skill(skill_id: str, judge_rationale: str) -> dict[str, Any]:
             HumanMessage(content=_compose_patch_prompt(skill, list(cases), judge_rationale)),
         ]
         response = await llm.ainvoke(messages)
-        raw = getattr(response, "content", "") or ""
+        from app.agent.helpers.message_content import content_to_text
+        # Responses API (gpt-5.6) : `content` arrive en LISTE de blocs ;
+        # passé tel quel au dé-anonymiseur, `.replace` plantait (03/09/2026).
+        raw = content_to_text(getattr(response, "content", "") or "")
     except Exception as exc:
         out["status"] = "llm_call_failed"
         logger.warning("skill_iteration: tier-S call failed for skill %s: %s", skill_id, exc)

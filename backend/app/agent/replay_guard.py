@@ -90,12 +90,16 @@ def engaging_actions_done(messages: list[BaseMessage]) -> set[str]:
     Ne lève jamais : un garde qui plante empêcherait le tour d'aboutir, ce qui
     coûterait plus cher que le défaut qu'il évite.
     """
-    demandes: dict[str, str] = {}
+    demandes: dict[str, tuple[str, dict]] = {}
     for m in messages:
         if isinstance(m, AIMessage):
             for call in (getattr(m, "tool_calls", None) or []):
                 try:
-                    demandes[str(call["id"])] = str(call.get("name") or "")
+                    args = call.get("args") or {}
+                    demandes[str(call["id"])] = (
+                        str(call.get("name") or ""),
+                        args if isinstance(args, dict) else {},
+                    )
                 except Exception as exc:  # noqa: BLE001 — un appel illisible se saute
                     logger.debug("garde de rejeu : appel illisible (%s)", exc)
 
@@ -103,12 +107,24 @@ def engaging_actions_done(messages: list[BaseMessage]) -> set[str]:
     for m in messages:
         if not isinstance(m, ToolMessage):
             continue
-        nom = demandes.get(str(getattr(m, "tool_call_id", "")), "")
+        nom, args = demandes.get(str(getattr(m, "tool_call_id", "")), ("", {}))
         if not nom or _a_echoue(m):
             continue
-        if effect_of(nom) == "ENGAGEANT":
+        if effect_of(nom) == "ENGAGEANT" and not _lecture_brute(nom, args):
             faits.add(nom)
     return faits
+
+
+def _lecture_brute(nom: str, args: dict) -> bool:
+    """Un passe-plat ``*_raw_api_call`` est classé ENGAGEANT par son nom ;
+    sa nature réelle est celle de la méthode appelée. Le 03/09/2026, une
+    reprise retirait ``gmail_raw_api_call`` du branchement après un simple
+    ``messages.list`` — et le modèle ne pouvait plus lire ce qu'on lui
+    reprochait d'avoir sauté."""
+    if not nom.endswith("_raw_api_call"):
+        return False
+    from app.services.google_raw_api import est_une_lecture
+    return est_une_lecture(args.get("method_path"))
 
 
 def after_verification_bounce(messages: list[BaseMessage]) -> bool:

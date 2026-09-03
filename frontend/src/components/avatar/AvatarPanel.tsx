@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Volume2, VolumeX, ShieldAlert, Shield, Check, X, Ban } from "lucide-react";
+import { Volume2, VolumeX, ShieldAlert, Check, X, Ban } from "lucide-react";
 import { CyberpunkAvatar, AvatarState } from "./CyberpunkAvatar";
 import { TTSPlayer } from "@/lib/tts";
 import type { WSMessage } from "@/lib/types";
@@ -269,6 +269,14 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)", width: "100%" }}>
+      {/* ── Carte avatar (maquette 09/2026) ────────────────────────────────
+          La maquette posait ici une icône SVG de visage. On garde la TÊTE 3D
+          existante — consigne explicite de Franck — et on ne reprend que le
+          pavé qui l'entoure : fond `--surface-2`, coins 13 px, signature et
+          ligne d'état dessous. Le wireframe suit `--accent-h`, il passe donc
+          au bleu avec le reste de l'interface ; les couleurs par état de la
+          tête (idle / thinking / …) restent gérées par CyberpunkAvatar. */}
+      <div className="avatar-card">
       {/* ── Avatar wireframe stage : grille + halo + tête 3D ── */}
       <div className="avatar-stage" style={{ height: "auto", aspectRatio: "1 / 1" }}>
         {/* Corners HUD */}
@@ -306,7 +314,10 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
         </div>
       </div>
 
-      {/* ── Actions (TTS + état) ── */}
+      {/* ── Actions (TTS) + ligne d'état ── */}
+      {/* La signature « ELY :: EXACTLY LIKE YOU » de la maquette n'est pas
+          reprise ici : le bandeau de la tête 3D l'affiche déjà, en alternance
+          avec « ELY :: IDLE ». */}
       <div className="avatar-actions">
         <button
           onClick={toggleTts}
@@ -315,9 +326,20 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
           {ttsEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
           {ttsEnabled ? t("voiceActive") : t("voiceMuted")}
         </button>
-        <div className="avatar-action ghost">
-          <Shield size={11} /> ELY :: {avatarState.toUpperCase()}
+        <div className="avatar-action ghost" style={{ justifyContent: "center" }}>
+          {/* Le point reprend la couleur de l'état courant : c'est le même
+              signal que la tête, en 5 px, pour qui ne regarde pas l'avatar. */}
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: 999,
+              background: avatarState === "idle" ? "var(--success)" : "var(--accent)",
+            }}
+          />
+          ELY :: {avatarState.toUpperCase()}
         </div>
+      </div>
       </div>
 
       {/* ── HITL — Approve / Deny / Ban ── */}

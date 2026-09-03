@@ -1745,8 +1745,19 @@ def create_agent_node():
                     _invoke_msgs = maybe_inject_screenshot(_invoke_msgs, _base_llm)
                 except Exception as _vis_exc:
                     logger.debug("vision_injection skipped: %s", _vis_exc)
-                response = await ainvoke_with_deadline(
-                    _llm_with_tools_req, _invoke_msgs, tier=_tier, surface="general")
+                # Un raisonnement chiffré que le serveur ne lit plus (400
+                # invalid_encrypted_content) se retire du fil et le MÊME
+                # modèle est rappelé ; sans ça le 400 partait au repli et
+                # toute la conversation basculait sur un modèle de secours
+                # (03/09/2026, gpt-5.6 → minimax gratuit pour vingt tours).
+                from app.agent.helpers.reasoning_replay import (
+                    ainvoke_en_tolerant_le_raisonnement,
+                )
+                response = await ainvoke_en_tolerant_le_raisonnement(
+                    lambda _m: ainvoke_with_deadline(
+                        _llm_with_tools_req, _m, tier=_tier, surface="general"),
+                    _invoke_msgs,
+                )
                 # Strip any <think> block that slipped through
                 if hasattr(response, 'content') and isinstance(response.content, str):
                     response.content = strip_think_block(response.content)
@@ -1954,6 +1965,10 @@ def create_agent_node():
                 # Strip any /no_think marker (Qwen-only) before trying a
                 # different provider that doesn't understand it.
                 _fallback_msgs = strip_no_think(_invoke_msgs)
+                # Un autre fournisseur ne sait rien faire d'un raisonnement
+                # chiffré par le premier : on ne le lui envoie pas.
+                from app.agent.helpers.reasoning_replay import sans_raisonnement_chiffre
+                _fallback_msgs = sans_raisonnement_chiffre(_fallback_msgs)
 
                 def _pour_le_repli(_msgs: list, _llm_cible: Any) -> list:
                     """Le prompt système du repli est celui que SON modèle a

@@ -19,7 +19,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Bot, User, FileText, Image, FileCode, ThumbsUp, ThumbsDown, RefreshCw, Pencil } from "lucide-react";
+import { FileText, Image, FileCode, ThumbsUp, ThumbsDown, RefreshCw, Pencil } from "lucide-react";
 import { useState, useCallback } from "react";
 import type { Attachment, ChatMessage, ToolImage } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -190,37 +190,23 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
       transition={{ duration: 0.2 }}
       className={`flex flex-col gap-0.5 ${isUser ? "items-end" : "items-start"}`}
     >
-    <div className={`flex gap-3 w-full ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-      {/* Avatar icon */}
-      <div
-        className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
-          isUser
-            ? "bg-cyber-blue/10 border border-cyber-blue/30"
-            : "bg-cyber-cyan/10 border border-cyber-cyan/30"
-        }`}
-      >
-        {isUser ? (
-          <User className="w-3.5 h-3.5 text-cyber-blue" />
-        ) : (
-          <Bot className="w-3.5 h-3.5 text-cyber-cyan" />
-        )}
-      </div>
-
+    {/* Refonte 09/2026 : plus de pastille d'auteur de chaque côté. Le coin
+        serré de la bulle pointe vers son émetteur — c'est ce qui rend les
+        icônes User/Bot redondantes, pas un simple allègement visuel. */}
+    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       {/* Bubble */}
-      <div
-        className={`max-w-[75%] rounded-lg px-4 py-3 text-sm leading-relaxed ${
-          isUser
-            ? "bg-cyber-blue/10 border border-cyber-blue/20 text-text-primary"
-            : "bg-bg-card border border-border-dim text-text-primary"
-        }`}
-      >
+      <div className={isUser ? "bubble-user" : "bubble-assistant"}>
         {/* Attachment chips on user messages */}
         {isUser && message.attachments && message.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {message.attachments.map((att: Attachment) => (
               <div
                 key={att.file_id}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-cyber-blue/10 border border-cyber-blue/20 text-[11px] text-text-muted max-w-[180px]"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] max-w-[180px]"
+                style={{
+                  background: "color-mix(in oklab, var(--text-on-accent) 14%, transparent)",
+                  color: "var(--text-on-accent)",
+                }}
                 title={att.filename}
               >
                 <AttachmentFileIcon filename={att.filename} />
@@ -238,12 +224,18 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
               onChange={(e) => setEditValue(e.target.value)}
               rows={Math.min(8, Math.max(2, editValue.split("\n").length))}
               autoFocus
-              className="w-full bg-bg-primary/60 border border-cyber-blue/30 rounded p-2 text-sm text-text-primary resize-none focus:outline-none focus:border-cyber-blue"
+              className="w-full rounded p-2 text-sm resize-none focus:outline-none"
+              style={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-default)",
+                color: "var(--text-primary)",
+              }}
             />
             <div className="flex items-center gap-2 justify-end">
               <button
                 onClick={() => { setIsEditing(false); setEditValue(_contentStr); }}
-                className="px-2 py-1 rounded text-xs text-text-muted hover:text-text-primary transition-colors"
+                className="px-2 py-1 rounded text-xs transition-colors"
+                style={{ color: "var(--text-on-accent)", opacity: 0.75 }}
               >
                 {t("cancel")}
               </button>
@@ -252,7 +244,12 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
                   const v = editValue.trim();
                   if (v) { setIsEditing(false); onEdit?.(v); }
                 }}
-                className="px-2 py-1 rounded text-xs bg-cyber-blue/20 text-cyber-blue border border-cyber-blue/30 hover:bg-cyber-blue/30 transition-colors"
+                className="px-2 py-1 rounded text-xs transition-colors"
+                style={{
+                  background: "var(--bg-surface)",
+                  color: "var(--accent)",
+                  border: "1px solid var(--border-default)",
+                }}
               >
                 {t("sendEdit")}
               </button>

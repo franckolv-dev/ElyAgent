@@ -340,7 +340,10 @@ async def compute_user_state(
     except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
         logger.debug("user_state: usage non consigné (%s)", exc)
 
-    raw = getattr(response, "content", "") or ""
+    from app.agent.helpers.message_content import content_to_text
+    # Responses API (gpt-5.6) : `content` arrive en LISTE de blocs ;
+    # passé tel quel au dé-anonymiseur, `.replace` plantait (03/09/2026).
+    raw = content_to_text(getattr(response, "content", "") or "")
     raw = _strip_json_fences(raw)
     try:
         parsed = json.loads(raw)

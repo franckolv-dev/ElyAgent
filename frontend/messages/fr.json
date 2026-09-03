@@ -129,6 +129,7 @@
   "chat": {
     "placeholder": "Demandez à Ély n'importe quoi…",
     "send": "Envoyer",
+    "title": "ELY EST EN LIGNE",
     "suggestions": {
       "hosts": "Quels hôtes sont configurés ?",
       "sysinfo": "Infos système",

@@ -613,9 +613,14 @@ async def test_le_registre_nomme_les_chemins_qui_n_anonymisent_pas(
 
     assert "applied_before_every_model_call" not in masquage
     assert masquage["applied_on"], "aucun chemin verifie annonce"
-    assert masquage["not_applied_on"], "les deux trous connus ne sont pas nommes"
+    # 03/09/2026 : les deux trous sont fermes, la liste est vide — mais un
+    # chemin qu'on y remettrait devra etre NOMME, jamais tu.
+    assert isinstance(masquage["not_applied_on"], list)
     for trou in masquage["not_applied_on"]:
         assert trou["path"] and trou["what"]
+    couverts = {c["path"] for c in masquage["applied_on"]}
+    assert "titre de conversation" in couverts
+    assert "resume de fin de conversation" in couverts
 
 
 @pytest.mark.asyncio

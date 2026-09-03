@@ -307,7 +307,17 @@ class MaintenanceAgentRapid:
         from app.services.llm_provider import ComplexityTier, get_llm_for_tier
 
         llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
-        prompt = _EXTRACTION_PROMPT.format(conversation=conversation_text)
+        # Le tier MAINTENANCE est local par défaut, mais c'est une
+        # configuration d'administrateur : la conversation passe par un
+        # masque, et les faits extraits se démasquent avec le même
+        # dictionnaire (audit 02/09/2026, §9). Masque NEUF : cette corvée
+        # tourne après la déconnexion, quand le filtre du tour a déjà quitté
+        # le registre ; en réclamer un au registre en laisserait un orphelin.
+        from app.services.security_filter import SecurityFilter
+        _sf = SecurityFilter()
+        prompt = _EXTRACTION_PROMPT.format(
+            conversation=_sf.anonymize(conversation_text, ner_detection=False),
+        )
         # config={"callbacks": []} isolates this call from any active
         # LangGraph callback context so Ministral's tokens don't leak
         # into the user-visible chat stream.
@@ -335,7 +345,7 @@ class MaintenanceAgentRapid:
             )
         except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
             logger.debug("maintenance_rapid: usage non consigné (%s)", exc)
-        raw = _strip_json_fences(raw)
+        raw = _strip_json_fences(_sf.deanonymize(raw))
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:

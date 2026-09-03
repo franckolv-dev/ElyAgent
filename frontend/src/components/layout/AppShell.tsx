@@ -2,7 +2,7 @@
 /**
  * @project    ELY — Exactly Like You
  * @file       frontend/src/components/layout/AppShell.tsx
- * @brief      Shared layout shell — Header (full-width) + Sidebar + main slot
+ * @brief      Shared layout shell — Sidebar (pleine hauteur) + Header + main
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER — All rights reserved
@@ -29,14 +29,17 @@ interface AppShellProps {
 }
 
 export function AppShell({ children, wsStatus, headerCenter }: AppShellProps) {
+  // Refonte 09/2026 : la sidebar monte sur toute la hauteur et porte la
+  // marque ; l'entête ne couvre plus que la colonne de droite. L'ordre des
+  // deux blocs s'inverse donc par rapport à la version précédente.
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      <Header wsStatus={wsStatus}>{headerCenter}</Header>
-      {/* Licence enforcement banner (Phase 1) — sits below the topbar so it's
-          visible from every page that uses AppShell. */}
-      <LicenceBanner />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar />
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <Header wsStatus={wsStatus}>{headerCenter}</Header>
+        {/* Licence enforcement banner (Phase 1) — sits below the topbar so
+            it's visible from every page that uses AppShell. */}
+        <LicenceBanner />
         <main className="flex-1 overflow-y-auto" style={{ background: "var(--bg-app)" }}>
           {children}
         </main>

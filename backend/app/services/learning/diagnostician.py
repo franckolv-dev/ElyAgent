@@ -432,7 +432,10 @@ async def _call_diagnostician_llm(prompt: str, user_id: str | None = None) -> tu
     response = await llm.ainvoke(
         [{"role": "user", "content": prompt}], config={"callbacks": []},
     )
-    raw = getattr(response, "content", "") or ""
+    from app.agent.helpers.message_content import content_to_text
+    # Responses API (gpt-5.6) : `content` arrive en LISTE de blocs ;
+    # passé tel quel au dé-anonymiseur, `.replace` plantait (03/09/2026).
+    raw = content_to_text(getattr(response, "content", "") or "")
     if user_id:
         try:
             from app.services.analytics_service import log_response_usage

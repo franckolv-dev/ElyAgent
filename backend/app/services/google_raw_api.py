@@ -30,6 +30,33 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Les verbes de l'API Google qui LISENT. Un passe-plat qui appelle l'un d'eux
+# n'est ni un acte engageant (garde anti-rejeu) ni une action à confirmer
+# (HITL) : en production le 03/09/2026, chaque ``messages.list`` du nettoyage
+# Gmail redemandait un clic — et « Toujours autoriser » était refusé depuis le
+# 02/09 (``3fb4c6c``), à raison pour ``modify`` ou ``settings.*``, mais pas
+# pour une lecture. Tout verbe absent d'ici reste une écriture : l'incertitude
+# se paie d'une confirmation, jamais l'inverse.
+_VERBES_DE_LECTURE = frozenset({
+    "list", "get", "getProfile", "batchGet", "batchGetByDataFilter",
+    "getByDataFilter", "search", "searchContacts", "searchDirectoryPeople",
+    "export", "instances", "query", "generateIds",
+})
+
+
+def est_une_lecture(method_path: object) -> bool:
+    """True si ``method_path`` (``users.messages.list``) ne fait que lire.
+
+    Il faut au moins une ressource ET un verbe : ``"list"`` seul ne dit pas
+    ce qu'il liste, on le traite comme une écriture."""
+    if not isinstance(method_path, str):
+        return False
+    parts = [p for p in method_path.strip().split(".") if p]
+    if len(parts) < 2:
+        return False
+    return parts[-1] in _VERBES_DE_LECTURE
+
+
 _BLOCKED_METHODS = frozenset({
     "users.messages.batchDelete",
     "files.emptyTrash",
