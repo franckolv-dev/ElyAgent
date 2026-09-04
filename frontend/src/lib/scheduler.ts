@@ -33,6 +33,9 @@ export interface ScheduledTask {
   last_run_started_at: string | null;
   // Cette tâche a-t-elle le DROIT de se taire ? Seule une tâche de veille.
   allow_silent: boolean;
+  // Cette tâche lance une MISSION à l'heure dite (carnet, budgets, passages)
+  // au lieu d'un tour de chat — pour les travaux longs (0036, 04/09).
+  as_mission: boolean;
   created_at: string;
 }
 
@@ -72,6 +75,7 @@ export const schedulerApi = {
     prompt: string;
     cron_expression: string;
     channel?: string;
+    as_mission?: boolean;
   }): Promise<ScheduledTask> =>
     call("/scheduler/", {
       method: "POST",

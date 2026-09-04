@@ -18,7 +18,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import {
-  Clock, Loader2, AlertCircle, Trash2, Play, Power, RefreshCw, X, Lightbulb,
+  Clock, Loader2, AlertCircle, Trash2, Play, Power, RefreshCw, X, Lightbulb, Plus, Target,
 } from "lucide-react";
 import {
   schedulerApi, describeCron, cadenceToCron, type ScheduledTask,
@@ -31,6 +31,10 @@ interface CreatePrefill {
   name: string;
   prompt: string;
   cron: string;
+  // Lancer une MISSION à l'heure dite plutôt qu'un tour de chat : pour un
+  // travail long (tri d'une boîte, prospection), qui a besoin de carnet,
+  // budgets et passages (04/09).
+  asMission: boolean;
 }
 
 export default function ScheduledTasksPage() {
@@ -96,7 +100,14 @@ export default function ScheduledTasksPage() {
       name: s.suggested_prompt.slice(0, 60),
       prompt: s.suggested_prompt,
       cron: cadenceToCron(s.suggested_cadence) ?? "",
+      asMission: false,
     });
+  };
+
+  // Le formulaire existait mais ne s'ouvrait que depuis une suggestion :
+  // sans ce bouton, créer une tâche à la main passait par le chat (04/09).
+  const openCreateBlank = () => {
+    setPrefill({ suggestionId: null, name: "", prompt: "", cron: "", asMission: false });
   };
 
   const onCreate = async () => {
@@ -107,6 +118,7 @@ export default function ScheduledTasksPage() {
         name: prefill.name.trim(),
         prompt: prefill.prompt.trim(),
         cron_expression: prefill.cron.trim(),
+        as_mission: prefill.asMission,
       });
       // La tâche est créée PAR L'UTILISATEUR — on marque la suggestion
       // acceptée seulement après ce succès (best-effort).
@@ -186,9 +198,18 @@ export default function ScheduledTasksPage() {
                 <h1 className="text-lg font-medium text-text-primary">{t("title")}</h1>
                 <span className="text-[11px] text-text-muted">({tasks.length})</span>
               </div>
-              <button onClick={() => { setLoading(true); fetchAll(); }} className="btn" title={t("refresh")}>
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={openCreateBlank}
+                  className="text-[11px] px-3 py-1.5 rounded border border-cyber-cyan/30 bg-cyber-cyan/10 text-cyber-cyan hover:bg-cyber-cyan/20 inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {t("createNew")}
+                </button>
+                <button onClick={() => { setLoading(true); fetchAll(); }} className="btn" title={t("refresh")}>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             <p className="text-xs text-text-muted max-w-3xl">{t("intro")}</p>
@@ -292,6 +313,11 @@ export default function ScheduledTasksPage() {
                               </span>
                             );
                           })()}
+                          {task.as_mission && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded border shrink-0 inline-flex items-center gap-1 bg-violet-500/10 border-violet-500/30 text-violet-300" title={t("badgeMissionHint")}>
+                              <Target className="w-2.5 h-2.5" />{t("badgeMission")}
+                            </span>
+                          )}
                           <span className="text-[10px] text-cyber-cyan font-mono">{describeCron(task.cron_expression)}</span>
                           <span className="text-[10px] text-text-muted">· {task.channel}</span>
                         </div>
@@ -384,7 +410,9 @@ export default function ScheduledTasksPage() {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <p className="text-[11px] text-text-muted">{t("createModalIntro")}</p>
+                  <p className="text-[11px] text-text-muted">
+                    {prefill.suggestionId !== null ? t("createModalIntro") : t("createModalIntroManual")}
+                  </p>
                   <label className="block text-[11px] text-text-muted">
                     {t("createName")}
                     <input
@@ -414,6 +442,18 @@ export default function ScheduledTasksPage() {
                       {describeCron(prefill.cron) !== prefill.cron
                         ? <span className="text-cyber-cyan">{describeCron(prefill.cron)}</span>
                         : t("createCronHint")}
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-[11px] text-text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={prefill.asMission}
+                      onChange={(e) => setPrefill({ ...prefill, asMission: e.target.checked })}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="text-text-primary">{t("createAsMission")}</span>
+                      <span className="block text-[10px] text-text-muted">{t("createAsMissionHint")}</span>
                     </span>
                   </label>
                   <div className="flex items-center justify-end gap-2 pt-1">

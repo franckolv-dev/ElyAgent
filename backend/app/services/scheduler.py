@@ -135,6 +135,14 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
             )
             return
 
+        # Le pont vers les missions (0036, 04/09/2026) : la tâche donne la
+        # récurrence, la mission fait le travail. Rien du tour de chat
+        # ci-dessous ne s'applique — ni conversation, ni livraison : la
+        # mission notifie elle-même sa fin.
+        if getattr(task, "as_mission", False):
+            await _lancer_la_mission(task)
+            return
+
         # Indicateur d'état (13/06) : marquer « running » dès le départ pour
         # que l'UI montre une exécution en cours (avant : aucun feedback).
         async with async_session() as db:
@@ -401,6 +409,56 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
         # so it can't linger or re-fire on reboot (its DateTrigger is past).
         if _is_once:
             await _delete_oneshot(task_id)
+
+
+async def _lancer_la_mission(task: ScheduledTask) -> None:
+    """Crée et démarre la mission de cette occurrence — sauf si celle de
+    l'occurrence précédente tourne encore : on ne double pas un tri de boîte
+    par un second tri de la même boîte."""
+    from app.models.mission import Mission
+    from app.services import mission_service
+    from app.services.mission_heartbeat import schedule_first_tick
+
+    async with async_session() as db:
+        vivante = (await db.execute(
+            select(Mission).where(
+                Mission.source == "scheduled_task",
+                Mission.source_ref == task.id,
+                Mission.status.in_(("draft", "planning", "running", "paused")),
+            )
+        )).scalars().first()
+    if vivante is not None:
+        logger.info(
+            "Tâche '%s' : la mission %s est encore en cours — occurrence sautée",
+            task.name, vivante.id[:8],
+        )
+        await _noter(task.id, "silent",
+                     f"Mission {vivante.id[:8]} encore en cours ({vivante.status}) — "
+                     "occurrence sautée")
+        return
+
+    m = await mission_service.create_mission(
+        user_id=task.user_id, title=task.name, goal=task.prompt,
+        source="scheduled_task", source_ref=task.id,
+        budget_iterations=100, autonomous=True,
+    )
+    await mission_service.start_mission(m.id)
+    await schedule_first_tick(m.id)
+    logger.info("Tâche '%s' : mission %s créée et démarrée", task.name, m.id[:8])
+    await _noter(task.id, "success",
+                 f"Mission {m.id[:8]} « {task.name} » lancée — suivi dans Missions")
+
+
+async def _noter(task_id: str, statut: str, resultat: str) -> None:
+    async with async_session() as db:
+        t = (await db.execute(
+            select(ScheduledTask).where(ScheduledTask.id == task_id)
+        )).scalar_one_or_none()
+        if t is not None:
+            t.last_run_at = datetime.now(timezone.utc)
+            t.last_status = statut
+            t.last_result = resultat
+            await db.commit()
 
 
 async def _deliver_result(task: ScheduledTask, content: str) -> None:

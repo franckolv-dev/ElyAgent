@@ -930,7 +930,13 @@
     "createSubmit": "Créer",
     "createBusy": "Création…",
     "toastCreated": "Tâche créée — visible dans la liste ci-dessous.",
-    "createError": "La création a échoué."
+    "createError": "La création a échoué.",
+    "createNew": "Nouvelle tâche",
+    "createModalIntroManual": "Décris ce qu'Ely doit faire et à quelle cadence. C'est toi qui crées.",
+    "createAsMission": "Exécuter comme mission",
+    "createAsMissionHint": "Pour un travail long (tri d'une boîte mail, prospection) : à l'heure dite, la tâche crée et démarre une mission avec carnet de bord, budgets et réveils, au lieu d'un tour de chat limité.",
+    "badgeMission": "mission",
+    "badgeMissionHint": "À l'heure dite, cette tâche lance une mission (suivi dans Missions)."
   },
   "security": {
     "pageTitle": "Sécurité",

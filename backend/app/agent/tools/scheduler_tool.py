@@ -61,6 +61,7 @@ async def scheduler_create_task(
     prompt: str,
     cron_expression: str,
     channel: str = "web",
+    as_mission: bool = False,
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
     """Create a new scheduled task that will run automatically.
@@ -110,6 +111,12 @@ async def scheduler_create_task(
         channel: 'web' (default — browser notification + accumulated in the
             « Missions » tab) or 'telegram' (Telegram message via the
             linked bot).
+        as_mission: True when the work is LONG (dozens of tool calls, e.g.
+            sorting a whole mailbox, a prospection run) : at the scheduled
+            time the task creates and starts a MISSION with `prompt` as its
+            goal, instead of running it in a single chat turn. The mission
+            has its own logbook, budgets and wake-ups. Keep False for short
+            recurring jobs (briefing, reminder, quick check).
     """
     _expr = cron_expression.strip()
     if _expr.lower().startswith("@once"):
@@ -139,6 +146,7 @@ async def scheduler_create_task(
         prompt=prompt,
         cron_expression=cron_expression,
         channel=channel,
+        as_mission=bool(as_mission),
     )
 
     async with async_session() as db:
@@ -153,7 +161,8 @@ async def scheduler_create_task(
         f"Tâche planifiée créée : '{name}'\n"
         f"Planification : {cron_expression}\n"
         f"Canal : {channel}\n"
-        f"Prompt : {prompt}\n"
+        + ("Mode : mission (carnet, budgets, passages)\n" if as_mission else "")
+        + f"Prompt : {prompt}\n"
         f"ID : {task.id}"
     )
 

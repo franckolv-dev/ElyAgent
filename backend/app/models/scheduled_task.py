@@ -51,5 +51,9 @@ class ScheduledTask(Base):
     # n'est parvenu à l'utilisateur ni n'est resté pour l'expliquer.
     # Cf. révision 0033.
     allow_silent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # 04/09/2026 — le pont vers les missions : à l'heure dite, la tâche ne joue
+    # pas son prompt en un tour de chat, elle crée et démarre une MISSION
+    # (carnet, budgets, passages). La récurrence est ici, le travail là-bas.
+    as_mission: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
