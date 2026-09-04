@@ -1517,7 +1517,18 @@ def create_agent_node():
                     from app.agent.tool_filter import tools_named_in_text
                     _named = tools_named_in_text(registry.all_tools, _filter_query)
                     _have = {t.name for t in _filtered_tools}
-                    _extra = [t for t in _named if t.name not in _have]
+                    # Une EXCLUSION de profil ne se lève pas : le carnet d'une
+                    # mission nomme les outils de ses passages précédents, et
+                    # ce filet rebranchait ainsi les outils de diagnostic que
+                    # le profil `mission` retire (#378) — 04/09/2026.
+                    _interdits: set[str] = set()
+                    if _profile:
+                        from app.agent.toolset_profiles import outils_exclus_du_profil
+                        _interdits = set(outils_exclus_du_profil(_profile_effectif))
+                    _extra = [
+                        t for t in _named
+                        if t.name not in _have and t.name not in _interdits
+                    ]
                     if _extra:
                         _filtered_tools = list(_filtered_tools) + _extra
                         logger.warning(

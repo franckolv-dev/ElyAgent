@@ -339,6 +339,20 @@ _PROFILES: dict[str, tuple[str, ...] | None] = {
 COMPACT_PROFILE: str = "compact"
 
 
+def outils_exclus_du_profil(name: str) -> frozenset[str]:
+    """Ce que ce profil INTERDIT — et que rien ne doit rebrancher.
+
+    ⚠️ La différence n'est pas cosmétique (04/09/2026). Un outil absent d'un
+    profil n'a pas été demandé ; un outil EXCLU est interdit. L'union des
+    « outils nommés dans le prompt » (le filet des tâches automatisées) lit
+    la consigne, carnet compris : le carnet d'une mission cite les outils de
+    ses passages précédents, donc `system_get_logs` revenait à chaque tour
+    dans une mission — la boucle d'auto-diagnostic de #378 rouvrait par la
+    porte de service, 45 actions sur 200 et 5 M de tokens pour rien.
+    """
+    return _EXCLUS_PAR_PROFIL.get(name, frozenset())
+
+
 def list_profiles() -> list[str]:
     """Return the names of all registered profiles."""
     return list(_PROFILES.keys())
