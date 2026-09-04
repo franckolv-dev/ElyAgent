@@ -28,12 +28,8 @@ This contribution guide focuses on what's *welcome* in PRs and how to set up a d
 
 ### ❌ Not accepted
 
-- Code that turns ELY into a hosted SaaS for third parties (the one
-  thing a permissive licence still cannot make safe)
 - Removal of the licence / copyright notices from source files (also
   forbidden by the licence)
-- Code that disables HITL / security filters by default
-- Telemetry / data exfiltration features
 
 ---
 
