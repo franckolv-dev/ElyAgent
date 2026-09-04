@@ -734,6 +734,16 @@ async def restart(
             await db.execute(
                 _sqldel(MissionStepRun).where(MissionStepRun.mission_id == mission_id)
             )
+            # La mémoire d'une mission libre n'est PAS dans ces tables : elle
+            # est dans le carnet, dans la sélection d'outils et dans le plan
+            # de session. Sans ces trois lignes, une mission relancée relisait
+            # « Passage 1 — mission conclue » et se redéclarait terminée en
+            # 51 s, objectif modifié compris (04/09/2026).
+            from app.agent.tools.todo_tool import oublier
+            from app.services.mission_workspace import reinitialiser
+
+            reinitialiser(mission_id)
+            oublier(mission_id)
 
         fresh = await db.get(Mission, mission_id)
         if fresh is None:

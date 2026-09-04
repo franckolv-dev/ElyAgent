@@ -158,6 +158,26 @@ def carnet_append_section(mission_id: str, section: str, line: str) -> None:
     write_carnet(mission_id, content)
 
 
+def reinitialiser(mission_id: str) -> None:
+    """Efface la MÉMOIRE de travail du workspace : carnet et sélection
+    d'outils. Les artefacts sont conservés — c'est le travail produit, pas le
+    souvenir du passage.
+
+    Appelé par ``/restart``. Depuis #370 le plan d'une mission ne vit plus
+    dans ``MissionPlan`` mais dans le carnet : effacer les tables sans
+    effacer le carnet laissait la mission relire « Passage 1 — mission
+    conclue » et se déclarer terminée en 51 s (04/09/2026).
+    """
+    ws = workspace_dir(mission_id)
+    for nom in ("CARNET.md", "OUTILS.json"):
+        try:
+            (ws / nom).unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            logger.warning("workspace %s : %s non effacé (%s)", mission_id[:8], nom, exc)
+
+
 def init_carnet(
     mission_id: str,
     title: str,
