@@ -37,8 +37,18 @@ describe("la page des tâches planifiées", () => {
     expect(page).toContain('t("badgeMission")');
   });
 
+  it("montre les cinq champs du cron et un exemple par cas courant", () => {
+    // « min heure jour-du-mois mois jour-de-semaine » + UN exemple ne disait
+    // pas comment écrire « tous les jours à 19h30 » (Franck, 04/09).
+    expect(page).toContain('t("createCronFields")');
+    for (const expr of ["30 12 * * *", "0 8 * * 1-5", "0 9 * * 1", "0 */2 * * *"]) {
+      expect(page).toContain(expr);
+    }
+    expect(page).not.toContain("createCronHint");
+  });
+
   it("a ses traductions dans les deux langues", () => {
-    for (const cle of ["createNew", "createModalIntroManual", "createAsMission", "createAsMissionHint", "badgeMission", "badgeMissionHint"]) {
+    for (const cle of ["createNew", "createModalIntroManual", "createAsMission", "createAsMissionHint", "badgeMission", "badgeMissionHint", "createCronFields", "createCronEgDaily", "createCronEgWeekdays", "createCronEgMonday", "createCronEgEveryTwoHours", "createCronUseExample"]) {
       expect(fr.scheduled[cle]).toBeTruthy();
       expect(en.scheduled[cle]).toBeTruthy();
     }

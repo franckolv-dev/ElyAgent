@@ -438,10 +438,36 @@ export default function ScheduledTasksPage() {
                       className="mt-1 w-full bg-bg-primary border border-border-dim rounded px-2 py-1.5 text-xs font-mono text-text-primary"
                       placeholder="0 9 * * 1"
                     />
-                    <span className="block mt-1 text-[10px] text-text-muted">
-                      {describeCron(prefill.cron) !== prefill.cron
-                        ? <span className="text-cyber-cyan">{describeCron(prefill.cron)}</span>
-                        : t("createCronHint")}
+                    {describeCron(prefill.cron) !== prefill.cron && (
+                      <span className="block mt-1 text-[10px] text-cyber-cyan">
+                        {describeCron(prefill.cron)}
+                      </span>
+                    )}
+                    {/* Les cinq champs nommés puis QUATRE exemples : « min heure
+                        jour-du-mois mois jour-de-semaine » avec un seul exemple
+                        ne disait pas comment écrire « tous les jours à 19h30 »
+                        (Franck, 04/09). Un exemple par cas courant le dit. */}
+                    <span className="block mt-1 text-[10px] text-text-muted font-mono">
+                      {t("createCronFields")}
+                    </span>
+                    <span className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-text-muted">
+                      {([
+                        ["createCronEgDaily", "30 12 * * *"],
+                        ["createCronEgWeekdays", "0 8 * * 1-5"],
+                        ["createCronEgMonday", "0 9 * * 1"],
+                        ["createCronEgEveryTwoHours", "0 */2 * * *"],
+                      ] as const).map(([cle, expr]) => (
+                        <button
+                          key={expr}
+                          type="button"
+                          onClick={() => setPrefill({ ...prefill, cron: expr })}
+                          className="flex items-baseline justify-between gap-2 text-left hover:text-text-secondary"
+                          title={t("createCronUseExample")}
+                        >
+                          <span>{t(cle)}</span>
+                          <span className="font-mono text-cyber-cyan shrink-0">{expr}</span>
+                        </button>
+                      ))}
                     </span>
                   </label>
                   <label className="flex items-start gap-2 text-[11px] text-text-muted cursor-pointer">
