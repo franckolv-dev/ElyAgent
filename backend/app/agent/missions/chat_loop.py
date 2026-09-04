@@ -65,6 +65,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 
 from app.agent.conformity import conformity_node, route_after_conformity
+from app.agent.missions.outillage import elargir, outillage_de_la_mission
 from app.agent.helpers.message_content import content_to_text
 from app.agent.routing import (
     CHAT_RECURSION_LIMIT,
@@ -195,6 +196,15 @@ class _Budgets:
         return None
 
 
+def _catalogue_du_profil() -> list:
+    """Le périmètre d'une mission : le profil `mission` (tout le catalogue
+    moins le diagnostic). La sélection par familles s'y applique."""
+    from app.agent.toolset_profiles import resolve_profile_tools
+    from app.skills import get_skill_registry
+
+    return resolve_profile_tools(_PROFIL_OUTILS, get_skill_registry().all_tools)
+
+
 # ── Le nœud d'outils de la mission ───────────────────────────────────────────
 
 
@@ -286,6 +296,7 @@ def _noeud_outils(
         dernier = state["messages"][-1]
         user_id = state.get("user_id", "") or ""
         sorties: list[ToolMessage] = []
+        mise_a_jour: dict = {}
         for appel in getattr(dernier, "tool_calls", None) or ():
             nom = appel.get("name") or ""
             args = appel.get("args") or {}
@@ -324,7 +335,18 @@ def _noeud_outils(
                 ),
                 tool_call_id=cid, name=nom,
             ))
-        return {"messages": sorties}
+            # `find_tool` est le filet de la sélection par familles : ce
+            # qu'il découvre entre, avec sa famille, pour le reste de la
+            # mission — et le tour suivant le voit déjà branché.
+            if nom == "find_tool" and ok and state.get("mission_tools"):
+                from app.agent.discovered_tools import get_discovered
+
+                elargis = elargir(
+                    mission_id, sorted(get_discovered(mission_id)), _catalogue_du_profil(),
+                )
+                if elargis:
+                    mise_a_jour["mission_tools"] = elargis
+        return {"messages": sorties, **mise_a_jour}
 
     return _outils
 
@@ -726,6 +748,12 @@ async def run_mission_chat_passage(
 
     filtre = mission_filter(mission_id)
     _preparer_carnet(mission)
+    # Les familles d'outils de la mission : choisies au premier passage,
+    # relues ensuite — après le carnet, pour que la ligne « Outils » s'y
+    # inscrive sous le squelette.
+    outils_mission = await outillage_de_la_mission(
+        mission_id, goal, _catalogue_du_profil(),
+    )
     await _amorcer_depuis_la_trace(mission_id)
     # AVANT la consigne : le prompt système d'`agent_node` est l'autre moitié
     # de ce qui part au modèle, et c'est la moitié que ce module doit servir
@@ -793,6 +821,7 @@ async def run_mission_chat_passage(
                 # découvrir en cours de route qu'elle n'a pas l'outil : elle
                 # n'a personne à qui le dire.
                 "toolset_profile": _PROFIL_OUTILS,
+                "mission_tools": list(outils_mission or ()),
                 "iteration_count": 0,
                 "conformity_retries": 0,
                 "conformity_gap_count": 0,

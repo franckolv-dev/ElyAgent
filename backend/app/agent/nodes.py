@@ -1486,6 +1486,24 @@ def create_agent_node():
                         sorted(t.name for t in _filtered_tools),
                     )
 
+                # Les familles d'outils d'une MISSION (04/09/2026) : le profil
+                # `mission` reste le périmètre, la sélection le restreint aux
+                # familles que l'objectif appelle, plus le noyau et ce que
+                # `find_tool` a découvert. 227 outils par action = 45 000
+                # tokens ; 36 suffisaient à « Nettoyage mails ».
+                _mission_tools = state.get("mission_tools") or ()
+                if _mission_tools:
+                    from app.agent.discovered_tools import get_discovered
+                    _garde = set(_mission_tools) | get_discovered(
+                        str(state.get("conversation_id") or "")
+                    )
+                    _avant = len(_filtered_tools)
+                    _filtered_tools = [t for t in _filtered_tools if t.name in _garde]
+                    logger.warning(
+                        "[diag.bind] mission : %d → %d outil(s) (familles + noyau + découverts)",
+                        _avant, len(_filtered_tools),
+                    )
+
                 # Automated / scheduled tasks run a FIXED, multi-domain prompt
                 # with no human to clarify with. En PLUS du filtre ci-dessus
                 # (déjà reparti du prompt initial via _filter_query), on UNIONNE

@@ -79,3 +79,8 @@ class AgentState(TypedDict):
     # tour de mission sur le tier IMAGE dès qu'une page lue parlait d'image.
     # Absent pour un tour de chat : le routage par la demande reste entier.
     tier_pin: str
+    # 04/09/2026 — les outils d'une MISSION : les familles choisies au premier
+    # passage par le petit modèle local, plus le noyau (cf.
+    # `agent.missions.outillage`). Vide ou absent = pas de restriction, tout
+    # le profil. Le nœud d'outils l'élargit quand `find_tool` découvre.
+    mission_tools: list[str]
