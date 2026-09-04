@@ -76,6 +76,8 @@ MAX_PROVIDER_RETRIES = int(os.environ.get("MISSION_MAX_PROVIDER_RETRIES", "5"))
 # des types très divers (`APIStatusError`, `RuntimeError`, wrappers maison),
 # et c'est le code HTTP qui porte le sens, pas la classe Python.
 _PANNES_PASSAGERES = (
+    "an error occurred while processing your request", "you can retry your request",
+    "internal server error",
     "429", "rate limit", "rate_limit", "too many requests", "quota",
     "502", "503", "504", "bad gateway", "service unavailable",
     "gateway timeout", "overloaded", "timeout", "timed out",
@@ -100,8 +102,39 @@ def _est_passagere(exc: BaseException) -> bool:
     son historique et de créer son tableur. Vingt-cinq minutes de travail
     perdues sur une limite de débit.
     """
+    # 04/09/2026 : `openai.APIError` GÉNÉRIQUE — « An error occurred while
+    # processing your request. You can retry your request … » — ne porte
+    # aucun code dans son message. Une mission de 70 actions est passée en
+    # `failed` dessus. Une exception du SDK est passagère sauf si c'est une
+    # erreur de REQUÊTE (400/401/403/404/422) : celles-là ne se résolvent pas
+    # en attendant.
+    if _est_une_erreur_de_requete(exc):
+        return False
+    if _vient_du_sdk_fournisseur(exc):
+        return True
     texte = f"{type(exc).__name__} {exc}".lower()
     return any(signe in texte for signe in _PANNES_PASSAGERES)
+
+
+def _vient_du_sdk_fournisseur(exc: BaseException) -> bool:
+    try:
+        import openai
+        return isinstance(exc, openai.APIError)
+    except Exception:  # noqa: BLE001 — SDK absent = pas de règle par type
+        return False
+
+
+def _est_une_erreur_de_requete(exc: BaseException) -> bool:
+    """400/401/403/404/422 : notre requête est en tort, attendre n'y change rien."""
+    try:
+        import openai
+        return isinstance(exc, (
+            openai.BadRequestError, openai.AuthenticationError,
+            openai.PermissionDeniedError, openai.NotFoundError,
+            openai.UnprocessableEntityError,
+        ))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _attente_du_report(essai: int) -> timedelta:
