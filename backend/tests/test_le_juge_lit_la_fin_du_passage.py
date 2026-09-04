@@ -234,7 +234,10 @@ async def test_un_budget_epuise_clot_le_passage_sans_juge_ni_panel(
         _appel("web_search", query="imprimerie Nantes"),
         _appel("web_search", query="imprimerie Rezé"),
         _appel("web_search", query="imprimerie Vertou"),  # refusé : 2/2
-        AIMessage(content="FAIT : deux recherches. Reste : le tableur."),
+        AIMessage(content=(
+            "FAIT : deux recherches. Reste : le tableur. "
+            f"{chat_loop.MARQUEUR_A_SUIVRE}"
+        )),
     ])
     monkeypatch.setattr(lp, "get_llm_for_tier", lambda *a, **k: modele)
     monkeypatch.setattr(lp, "get_fallback_llms", lambda *a, **k: [], raising=False)
@@ -252,10 +255,51 @@ async def test_un_budget_epuise_clot_le_passage_sans_juge_ni_panel(
 
     resultat = await chat_loop.run_mission_chat_passage(mid, uid, _BUT)
 
+    # Le modèle demandait un passage de plus : le budget ne le permet plus,
+    # la mission échoue en le disant, avec le bilan — sans le marqueur.
     assert resultat["failed"] is True
     assert "budget" in (resultat["failure_reason"] or "").lower()
     assert "FAIT : deux recherches" in (resultat["final_summary"] or "")
+    assert chat_loop.MARQUEUR_A_SUIVRE not in (resultat["final_summary"] or "")
     assert resultat["done"] is False
+
+
+@pytest.mark.asyncio
+async def test_un_budget_epuise_sur_une_conclusion_clot_la_mission(
+    mission_a_deux_actions, monkeypatch,
+):
+    """Le modèle dit avoir fini malgré le refus : la mission est conclue sur
+    SON bilan, pas sur celui d'un juge qui ne peut plus rien relancer."""
+    uid, mid = mission_a_deux_actions
+    import app.agent.missions.nodes as mn
+    import app.services.llm_provider as lp
+    from app.agent.missions import chat_loop
+
+    modele = _ModeleScripte([
+        _appel("web_search", query="imprimerie Nantes"),
+        _appel("web_search", query="imprimerie Rezé"),
+        _appel("web_search", query="imprimerie Vertou"),  # refusé : 2/2
+        AIMessage(content="Les trois imprimeries sont dans le tableur."),
+    ])
+    monkeypatch.setattr(lp, "get_llm_for_tier", lambda *a, **k: modele)
+    monkeypatch.setattr(lp, "get_fallback_llms", lambda *a, **k: [], raising=False)
+    monkeypatch.setattr(lp, "get_llm", lambda *a, **k: modele, raising=False)
+
+    async def _dispatch(nom, args, _cid, _uid, **_kw):
+        return f"Resultat de {nom}.", True
+
+    monkeypatch.setattr(mn, "dispatch_tool", _dispatch)
+
+    async def _juge_interdit(state):
+        raise AssertionError("le juge a été appelé alors que le budget est épuisé")
+
+    monkeypatch.setattr(chat_loop, "conformity_node", _juge_interdit)
+
+    resultat = await chat_loop.run_mission_chat_passage(mid, uid, _BUT)
+
+    assert resultat["done"] is True
+    assert resultat["failed"] is False
+    assert resultat["final_summary"] == "Les trois imprimeries sont dans le tableur."
 
 
 @pytest.mark.asyncio

@@ -880,21 +880,34 @@ async def run_mission_chat_passage(
                 "actions": len(journal)}
 
     # Un budget qui a mordu clôt la mission : le réveil suivant se ferait
-    # refuser sa première action. On échoue en le DISANT, et le bilan du
-    # modèle reste le résumé — pas un plan rédigé par un relais sans outils.
+    # refuser sa première action. Le modèle a conclu sans juge ni panel ; s'il
+    # dit avoir fini, la mission est conclue sur SON bilan. S'il demande un
+    # passage de plus, on échoue en le DISANT — le bilan reste le résumé,
+    # pas un plan rédigé par un relais sans outils.
     if budgets.epuise:
+        inachevee = _demande_un_autre_passage(texte)
         _ecrire_le_carnet(
-            mission_id, journal, bilan, False, incident=budgets.epuise[:200],
+            mission_id, journal, bilan, False,
+            incident=budgets.epuise[:200] if inachevee else None,
         )
         logger.info(
-            "Mission %s : passage terminé — %d action(s), %d tokens, %s",
+            "Mission %s : passage terminé — %d action(s), %d tokens, %s%s",
             mission_id, len(journal), tokens, budgets.epuise,
+            ", mission inachevée" if inachevee else ", mission conclue",
         )
+        if inachevee:
+            return {
+                "done": False,
+                "final_summary": bilan or None,
+                "failed": True,
+                "failure_reason": budgets.epuise,
+                "actions": len(journal),
+            }
         return {
-            "done": False,
-            "final_summary": bilan or None,
-            "failed": True,
-            "failure_reason": budgets.epuise,
+            "done": True,
+            "final_summary": bilan or "Mission terminée sans texte de conclusion.",
+            "failed": False,
+            "failure_reason": None,
             "actions": len(journal),
         }
 
