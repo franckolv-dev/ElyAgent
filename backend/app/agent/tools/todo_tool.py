@@ -191,6 +191,16 @@ def etapes_restantes(conversation_id: str) -> str:
     return "[Plan de la conversation — étapes restantes]\n" + "\n".join(lignes)
 
 
+def oublier(conversation_id: str) -> None:
+    """Oublie le plan de cette conversation. Appelé quand une mission est
+    relancée : sans ça, son premier ``session_todo`` rendait le plan de
+    l'exécution précédente, étapes déjà cochées (04/09/2026)."""
+    if not conversation_id:
+        return
+    with _verrou:
+        _registre.pop(conversation_id, None)
+
+
 def _refus(motif: str, plan: _Plan) -> str:
     """Un refus rend le plan INCHANGÉ avec lui : sans ça, le modèle devrait
     rappeler l'outil pour savoir ce qu'il a encore en mémoire."""
