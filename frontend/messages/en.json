@@ -926,7 +926,6 @@
     "createName": "Name",
     "createPrompt": "Request to run",
     "createCron": "Cadence (5-field cron)",
-    "createCronHint": "min hour day-of-month month day-of-week — e.g. \"0 9 * * 1\" = every Monday at 09:00",
     "createSubmit": "Create",
     "createBusy": "Creating…",
     "toastCreated": "Task created — now in the list below.",
@@ -936,7 +935,13 @@
     "createAsMission": "Run as a mission",
     "createAsMissionHint": "For long work (sorting a mailbox, a prospection run): at the scheduled time the task creates and starts a mission with its logbook, budgets and wake-ups, instead of a single limited chat turn.",
     "badgeMission": "mission",
-    "badgeMissionHint": "At the scheduled time this task starts a mission (tracked under Missions)."
+    "badgeMissionHint": "At the scheduled time this task starts a mission (tracked under Missions).",
+    "createCronFields": "Minute  Hour  Day  Month  Day-of-week-number",
+    "createCronEgDaily": "Every day at 12:30",
+    "createCronEgWeekdays": "Monday to Friday at 8:00",
+    "createCronEgMonday": "Every Monday at 9:00",
+    "createCronEgEveryTwoHours": "Every two hours",
+    "createCronUseExample": "Use this example"
   },
   "security": {
     "pageTitle": "Security",
