@@ -181,6 +181,51 @@ def playbook_section_titles(body: str) -> list[str]:
     ]
 
 
+# Les verrous qui font d'une procédure un CUL-DE-SAC : elle nomme un outil
+# d'auto-diagnostic ET en fait un préalable au travail. Sept procédures de ce
+# type, écrites entre le 09/08 et le 31/08/2026, ont paralysé la mission
+# « Prospection Market-Comm » du 04/09 — 5 M de tokens, rien d'écrit, statut
+# `BLOQUE_CONFIG_TIER`. Leur étape 4 reconnaissait qu'aucun outil ne rendait
+# la métadonnée exigée ; leur étape 5 interdisait alors tout appel métier.
+_VERROUS_DE_DIAGNOSTIC: tuple[str, ...] = (
+    "avant tout outil",
+    "avant tout appel",
+    "avant toute mutation",
+    "avant toute recherche",
+    "n'appeler aucun",
+    "n'appelle aucun",
+    "ne pas appeler",
+    "ne poursuis pas",
+    "ne pas poursuivre",
+    "bloque_config",
+    # Le verrou du 04/09 dans sa forme la plus douce : la procédure de
+    # prospection écrite le soir même ne disait pas « n'appelle aucun
+    # outil », elle disait « ne pas appliquer si le routage primaire exigé
+    # n'est pas certifiable ». Même cul-de-sac : rien ne rend cette preuve.
+    "certifiable",
+    "certifier le routage",
+    "tier primaire",
+)
+
+
+def exige_un_auto_diagnostic(body: str) -> bool:
+    """Cette procédure conditionne-t-elle le TRAVAIL à un auto-diagnostic ?
+
+    Deux conditions, toutes les deux nécessaires : elle nomme un outil de
+    diagnostic (journaux, santé, fournisseurs de modèles) ET elle en fait un
+    préalable ou un motif de refus. Citer `system_get_logs` pour répondre à
+    « pourquoi ma tâche a échoué » reste une procédure de chat légitime : on
+    refuse le VERROU, pas le mot.
+    """
+    from app.agent.toolset_profiles import outils_exclus_du_profil
+
+    texte = (body or "").lower().replace("\u2019", "'")
+    diagnostics = outils_exclus_du_profil("mission")
+    if not any(outil in texte for outil in diagnostics):
+        return False
+    return any(verrou in texte for verrou in _VERROUS_DE_DIAGNOSTIC)
+
+
 def missing_playbook_sections(body: str) -> list[str]:
     """Les rubriques obligatoires que ce document ne porte pas.
 
@@ -327,6 +372,19 @@ async def draft_skill_from_success(user_id: str, messages: list) -> LearnedSkill
     # CANDIDATE, un humain le lit avant qu'il n'entre au catalogue. On lui dit
     # donc ce qui manque, dans la raison qu'il a sous les yeux — pas seulement
     # dans un journal.
+    # Une mission ne s'ausculte pas (#378) — elle ne peut pas davantage
+    # l'APPRENDRE. Une procédure qui met un auto-diagnostic en préalable du
+    # travail ne devient jamais candidate : son verdict ne dépend de rien
+    # qu'un outil rende, donc elle bloque pour toujours.
+    if exige_un_auto_diagnostic(parsed["body"]):
+        logger.warning(
+            "skill_from_success : procédure %r REFUSÉE — elle conditionne le "
+            "travail à un auto-diagnostic (journaux, santé, fournisseurs). "
+            "Une mission ne s'ausculte pas.",
+            parsed["name"],
+        )
+        return None
+
     manquantes = missing_playbook_sections(parsed["body"])
     raison = (
         "Tirée d'un succès vérifié : la demande n'était pas satisfaite au "
@@ -367,6 +425,7 @@ __all__ = [
     "REQUIRED_SECTIONS",
     "build_success_skill_prompt",
     "draft_skill_from_success",
+    "exige_un_auto_diagnostic",
     "missing_playbook_sections",
     "playbook_section_titles",
     "should_propose_skill_from_success",
