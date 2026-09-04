@@ -35,6 +35,8 @@ class TaskCreate(BaseModel):
     # Défaut FAUX : une tâche qui n'a rien demandé livre toujours son
     # résultat. Seule une tâche de VEILLE peut se taire (révision 0033).
     allow_silent: bool = False
+    # Lancer une MISSION à l'heure dite plutôt qu'un tour de chat (0036).
+    as_mission: bool = False
 
 
 class TaskUpdate(BaseModel):
@@ -44,6 +46,7 @@ class TaskUpdate(BaseModel):
     channel: str | None = None
     enabled: bool | None = None
     allow_silent: bool | None = None
+    as_mission: bool | None = None
 
 
 class TaskResponse(BaseModel):
@@ -60,6 +63,7 @@ class TaskResponse(BaseModel):
     # rattrapage : elle ne sera PAS rejouée.
     last_status: str | None
     allow_silent: bool = False
+    as_mission: bool = False
     last_run_started_at: str | None
     created_at: str
 
@@ -93,6 +97,7 @@ async def create_task(
         cron_expression=body.cron_expression,
         channel=body.channel,
         allow_silent=body.allow_silent,
+        as_mission=body.as_mission,
     )
     db.add(task)
     await db.flush()
@@ -139,6 +144,8 @@ async def update_task(
         task.enabled = body.enabled
     if body.allow_silent is not None:
         task.allow_silent = body.allow_silent
+    if body.as_mission is not None:
+        task.as_mission = body.as_mission
 
     await db.commit()
     await db.refresh(task)
@@ -225,6 +232,7 @@ def _to_response(task: ScheduledTask) -> TaskResponse:
         last_result=task.last_result,
         last_status=task.last_status,
         allow_silent=bool(task.allow_silent),
+        as_mission=bool(getattr(task, "as_mission", False)),
         last_run_started_at=(
             task.last_run_started_at.isoformat() if task.last_run_started_at else None
         ),

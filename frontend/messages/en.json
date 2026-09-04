@@ -930,7 +930,13 @@
     "createSubmit": "Create",
     "createBusy": "Creating…",
     "toastCreated": "Task created — now in the list below.",
-    "createError": "Creation failed."
+    "createError": "Creation failed.",
+    "createNew": "New task",
+    "createModalIntroManual": "Describe what Ely should do and how often. You are the one creating it.",
+    "createAsMission": "Run as a mission",
+    "createAsMissionHint": "For long work (sorting a mailbox, a prospection run): at the scheduled time the task creates and starts a mission with its logbook, budgets and wake-ups, instead of a single limited chat turn.",
+    "badgeMission": "mission",
+    "badgeMissionHint": "At the scheduled time this task starts a mission (tracked under Missions)."
   },
   "security": {
     "pageTitle": "Security",
