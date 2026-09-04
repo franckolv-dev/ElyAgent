@@ -473,7 +473,9 @@ async def _process_one_mission(mission) -> None:
             elif result.get("failed"):
                 fr = result.get("failure_reason") or "Échec non spécifié"
                 try:
-                    failed = await mission_service.fail_mission(mid, fr)
+                    failed = await mission_service.fail_mission(
+                        mid, fr, final_summary=result.get("final_summary"),
+                    )
                     await _notify_terminal(failed, "failed", fr)
                 except ValueError:
                     pass

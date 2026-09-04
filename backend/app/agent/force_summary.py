@@ -95,7 +95,16 @@ async def force_summary_node(state: AgentState) -> dict:
 
     _sanitized = _sanitize_messages_for_mistral(list(messages) + [forcing_msg])
     try:
-        response = await ainvoke_with_deadline(llm, _sanitized, surface="force-summary")
+        # Même tolérance que le nœud agent (#371) : un raisonnement chiffré que
+        # le serveur ne relit plus (400 `invalid_encrypted_content`) vaut un
+        # rappel sans ces blocs, pas le texte de repli — vu au 80e appel du
+        # passage 3 de « Nettoyage mails », 04/09/2026.
+        from app.agent.helpers.reasoning_replay import ainvoke_en_tolerant_le_raisonnement
+
+        response = await ainvoke_en_tolerant_le_raisonnement(
+            lambda msgs: ainvoke_with_deadline(llm, msgs, surface="force-summary"),
+            _sanitized,
+        )
         logger.warning(
             "[force_summary] success : produced %d chars of summary",
             len(getattr(response, "content", "") or ""),

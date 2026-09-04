@@ -177,9 +177,18 @@ class _Budgets:
             echeance = echeance.replace(tzinfo=timezone.utc)
         self.echeance = echeance
         self.actions = 0
+        # La raison du premier refus : dès qu'un budget a mordu, le passage
+        # n'a plus de reprise possible — ni juge, ni escalade, il conclut.
+        self.epuise: Optional[str] = None
 
     def refus(self, tokens_du_passage: int) -> Optional[str]:
         """La raison de refuser l'action suivante, ou ``None``."""
+        raison = self._raison(tokens_du_passage)
+        if raison and self.epuise is None:
+            self.epuise = raison
+        return raison
+
+    def _raison(self, tokens_du_passage: int) -> Optional[str]:
         if self.actions >= self.iterations_restantes:
             return (
                 f"budget d'itérations de la mission épuisé "
@@ -352,7 +361,17 @@ def build_mission_chat_graph(
     g.add_node("force_summary", force_summary_node)
     g.add_node("verify", conformity_node)
     g.set_entry_point("agent")
-    g.add_conditional_edges("agent", should_continue, {
+
+    def _apres_agent(state: AgentState) -> str:
+        # Budget épuisé : la conclusion du modèle sort telle quelle. Le juge
+        # nommerait des écarts qu'aucune reprise ne peut plus combler (tout
+        # outil est refusé), et l'escalade paierait un panel pour un plan.
+        dernier = state["messages"][-1]
+        if budgets.epuise and isinstance(dernier, AIMessage) and not dernier.tool_calls:
+            return "end"
+        return should_continue(state)
+
+    g.add_conditional_edges("agent", _apres_agent, {
         "tools": "tools",
         "force_summary": "force_summary",
         "verify": "verify",
@@ -859,6 +878,38 @@ async def run_mission_chat_passage(
         _ecrire_le_carnet(mission_id, journal, bilan or "passage interrompu", True)
         return {"done": False, "failed": False, "interrupted": True,
                 "actions": len(journal)}
+
+    # Un budget qui a mordu clôt la mission : le réveil suivant se ferait
+    # refuser sa première action. Le modèle a conclu sans juge ni panel ; s'il
+    # dit avoir fini, la mission est conclue sur SON bilan. S'il demande un
+    # passage de plus, on échoue en le DISANT — le bilan reste le résumé,
+    # pas un plan rédigé par un relais sans outils.
+    if budgets.epuise:
+        inachevee = _demande_un_autre_passage(texte)
+        _ecrire_le_carnet(
+            mission_id, journal, bilan, False,
+            incident=budgets.epuise[:200] if inachevee else None,
+        )
+        logger.info(
+            "Mission %s : passage terminé — %d action(s), %d tokens, %s%s",
+            mission_id, len(journal), tokens, budgets.epuise,
+            ", mission inachevée" if inachevee else ", mission conclue",
+        )
+        if inachevee:
+            return {
+                "done": False,
+                "final_summary": bilan or None,
+                "failed": True,
+                "failure_reason": budgets.epuise,
+                "actions": len(journal),
+            }
+        return {
+            "done": True,
+            "final_summary": bilan or "Mission terminée sans texte de conclusion.",
+            "failed": False,
+            "failure_reason": None,
+            "actions": len(journal),
+        }
 
     # Un passage tronqué par le budget d'itérations du chat n'a pas conclu :
     # il a été coupé. On le réveille plutôt que de prendre son résumé forcé

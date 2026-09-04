@@ -240,11 +240,17 @@ async def complete_mission(mission_id: str, summary: str) -> Mission:
     return m
 
 
-async def fail_mission(mission_id: str, reason: str) -> Mission:
-    """any-non-terminal → failed."""
+async def fail_mission(
+    mission_id: str, reason: str, final_summary: str | None = None,
+) -> Mission:
+    """any-non-terminal → failed. ``final_summary`` garde le bilan du travail
+    réellement fait quand l'échec est un budget, pas un plantage."""
+    champs: dict = {"completed_at": _utcnow(), "failure_reason": reason}
+    if final_summary:
+        champs["final_summary"] = final_summary
     m = await _transition(
         mission_id, from_={"draft", "planning", "running", "paused"}, to="failed",
-        completed_at=_utcnow(), failure_reason=reason,
+        **champs,
     )
     _spawn_mission_outcome(m, "failed")
     return m

@@ -292,7 +292,7 @@ async def conformity_node(state: AgentState | dict) -> dict:
     """
     messages = list(state.get("messages") or [])
     demande = _last_user_request(messages)
-    resultat = _produced(messages)
+    resultat = _produced(messages, maxi=8000)
     if not demande or not resultat:
         return {"messages": []}
 
@@ -451,6 +451,14 @@ async def _try_escalation(state, messages: list, ecarts: str,
 
     if not should_escalate(new_count=new_count, previous_count=previous_count):
         return None
+    # Un passage automatisé (mission, tâche planifiée) n'escalade pas :
+    # personne ne lit sa réponse, seul le TRAVAIL compte, et le panel est
+    # sans outils par construction. Le 04/09/2026, sa réponse — un plan qui
+    # niait un mail réellement mis à la corbeille — a remplacé le bilan du
+    # passage et clos la mission « completed », pour 0,07 $.
+    if state.get("automated_task"):
+        logger.info("conformité : passage automatisé — pas d'escalade, les écarts sont rapportés")
+        return None
     last = messages[-1] if messages else None
     if not isinstance(last, AIMessage):
         return None
@@ -460,7 +468,7 @@ async def _try_escalation(state, messages: list, ecarts: str,
 
         result = await escalation.escalate_to_panel(
             demande=_last_user_request(messages),
-            produit=_produced(messages),
+            produit=_produced(messages, maxi=5000),
             ecarts=ecarts,
             user_id=state.get("user_id", ""),
             conversation_id=state.get("conversation_id", "") or "",
@@ -549,23 +557,44 @@ def _last_user_request(messages: list) -> str:
     return ""
 
 
-def _produced(messages: list) -> str:
+def _produced(messages: list, *, maxi: int | None = None) -> str:
     """Ce que le tour a produit : les retours d'outils + la réponse finale.
 
     Les retours d'outils comptent autant que le texte final — c'est là que se
     trouvent les mesures qui permettent de juger (``pdf_to_docx`` rapporte déjà
     ses caractères perdus et son calibrage, par exemple).
+
+    ``maxi`` borne le texte en gardant la FIN : la réponse finale d'abord,
+    puis les retours d'outils du plus récent au plus ancien, jusqu'au budget.
+    Un passage de mission joue des dizaines d'outils (39 actions = 34 000
+    caractères le 04/09/2026) : coupé par la fin, le juge lisait les deux
+    premiers retours et jamais la conclusion, et jugeait « rien n'a été fait »
+    un passage qui venait de mettre un mail à la corbeille.
     """
-    parts: list[str] = []
-    for m in messages:
-        if isinstance(m, ToolMessage):
-            parts.append(f"[résultat d'outil] {content_to_text(m.content)}")
+    retours = [
+        f"[résultat d'outil] {content_to_text(m.content)}"
+        for m in messages if isinstance(m, ToolMessage)
+    ]
+    finale = ""
     last = messages[-1] if messages else None
     if isinstance(last, AIMessage):
-        final = content_to_text(last.content).strip()
-        if final:
-            parts.append(f"[réponse finale] {final}")
-    return "\n".join(parts)
+        texte = content_to_text(last.content).strip()
+        if texte:
+            finale = f"[réponse finale] {texte}"
+    if maxi is None:
+        return "\n".join([*retours, finale] if finale else retours)
+
+    reste = maxi - len(finale)
+    gardes: list[str] = []
+    for retour in reversed(retours):
+        if len(retour) + 1 > reste:
+            break
+        gardes.append(retour)
+        reste -= len(retour) + 1
+    gardes.reverse()
+    if finale:
+        gardes.append(finale[:maxi])
+    return "\n".join(gardes)
 
 
 def _maybe_learn_from_success(user_id: str, messages: list, *, retries: int) -> bool:
