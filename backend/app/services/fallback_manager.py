@@ -181,12 +181,42 @@ def classify_exception(exc: BaseException) -> Optional[FailoverReason]:
     """
     if exc is None:
         return None
+    # 04/09/2026 : le SDK OpenAI porte le sens dans le TYPE, pas toujours
+    # dans le message — `openai.APIError` générique (« An error occurred
+    # while processing your request… ») n'a aucun code, et une mission de
+    # 70 actions est morte dessus faute de repli. Les erreurs de REQUÊTE
+    # gardent leur lecture par mots-clés (400 → BAD_REQUEST, 401 → AUTH).
+    par_type = _raison_par_type_sdk(exc)
+    if par_type is not None:
+        return par_type
     msg = str(exc).lower()
     if not msg:
         return None
     for keyword, reason in _REASON_KEYWORDS:
         if keyword in msg:
             return reason
+    return None
+
+
+def _raison_par_type_sdk(exc: BaseException) -> Optional[FailoverReason]:
+    try:
+        import openai
+    except Exception:  # noqa: BLE001 — SDK absent = pas de règle par type
+        return None
+    if isinstance(exc, openai.APITimeoutError):
+        return FailoverReason.TIMEOUT
+    if isinstance(exc, openai.RateLimitError):
+        return FailoverReason.RATE_LIMIT
+    if isinstance(exc, openai.AuthenticationError | openai.PermissionDeniedError):
+        return FailoverReason.AUTH
+    if isinstance(exc, openai.BadRequestError | openai.UnprocessableEntityError):
+        return FailoverReason.BAD_REQUEST
+    if isinstance(exc, openai.NotFoundError | openai.InternalServerError | openai.APIConnectionError):
+        return FailoverReason.UNAVAILABLE
+    if isinstance(exc, openai.APIStatusError):
+        return None  # un autre code : les mots-clés décident
+    if isinstance(exc, openai.APIError):
+        return FailoverReason.UNAVAILABLE  # l'erreur serveur générique, sans code
     return None
 
 
