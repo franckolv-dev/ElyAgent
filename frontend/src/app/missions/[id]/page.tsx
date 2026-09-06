@@ -233,8 +233,10 @@ export default function MissionDetailPage() {
                 {mission.tick_interval_seconds && <span>⏱ Heartbeat {mission.tick_interval_seconds}s</span>}
               </div>
 
-              {/* Progress bar */}
-              <div className="h-1.5 bg-bg-primary rounded overflow-hidden">
+              {/* Budget consommé — PAS un avancement du livrable : une mission à
+                  90 % de son budget peut n'avoir rien accompli (audit GPT-6 F14). */}
+              <div className="text-[10px] text-text-muted">Budget d'itérations consommé : {progress} %</div>
+              <div className="h-1.5 bg-bg-primary rounded overflow-hidden" title="Budget d'itérations consommé">
                 <div
                   className={`h-full transition-all ${mission.status === "completed" ? "bg-emerald-400" : mission.status === "failed" || mission.status === "aborted" ? "bg-red-400/50" : "bg-cyber-cyan"}`}
                   style={{ width: `${Math.min(100, progress)}%` }}

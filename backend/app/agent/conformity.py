@@ -182,7 +182,8 @@ def should_verify_conformity(state: AgentState | dict) -> bool:
 
     Trois conditions, toutes nécessaires :
         - le tour se termine (la dernière réponse ne porte pas de tool_calls) ;
-        - un outil a réellement tourné, donc il existe un résultat à juger ;
+        - un outil a réellement tourné, donc il existe un résultat à juger —
+          ou c'est un passage de mission, jugé sur sa réponse finale ;
         - le budget de relances n'est pas épuisé.
 
     Ne lève jamais : un état inattendu vaut « ne pas vérifier ».
@@ -196,6 +197,11 @@ def should_verify_conformity(state: AgentState | dict) -> bool:
             return False
         if state.get("conformity_retries", 0) >= MAX_CONFORMITY_RETRIES:
             return False
+        # Un passage de mission est jugé même sans retour d'outil (audit
+        # GPT-6 F01) : « je ne peux pas remplir le tableur » sans un seul
+        # appel clôturait la mission « completed », faute de juge.
+        if state.get("mission_passage"):
+            return True
         return any(isinstance(m, ToolMessage) for m in messages)
     except Exception as exc:  # noqa: BLE001 — un garde ne fait pas tomber le tour
         logger.debug("should_verify_conformity: état inattendu (%s)", exc)
@@ -418,8 +424,10 @@ async def conformity_node(state: AgentState | dict) -> dict:
 
     # Rien de mieux à offrir : l'utilisateur doit SAVOIR ce qui n'a pas pu être
     # fait. Rendre un résultat incomplet en silence est précisément ce que
-    # cette boucle existe pour supprimer.
-    return await _report_remaining_gaps(messages, llm, ecarts)
+    # cette boucle existe pour supprimer. Et l'ÉTAT le sait aussi : un passage
+    # de mission ne conclut pas « completed » sur des écarts ouverts.
+    rapport = await _report_remaining_gaps(messages, llm, ecarts)
+    return {**rapport, "conformity_unresolved": ecarts}
 
 
 # Ce qu'on ajoute à la réponse retenue. La provenance n'est pas un détail : sans
