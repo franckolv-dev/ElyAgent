@@ -2,11 +2,48 @@
 
 # Ely
 
-**Exactly Like You** — a self-hosted personal agent that does things, checks its
-own work, and asks before it commits you to anything.
+**Exactly Like You** — a self-hosted personal agent. Your data stays local, the
+power comes from the cloud, and nothing irreversible happens without your
+approval.
 
 Ely is a **non-commercial personal project**, published under the **MIT**
 licence. Do what you like with it; just keep the copyright notice.
+
+---
+
+## Local, cloud, and the line between them
+
+Ely runs on your machine and picks a model per request. A request takes one
+of three routes.
+
+**On your machine.** A small local model (LM Studio or Ollama) carries the
+background work: reading the tool directory, extracting the facts worth
+remembering from a turn, summarising, choosing which tool families a mission
+gets, testing a candidate skill. Enable the local lane (`SLM_ENABLED`, off by
+default) and it also answers the simple requests of the chat, with its tools:
+the weather, your agenda, a translation, a search. None of that traffic leaves
+the machine, and none of it is billed.
+
+**Masked, then sent.** What needs real reasoning — code, a 400-page document,
+a mission that runs for hours — goes to the cloud model you configured. Ely
+speaks to a dozen providers (Gemini, Claude, Mistral, DeepSeek, OpenAI and the
+ChatGPT subscription, OpenRouter, Moonshot, Qwen, Zhipu); the split is set tier
+by tier by the admin, never per user. Before a call leaves the machine,
+personal data — addresses, IBANs, company numbers, phone numbers, API keys — is
+replaced by stable placeholders, the same address becoming the same marker
+throughout a conversation, and the answer is restored on the way back. The
+boundary is the **network**, not the prompt: a local model gets your data in
+clear, because masking it would protect nothing and would cost accuracy. If
+masking fails, the turn stops rather than sending anything in clear.
+
+**On hold.** Sending a message, deleting a file, running a remote command: Ely
+stops and waits for your approval, showing the exact call before it goes out.
+No answer, and the action expires instead of happening.
+
+Two limits worth stating. The local lane is opt-in, and it needs a machine
+that can serve a model (32 GB of RAM in practice). Missions and scheduled
+tasks always take the cloud tier: a small model does not hold an unattended,
+multi-tool job.
 
 ---
 
@@ -56,18 +93,14 @@ is either an image or an ordinary one, and the tier follows. That routing used
 to be a model call, and it was removed — measured, it downgraded requests and
 unplugged the tools it judged unnecessary.
 
-**A small local model carries the background work.** Not the answer to you — the
-work around it: reading the tool directory (196 descriptions, about a second),
-extracting the facts worth remembering from a turn, summarising, testing a
-candidate skill. It runs on your machine, it costs nothing per call, and none of
-that traffic leaves. The choice of model there is not cosmetic: on the same
-directory task, two of them scored 4/4 — one in 1.1 s, the other in 8.9 s.
+The choice of the local model is not cosmetic: on the same tool-directory
+task, two of them scored 4/4 — one in 1.1 s, the other in 8.9 s.
 
 ---
 
 ## What it can do
 
-**200 built-in tools** with default feature flags. Enabling the MCP client
+**199 tools** built in, with default feature flags. Enabling the MCP client
 (`mcp_client_v2_enabled`, off by default) adds **10** MCP management tools, and
 every MCP server you connect contributes its own on top, as
 `mcp__server__tool`.
@@ -139,6 +172,7 @@ openssl rand -hex 32          # paste into JWT_SECRET_KEY= in .env
 # 2. One model provider (required — otherwise Ely cannot answer)
 #    e.g. ACTIVE_LLM_PROVIDER=gemini + GEMINI_API_KEY=…
 #    Local paths also work: Ollama, LM Studio
+#    Optional: SLM_ENABLED=true gives the simple requests to a local model
 
 # 3. Boot (first run pulls several GB, 5-10 min)
 make up
@@ -176,10 +210,9 @@ Three rules worth knowing:
 
 ## Your data
 
-Before any call to a **third-party hosted** model, personal data is replaced by
-stable placeholders — the same address becomes the same marker throughout a
-conversation — and the answer is restored on the way back. A call to a **local**
-model skips this entirely: nothing leaves the machine.
+The masking described above is a regex layer, applied at the network boundary
+and only there: a local model is served in clear. Which route a request takes
+is decided before the call, and the trace of a turn says which model answered.
 
 Ely reports what a request cost when it used a per-call model.
 
