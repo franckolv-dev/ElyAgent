@@ -12,14 +12,15 @@
 # =============================================================================
 """Agent graph — builds and returns the compiled LangGraph.
 
-The supervisor-based multi-agent architecture is used by default:
-  router → {research | workspace | infra | general} → tools → (loop)
+Un seul agent, un graphe plat :
+  agent → tools → agent → verify → fin
+                             └─ écarts → agent
+  budget d'itérations épuisé → force_summary → fin
 
-The old single-agent graph is kept as ``build_simple_agent_graph()`` for
-testing and for channels (Telegram, scheduler) that build their
-own graph instance and may want the simpler version.
-
-``build_agent_graph()`` is the public API used by all callers.
+Le superviseur et ses spécialistes ont existé et ont été retirés après un
+banc A/B (voir ``docs/architecture.md``). ``build_agent_graph()`` est l'API
+publique ; ``build_simple_agent_graph()`` est le même graphe, gardé sous son
+nom historique pour les appelants qui le construisent eux-mêmes.
 """
 from langgraph.graph import StateGraph, END
 

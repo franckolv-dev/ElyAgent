@@ -29,6 +29,7 @@ Flow:
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import time
 
@@ -44,6 +45,8 @@ from app.database import get_db, async_session
 from app.models.google_account import GoogleAccount
 from app.models.user import User
 from app.services.google_auth import build_auth_url, exchange_code, fetch_userinfo
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/google", tags=["google"])
 
@@ -173,8 +176,7 @@ async def oauth_callback(code: str, state: str):
         # isn't blocked — they can rename / re-link later.
         email = f"unknown-{secrets.token_hex(4)}@google.local"
         # Log but don't 500
-        import logging
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "Userinfo fetch failed (%s) — storing account with placeholder email", e
         )
 

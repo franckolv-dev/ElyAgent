@@ -15,11 +15,14 @@ from __future__ import annotations
 import logging
 import re
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from langchain_core.language_models import BaseChatModel
 
 from app.config import get_settings
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -809,7 +812,7 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
                 candidates.append(("gemini/gemini-2.5-flash", ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash",
                     google_api_key=gemini_key,
-                    max_output_tokens=_output_cap(model),
+                    max_output_tokens=_output_cap("gemini-2.5-flash"),
                     temperature=0.7,
                 )))
             except Exception:
@@ -858,95 +861,6 @@ def get_fallback_llms() -> list[tuple[str, BaseChatModel]]:
             pass
 
     return candidates
-
-
-def get_llm_for_agent(config: "SubAgentConfig") -> BaseChatModel:  # type: ignore[name-defined]
-    """Instantiate a LLM for a specific sub-agent.
-
-    If ``config.llm_provider`` is None, delegates to ``get_llm()`` so that
-    the globally-configured provider/model is used.  When a sub-agent carries
-    its own provider/model, a dedicated instance is created from _runtime keys.
-    """
-    if config.llm_provider is None:
-        return get_llm()
-
-    settings = get_settings()
-    provider = config.llm_provider
-    model = config.llm_model or get_active_model()
-    temperature = config.llm_temperature
-
-    def _key(prov: str, env_val: str) -> Optional[str]:
-        return _runtime.get(f"key_{prov}") or env_val or None
-
-    if provider == "anthropic":
-        return _make_anthropic(
-            model=model,
-            api_key=_key("anthropic", settings.anthropic_api_key),
-            temperature=temperature,
-        )
-
-    elif provider == "zhipu":
-        return _make_glm(
-            model=model,
-            api_key=_key("zhipu", settings.zhipu_api_key),
-            temperature=temperature,
-        )
-
-    elif provider == "mistral":
-        from langchain_mistralai import ChatMistralAI
-        return ChatMistralAI(
-            model=model,
-            api_key=_key("mistral", settings.mistral_api_key),
-            max_tokens=_output_cap(model),
-            temperature=temperature,
-        )
-
-    elif provider == "ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(model=model,
-            base_url=settings.ollama_base_url,
-            temperature=temperature, keep_alive="24h")
-
-    elif provider == "lm_studio":
-        return _make_lm_studio(model=model, base_url=settings.lm_studio_base_url, temperature=temperature)
-
-    elif provider == "qwen_api":
-        return _make_qwen_api(
-            model=model,
-            api_key=_key("qwen_api", settings.qwen_api_key),
-            base_url=_runtime.get("qwen_api_base_url") or settings.qwen_api_base_url,
-            temperature=temperature,
-        )
-
-    elif provider == "deepseek":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=model,
-            api_key=_key("deepseek", settings.deepseek_api_key),
-            base_url="https://api.deepseek.com/v1",
-            max_tokens=_output_cap(model),
-            temperature=temperature,
-        )
-
-    elif provider == "moonshot":
-        return _make_moonshot(
-            model=model,
-            api_key=_key("moonshot", settings.moonshot_api_key),
-            base_url=settings.moonshot_base_url,
-            temperature=temperature,
-        )
-
-    elif provider == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(
-            model=model,
-            google_api_key=_key("gemini", settings.gemini_api_key),
-            max_output_tokens=_output_cap(model),
-            temperature=temperature,
-        )
-
-    else:
-        raise ValueError(f"Unknown LLM provider for sub-agent '{config.name}': {provider}")
 
 
 # ---------------------------------------------------------------------------

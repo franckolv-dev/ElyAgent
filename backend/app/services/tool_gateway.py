@@ -761,14 +761,21 @@ async def execute_tool_call(
             return _tool_result(_rejeu, tc_id)
 
     # C3b-2 — hook pré-exécution de l'appelant (disjoncteurs J3 des
-    # missions) : un refus ici N'EXÉCUTE PAS l'outil. Une exception du
-    # hook ne bloque jamais (fail-open, le hook gère son propre fail-safe).
+    # missions) : un refus ici N'EXÉCUTE PAS l'outil. Un hook qui LÈVE non
+    # plus (audit GPT-6 F09, 06/09/2026) : ce hook porte une condition
+    # obligatoire — le budget d'une mission —, et un service de budget en
+    # panne autorisait ce qu'il devait arbitrer. L'action est suspendue avec
+    # un motif nommé ; la mission reste reprenable au réveil suivant.
     if ctx.pre_execute is not None:
         try:
             _pre_refusal = await ctx.pre_execute(tool_name, args)
         except Exception as _pre_exc:  # noqa: BLE001
             logger.warning("pre_execute hook failed (%s): %s", tool_name, _pre_exc)
-            _pre_refusal = None
+            _pre_refusal = (
+                f"Action non exécutée : le garde préalable de « {tool_name} » "
+                f"est indisponible ({_pre_exc}). Réessaie plus tard ou "
+                "rends compte de ce blocage."
+            )
         if _pre_refusal:
             return _tool_result(_pre_refusal, tc_id)
 

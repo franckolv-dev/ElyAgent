@@ -135,7 +135,6 @@ ignore = [
     "F401",  # unused imports (legit re-exports)
     "F541",  # f-string without placeholder (explicit formatting choice)
     "F811",  # redefined unused (decorator stacking)
-    "F821",  # undefined name (forward references in type hints are fine)
     "F841",  # unused local variable (caught variables in try/except)
 ]
 
