@@ -844,6 +844,9 @@ async def run_mission_chat_passage(
                 "iteration_count": 0,
                 "conformity_retries": 0,
                 "conformity_gap_count": 0,
+                # Jugé même sans outil ; les écarts ouverts remontent ici.
+                "mission_passage": True,
+                "conformity_unresolved": "",
             },
             config={"recursion_limit": CHAT_RECURSION_LIMIT},
         )
@@ -945,6 +948,31 @@ async def run_mission_chat_passage(
     # pour une fin de mission.
     tronque = int(resultat.get("iteration_count") or 0) >= MAX_AGENT_ITERATIONS
     a_suivre = tronque or _demande_un_autre_passage(texte)
+
+    # Audit GPT-6 F01 (06/09/2026) : le juge a nommé des écarts que la reprise
+    # n'a pas résorbés, et le modèle conclut quand même. La mission n'est
+    # pas « completed » sur sa parole : elle ÉCHOUE en nommant les écarts, le
+    # bilan reste pour l'utilisateur. Le marqueur « à suivre » prime — un
+    # modèle qui sait qu'il lui reste du travail sera réveillé.
+    ecarts = str(resultat.get("conformity_unresolved") or "").strip()
+    if ecarts and not a_suivre:
+        raison = "exigences non satisfaites : " + " ; ".join(
+            ln.strip().lstrip("-•* ").strip()
+            for ln in ecarts.splitlines() if ln.strip()
+        )[:300]
+        _ecrire_le_carnet(mission_id, journal, bilan, False, incident=raison[:200])
+        logger.info(
+            "Mission %s : passage terminé — %d action(s), %d tokens, %s",
+            mission_id, len(journal), tokens, raison,
+        )
+        return {
+            "done": False,
+            "final_summary": bilan or None,
+            "failed": True,
+            "failure_reason": raison,
+            "actions": len(journal),
+        }
+
     _ecrire_le_carnet(mission_id, journal, bilan, a_suivre)
 
     logger.info(

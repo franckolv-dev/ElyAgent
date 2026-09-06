@@ -102,3 +102,32 @@ def test_router_response_exposes_status():
     # _to_response doit câbler le champ.
     from app.routers import scheduler as r
     assert "last_status=task.last_status" in inspect.getsource(r._to_response)
+
+
+# ── Audit GPT-6 F14 (06/09/2026) ─────────────────────────────────────────────
+# Le planificateur posait `last_status="success"` après avoir sauvegardé la
+# réponse, même quand le garde-fou anti-hallucination venait de la REMPLACER
+# par un avertissement. Un résultat écarté n'est pas un succès.
+
+
+class _AgentQuiAffirmeSansOutil:
+    async def ainvoke(self, state, config=None):
+        return {"messages": [AIMessage(content="Voilà, j'ai supprimé les 50 mails de la corbeille.")]}
+
+
+@pytest.mark.asyncio
+async def test_une_reponse_ecartee_par_le_garde_fou_n_est_pas_un_succes(monkeypatch):
+    import app.agent.graph as graph_mod
+    import app.services.scheduler as sched
+    monkeypatch.setattr(graph_mod, "build_simple_agent_graph", lambda: _AgentQuiAffirmeSansOutil())
+
+    async def _noop_deliver(task, content):
+        return None
+    monkeypatch.setattr(sched, "_deliver_result", _noop_deliver)
+
+    _uid, tid = await _seed_task()
+    await sched._execute_task(tid)
+
+    status, result = await _status(tid)
+    assert "garde-fou" in (result or "").lower(), "le résultat doit être l'avertissement, pas la fausse affirmation"
+    assert status == "error", "une réponse remplacée par un avertissement n'est pas un succès"

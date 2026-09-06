@@ -311,17 +311,22 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
         # already returned above; here a claimed action with no backing tool
         # this run is replaced by an honest warning (derived tools list, like
         # the facade-detection spawn below). Never breaks the task.
+        # Audit GPT-6 F14 (06/09/2026) : une réponse REMPLACÉE par
+        # l'avertissement n'est pas un succès — le statut le dit.
+        ecartee = False
         try:
             from app.services.output_verifier import verify_outcome_from_result
-            ai_content = verify_outcome_from_result(
+            _verdict = verify_outcome_from_result(
                 invoke_result, ai_content,
                 surface="scheduler",
                 user_message=task.prompt,
                 user_id=task.user_id,
                 conversation_id=conv_id,
-            ).content
+            )
+            ai_content, ecartee = _verdict.content, bool(_verdict.blocked)
         except Exception as _guard_exc:
             logger.warning("completion_guard skipped (scheduler): %s", _guard_exc)
+        statut = "error" if ecartee else "success"
 
         # Save result. Split into two sessions to avoid autoflush
         # interference between the new Message insert and the subsequent
@@ -338,7 +343,7 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
             if t:
                 t.last_run_at = datetime.now(timezone.utc)
                 t.last_result = ai_content[:2000]
-                t.last_status = "success"
+                t.last_status = statut
                 await db.commit()
 
         # Boucle d'auto-diagnostic — verdict d'aboutissement réel, à côté du
@@ -356,6 +361,8 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
                 task_id=task_id,
                 conversation_id=conv_id,
                 channel=task.channel,
+                # Ce que le MODÈLE a déclaré, pas le statut affiché : la
+                # détection de façade en tire « dubious » par ses signaux.
                 declared_status="success",
                 goal=task.prompt,
                 final_text=ai_content,

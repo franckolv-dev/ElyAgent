@@ -84,3 +84,12 @@ class AgentState(TypedDict):
     # `agent.missions.outillage`). Vide ou absent = pas de restriction, tout
     # le profil. Le nœud d'outils l'élargit quand `find_tool` découvre.
     mission_tools: list[str]
+    # Ce tour est un passage de MISSION (audit GPT-6 F01, 06/09/2026) : il est
+    # toujours jugé, même sans retour d'outil — sa réponse finale est
+    # confrontée à l'objectif. Un tour de chat sans outil, lui, n'est pas jugé.
+    mission_passage: bool
+    # Les écarts que la vérification n'a PAS résorbés (plafond de reprises ou
+    # absence de progrès). Vide si conforme ou jamais vérifié. Le passage de
+    # mission le lit pour refuser de conclure « completed » sur la parole du
+    # modèle.
+    conformity_unresolved: str

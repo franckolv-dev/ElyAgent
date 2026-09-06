@@ -19,7 +19,7 @@ Vingt lots de rustines n'ont pas suffi a faire aboutir une prospection.
 
 CE QUE CES TESTS EPINGLENT
 --------------------------
-- une mission libre produit son livrable en tournant sur la boucle du chat ;
+- une mission libre tourne sur la boucle du chat, par la passerelle des missions ;
 - le carnet de bord est la memoire entre deux reveils : le second passage
   RELIT ce que le premier a fait, et ne le refait pas ;
 - les budgets (iterations, echeance) mordent AU MILIEU d'un passage : les
@@ -136,9 +136,13 @@ def _dispatch_qui_marche(journal: list):
 
 
 @pytest.mark.asyncio
-async def test_une_mission_libre_produit_son_livrable_sur_la_boucle_du_chat(
+async def test_une_mission_libre_tourne_sur_la_boucle_du_chat_et_sa_passerelle(
     mission, monkeypatch,
 ):
+    """Raccordement boucle du chat ↔ passerelle des missions. Ce test ne prouve
+    PAS le livrable : le tableur n'est jamais écrit, et le juge simulé dit
+    CONFORME. La preuve inverse (une affirmation sans écriture n'est pas
+    « completed ») vit dans `test_une_mission_ne_se_conclut_pas_sur_sa_parole`."""
     uid, mid = mission
     joues: list = []
     modele = _ModeleScripte([
