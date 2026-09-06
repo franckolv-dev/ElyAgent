@@ -25,15 +25,84 @@ from __future__ import annotations
 import ast
 import asyncio
 import os
+import re
+import shutil
 import sys
 import tempfile
 import textwrap
+import uuid
 from pathlib import Path
 
 from langchain_core.tools import tool
 
 _TIMEOUT = 30          # secondes (asyncio)
 _MAX_OUTPUT = 8_000    # caractères
+
+# ── Livrables ────────────────────────────────────────────────────────────────
+# Audit GPT-6 F05 (06/09/2026) : le code tournait dans un TemporaryDirectory,
+# les PNG produits étaient LISTÉS dans la réponse puis effacés avec le
+# répertoire — avant que quiconque puisse les toucher. Ce qu'un script laisse
+# derrière lui est copié dans le dépôt de pièces jointes d'Ely, celui que le
+# chat sert (`/api/attachments`), que Gmail attache et que Drive téléverse.
+# Liste BLANCHE d'extensions, comme le routeur : pas de .svg (XSS), rien
+# d'exécutable.
+_LIVRABLE_EXTS: tuple[str, ...] = (
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    ".csv", ".json", ".txt", ".md", ".xlsx", ".pdf", ".docx",
+)
+_MAX_LIVRABLES = 10
+
+
+def _dossier_livrables() -> Path:
+    """Où les fichiers produits survivent au sandbox.
+
+    `/app/data/attachments` est sur le volume monté du conteneur : durable au
+    redémarrage. Hors Docker, le répertoire de pièces jointes historique
+    (`browser_screenshot`, `image_*`). Les deux sont dans les listes blanches
+    du routeur de pièces jointes, de Gmail et de Drive."""
+    base = (
+        Path("/app/data/attachments") if Path("/app/data").is_dir()
+        else Path("/tmp/ely-attachments")
+    )
+    return base / "python"
+
+
+def _conserver_les_livrables(workdir: str) -> list[tuple[Path, int]]:
+    """Copie les fichiers autorisés hors du sandbox ; rend (chemin, taille)."""
+    conserves: list[tuple[Path, int]] = []
+    try:
+        candidats = sorted(
+            f for f in os.listdir(workdir)
+            if f.lower().endswith(_LIVRABLE_EXTS) and f != "script.py"
+        )
+    except OSError:
+        return conserves
+    if not candidats:
+        return conserves
+    dossier = _dossier_livrables()
+    dossier.mkdir(parents=True, exist_ok=True)
+    for nom in candidats[:_MAX_LIVRABLES]:
+        source = Path(workdir) / nom
+        if not source.is_file():
+            continue
+        propre = re.sub(r"[^A-Za-z0-9._-]", "_", nom)
+        cible = dossier / f"python-{uuid.uuid4().hex[:8]}-{propre}"
+        shutil.copyfile(source, cible)
+        conserves.append((cible, cible.stat().st_size))
+    return conserves
+
+
+def _mode_d_emploi(chemin: Path) -> str:
+    """Répété dans le RÉSULTAT, pas seulement dans la docstring : les modèles
+    lisent le retour d'outil bien plus fidèlement (mesure `browser_screenshot`,
+    06/05 : cinq fois moins de « je te l'envoie » sans appel d'outil)."""
+    return (
+        "Pour livrer un fichier, applique l'UNE de ces actions — l'annoncer en "
+        "prose ne le livre PAS :\n"
+        f"  • Afficher dans le chat → ajoute la ligne « MEDIA:{chemin} » à ta réponse\n"
+        f"  • Par mail → gmail_send_with_local_attachment(local_path='{chemin}', …)\n"
+        f"  • Sur Drive → drive_upload_local_file(local_path='{chemin}', …)"
+    )
 
 # ── Modules interdits dans le sandbox ────────────────────────────────────────
 # Inclut les accès réseau, exécution de processus et accès bas niveau.
@@ -155,7 +224,7 @@ async def python_execute(code: str) -> str:
     - Mathematical calculations and statistics
     - Data processing and analysis
     - String manipulation
-    - Generating charts (saved as image, path returned)
+    - Generating charts or files (PNG, CSV, XLSX, PDF… kept and their absolute path returned)
     - Any task that benefits from running actual code
 
     The execution environment has: Python standard library (except network/system
@@ -208,14 +277,9 @@ async def python_execute(code: str) -> str:
             out = stdout.decode("utf-8", errors="replace").strip()
             err = stderr.decode("utf-8", errors="replace").strip()
 
-            # Chercher des fichiers image générés (matplotlib savefig)
-            try:
-                images = [
-                    f for f in os.listdir(workdir)
-                    if f.endswith((".png", ".jpg"))  # pas de .svg (XSS possible)
-                ]
-            except OSError:
-                images = []
+            # Ce que le script a produit survit au sandbox — même si le script
+            # a fini en erreur après avoir écrit (un graphique puis un plantage).
+            livrables = _conserver_les_livrables(workdir)
 
             parts: list[str] = []
             if proc.returncode == 0:
@@ -225,8 +289,6 @@ async def python_execute(code: str) -> str:
                         parts.append(f"[… sortie tronquée à {_MAX_OUTPUT} caractères]")
                 if not out:
                     parts.append("Code exécuté avec succès (aucune sortie).")
-                if images:
-                    parts.append(f"Fichier(s) généré(s) dans le sandbox : {', '.join(images)}")
             else:
                 parts.append(f"Erreur (code {proc.returncode}) :")
                 if err:
@@ -234,6 +296,11 @@ async def python_execute(code: str) -> str:
                     parts.append("\n".join(err_lines[-20:]))
                 elif out:
                     parts.append(out[:_MAX_OUTPUT])
+
+            if livrables:
+                parts.append("Fichier(s) généré(s) :")
+                parts.extend(f"  - {chemin} ({taille} octets)" for chemin, taille in livrables)
+                parts.append(_mode_d_emploi(livrables[0][0]))
 
             return "\n".join(parts)
 
