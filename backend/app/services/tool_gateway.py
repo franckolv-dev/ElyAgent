@@ -849,6 +849,14 @@ async def execute_tool_call(
             # this, browser_screenshot leaks ~200 KB of base64 into every
             # subsequent turn's prompt.
             _raw_result = str(result)
+            # Audit GPT-6 F02 (06/09/2026) : un outil qui annonce son échec en
+            # TEXTE (« Erreur : … ») prenait le chemin nominal — succès dans
+            # les traces, ✓ au journal de mission, résultat MÉMORISÉ pour
+            # l'idempotence. Même règle que la garde anti-rejeu et le journal
+            # réversible : `agent.tool_failure`. Le texte, lui, repart tel
+            # quel au modèle — c'est lui qui doit lire l'erreur.
+            from app.agent.tool_failure import dit_un_echec
+            _echec_en_texte = dit_un_echec(_raw_result)
             _safe_result = _sanitize_tool_result_for_history(_raw_result)
             if len(_safe_result) < len(_raw_result):
                 logger.info(
@@ -873,11 +881,13 @@ async def execute_tool_call(
                 _safe_result = _vault_sf.anonymize(_safe_result, ner_detection=False)
             if ctx.post_execute is not None:
                 try:
-                    ctx.post_execute(tool_name, True, _tt.monotonic() - _ts, result)
+                    ctx.post_execute(
+                        tool_name, not _echec_en_texte, _tt.monotonic() - _ts, result,
+                    )
                 except Exception as _pe_exc:  # noqa: BLE001
                     logger.debug("post_execute hook failed: %s", _pe_exc)
             if meta is not None:
-                meta["success"] = True
+                meta["success"] = not _echec_en_texte
             # C3d-3 — registre de tour : mémorise le résultat ANONYMISÉ pour
             # que le général de secours en hérite si le sous-agent meurt
             # APRÈS cet appel (fallback honnête — exhibits 18/07 : « accès
@@ -905,6 +915,14 @@ async def execute_tool_call(
                     _safe_result, user_id=user_id, tool_name=tool_name,
                 )
             _msg = _tool_result(_rendu, tc_id)
+            if _echec_en_texte:
+                logger.warning("Tool %s a échoué (en texte) : %.200s", tool_name, _raw_result)
+                if _action_fp is not None:
+                    from app.services.event_envelope import EventKind, emit
+                    emit(EventKind.TOOL, user_id=user_id, capability_id=tool_name,
+                         fingerprint=_action_fp, outcome="error",
+                         attributes={"error_type": "tool_reported"})
+                return _msg
             # P1/J3 — mémorise le résultat d'une action « supported » réussie
             # (no-op si le manifeste ne déclare pas l'idempotence).
             if _action_fp is not None:

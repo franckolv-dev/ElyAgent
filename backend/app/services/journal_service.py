@@ -89,10 +89,10 @@ async def snapshot_before(tool_name: str, args: dict, user_id: str) -> dict | No
 def resultat_en_echec(result: str | None) -> bool:
     """Ce retour d'outil dit-il que l'action n'a PAS abouti ?
 
-    Même règle que la garde anti-rejeu (``replay_guard._ECHEC_PREFIXES``) :
-    une seule définition de l'échec, lue aux deux endroits qui en dépendent."""
-    from app.agent.replay_guard import _ECHEC_PREFIXES
-    return str(result or "").lstrip().lower().startswith(_ECHEC_PREFIXES)
+    Même règle que la garde anti-rejeu et la passerelle
+    (``agent.tool_failure``) : une seule définition de l'échec."""
+    from app.agent.tool_failure import dit_un_echec
+    return dit_un_echec(result)
 
 
 async def record_reversible(
