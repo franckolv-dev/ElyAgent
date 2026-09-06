@@ -2,11 +2,50 @@
 
 # Ely
 
-**Exactly Like You** — un agent personnel auto-hébergé qui agit, vérifie son
-propre travail, et demande avant de vous engager.
+**Exactly Like You** — un agent personnel auto-hébergé. Vos données restent en
+local, la puissance vient du cloud, et rien d'irréversible ne se fait sans
+votre accord.
 
 Ely est un **projet personnel non commercial**, publié sous licence **MIT**.
 Faites-en ce que vous voulez ; gardez simplement la notice de copyright.
+
+---
+
+## Le local, le cloud, et la frontière entre les deux
+
+Ely tourne sur votre machine et choisit un modèle par demande. Une demande
+prend l'un de trois trajets.
+
+**Sur votre machine.** Un petit modèle local (LM Studio ou Ollama) porte le
+travail de fond : lire l'annuaire des outils, extraire d'un tour les faits qui
+méritent d'être retenus, résumer, choisir les familles d'outils d'une mission,
+éprouver une compétence candidate. Activez la voie locale (`SLM_ENABLED`,
+éteinte par défaut) et il répond aussi aux demandes simples du chat, avec ses
+outils : la météo, votre agenda, une traduction, une recherche. Rien de ce
+trafic ne quitte la machine, et rien n'est facturé.
+
+**Masqué, puis envoyé.** Ce qui demande un vrai raisonnement — du code, un
+document de 400 pages, une mission de plusieurs heures — part vers le modèle
+cloud que vous avez configuré. Ely parle à une douzaine de fournisseurs
+(Gemini, Claude, Mistral, DeepSeek, OpenAI et l'abonnement ChatGPT, OpenRouter,
+Moonshot, Qwen, Zhipu) ; la répartition se règle tier par tier, par
+l'administrateur, jamais par utilisateur. Avant qu'un appel quitte la machine,
+les données personnelles — adresses, IBAN, SIRET, numéros de téléphone, clés
+d'API — sont remplacées par des marqueurs stables, la même adresse devenant le
+même marqueur d'un bout à l'autre de la conversation, et la réponse est
+reconstituée au retour. La frontière, c'est le **réseau**, pas le prompt : un
+modèle local reçoit vos données en clair, parce que les masquer ne protégerait
+rien et lui coûterait en qualité. Si le masquage échoue, le tour s'arrête au
+lieu d'envoyer quoi que ce soit en clair.
+
+**Mis en pause.** Envoyer un message, supprimer un fichier, lancer une
+commande à distance : Ely s'arrête et attend votre accord, en montrant l'appel
+exact avant qu'il parte. Sans réponse, l'action expire au lieu de se faire.
+
+Deux limites à dire. La voie locale est un choix à activer, et elle demande
+une machine capable de servir un modèle (32 Go de RAM en pratique). Les
+missions et les tâches planifiées prennent toujours le tier cloud : un petit
+modèle ne tient pas un travail à plusieurs outils sans personne devant l'écran.
 
 ---
 
@@ -57,19 +96,14 @@ une demande est soit une image, soit une demande ordinaire, et le tier suit. Ce
 routage était un appel de modèle ; il a été retiré, mesures à l'appui — il
 dégradait les demandes et débranchait les outils qu'il jugeait inutiles.
 
-**Un petit modèle local porte le travail de fond.** Pas la réponse qui vous est
-faite : le travail autour. Lire l'annuaire des outils (196 descriptions, environ
-une seconde), extraire d'un tour les faits qui méritent d'être retenus, résumer,
-éprouver une compétence candidate. Il tourne sur votre machine, ne coûte rien à
-l'appel, et rien de ce trafic ne sort. Le choix du modèle n'y est pas cosmétique :
-sur la même tâche d'annuaire, deux d'entre eux sortent 4/4 — l'un en 1,1 s,
-l'autre en 8,9 s.
+Le choix du modèle local n'est pas cosmétique : sur la même tâche d'annuaire
+des outils, deux d'entre eux sortent 4/4 — l'un en 1,1 s, l'autre en 8,9 s.
 
 ---
 
 ## Ce qu'elle sait faire
 
-**196 outils intégrés** avec les drapeaux par défaut. Activer le client MCP
+**199 outils** intégrés, avec les drapeaux par défaut. Activer le client MCP
 (`mcp_client_v2_enabled`, éteint par défaut) en ajoute **10** — les outils de
 gestion MCP — et chaque serveur MCP connecté apporte les siens, sous la forme
 `mcp__serveur__outil`.
@@ -141,6 +175,7 @@ openssl rand -hex 32          # à coller dans JWT_SECRET_KEY= du .env
 # 2. Un fournisseur de modèle (obligatoire — sinon Ely ne peut rien répondre)
 #    ex. ACTIVE_LLM_PROVIDER=gemini + GEMINI_API_KEY=…
 #    Les chemins locaux marchent aussi : Ollama, LM Studio
+#    Option : SLM_ENABLED=true confie les demandes simples à un modèle local
 
 # 3. Démarrer (le premier lancement télécharge plusieurs Go, 5-10 min)
 make up
@@ -178,11 +213,10 @@ Trois règles à connaître :
 
 ## Vos données
 
-Avant tout appel à un modèle **hébergé chez un tiers**, les données personnelles
-sont remplacées par des marqueurs stables — la même adresse devient le même
-marqueur d'un bout à l'autre de la conversation — et la réponse est reconstituée
-au retour. Un appel à un modèle **local** ne passe pas par là : rien ne quitte la
-machine.
+Le masquage décrit plus haut est une couche d'expressions régulières, posée à
+la frontière du réseau et seulement là : un modèle local est servi en clair.
+Le trajet d'une demande est décidé avant l'appel, et la trace d'un tour dit
+quel modèle a répondu.
 
 Ely dit ce que la demande a coûté quand elle a utilisé un modèle facturé à
 l'appel.
