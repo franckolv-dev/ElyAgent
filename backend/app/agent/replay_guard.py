@@ -57,6 +57,7 @@ import logging
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
+from app.agent.tool_failure import ECHEC_PREFIXES, dit_un_echec
 from app.agent.tool_nature import effect_of
 
 logger = logging.getLogger(__name__)
@@ -68,16 +69,16 @@ RETRY_MARKER: str = "[Vérification"
 
 # Un outil d'Ely signale son échec en TEXTE, sans lever — le `status` de
 # LangChain ne suffit donc pas. Cf. la règle générale : un service peut
-# annoncer son échec avec un code de succès (#311).
-_ECHEC_PREFIXES: tuple[str, ...] = ("erreur", "error", "échec", "echec")
+# annoncer son échec avec un code de succès (#311). La liste vit dans
+# `tool_failure` ; l'alias reste pour les lecteurs historiques.
+_ECHEC_PREFIXES: tuple[str, ...] = ECHEC_PREFIXES
 
 
 def _a_echoue(m: ToolMessage) -> bool:
     """Ce retour d'outil dit-il que l'action n'a PAS abouti ?"""
     if str(getattr(m, "status", "") or "").lower() == "error":
         return True
-    texte = m.content if isinstance(m.content, str) else str(m.content)
-    return texte.lstrip().lower().startswith(_ECHEC_PREFIXES)
+    return dit_un_echec(m.content if isinstance(m.content, str) else str(m.content))
 
 
 def engaging_actions_done(messages: list[BaseMessage]) -> set[str]:
