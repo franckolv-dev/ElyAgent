@@ -139,6 +139,25 @@ _SIMPLE_PATTERNS: list[tuple[str, int]] = [
     (r"\benvoie (un |le )?(message|sms)\b", 10),
 ]
 
+# Une demande qui RENVOIE AU PASSÉ de la conversation (05/09/2026). « annule
+# ce que tu viens de faire » et « où en es-tu de ce que je t'avais demandé ? »
+# sont courtes, donc notées simples — et la voie locale ne voit pas
+# l'historique : elle ne charge pas la mémoire, sa fenêtre est petite. Elle a
+# affirmé une annulation sans outil, et « aucune trace » d'une demande faite
+# 96 messages plus haut. Ces relances vont au cloud, quel que soit le score.
+_HISTORIQUE_RE = re.compile(
+    r"(?:\bce que (?:tu|vous) (?:viens|venez|as|avez|étais|étiez)\b"
+    r"|\bce que je (?:t['']|vous )?(?:avais|ai) demand"
+    r"|\bo[uù] en (?:es|êtes|étais)[- ]?(?:tu|vous)\b"
+    r"|\b(?:tu as|vous avez|t['']as) (?:fini|termin[eé]|fait)\b"
+    r"|^\s*(?:annule|d[eé]fais|recommence|refais|reprends|continue|poursuis)\b"
+    r"|\b(?:et )?(?:ensuite|la suite|après)\s*\??\s*$"
+    r"|\bla (?:derni[eè]re|pr[eé]c[eé]dente) (?:action|demande|[eé]tape|r[eé]ponse)\b"
+    r"|\b(?:pareil|la m[eê]me chose|idem)\b"
+    r"|\bcomme (?:avant|tout [aà] l['']heure|la derni[eè]re fois)\b)",
+    re.IGNORECASE,
+)
+
 _SUBORDINATE_RE = re.compile(
     r"\b(parce que|puisque|afin de|afin que|pour que|bien que|quoique"
     r"|si\s+tu|si\s+vous|si\s+je|si\s+on|[aà] condition que)\b",
@@ -167,6 +186,13 @@ class IntentRouter:
                 tier=ModelTier.LLM,
                 score=100,
                 reason="SLM disabled",
+            )
+
+        if _HISTORIQUE_RE.search(message or ""):
+            return RoutingDecision(
+                tier=ModelTier.LLM,
+                score=100,
+                reason="relance sur l'historique de la conversation",
             )
 
         score = self._score(message, history or [])

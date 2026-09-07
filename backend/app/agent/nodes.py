@@ -160,6 +160,28 @@ from app.agent.helpers.memory_formatting import _format_memory_block  # noqa: E4
 # Agent node                                                           #
 # ------------------------------------------------------------------ #
 
+def _historique_deborde(messages, model: str) -> bool:
+    """La conversation tient-elle ENTIÈRE dans la fenêtre du modèle local ?
+
+    Le 05/09/2026, « où en es-tu de ce que je t'avais demandé sur les
+    factures ? » est parti en local, 96 messages après la demande : la
+    fenêtre ne la contenait plus, le modèle a répondu « aucune trace ». Un
+    modèle qui n'a pas vu la conversation ne peut pas la continuer — la
+    voie locale n'est prise que si rien n'a dû être tronqué. Ne lève jamais.
+    """
+    from app.services.context_manager import fit_messages_to_context
+
+    try:
+        gardes = fit_messages_to_context(
+            list(messages), _SYSTEM_PROMPT_SLM, model=model,
+            reserve_for_response=1024,
+        )
+    except Exception as exc:  # noqa: BLE001 — un garde ne fait pas tomber le tour
+        logger.debug("historique local : estimation impossible (%s)", exc)
+        return False
+    return len(gardes) < len(messages)
+
+
 def _slm_real_name(llm, settings) -> str:
     """Le nom du modèle qui répond RÉELLEMENT sur la voie SLM.
 
@@ -796,6 +818,18 @@ def create_agent_node():
             decision = intent_router.route(_a_router, history=messages[:-1])
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
+            if use_slm and _historique_deborde(
+                messages, _slm_real_name(_slm_base, settings),
+            ):
+                # La demande est simple, mais la conversation ne tient pas
+                # dans la fenêtre locale : le cloud, qui la voit entière.
+                use_slm = False
+                routing_score = 100
+                from app.services.intent_router import RoutingDecision
+                decision = RoutingDecision(
+                    tier=ModelTier.LLM, score=100,
+                    reason="historique trop long pour la fenêtre locale",
+                )
             # C3d-4 — décision SLM-vs-cloud tracée (aspect "slm").
             routing_note(
                 state.get("conversation_id", ""), "slm",
