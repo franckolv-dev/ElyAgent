@@ -816,6 +816,11 @@ async def run_mission_chat_passage(
     graphe = build_mission_chat_graph(
         mission_id, goal, budgets, journal, dernier_etat,
     )
+    # Le tier du passage : le niveau M s'il a une chaîne, sinon COMPLEX —
+    # plus « complex » codé en dur (07/09/2026).
+    from app.agent.missions.nodes import _mission_llm_tier
+
+    tier_du_passage = (await _mission_llm_tier(mission_id)).value
 
     interrompu = False
     # Ce qui a tué le passage EN COURS, s'il a été tué. Le carnet doit être
@@ -860,7 +865,7 @@ async def run_mission_chat_passage(
                 # sur une tête locale (#369 pour l'ancien moteur ; ici depuis
                 # le 03/09/2026 — deux appels à 195 s et 227 s sur le Gemma
                 # local pendant « test2 »).
-                "tier_pin": "complex",
+                "tier_pin": tier_du_passage,
                 # Le profil COLLANT du chat, valeur « tout le catalogue »
                 # (#323). Sans lui, le nœud retombe sur le filtre de
                 # mots-clés — celui qui ne connaît ni « convertis » ni

@@ -449,8 +449,8 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
                 {t("budgetTokens")} <span className="text-text-muted/60">{t("llmHint")}</span>
               </label>
               <input
-                type="number" min={1000} max={5_000_000} step={1000} value={budgetTok}
-                onChange={(e) => setBudgetTok(Math.max(1000, Math.min(5_000_000, +e.target.value || 1000)))}
+                type="number" min={1000} max={10_000_000} step={1000} value={budgetTok}
+                onChange={(e) => setBudgetTok(Math.max(1000, Math.min(10_000_000, +e.target.value || 1000)))}
                 className="w-full text-sm bg-bg-secondary border border-border-dim rounded px-3 py-2 text-text-primary focus:outline-none focus:border-cyber-cyan/40"
               />
             </div>

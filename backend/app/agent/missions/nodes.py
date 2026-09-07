@@ -749,6 +749,21 @@ async def dispatch_tool(
 
 # ── LLM helpers ──────────────────────────────────────────────────────────────
 
+def tier_des_missions(config: dict):
+    """Le niveau « mission » s'il a une chaîne, sinon COMPLEX (07/09/2026).
+
+    Une chaîne vide n'est pas « aucun modèle », c'est « non configuré » : une
+    installation qui n'ouvre jamais l'onglet Routage garde le comportement
+    d'avant, sans changement silencieux.
+    """
+    from app.services.llm_provider import ComplexityTier
+
+    chaine = (config or {}).get("mission", {}) or {}
+    if chaine.get("providers"):
+        return ComplexityTier.MISSION
+    return ComplexityTier.COMPLEX
+
+
 async def _mission_llm_tier(mission_id: str):
     """Tier LLM des nœuds de mission (C1a, audit 16/07 §6.6).
 
@@ -763,15 +778,19 @@ async def _mission_llm_tier(mission_id: str):
     même onglet quatre fois de suite, deux étapes abandonnées. Le chat
     aurait fait la même demande sur GPT-5.6.
     """
-    from app.services.llm_provider import ComplexityTier
+    from app.services import llm_provider as lp
     try:
         from app.services.mission_service import load_active_mandate
         mandate = await load_active_mandate(mission_id)
-        if mandate is not None:
-            return ComplexityTier(mandate.llm_tier or "complex")
+        if mandate is not None and mandate.llm_tier:
+            return lp.ComplexityTier(mandate.llm_tier)
     except Exception as exc:  # noqa: BLE001 — le tier ne casse jamais un tick
         logger.debug("_mission_llm_tier: repli COMPLEX (%s)", exc)
-    return ComplexityTier.COMPLEX
+    try:
+        return tier_des_missions(lp.get_tier_config())
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("_mission_llm_tier: config de routage illisible (%s)", exc)
+        return lp.ComplexityTier.COMPLEX
 
 
 def _tier_label(tier) -> str:

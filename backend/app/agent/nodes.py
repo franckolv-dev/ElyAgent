@@ -160,6 +160,21 @@ from app.agent.helpers.memory_formatting import _format_memory_block  # noqa: E4
 # Agent node                                                           #
 # ------------------------------------------------------------------ #
 
+def tier_du_tour(pin: str, user_query: str):
+    """Le tier de ce tour : l'épingle de l'appelant, sinon le classement.
+
+    Une mission épingle « complex » (#369) ou « mission » quand le niveau M a
+    une chaîne (07/09/2026) : `classify_complexity` lisait des mots-clés dans
+    la consigne (« image », « photo ») et envoyait le tour sur le tier IMAGE.
+    """
+    from app.services.llm_provider import ComplexityTier, classify_complexity
+
+    p = (pin or "").strip().lower()
+    if p in ("complex", "mission"):
+        return ComplexityTier(p)
+    return classify_complexity(user_query)
+
+
 def bloc_execution_automatique(mission_passage: bool) -> str:
     """Le rappel « personne ne lit ta question maintenant », en deux versions.
 
@@ -1362,8 +1377,7 @@ def create_agent_node():
             # consigne reconstruite (« image », « photo ») et envoyait le tour
             # sur le tier IMAGE, ce jour-là un modèle local à 227 s par appel
             # (mission « test2 », 03/09/2026).
-            _pin = str(state.get("tier_pin") or "").strip().lower()
-            _tier = ComplexityTier.COMPLEX if _pin == "complex" else classify_complexity(user_query)
+            _tier = tier_du_tour(str(state.get("tier_pin") or ""), user_query)
 
             # ── Hermes Chantier 4 — fallback chain bootstrap ─────────────
             # Capture (or recreate) the per-conversation FallbackState. The

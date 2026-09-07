@@ -47,8 +47,9 @@ class MissionCreate(BaseModel):
     # 03/09/2026 : une mission tourne sur la boucle du chat (#370), soit
     # ~30 000 tokens par action avec le catalogue complet. 50 000 (plafond
     # 500 000) datait du moteur à un outil par tick et faisait échouer
-    # toute mission en deux actions.
-    budget_tokens: int = Field(500_000, ge=1000, le=5_000_000)
+    # toute mission en deux actions. Plafond 10 M depuis le 07/09/2026 :
+    # « Plateformes littéraires » a épuisé 5 M à deux pas du but.
+    budget_tokens: int = Field(500_000, ge=1000, le=10_000_000)
     # 03/09/2026 : sur la boucle du chat une page LinkedIn vaut cinq actions
     # (ouvrir, attendre, sélecteur, texte, HTML) ; « test2 » a épuisé 100
     # itérations sans conclure. Défaut 100, plafond 1 000.
@@ -74,7 +75,7 @@ class MissionUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     goal: Optional[str] = Field(None, min_length=5)
     priority: Optional[int] = Field(None, ge=1, le=10)
-    budget_tokens: Optional[int] = Field(None, ge=1000, le=5_000_000)
+    budget_tokens: Optional[int] = Field(None, ge=1000, le=10_000_000)
     budget_iterations: Optional[int] = Field(None, ge=1, le=1000)
     tick_interval_seconds: Optional[int] = Field(None, ge=30, le=86_400)
     deadline: Optional[datetime] = None

@@ -42,6 +42,11 @@ export default function MissionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [busy, setBusy]       = useState<string | null>(null); // which action is in flight
+  // 07/09/2026 — relance avec le carnet et un nouveau budget.
+  const [showRestart, setShowRestart] = useState(false);
+  const [restartKeep, setRestartKeep] = useState(true);
+  const [restartTokens, setRestartTokens] = useState(10_000_000);
+  const [restartIter, setRestartIter] = useState(300);
   // J6 — workspace (carnet/journal/compteurs) + modal de validation du mandat
   const [workspace, setWorkspace] = useState<MissionWorkspace | null>(null);
   const [showMandate, setShowMandate] = useState(false);
@@ -111,6 +116,24 @@ export default function MissionDetailPage() {
     catch (e) { setError(e instanceof Error ? e.message : "Abort échoué"); }
     finally { setBusy(null); }
   };
+  // Relancer = restart (brouillon, compteurs à zéro, carnet gardé si demandé)
+  // PUIS start : sans le second appel, la mission attendrait un clic de plus.
+  const onRestart = async () => {
+    if (!id) return;
+    setBusy("restart");
+    setError(null);
+    try {
+      await missionsApi.restart(id, {
+        keep_history: restartKeep,
+        max_tokens: restartTokens,
+        max_iterations: restartIter,
+      });
+      await missionsApi.start(id);
+      setShowRestart(false);
+      await fetchAll();
+    } catch (e) { setError(e instanceof Error ? e.message : "Relance échouée"); }
+    finally { setBusy(null); }
+  };
   // J6 — validation HUMAINE du mandat (D6) : le clic sur le résumé du mandat
   // EST la validation ; pending_validation → active, une seule fois.
   const onActivate = async () => {
@@ -168,6 +191,7 @@ export default function MissionDetailPage() {
 
   const meta     = STATUS_META[mission.status];
   const terminal = isTerminal(mission.status);
+  const relancable = terminal || mission.status === "waiting_user" || mission.status === "paused";
   const progress = Math.round((mission.iterations_used / Math.max(1, mission.budget_iterations)) * 100);
 
   return (
@@ -308,7 +332,44 @@ export default function MissionDetailPage() {
                     {mission.autonomy_state === "active" ? "Arrêt d'urgence" : "Abandonner"}
                   </button>
                 )}
+                {relancable && (
+                  <button onClick={() => setShowRestart((v) => !v)} disabled={busy !== null} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/5 disabled:opacity-50">
+                    <RefreshCw className="w-3.5 h-3.5" /> Relancer
+                  </button>
+                )}
               </div>
+
+              {/* 07/09/2026 — « Plateformes littéraires » a épuisé ses 5 M à deux
+                  pas du but : on relance en GARDANT le carnet, avec un budget plus
+                  grand, et la mission repart tout de suite. */}
+              {relancable && showRestart && (
+                <div className="flex flex-wrap items-end gap-3 text-xs bg-bg-primary border border-border-dim rounded px-3 py-2">
+                  <label className="inline-flex items-center gap-1.5 text-text-secondary">
+                    <input type="checkbox" checked={restartKeep} onChange={(e) => setRestartKeep(e.target.checked)} />
+                    Garder le carnet et le travail fait
+                  </label>
+                  <label className="flex flex-col gap-1 text-text-muted">
+                    Budget de tokens
+                    <input
+                      type="number" min={1000} max={10_000_000} step={100_000} value={restartTokens}
+                      onChange={(e) => setRestartTokens(Math.max(1000, Math.min(10_000_000, +e.target.value || 1000)))}
+                      className="w-36 bg-bg-secondary border border-border-dim rounded px-2 py-1 text-text-primary focus:outline-none focus:border-cyber-cyan/60"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-text-muted">
+                    Itérations
+                    <input
+                      type="number" min={1} max={1000} value={restartIter}
+                      onChange={(e) => setRestartIter(Math.max(1, Math.min(1000, +e.target.value || 1)))}
+                      className="w-24 bg-bg-secondary border border-border-dim rounded px-2 py-1 text-text-primary focus:outline-none focus:border-cyber-cyan/60"
+                    />
+                  </label>
+                  <button onClick={onRestart} disabled={busy !== null} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/5 disabled:opacity-50">
+                    {busy === "restart" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                    Relancer maintenant
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* J6 — Carnet de bord + compteurs journaliers (mission sous mandat) */}
