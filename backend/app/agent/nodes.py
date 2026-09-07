@@ -1541,7 +1541,14 @@ def create_agent_node():
                     _filtered_tools = resolve_profile_tools(
                         _profile_effectif, registry.all_tools,
                     )
-                    logger.warning(
+                    # Le compte suffit à l'usage ; la liste des 230 noms, à
+                    # CHAQUE appel du modèle en WARNING, noyait le journal
+                    # (lot 4, 07/09/2026). Elle reste lisible en DEBUG.
+                    logger.info(
+                        "[diag.bind] tier=%s profile=%r→%r tools(%d)",
+                        _tier_key, _profile, _profile_effectif, len(_filtered_tools),
+                    )
+                    logger.debug(
                         "[diag.bind] tier=%s profile=%r→%r tools(%d)=%s",
                         _tier_key, _profile, _profile_effectif,
                         len(_filtered_tools),

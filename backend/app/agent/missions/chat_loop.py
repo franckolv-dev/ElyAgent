@@ -113,6 +113,48 @@ _CONSIGNE_BUDGET = (
 # du modèle ; trop court, il perd l'état.
 _BILAN_MAX: int = 1500
 
+# Lot 4 (07/09/2026) — les retours d'outils ANCIENS d'un passage sont
+# compactés avant l'appel au modèle. « Plateformes littéraires » : 2,27 M
+# tokens d'entrée pour 57 appels, 87 000 caractères de retours (26 lectures
+# de HTML à 8 600) qui repartaient TOUS à chaque appel — la fenêtre de 1 M
+# du modèle ne tronque jamais. Le modèle a déjà agi sur un retour vieux de
+# six tours ; il en garde un aperçu, l'état garde tout (traces, juge), et
+# l'outil se relance s'il faut le détail.
+_RETOURS_ENTIERS: int = 6
+_APERCU_RETOUR: int = 400
+
+
+def compacter_les_retours(
+    messages: Any, garder: int = _RETOURS_ENTIERS, apercu: int = _APERCU_RETOUR,
+) -> list:
+    """Les ``ToolMessage`` sauf les ``garder`` derniers, réduits à un aperçu.
+
+    Pure : rend une nouvelle liste, les messages non touchés sont les mêmes
+    objets, les ids et l'ordre sont préservés. Un retour plus court que
+    l'aperçu plus sa note n'est pas touché.
+    """
+    liste = list(messages or ())
+    indices = [i for i, m in enumerate(liste) if isinstance(m, ToolMessage)]
+    a_compacter = set(indices[:-garder]) if garder > 0 else set(indices)
+    sortie: list = []
+    for i, m in enumerate(liste):
+        if i not in a_compacter:
+            sortie.append(m)
+            continue
+        texte = m.content if isinstance(m.content, str) else str(m.content)
+        if len(texte) <= apercu + 200:
+            sortie.append(m)
+            continue
+        note = (
+            f" … [retour compacté : {len(texte):,} caractères au total — tu as déjà "
+            "agi dessus ; relance l'outil si tu as besoin du détail]"
+        ).replace(",", " ")
+        sortie.append(ToolMessage(
+            content=texte[:apercu] + note, tool_call_id=m.tool_call_id,
+            name=getattr(m, "name", None), id=getattr(m, "id", None),
+        ))
+    return sortie
+
 
 # ── Interruption ─────────────────────────────────────────────────────────────
 
@@ -262,7 +304,11 @@ def _agent_qui_se_photographie(dernier_etat: Optional[dict] = None):
     _inner = create_agent_node()
 
     async def _agent(state: AgentState) -> dict:
-        sortie = await _inner(state)
+        # Le modèle voit les anciens retours compactés ; l'ÉTAT, lui, garde
+        # tout (lot 4). `add_messages` fusionne la sortie sur l'état réel.
+        sortie = await _inner({
+            **state, "messages": compacter_les_retours(state.get("messages") or []),
+        })
         if dernier_etat is not None:
             dernier_etat["messages"] = (
                 list(state.get("messages") or ())
