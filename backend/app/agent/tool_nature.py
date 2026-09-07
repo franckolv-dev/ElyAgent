@@ -407,6 +407,10 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "desktop_search_files": _N("LECTURE"),
     "desktop_stat_file": _N("LECTURE"),
     "desktop_write_file": _N("ECRITURE"),
+    # ── agent/tools/ask_user_tool (07/09/2026) ─────────────────
+    # Une question posée à l'utilisateur : modifie l'état de la mission
+    # (elle attend), rien d'irréversible, rien chez un tiers.
+    "ask_user": _N("ECRITURE"),
     # ── skills/builtin/find_tool_skill ──────────────────────────
     "find_tool": _N("LECTURE"),
     "report_missing_capability": _N("ECRITURE", arbitrates=True),

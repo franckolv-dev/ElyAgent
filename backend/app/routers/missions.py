@@ -108,8 +108,15 @@ class MissionOut(BaseModel):
     # mandat sérialisé (JSON, parsé côté frontend pour le résumé/badge).
     autonomy_state: Optional[str] = None
     mandate_json: Optional[str] = None
+    # 07/09/2026 — la question en attente (statut `waiting_user`).
+    pending_question: Optional[str] = None
+    question_asked_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class AnswerBody(BaseModel):
+    answer: str = Field(..., min_length=1, max_length=4000)
 
 
 class MissionWorkspaceOut(BaseModel):
@@ -502,6 +509,31 @@ async def pause(mission_id: str, current_user: User = Depends(get_current_user))
     return MissionOut.model_validate(m)
 
 
+@router.post("/{mission_id}/answer", response_model=MissionOut)
+async def answer_question(
+    mission_id: str,
+    body: AnswerBody,
+    current_user: User = Depends(get_current_user),
+) -> MissionOut:
+    """Répondre à la question posée par une mission libre (07/09/2026).
+
+    La mission passe de ``waiting_user`` à ``running``, la réponse va au
+    carnet et à la consigne du prochain passage, la mission redevient due
+    tout de suite. 409 si elle n'attend rien.
+    """
+    await _own_or_404(mission_id, current_user)
+    from app.services import mission_questions
+
+    try:
+        m = await mission_questions.repondre(mission_id, body.answer)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    from app.services.audit_log import audit
+    await audit(current_user.id, "mission_answer",
+                details=body.answer[:200], command=mission_id, channel="web")
+    return MissionOut.model_validate(m)
+
+
 @router.post("/{mission_id}/abort", response_model=MissionOut)
 async def abort(
     mission_id: str,
@@ -756,6 +788,8 @@ async def restart(
         fresh.started_at = None
         fresh.completed_at = None
         fresh.next_tick_at = None
+        fresh.pending_question = None
+        fresh.question_asked_at = None
         fresh.final_summary = None
         fresh.updated_at = datetime.now(timezone.utc)
         if body.max_iterations is not None:

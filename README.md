@@ -100,7 +100,7 @@ task, two of them scored 4/4 — one in 1.1 s, the other in 8.9 s.
 
 ## What it can do
 
-**199 tools** built in, with default feature flags. Enabling the MCP client
+**200 tools** built in, with default feature flags. Enabling the MCP client
 (`mcp_client_v2_enabled`, off by default) adds **10** MCP management tools, and
 every MCP server you connect contributes its own on top, as
 `mcp__server__tool`.

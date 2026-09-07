@@ -344,6 +344,12 @@ def _noeud_outils(
                 ),
                 tool_call_id=cid, name=nom,
             ))
+            # Une question posée arrête le passage ICI : la mission est en
+            # attente, le travail déjà fait est consigné par le passage
+            # (chemin « interrompu »), et rien d'autre n'est joué avant la
+            # réponse (07/09/2026).
+            if nom == "ask_user" and ok and await _statut(mission_id) == "waiting_user":
+                raise MissionInterrompue(mission_id)
             # `find_tool` est le filet de la sélection par familles : ce
             # qu'il découvre entre, avec sa famille, pour le reste de la
             # mission — et le tour suivant le voit déjà branché.
@@ -636,13 +642,22 @@ async def _amorcer_la_memoire(
 # ── La consigne du passage ───────────────────────────────────────────────────
 
 
-def _consigne(goal: str, carnet: str) -> str:
+def _consigne(goal: str, carnet: str, reponses: str = "") -> str:
     bloc = f"\n\n{carnet}\n" if carnet else "\n"
     return (
         "Tu exécutes une MISSION autonome. Personne n'est devant l'écran : "
-        "tu agis, tu ne demandes pas.\n\n"
+        "tu agis, sans attendre de confirmation pour ce que l'objectif te "
+        "demande déjà de faire.\n"
+        "Mais tu as le droit de t'arrêter pour DEMANDER, avec l'outil "
+        "`ask_user` : quand tu hésites entre plusieurs choix que l'objectif "
+        "te demande de soumettre, quand une action engage l'utilisateur "
+        "(créer un compte, payer, écrire à un tiers inconnu) sans son accord "
+        "explicite, ou quand tu es bloqué et que lui seul peut débloquer. "
+        "La mission s'arrête, il est prévenu, et tu reprends avec sa réponse. "
+        "Pose UNE question précise avec les options. N'invente jamais sa "
+        "réponse, et ne tourne pas en rond à la place de demander.\n\n"
         f"── OBJECTIF DE LA MISSION ──\n{goal}\n"
-        f"{bloc}"
+        f"{bloc}{reponses}"
         "\n── COMMENT TERMINER CE PASSAGE ──\n"
         "Enchaîne les outils dont tu as besoin, puis termine par une réponse "
         "en texte qui dit TROIS choses : ce que tu as FAIT dans ce passage "
@@ -778,8 +793,11 @@ async def run_mission_chat_passage(
     # de ce qui part au modèle, et c'est la moitié que ce module doit servir
     # lui-même pour qu'elle soit anonymisée.
     await _amorcer_la_memoire(mission_id, user_id, goal, filtre)
+    from app.services.mission_questions import bloc_pour_la_consigne
+
     consigne = filtre.anonymize(
-        _consigne(goal, _bloc_carnet(mission_id)), ner_detection=False,
+        _consigne(goal, _bloc_carnet(mission_id), bloc_pour_la_consigne(mission_id)),
+        ner_detection=False,
     )
     # L'état du dernier tour VU, pour le cas où `ainvoke` lève : le nœud
     # d'outils le recopie ici, le passage y retombe pour le coût.
@@ -907,6 +925,12 @@ async def run_mission_chat_passage(
         raise plantage
 
     if interrompu:
+        if await _statut(mission_id) == "waiting_user":
+            _ecrire_le_carnet(
+                mission_id, journal, bilan or "question posée à l'utilisateur", True,
+            )
+            return {"done": False, "failed": False, "interrupted": True,
+                    "waiting_user": True, "actions": len(journal)}
         _ecrire_le_carnet(mission_id, journal, bilan or "passage interrompu", True)
         return {"done": False, "failed": False, "interrupted": True,
                 "actions": len(journal)}
@@ -951,25 +975,38 @@ async def run_mission_chat_passage(
 
     # Audit GPT-6 F01 (06/09/2026) : le juge a nommé des écarts que la reprise
     # n'a pas résorbés, et le modèle conclut quand même. La mission n'est
-    # pas « completed » sur sa parole : elle ÉCHOUE en nommant les écarts, le
-    # bilan reste pour l'utilisateur. Le marqueur « à suivre » prime — un
-    # modèle qui sait qu'il lui reste du travail sera réveillé.
+    # pas « completed » sur sa parole. Depuis le 07/09/2026, elle n'échoue
+    # pas non plus : un blocage devient une QUESTION à l'utilisateur — les
+    # écarts sont la question, la mission attend, et reprend avec sa
+    # réponse. Le marqueur « à suivre » prime : un modèle qui sait qu'il lui
+    # reste du travail sera réveillé.
     ecarts = str(resultat.get("conformity_unresolved") or "").strip()
     if ecarts and not a_suivre:
-        raison = "exigences non satisfaites : " + " ; ".join(
+        liste = " ; ".join(
             ln.strip().lstrip("-•* ").strip()
             for ln in ecarts.splitlines() if ln.strip()
-        )[:300]
-        _ecrire_le_carnet(mission_id, journal, bilan, False, incident=raison[:200])
+        )[:600]
+        question = (
+            f"Je n'arrive pas à satisfaire ces exigences : {liste}. "
+            "Que veux-tu que je fasse ? (une piste, une information, ou « abandonne »)"
+        )
+        _ecrire_le_carnet(mission_id, journal, bilan, True, incident="écarts non résolus")
+        from app.services import mission_questions
+
+        try:
+            await mission_questions.poser(mission_id, question)
+        except ValueError as exc:
+            logger.warning("Mission %s : question non posée (%s) — bilan rendu", mission_id, exc)
         logger.info(
-            "Mission %s : passage terminé — %d action(s), %d tokens, %s",
-            mission_id, len(journal), tokens, raison,
+            "Mission %s : passage terminé — %d action(s), %d tokens, en attente : %.200s",
+            mission_id, len(journal), tokens, liste,
         )
         return {
             "done": False,
             "final_summary": bilan or None,
-            "failed": True,
-            "failure_reason": raison,
+            "failed": False,
+            "failure_reason": None,
+            "waiting_user": True,
             "actions": len(journal),
         }
 

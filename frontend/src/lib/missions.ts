@@ -13,7 +13,7 @@ import { authFetch } from "./auth";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export type MissionStatus =
-  | "draft" | "planning" | "running" | "paused"
+  | "draft" | "planning" | "running" | "paused" | "waiting_user"
   | "completed" | "failed" | "aborted";
 
 export type StepPhase = "plan" | "act" | "eval" | "replan" | "hitl_wait";
@@ -45,6 +45,9 @@ export interface Mission {
   autonomy_state?: string | null;
   /** J6 — mandat sérialisé (JSON : tools_allow, on_unforeseen, budgets…). */
   mandate_json?: string | null;
+  /** 07/09/2026 — la question posée par la mission (statut waiting_user). */
+  pending_question?: string | null;
+  question_asked_at?: string | null;
 }
 
 /** J6 — vue lecture seule du workspace d'une mission autonome. */
@@ -187,6 +190,9 @@ export const missionsApi = {
     call(`/api/missions/${id}/workspace`),
   start: (id: string): Promise<Mission> => call(`/api/missions/${id}/start`, { method: "POST" }),
   pause: (id: string): Promise<Mission> => call(`/api/missions/${id}/pause`, { method: "POST" }),
+  /** 07/09/2026 — répondre à la question d'une mission en attente. */
+  answer: (id: string, answer: string): Promise<Mission> =>
+    call(`/api/missions/${id}/answer`, { method: "POST", body: JSON.stringify({ answer }) }),
   abort: (id: string, reason = "User-requested abort"): Promise<Mission> =>
     call(`/api/missions/${id}/abort`, { method: "POST", body: JSON.stringify({ reason }) }),
   tick: (id: string): Promise<{ iteration: number | null; plan_version: number | null; done: boolean; final_summary: string | null; last_eval_success: boolean | null }> =>
@@ -209,6 +215,7 @@ export const STATUS_META: Record<MissionStatus, { label: string; color: string; 
   planning:  { label: "Planification", color: "text-amber-400 bg-amber-500/10 border-amber-500/20", emoji: "🧠" },
   running:   { label: "En cours", color: "text-cyber-cyan bg-cyber-cyan/10 border-cyber-cyan/20", emoji: "⚡" },
   paused:    { label: "En pause", color: "text-amber-400 bg-amber-500/10 border-amber-500/20", emoji: "⏸️" },
+  waiting_user: { label: "Question posée", color: "text-amber-300 bg-amber-500/10 border-amber-500/30", emoji: "❓" },
   completed: { label: "Terminée", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", emoji: "✅" },
   failed:    { label: "Échec", color: "text-red-400 bg-red-500/10 border-red-500/20", emoji: "❌" },
   aborted:   { label: "Abandonnée", color: "text-text-muted bg-bg-secondary border-border-dim", emoji: "🛑" },

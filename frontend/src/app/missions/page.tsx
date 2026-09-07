@@ -56,7 +56,7 @@ export default function MissionsPage() {
   }, [missions, fetchAll]);
 
   const filtered = missions.filter((m) => {
-    if (filter === "active") return ["draft", "planning", "running", "paused"].includes(m.status);
+    if (filter === "active") return ["draft", "planning", "running", "paused", "waiting_user"].includes(m.status);
     if (filter === "terminal") return ["completed", "failed", "aborted"].includes(m.status);
     return true;
   });
@@ -102,7 +102,7 @@ export default function MissionsPage() {
                   {tab === "all" ? t("tabAll") : tab === "active" ? t("tabActive") : t("tabTerminal")}
                   <span className="ml-1.5 text-[10px] text-text-muted">
                     ({tab === "all" ? missions.length :
-                       tab === "active" ? missions.filter(m => ["draft","planning","running","paused"].includes(m.status)).length :
+                       tab === "active" ? missions.filter(m => ["draft","planning","running","paused","waiting_user"].includes(m.status)).length :
                        missions.filter(m => ["completed","failed","aborted"].includes(m.status)).length})
                   </span>
                 </button>

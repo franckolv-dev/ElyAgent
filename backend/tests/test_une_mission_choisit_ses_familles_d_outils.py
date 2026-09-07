@@ -50,7 +50,7 @@ _CATALOGUE = [_outil(n) for n in (
     "contacts_list", "contacts_search",
     "browser_open_tab", "browser_click",
     "sheets_append_row",
-    "find_tool", "report_missing_capability", "session_todo", "web_search",
+    "find_tool", "report_missing_capability", "session_todo", "web_search", "ask_user",
     "web_fetch_page", "memory_recall", "search_past_conversations_tool",
 )]
 

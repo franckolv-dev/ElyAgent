@@ -49,6 +49,9 @@ logger = logging.getLogger(__name__)
 # évite le tour inutile quand rien n'existe.
 NOYAU_MISSION: frozenset[str] = CORE_TOOLS | frozenset({
     "session_todo", "web_search", "report_missing_capability",
+    # Le droit de s'arrêter pour demander (07/09/2026) : quelle que soit la
+    # famille choisie, une mission peut poser une question et attendre.
+    "ask_user",
 })
 
 # Les familles branchées quoi qu'il arrive. `web_*` (6 outils) : recherche,

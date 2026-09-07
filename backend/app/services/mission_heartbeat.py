@@ -464,6 +464,12 @@ async def _process_one_mission(mission) -> None:
             await _oublier_les_reports(mid)
 
             # Decide what's next
+            if result.get("waiting_user"):
+                # La mission a posé une question : elle attend, sans tick.
+                # `list_due_missions` ne la sélectionne plus ; la réponse la
+                # rendra due (07/09/2026).
+                logger.info("Mission %s: en attente d'une réponse de l'utilisateur", mid)
+                return
             if result.get("done") and result.get("final_summary"):
                 try:
                     completed = await mission_service.complete_mission(mid, result["final_summary"])

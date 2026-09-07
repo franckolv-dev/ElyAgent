@@ -257,6 +257,17 @@ export default function MissionDetailPage() {
                 </div>
               )}
 
+              {/* 07/09/2026 — la mission a posé une question et attend la réponse */}
+              {mission.status === "waiting_user" && mission.pending_question && (
+                <div className="text-xs text-amber-200 bg-amber-500/5 border border-amber-500/30 rounded px-3 py-2 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <MessageCircleQuestion className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                    <div className="whitespace-pre-wrap">{mission.pending_question}</div>
+                  </div>
+                  <MissionQuestionBox missionId={id} onAnswered={fetchAll} />
+                </div>
+              )}
+
               {error && (
                 <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded px-3 py-2">
                   <AlertCircle className="w-4 h-4" /> {error}
@@ -609,6 +620,51 @@ function RunRow({ missionId, run, onAnswered }: {
         <AnswerBox missionId={missionId} run={run} onAnswered={onAnswered} />
       )}
     </li>
+  );
+}
+
+function MissionQuestionBox({ missionId, onAnswered }: { missionId: string; onAnswered: () => void }) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!value.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await missionsApi.answer(missionId, value.trim());
+      setValue("");
+      onAnswered();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Envoi échoué");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Ta réponse… (Entrée pour envoyer)"
+          className="flex-1 text-xs bg-bg-secondary border border-amber-500/30 rounded px-2.5 py-1.5 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-amber-400/60"
+        />
+        <button
+          onClick={submit}
+          disabled={busy || !value.trim()}
+          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+          Répondre
+        </button>
+      </div>
+      {err && <p className="text-[10px] text-red-400 mt-1">{err}</p>}
+    </div>
   );
 }
 

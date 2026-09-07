@@ -20,8 +20,9 @@ même pas : il exigeait un retour d'outil à juger.
 Deux règles désormais :
 - un passage de mission est TOUJOURS jugé, même sans retour d'outil — sa
   réponse finale est confrontée à l'objectif ;
-- des écarts que la reprise n'a pas résorbés ferment la mission en ÉCHEC,
-  avec les écarts pour raison. Jamais « completed » sur la parole du modèle.
+- des écarts que la reprise n'a pas résorbés ne ferment JAMAIS la mission
+  « completed » sur la parole du modèle : ils deviennent une question posée
+  à l'utilisateur, la mission attend sa réponse (lot 2, 07/09/2026).
 
 Run with:  cd backend && python -m pytest tests/test_une_mission_ne_se_conclut_pas_sur_sa_parole.py -v
 """
@@ -106,6 +107,12 @@ async def mission(tmp_path, monkeypatch):
 def _branche(monkeypatch, modele):
     import app.agent.missions.nodes as mn
     import app.services.llm_provider as lp
+    from app.services import mission_questions
+
+    async def _rien(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(mission_questions, "notifier", _rien)
 
     monkeypatch.setattr(lp, "get_llm_for_tier", lambda *a, **k: modele)
     monkeypatch.setattr(lp, "get_fallback_llms", lambda *a, **k: [], raising=False)
@@ -134,8 +141,13 @@ async def test_une_mission_qui_n_a_rien_fait_ne_se_conclut_pas_sur_sa_parole(
 
     assert modele.verdicts_rendus >= 1, "un passage sans outil doit quand même être jugé"
     assert res["done"] is False, "une mission aux exigences non satisfaites n'est pas terminée"
-    assert res["failed"] is True
-    assert "tableur" in (res["failure_reason"] or "").lower()
+    # Un blocage devient une QUESTION à l'utilisateur, pas un échec (lot 2,
+    # 07/09/2026) : la mission attend, les écarts sont la question.
+    assert res["failed"] is False and res.get("waiting_user") is True
+    from app.services import mission_service
+    m = await mission_service.get_mission(mid)
+    assert m.status == "waiting_user"
+    assert "tableur" in (m.pending_question or "").lower()
     assert res["actions"] == 0
 
 
@@ -159,8 +171,11 @@ async def test_une_mission_qui_affirme_avoir_livre_sans_preuve_n_est_pas_termine
     res = await run_mission_chat_passage(mid, uid, _BUT)
 
     assert res["done"] is False
-    assert res["failed"] is True
-    assert "tableur" in (res["failure_reason"] or "").lower()
+    assert res["failed"] is False and res.get("waiting_user") is True
+    from app.services import mission_service
+    m = await mission_service.get_mission(mid)
+    assert m.status == "waiting_user"
+    assert "tableur" in (m.pending_question or "").lower()
     assert "tableur" in (res["final_summary"] or "").lower(), (
         "le bilan doit dire à l'utilisateur ce qui manque"
     )
