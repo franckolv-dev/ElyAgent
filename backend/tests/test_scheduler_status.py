@@ -119,7 +119,13 @@ class _AgentQuiAffirmeSansOutil:
 async def test_une_reponse_ecartee_par_le_garde_fou_n_est_pas_un_succes(monkeypatch):
     import app.agent.graph as graph_mod
     import app.services.scheduler as sched
+    import app.services.output_verifier as ov
     monkeypatch.setattr(graph_mod, "build_simple_agent_graph", lambda: _AgentQuiAffirmeSansOutil())
+    # Le signal d'apprentissage part en tâche de fond et écrit en base pendant
+    # que le planificateur enregistre son résultat : sur la base `:memory:`
+    # de la CI (une seule connexion partagée), la course laissait
+    # `last_result` vide. Ce test porte sur le STATUT, pas sur le signal.
+    monkeypatch.setattr(ov, "_spawn_hallucination_signal", lambda **_kw: None)
 
     async def _noop_deliver(task, content):
         return None
