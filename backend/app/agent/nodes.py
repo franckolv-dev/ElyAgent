@@ -212,6 +212,7 @@ def bloc_execution_automatique(mission_passage: bool) -> str:
         "- Termine en produisant directement le livrable final demandé."
     )
 
+
 def _historique_deborde(messages, model: str) -> bool:
     """La conversation tient-elle ENTIÈRE dans la fenêtre du modèle local ?
 
