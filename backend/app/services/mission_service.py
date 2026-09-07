@@ -249,8 +249,8 @@ async def fail_mission(
     if final_summary:
         champs["final_summary"] = final_summary
     m = await _transition(
-        mission_id, from_={"draft", "planning", "running", "paused"}, to="failed",
-        **champs,
+        mission_id, from_={"draft", "planning", "running", "paused", "waiting_user"},
+        to="failed", **champs,
     )
     _spawn_mission_outcome(m, "failed")
     return m
@@ -259,7 +259,8 @@ async def fail_mission(
 async def abort_mission(mission_id: str, reason: str = "User-requested abort") -> Mission:
     """any-non-terminal → aborted (kill switch)."""
     m = await _transition(
-        mission_id, from_={"draft", "planning", "running", "paused"}, to="aborted",
+        mission_id, from_={"draft", "planning", "running", "paused", "waiting_user"},
+        to="aborted",
         completed_at=_utcnow(), failure_reason=reason,
     )
     # C6 — l'arrêt d'urgence RÉVOQUE aussi le mandat : sans ça,

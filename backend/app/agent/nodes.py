@@ -160,6 +160,59 @@ from app.agent.helpers.memory_formatting import _format_memory_block  # noqa: E4
 # Agent node                                                           #
 # ------------------------------------------------------------------ #
 
+def bloc_execution_automatique(mission_passage: bool) -> str:
+    """Le rappel « personne ne lit ta question maintenant », en deux versions.
+
+    Une tâche planifiée est un tour de chat sans humain : aucune question
+    n'aura de réponse à temps. Une MISSION, elle, a `ask_user` (07/09/2026) :
+    elle peut s'arrêter, prévenir, et reprendre avec la réponse. Lui dire
+    « ne pose aucune question » revenait à contredire sa consigne.
+    """
+    if mission_passage:
+        question = (
+            "- Tu n'attends pas de confirmation pour ce que l'objectif te "
+            "demande déjà. Mais si tu hésites entre plusieurs choix à lui "
+            "soumettre, si une action l'engage sans son accord, ou si tu es "
+            "bloqué : appelle `ask_user` avec une question précise — la "
+            "mission attendra sa réponse. Ne devine jamais à sa place.\n"
+        )
+        cadre = (
+            "Cette mission s'exécute SEULE, sans utilisateur devant l'écran. "
+            "Ses réveils sont gérés par le heartbeat — ce n'est pas à toi de "
+            "les programmer.\n"
+        )
+    else:
+        question = (
+            "- NE pose AUCUNE question et NE demande AUCUNE confirmation : "
+            "personne ne la lira à temps. En cas d'ambiguïté, prends "
+            "l'option par défaut la plus raisonnable et continue.\n"
+        )
+        cadre = (
+            "Cette tâche s'exécute SEULE, à heure fixe, SANS utilisateur "
+            "disponible pour répondre maintenant. La récurrence "
+            "(« chaque jour », l'heure d'envoi) est DÉJÀ gérée par le "
+            "planificateur — ce n'est pas à toi de la configurer.\n"
+        )
+    return (
+        "\n\n## ⚠️ EXÉCUTION AUTOMATIQUE PROGRAMMÉE\n"
+        + cadre
+        + "- EXÉCUTE la demande immédiatement et jusqu'au bout, en "
+        "appelant les outils nécessaires.\n"
+        + question
+        + "- NE crée PAS et NE reprogramme PAS de tâche planifiée "
+        "(outils scheduler_*) : elle existe déjà, la recréer ferait "
+        "une boucle.\n"
+        "- SURVEILLANCE/veille uniquement : si — et SEULEMENT si — ta "
+        "tâche consiste à surveiller quelque chose et qu'il n'y a RIEN "
+        "de nouveau ni de notable à signaler depuis la dernière fois, "
+        "réponds EXACTEMENT « [SILENT] » (ce seul mot, rien d'autre) : "
+        "la notification sera supprimée pour ne pas te spammer. Pour "
+        "une tâche qui produit toujours un livrable (briefing, résumé, "
+        "rapport quotidien), NE l'utilise JAMAIS — livre le résultat.\n"
+        "- Termine en produisant directement le livrable final demandé."
+    )
+
+
 def _slm_real_name(llm, settings) -> str:
     """Le nom du modèle qui répond RÉELLEMENT sur la voie SLM.
 
@@ -1048,29 +1101,7 @@ def create_agent_node():
         # force l'exécution directe et on interdit la re-planification (sinon
         # boucle de tâches qui se recréent).
         if state.get("automated_task"):
-            system += (
-                "\n\n## ⚠️ EXÉCUTION AUTOMATIQUE PROGRAMMÉE\n"
-                "Cette tâche s'exécute SEULE, à heure fixe, SANS utilisateur "
-                "disponible pour répondre maintenant. La récurrence "
-                "(« chaque jour », l'heure d'envoi) est DÉJÀ gérée par le "
-                "planificateur — ce n'est pas à toi de la configurer.\n"
-                "- EXÉCUTE la demande immédiatement et jusqu'au bout, en "
-                "appelant les outils nécessaires.\n"
-                "- NE pose AUCUNE question et NE demande AUCUNE confirmation : "
-                "personne ne la lira à temps. En cas d'ambiguïté, prends "
-                "l'option par défaut la plus raisonnable et continue.\n"
-                "- NE crée PAS et NE reprogramme PAS de tâche planifiée "
-                "(outils scheduler_*) : elle existe déjà, la recréer ferait "
-                "une boucle.\n"
-                "- SURVEILLANCE/veille uniquement : si — et SEULEMENT si — ta "
-                "tâche consiste à surveiller quelque chose et qu'il n'y a RIEN "
-                "de nouveau ni de notable à signaler depuis la dernière fois, "
-                "réponds EXACTEMENT « [SILENT] » (ce seul mot, rien d'autre) : "
-                "la notification sera supprimée pour ne pas te spammer. Pour "
-                "une tâche qui produit toujours un livrable (briefing, résumé, "
-                "rapport quotidien), NE l'utilise JAMAIS — livre le résultat.\n"
-                "- Termine en produisant directement le livrable final demandé."
-            )
+            system += bloc_execution_automatique(bool(state.get("mission_passage")))
 
         # ── Inference ──────────────────────────────────────────────────────
         if use_slm:

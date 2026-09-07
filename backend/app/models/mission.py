@@ -53,11 +53,13 @@ def _utcnow() -> datetime:
 # planning  : agent is building/refining the plan
 # running   : agent is executing steps
 # paused    : paused by user (can be resumed)
+# waiting_user : the mission asked the user a question and waits for the
+#                answer (07/09/2026) — not ticked by the heartbeat
 # completed : goal achieved, final summary written
 # failed    : terminal failure (budget exhausted, fatal tool error, etc.)
 # aborted   : explicitly killed by user
 
-MISSION_STATUSES = {"draft", "planning", "running", "paused", "completed", "failed", "aborted"}
+MISSION_STATUSES = {"draft", "planning", "running", "paused", "waiting_user", "completed", "failed", "aborted"}
 MISSION_TERMINAL_STATUSES = {"completed", "failed", "aborted"}
 
 MISSION_SOURCES = {"ui", "scheduled_task", "channel", "autonomous"}
@@ -143,6 +145,12 @@ class Mission(Base):
     # counters, thresholds). Trace conservée après reprise ; le CARNET (J4)
     # la rend lisible. NULL = jamais pausée par un disjoncteur. Révision 0019.
     autonomy_pause_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # ── Question en attente (07/09/2026, révision 0037) ──
+    # Posée par `ask_user` : la mission est en `waiting_user` tant que
+    # l'utilisateur n'a pas répondu. NULL = rien en attente.
+    pending_question: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    question_asked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # ── Final state ──
     final_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
