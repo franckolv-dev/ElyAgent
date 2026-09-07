@@ -139,7 +139,19 @@ SLIM_DESCRIPTIONS: dict[str, str] = {
         "forms, any SPA where a button must be pressed before the next data "
         "appears.\n"
         "Read the page first (browser_tab_read_text / _read_html) to find a "
-        "selector that exists — a guessed selector fails silently."
+        "selector that exists — a guessed selector fails silently. For a "
+        "<select>, a checkbox or a radio, use browser_tab_fill instead."
+    ),
+
+    # 07/09/2026 — inscription SensCritique : menus et cases se REMPLISSENT,
+    # un clic sur l'option ou le libellé ne parle pas à React.
+    "browser_tab_fill": (
+        "Fill a form control in one of the user's Chrome tabs, by CSS selector "
+        "(React-safe: native setter + input/change events).\n"
+        "<select>: value = option value OR visible text. checkbox/radio: "
+        "value = \"true\" / \"false\". Secret from the vault: value = "
+        "\"vault://<label>\" — never the value itself.\n"
+        "Use THIS, not browser_tab_click, for selects and checkboxes."
     ),
 
     "gmail_update_settings": (

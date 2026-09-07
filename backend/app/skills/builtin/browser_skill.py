@@ -475,8 +475,10 @@ async def browser_fill(
     value: str,
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Fill a form field (input, textarea) on the current browser page.
+    """Fill a form control (input, textarea, select, checkbox, radio) on the current page.
 
+    Pour un <select> : `value` = la valeur de l'option OU son texte visible.
+    Pour une case à cocher ou un radio : `value` = "true" ou "false".
     Pour un mot de passe ou tout secret du coffre, passe la RÉFÉRENCE
     `vault://<étiquette>` comme valeur (voir vault_list_labels /
     vault_generate_secret) : elle est remplacée par la vraie valeur au moment
@@ -491,6 +493,29 @@ async def browser_fill(
     try:
         mgr = get_browser_manager()
         page = await mgr.get_page(user_id or "default")
+
+        # Un <select> ou une case ne se « remplit » pas (07/09/2026) : on
+        # choisit l'option (valeur ou texte visible) ou on règle l'état.
+        try:
+            info = await page.eval_on_selector(
+                selector,
+                "el => ({tag: el.tagName.toLowerCase(), type: (el.type || '').toLowerCase()})",
+            )
+        except Exception:  # noqa: BLE001 — un sélecteur muet retombe sur fill
+            info = {}
+        tag, typ = (info or {}).get("tag", ""), (info or {}).get("type", "")
+        if tag == "select":
+            try:
+                await page.select_option(selector, value=value, timeout=10_000)
+            except Exception:  # noqa: BLE001 — pas une valeur : peut-être le texte
+                await page.select_option(selector, label=value, timeout=10_000)
+            await _push_browser_frame(page, user_id)
+            return f"Menu {selector!r} réglé sur {value!r}."
+        if tag == "input" and typ in ("checkbox", "radio"):
+            voulu = str(value).strip().lower() in ("true", "1", "on", "yes", "oui", "checked", "x")
+            await page.set_checked(selector, voulu, timeout=10_000)
+            await _push_browser_frame(page, user_id)
+            return f"Case {selector!r} {'cochée' if voulu else 'décochée'}."
 
         await page.fill(selector, value, timeout=10_000)
 
