@@ -47,7 +47,10 @@ def test_la_boucle_des_missions_epingle_le_tier_complex():
     from app.agent.missions import chat_loop
 
     src = inspect.getsource(chat_loop.run_mission_chat_passage)
-    assert '"tier_pin": "complex"' in src
+    # 07/09/2026 : l'épingle n'est plus « complex » en dur mais le tier
+    # résolu — COMPLEX tant que le niveau M n'a pas de chaîne.
+    assert '"tier_pin": tier_du_passage' in src
+    assert "_mission_llm_tier" in src
 
 
 def test_le_noeud_agent_honore_l_epingle_avant_de_classer():
@@ -55,7 +58,10 @@ def test_le_noeud_agent_honore_l_epingle_avant_de_classer():
 
     src = inspect.getsource(nodes.create_agent_node)
     assert 'state.get("tier_pin")' in src
-    assert src.index('state.get("tier_pin")') < src.index("classify_complexity(user_query)")
+    # L'épingle est lue par `tier_du_tour`, qui ne classe que sans épingle.
+    assert "tier_du_tour(" in src
+    fn = inspect.getsource(nodes.tier_du_tour)
+    assert fn.index("pin") < fn.index("classify_complexity(user_query)")
 
 
 def test_l_etat_du_graphe_declare_l_epingle():

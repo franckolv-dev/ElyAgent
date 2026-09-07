@@ -826,6 +826,21 @@ TIER_META = [
         ),
     },
     {
+        "id": "mission",
+        "label": "Niveau M — Missions",
+        "badge": "M",
+        "color": "cyan",
+        "description": (
+            "La chaîne des MISSIONS : un travail long et autonome, avec le "
+            "catalogue d'outils, qui peut consommer plusieurs millions de tokens "
+            "(« Plateformes littéraires », 07/09/2026 : 5 M sur trois modèles "
+            "non choisis). Laissé vide, les missions tournent sur le niveau C. "
+            "Un modèle local est un pari sur une mission à 80 outils et 60 "
+            "appels : le 31/08/2026, Gemma 4 26B a pris 10 à 22 s par appel et "
+            "abandonné deux étapes."
+        ),
+    },
+    {
         "id": "maintenance",
         "label": "Niveau SYS — Maintenance",
         "badge": "SYS",

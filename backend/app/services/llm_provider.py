@@ -94,6 +94,10 @@ class ComplexityTier(str, Enum):
     COMPLEX     = "complex"     # Tier C — deep reasoning, multi-step
     IMAGE       = "image"       # Tier IMG — multimodal / vision
     MAINTENANCE = "maintenance" # Tier SYS — background tasks (memory, scheduler)
+    # Tier M — les missions (07/09/2026) : un travail long, à plusieurs
+    # millions de tokens, dont l'admin choisit la chaîne sans toucher au
+    # chat. Chaîne VIDE = non configuré = les missions restent sur COMPLEX.
+    MISSION     = "mission"
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +191,9 @@ DEFAULT_TIER_CONFIG: dict[str, dict] = {
     # part dans l'UI. Défaut volontairement NON-anthropic, pour ne pas
     # réintroduire une facturation que l'admin n'a pas choisie.
     "skill":       {"providers": ["deepseek"],                      "fallback_enabled": True},
+    # Tier M — missions (07/09/2026). VIDE à dessein : tant que l'admin n'y
+    # met rien, `tier_des_missions` rend COMPLEX et rien ne change.
+    "mission":     {"providers": [],                                "fallback_enabled": True},
 }
 
 _tier_config: dict[str, dict] = {}   # empty = use DEFAULT_TIER_CONFIG
