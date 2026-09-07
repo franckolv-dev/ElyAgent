@@ -548,18 +548,28 @@ async def execute_tool_call(
         isinstance(v, str) and v.startswith("vault://")
         for v in args.values()
     )
+    # Ce que la passerelle a résolu, pour le REMASQUER dans le résultat de
+    # l'outil (lot 3, 07/09/2026) : `browser_fill` renvoie « rempli avec la
+    # valeur : … » — sans ça, le secret repartait en clair au modèle, dans
+    # les traces et l'idempotence. valeur résolue → référence d'origine.
+    _secrets_resolus: dict[str, str] = {}
     if vault_refs_found:
         from app.services.vault_service import get_vault_service
         vault = get_vault_service()
         if vault.is_locked(user_id):
             return _tool_result(
-                "⛔ Vault verrouillé — déverrouillez votre coffre-fort dans Paramètres > Vault "
-                "pour utiliser ce secret.", tc_id
+                "⛔ Vault verrouillé — seul l'utilisateur peut le déverrouiller "
+                "(Réglages › Mon compte › Coffre). En mission, demande-le-lui "
+                "avec ask_user.", tc_id
             )
         try:
+            _refs_avant = dict(args)
             args, _resolved = await vault.resolve_vault_refs(user_id, args)
             if _resolved:
                 logger.info("Resolved vault refs %s for tool %s", _resolved, tool_name)
+            for _k, _v in _refs_avant.items():
+                if isinstance(_v, str) and _v.startswith("vault://") and args.get(_k):
+                    _secrets_resolus[str(args[_k])] = _v
         except KeyError as exc:
             return _tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id)
 
@@ -856,6 +866,8 @@ async def execute_tool_call(
             # this, browser_screenshot leaks ~200 KB of base64 into every
             # subsequent turn's prompt.
             _raw_result = str(result)
+            for _secret, _ref in sorted(_secrets_resolus.items(), key=lambda kv: -len(kv[0])):
+                _raw_result = _raw_result.replace(_secret, _ref)
             # Audit GPT-6 F02 (06/09/2026) : un outil qui annonce son échec en
             # TEXTE (« Erreur : … ») prenait le chemin nominal — succès dans
             # les traces, ✓ au journal de mission, résultat MÉMORISÉ pour

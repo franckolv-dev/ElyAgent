@@ -496,6 +496,28 @@
     "privacyNote": "Calculé localement, jamais transmis à un tiers."
   },
   "settings": {
+    "vaultSection": {
+      "title": "Coffre",
+      "intro": "Tes identifiants et les mots de passe qu'Ely fabrique pour les comptes qu'elle crée à ta demande. Chiffré avec ton mot de passe maître, jamais stocké en clair ; Ely ne voit que des étiquettes et passe la référence vault://étiquette aux outils, la valeur est remplacée au moment de l'appel.",
+      "locked": "Verrouillé",
+      "unlocked": "Déverrouillé",
+      "masterPassword": "Mot de passe maître",
+      "masterPasswordHint": "8 caractères minimum. Le premier déverrouillage crée le coffre. Ce mot de passe n'est jamais stocké : oublié, le coffre est perdu.",
+      "unlock": "Déverrouiller",
+      "lock": "Verrouiller",
+      "autoLock": "Se reverrouille seul après 30 minutes d'inactivité. Une mission qui a besoin du coffre te le demandera.",
+      "secrets": "Secrets rangés",
+      "empty": "Aucun secret pour l'instant.",
+      "reference": "Pour qu'Ely utilise un secret, il suffit de nommer son étiquette : elle passe vault://étiquette à l'outil, sans jamais lire la valeur.",
+      "label": "Étiquette (ex. compte-senscritique)",
+      "value": "Valeur (mot de passe, clé…)",
+      "hint": "Mémo : site, identifiant",
+      "add": "Ranger",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer le secret « {label} » ? Ely ne pourra plus l'utiliser.",
+      "loadFailed": "Impossible de lire le coffre",
+      "wrongPassword": "Mot de passe maître incorrect"
+    },
     "title": "Paramètres",
     "llmProvider": "Fournisseur LLM",
     "keyConfigured": "Clé configurée",

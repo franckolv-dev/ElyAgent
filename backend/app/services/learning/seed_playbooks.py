@@ -45,6 +45,30 @@ logger = logging.getLogger(__name__)
 # to match the creator's token economy.
 SEED_PLAYBOOKS: list[dict[str, Any]] = [
     {
+        "name": "creer-un-compte-pour-l-utilisateur",
+        "description": "Créer un compte (ou se connecter) sur un site pour l'utilisateur, sous son accord, sans mot de passe en clair.",
+        "tags": ["compte", "inscription", "connexion", "coffre", "navigateur"],
+        "body": """# Créer un compte pour l'utilisateur, sous son accord
+
+## Quand ce playbook s'applique
+- L'objectif exige d'accéder à une information ou un service qui demande un compte.
+- Ne dis JAMAIS « il faut créer un compte, va sur le site » : c'est toi qui le fais.
+
+## Étapes
+1. **L'accord d'abord** : appelle `ask_user` en nommant le site, ce que le compte permettra, et l'adresse e-mail que tu comptes utiliser (celle du compte Google connecté). Attends la réponse.
+2. **Les identifiants existants** : `vault_list_labels`. Si une étiquette correspond au site, connecte-toi avec `vault://<étiquette>` dans le champ mot de passe — n'en crée pas un second.
+3. **Nouveau compte** : `vault_generate_secret(label="compte-<site>", hint="<site>, identifiant = <adresse>")`. Tu obtiens `vault://compte-<site>`. Tu ne vois jamais le mot de passe et tu n'en demandes jamais un en clair.
+4. **Le formulaire** : `browser_navigate` sur la page d'inscription, `browser_fill` pour chaque champ (e-mail, nom…), `browser_fill` du champ mot de passe avec `vault://compte-<site>`, puis `browser_click` sur le bouton d'inscription. Relis la page (`browser_get_text`) pour vérifier ce qui s'est passé.
+5. **La confirmation** : cherche le mail dans Gmail (`gmail_search_emails` sur l'expéditeur du site, les minutes qui suivent), ouvre le lien de confirmation avec `browser_navigate`.
+6. **CAPTCHA ou code 2FA** : `browser_screenshot`, puis `ask_user` avec la ligne `MEDIA:<chemin de la capture>` et la question « que lis-tu ? » ; remplis la réponse. Si le site bloque malgré tout, dis-le dans ton bilan.
+7. **La mémoire** : note au carnet et dans la mémoire le site, l'identifiant et l'étiquette du coffre — jamais le mot de passe.
+
+## Ce qu'il ne faut pas faire
+- Créer plusieurs comptes sur un même service, ou des comptes à des fins de promotion déguisée.
+- Payer, ou saisir des données bancaires : ça se demande explicitement, et l'utilisateur les saisit lui-même.
+""",
+    },
+    {
         "name": "prospection-deduplication-leads",
         "description": "Nettoyer, dédupliquer et scorer une liste de prospects avant tout envoi.",
         "tags": ["prospection", "leads", "crm"],

@@ -212,6 +212,18 @@ export const api = {
       body: JSON.stringify({ tool_name, requires_confirmation }),
     }),
 
+  // ── Coffre (07/09/2026) — étiquettes et mémos, jamais les valeurs ───────
+  vaultStatus: () => fetchAPI("/api/vault/status") as Promise<{ locked: boolean }>,
+  vaultUnlock: (master_password: string) =>
+    fetchAPI("/api/vault/unlock", { method: "POST", body: JSON.stringify({ master_password }) }),
+  vaultLock: () => fetchAPI("/api/vault/lock", { method: "POST" }),
+  vaultSecrets: () =>
+    fetchAPI("/api/vault/secrets") as Promise<Array<{ label: string; hint: string | null; created_at: string | null }>>,
+  vaultStore: (label: string, value: string, hint = "") =>
+    fetchAPI("/api/vault/secrets", { method: "POST", body: JSON.stringify({ label, value, hint }) }),
+  vaultDelete: (label: string) =>
+    fetchAPI(`/api/vault/secrets/${encodeURIComponent(label)}`, { method: "DELETE" }),
+
   // ── HITL preferred channel (fix #18 — May 2026) ──────────────────────────
   getHitlChannel: () =>
     fetchAPI("/api/hitl/channel") as Promise<{
