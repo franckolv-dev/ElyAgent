@@ -562,6 +562,10 @@ async def browser_tab_click(
 ) -> str:
     """Click an element in a Chrome tab using a CSS selector.
 
+    For a <select> or a checkbox/radio, prefer browser_tab_fill (option value
+    or text, "true"/"false") — a click on an <option> or on a label is
+    routed to the control anyway, and the result says the resulting state.
+
     USE THIS to drive multi-step web flows: Doctolib (click "Prendre
     rendez-vous", pick a consultation reason, choose a slot), SNCF Connect,
     Booking, forms on .gouv.fr, any React/SPA where a button must be
@@ -602,9 +606,15 @@ async def browser_tab_click(
             f"Erreur : {res.get('error', 'inconnue')}. "
             f"Détail : {res.get('detail', '')} {res.get('hint', '')}"
         )
+    etat = ""
+    if "checked" in res:
+        etat = f"Case {'cochée' if res.get('checked') else 'décochée'}.\n"
+    elif res.get("control") == "select":
+        etat = f"Menu réglé sur la valeur {res.get('value')!r} ({res.get('text', '')}).\n"
     return (
         f"Clic exécuté sur '{selector}' (matched={res.get('matched', '?')}).\n"
         f"Élément : <{res.get('tag', '?')}> | Texte : {res.get('text', '')!r}\n"
+        f"{etat}"
         f"URL après clic : {res.get('url', '')}\n"
         "⚠️ Pour les SPA (React, Vue), appelle browser_tab_wait_for_selector "
         "avant de lire la page suivante : le rendu est asynchrone."
@@ -618,16 +628,19 @@ async def browser_tab_fill(
     tab_id: int = 0,
     user_id: Annotated[str, InjectedToolArg] = "",
 ) -> str:
-    """Fill an <input> or <textarea> with a given value.
+    """Fill a form control: <input>, <textarea>, <select>, checkbox or radio.
 
-    Handles React-controlled inputs correctly (uses the native setter +
-    dispatches `input`/`change` events — a plain ``element.value = …``
-    would be silently ignored by frameworks like React).
+    Handles React-controlled controls correctly (native setter + `input`/
+    `change` events — a plain ``element.value = …`` would be ignored).
+    - <select> : `value` = the option's value OR its visible text
+      (e.g. "male" or "Homme"). An unknown option is refused with the list.
+    - checkbox / radio : `value` = "true" to check, "false" to uncheck.
+    - a secret from the vault : `value` = "vault://<label>", never the value.
+    Use THIS, not browser_tab_click, for selects and checkboxes.
 
     Args:
-        selector: CSS selector of the input/textarea. Must match exactly
-            one element.
-        value: text to type in.
+        selector: CSS selector of the control. Must match exactly one element.
+        value: text to type, option value/text, "true"/"false", or vault://label.
         tab_id: target tab; defaults to the active tab.
     """
     if not user_id:
@@ -643,6 +656,11 @@ async def browser_tab_fill(
             f"Erreur : {res.get('error', 'inconnue')}. "
             f"Détail : {res.get('detail', '')} {res.get('hint', '')}"
         )
+    if res.get("control") == "select":
+        return f"Menu '{selector}' réglé sur la valeur {res.get('value')!r} ({res.get('text', '')})."
+    if "checked" in res:
+        etat = "cochée" if res.get("checked") else "décochée"
+        return f"Case '{selector}' {etat}."
     return (
         f"Champ '{selector}' rempli avec {res.get('value_length', 0)} caractères."
     )

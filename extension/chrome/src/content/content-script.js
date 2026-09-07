@@ -37,6 +37,65 @@
     catch { return null; }
   }
 
+  // ── Form controls (07/09/2026) ──────────────────────────────────────
+  // Inscription SensCritique : cliquer sur une <option> ne changeait pas le
+  // <select>, cliquer sur le libellé d'une case ne la cochait pas — React
+  // n'écoute que les événements du contrôle lui-même. On passe par le
+  // setter natif puis on dispatche `input` + `change` (facebook/react#10135).
+  const TRUTHY = new Set(["true", "1", "on", "yes", "oui", "checked", "coché", "x"]);
+  const FALSY = new Set(["false", "0", "off", "no", "non", "unchecked", "décoché", ""]);
+
+  function fireInputChange(el) {
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function selectOption(select, wanted) {
+    const w = String(wanted).trim();
+    const opts = Array.from(select.options);
+    const byValue = opts.find((o) => o.value === w);
+    const byText = byValue || opts.find((o) => (o.textContent || "").trim().toLowerCase() === w.toLowerCase());
+    if (!byText) {
+      return { ok: false, error: "option_not_found", wanted: w,
+               options: opts.map((o) => `${(o.textContent || "").trim()} (${o.value})`) };
+    }
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+    if (setter) setter.call(select, byText.value); else select.value = byText.value;
+    fireInputChange(select);
+    return { ok: true, control: "select", value: select.value,
+             text: (byText.textContent || "").trim() };
+  }
+
+  function setChecked(box, wanted) {
+    const w = String(wanted).trim().toLowerCase();
+    let desired;
+    if (TRUTHY.has(w)) desired = true;
+    else if (FALSY.has(w)) desired = false;
+    else return { ok: false, error: "checkbox_value", hint: "utilise true ou false" };
+    if (box.checked !== desired) {
+      // Le clic natif bascule la case ET déclenche input/change comme un
+      // vrai clic ; si le site l'a intercepté, on force par le setter.
+      box.click();
+      if (box.checked !== desired) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
+        if (setter) setter.call(box, desired); else box.checked = desired;
+        fireInputChange(box);
+      }
+    }
+    return { ok: true, control: box.type, checked: box.checked };
+  }
+
+  function isCheckable(el) {
+    return el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio");
+  }
+
+  function controlOfLabel(label) {
+    if (label.control) return label.control;
+    const id = label.getAttribute("for");
+    if (id) return document.getElementById(id);
+    return label.querySelector("input, select, textarea, button");
+  }
+
   // ── Command handlers ────────────────────────────────────────────────
   const handlers = {
     read_dom({ selector } = {}) {
@@ -119,20 +178,36 @@
       // all listen to native click events). For the remaining 5 % we
       // also dispatch a bubbling MouseEvent so frameworks that bind to
       // mousedown/mouseup still fire their handlers.
+      // Une <option> ne se clique pas : c'est le <select> qui prend sa
+      // valeur. Un <label> vise son contrôle. Une case ou un radio
+      // s'atteint par un clic natif, qui bascule et prévient React.
+      if (target instanceof HTMLOptionElement && target.parentElement instanceof HTMLSelectElement) {
+        const r = selectOption(target.parentElement, target.value);
+        return { ...r, clicked: true, selector, matched: nodes.length, tag: "option", url: location.href };
+      }
+      if (target instanceof HTMLLabelElement) {
+        const control = controlOfLabel(target);
+        if (control) target = control;
+      }
+
       try {
         target.focus?.();
-        const evt = new MouseEvent("click", {
-          bubbles: true, cancelable: true, view: window, button: 0,
-        });
-        target.dispatchEvent(evt);
-        // Belt-and-suspenders: also call the property method, which some
-        // React synthetic-event wrappers prefer.
-        if (typeof target.click === "function") target.click();
+        if (isCheckable(target)) {
+          target.click();
+        } else {
+          const evt = new MouseEvent("click", {
+            bubbles: true, cancelable: true, view: window, button: 0,
+          });
+          target.dispatchEvent(evt);
+          // Belt-and-suspenders: also call the property method, which some
+          // React synthetic-event wrappers prefer.
+          if (typeof target.click === "function") target.click();
+        }
       } catch (e) {
         return { ok: false, error: "click_failed", detail: String(e) };
       }
 
-      return {
+      const result = {
         ok: true,
         clicked: true,
         selector,
@@ -141,6 +216,8 @@
         text: (target.innerText || target.textContent || "").slice(0, 200).trim(),
         url: location.href,
       };
+      if (isCheckable(target)) result.checked = target.checked;
+      return result;
     },
 
     fill({ selector, value } = {}) {
@@ -150,6 +227,9 @@
       try { element = document.querySelector(selector); }
       catch (e) { return { ok: false, error: "invalid_selector", detail: String(e) }; }
       if (!element) return { ok: false, error: "selector_not_found", selector };
+
+      if (element instanceof HTMLSelectElement) return selectOption(element, value);
+      if (isCheckable(element)) return setChecked(element, value);
 
       // React + controlled inputs intercept the native value setter. Going
       // through the prototype's native setter and then dispatching `input`
@@ -168,12 +248,11 @@
         } else {
           element.value = String(value);
         }
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
+        fireInputChange(element);
       } catch (e) {
         return { ok: false, error: "fill_failed", detail: String(e) };
       }
-      return { ok: true, selector, value_length: String(value).length };
+      return { ok: true, control: "text", selector, value_length: String(value).length };
     },
 
     navigate({ url } = {}) {
@@ -210,6 +289,9 @@
     }
     return false;
   });
+
+  // Les handlers sont exposés pour les tests (jsdom) et le débogage.
+  window.__ely_handlers = handlers;
 
   // Hint that the content script is alive (debug).
   console.info("[ELY-EXT] content script ready on", location.href);
