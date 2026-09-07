@@ -114,6 +114,9 @@ DESTRUCTIVE_TOOLS: frozenset[str] = frozenset({
     "drive_create_file",
     "drive_move_file",
     "drive_rename_file",
+    # L'annulation d'une action est un effet réel (05/09/2026 : « le fichier
+    # est de nouveau nommé … » affirmé sans l'appeler).
+    "undo_last_action",
     "drive_share_file",
     # Tasks destructive ops
     "tasks_create",
@@ -175,14 +178,25 @@ _FR_COMPLETION_PATTERNS: list[tuple[re.Pattern, str]] = [
         r"\b(ont|a|sont|est|été)\s+été\s+"
         r"(supprim|envoy|cré|enregistr|déplacé|déplaces?|sauveg|"
         r"vidés?|vidée?|effacés?|effacée?|archivés?|archivée?|"
-        r"plani|programm|modifi|mis\s+à\s+jour|transfér)",
+        r"plani|programm|modifi|mis\s+à\s+jour|transfér|"
+        r"annul|restaur|rétabl|renomm)",
         re.IGNORECASE,
     ), "fr.passive_past"),
+    # "est de nouveau nommé", "a retrouvé son nom", "est rétabli", "c'est annulé"
+    # — l'annulation affirmée sans outil (05/09/2026)
+    (re.compile(
+        r"\b(est|sont)\s+(de\s+nouveau|à\s+nouveau)\s+(nommé|renommé|en\s+place)|"
+        r"\ba\s+retrouvé\s+son\s+nom|"
+        r"\b(est|sont)\s+(rétablie?s?|restaurée?s?|annulée?s?)\b|"
+        r"\bc['']est\s+(annulé|rétabli|restauré)\b",
+        re.IGNORECASE,
+    ), "fr.undone"),
     # "j'ai supprimé", "j'ai envoyé", "je viens de supprimer"
     (re.compile(
         r"\b(j['']ai|je\s+viens\s+de|nous\s+avons)\s+"
         r"(supprim|envoy|cré|enregistr|déplacé|sauveg|vidé|effacé|"
-        r"archivé|plani|programm|modifi|transfér|appel)",
+        r"archivé|plani|programm|modifi|transfér|appel|annul|restaur|"
+        r"rétabl|renomm)",
         re.IGNORECASE,
     ), "fr.first_person_past"),
     # "voilà, c'est fait" / "c'est fait" / "c'est bon, c'est supprimé"
