@@ -97,6 +97,10 @@ USER_ID_TOOLS: frozenset[str] = frozenset({
     "mcp_read_resource",
     "mcp_list_prompts",
     "mcp_get_prompt",
+    # Coffre (lot 3, 07/09/2026) — le modèle voit des étiquettes, jamais des
+    # valeurs ; le secret généré est rangé au nom de l'utilisateur.
+    "vault_list_labels",
+    "vault_generate_secret",
     # Browser tools — each user has an isolated browser context
     "browser_navigate",
     "browser_search_web",

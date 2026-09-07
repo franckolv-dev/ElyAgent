@@ -103,7 +103,7 @@ des outils, deux d'entre eux sortent 4/4 — l'un en 1,1 s, l'autre en 8,9 s.
 
 ## Ce qu'elle sait faire
 
-**200 outils** intégrés, avec les drapeaux par défaut. Activer le client MCP
+**202 outils** intégrés, avec les drapeaux par défaut. Activer le client MCP
 (`mcp_client_v2_enabled`, éteint par défaut) en ajoute **10** — les outils de
 gestion MCP — et chaque serveur MCP connecté apporte les siens, sous la forme
 `mcp__serveur__outil`.

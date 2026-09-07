@@ -496,6 +496,28 @@
     "privacyNote": "Computed locally, never sent to a third party."
   },
   "settings": {
+    "vaultSection": {
+      "title": "Vault",
+      "intro": "Your credentials, and the passwords Ely generates for the accounts she creates at your request. Encrypted with your master password, never stored in clear; Ely only sees labels and passes the vault://label reference to tools, the value is substituted at call time.",
+      "locked": "Locked",
+      "unlocked": "Unlocked",
+      "masterPassword": "Master password",
+      "masterPasswordHint": "8 characters minimum. The first unlock creates the vault. This password is never stored: lose it and the vault is lost.",
+      "unlock": "Unlock",
+      "lock": "Lock",
+      "autoLock": "Locks itself again after 30 minutes of inactivity. A mission that needs the vault will ask you.",
+      "secrets": "Stored secrets",
+      "empty": "No secret yet.",
+      "reference": "For Ely to use a secret, name its label: she passes vault://label to the tool without ever reading the value.",
+      "label": "Label (e.g. senscritique-account)",
+      "value": "Value (password, key…)",
+      "hint": "Memo: site, login",
+      "add": "Store",
+      "delete": "Delete",
+      "deleteConfirm": "Delete the secret \"{label}\"? Ely will no longer be able to use it.",
+      "loadFailed": "Could not read the vault",
+      "wrongPassword": "Wrong master password"
+    },
     "title": "Settings",
     "llmProvider": "LLM Provider",
     "keyConfigured": "Key configured",

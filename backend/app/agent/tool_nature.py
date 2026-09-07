@@ -407,6 +407,11 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "desktop_search_files": _N("LECTURE"),
     "desktop_stat_file": _N("LECTURE"),
     "desktop_write_file": _N("ECRITURE"),
+    # ── agent/tools/vault_tools (07/09/2026) ───────────────────
+    # Des étiquettes, jamais des valeurs ; un mot de passe fabriqué et rangé
+    # sans être lu. Rien d'irréversible, rien chez un tiers.
+    "vault_list_labels": _N("LECTURE"),
+    "vault_generate_secret": _N("ECRITURE"),
     # ── agent/tools/ask_user_tool (07/09/2026) ─────────────────
     # Une question posée à l'utilisateur : modifie l'état de la mission
     # (elle attend), rien d'irréversible, rien chez un tiers.

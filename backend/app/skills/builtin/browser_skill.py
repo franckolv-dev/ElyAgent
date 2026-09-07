@@ -477,9 +477,14 @@ async def browser_fill(
 ) -> str:
     """Fill a form field (input, textarea) on the current browser page.
 
+    Pour un mot de passe ou tout secret du coffre, passe la RÉFÉRENCE
+    `vault://<étiquette>` comme valeur (voir vault_list_labels /
+    vault_generate_secret) : elle est remplacée par la vraie valeur au moment
+    de l'appel, et tu ne la vois jamais. Ne tape jamais un mot de passe en clair.
+
     Args:
         selector: CSS selector of the input field (e.g. '#email', 'input[name="q"]')
-        value: Text value to enter into the field
+        value: Text value to enter into the field, or `vault://<label>` for a secret
     """
     from app.services.browser_manager import get_browser_manager
 
