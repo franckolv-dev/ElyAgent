@@ -1062,6 +1062,7 @@ button.nav-item.active {
    Textarea above, icon row below
    ============================================ */
 .ely-input-dock {
+  position: relative;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
@@ -1073,6 +1074,66 @@ button.nav-item.active {
 .ely-input-dock:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* ── Le halo : Ely travaille (08/09/2026) ─────────────────────────────────
+   Un liseré de deux pixels en dégradé conique qui tourne autour du dock, et
+   une lueur douce derrière lui. Quatre teintes proches de l'accent (indigo,
+   cyan, rose, ambre), une chroma contenue : ça se voit, ça ne clignote pas.
+   Le liseré est découpé par un masque (padding-box exclu), le contenu du
+   dock n'est jamais recouvert. Inerte tant que `.is-working` est absent. */
+@property --halo-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.ely-input-dock::before,
+.ely-input-dock::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.45s var(--ease);
+  background: conic-gradient(from var(--halo-angle),
+    oklch(70% 0.16 276), oklch(76% 0.13 205), oklch(72% 0.16 340),
+    oklch(80% 0.13 75), oklch(70% 0.16 276));
+}
+.ely-input-dock::before {
+  padding: 2px;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+.ely-input-dock::after {
+  z-index: -1;
+  filter: blur(14px);
+}
+.ely-input-dock.is-working::before {
+  opacity: 1;
+  animation: ely-halo-spin 2.8s linear infinite;
+}
+.ely-input-dock.is-working::after {
+  opacity: 0.32;
+  animation: ely-halo-spin 2.8s linear infinite;
+}
+.ely-input-dock.is-working {
+  border-color: transparent;
+}
+.ely-input-dock.is-working:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+}
+@keyframes ely-halo-spin {
+  to { --halo-angle: 360deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ely-input-dock.is-working::before,
+  .ely-input-dock.is-working::after {
+    animation: none;
+  }
 }
 .ely-input-textarea {
   width: 100%;
