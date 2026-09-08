@@ -87,3 +87,10 @@ create-admin:
 	fi
 	@docker compose exec -T backend bash -c "cd /app && PYTHONPATH=/app uv run --no-sync python /app/scripts/create_admin.py \
 		--username '$(USER)' --password '$(PASS)' --email '${EMAIL:-$(USER)@local}'"
+
+# La voix d'Ely sur la machine (XTTS-v2, voix clonée) — voir voice/xtts/README.md
+voice:
+	voice/xtts/run.sh
+
+voice-test:
+	cd voice/xtts && uv run --extra dev pytest -q

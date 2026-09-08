@@ -213,6 +213,14 @@ class Settings(BaseSettings):
     # naturel sans donner l'impression de presser. Override : TTS_RATE.
     tts_rate: str = "+10%"
 
+    # La voix d'Ely (08/09/2026) : « edge » = edge-tts (Microsoft, cloud),
+    # « xtts » = le service local voice/xtts (XTTS-v2, voix clonée, rien ne
+    # sort de la machine), avec repli sur edge-tts s'il ne répond pas.
+    tts_provider: str = "edge"
+    xtts_url: str = "http://host.docker.internal:8020"
+    xtts_voice: str = ""          # vide = la voix par défaut du service
+    xtts_timeout_s: float = 30.0
+
     # Cookie security — set True in production behind HTTPS.
     # Automatically enabled when COOKIE_SECURE=true is set in the environment,
     # or when any CORS origin uses HTTPS (auto-detected).

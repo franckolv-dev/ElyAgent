@@ -10,7 +10,7 @@
 # @version    1.1.0
 # @link       https://github.com/franckolv-dev/PhysicalAgent
 # =============================================================================
-"""Text-to-Speech endpoint using edge-tts (Microsoft Edge voices, free).
+"""Text-to-Speech endpoint : XTTS local (voix clonée) ou edge-tts, via tts_engine.
 
 POST /tts/speak  {"text": "Bonjour", "voice": "fr-FR-DeniseNeural"}
 → returns audio/mpeg stream
@@ -146,7 +146,8 @@ async def speak(
     # synthétiser du texte aux frais du déploiement (audit du 02/09/2026).
     _user: User = Depends(get_current_user),
 ):
-    _require_edge_tts()
+    if get_settings().tts_provider.lower() != "xtts":
+        _require_edge_tts()
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Empty text")
 
@@ -154,16 +155,21 @@ async def speak(
         clean_text = _strip_markdown(req.text)
         if not clean_text:
             raise HTTPException(status_code=400, detail="Empty text after markdown cleanup")
-        communicate = edge_tts.Communicate(clean_text, req.voice, rate=req.rate)
-        buf = io.BytesIO()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buf.write(chunk["data"])
-        buf.seek(0)
-        return StreamingResponse(buf, media_type="audio/mpeg")
+        # Le fournisseur (XTTS local ou edge-tts) et le repli vivent dans
+        # tts_engine ; ce routeur ne connaît plus edge-tts (08/09/2026).
+        from app.services import tts_engine
+        audio, mime = await tts_engine.synthetiser(clean_text, voix=req.voice, debit=req.rate)
+        return StreamingResponse(io.BytesIO(audio), media_type=mime)
     except Exception as exc:
         logger.error("TTS synthesis failed: %s", exc)
         raise HTTPException(status_code=500, detail="TTS synthesis failed")
+
+
+@router.get("/status")
+async def status(_user: User = Depends(get_current_user)):
+    """Le fournisseur de voix en vigueur, et l'état du service local XTTS."""
+    from app.services import tts_engine
+    return await tts_engine.etat()
 
 
 @router.get("/voices")

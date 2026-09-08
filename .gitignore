@@ -170,3 +170,7 @@ bench/results/
 # Documentation interne / confidentielle — cadrages, audits, notes privées.
 # JAMAIS publié sur GitHub (repo public). Voir docs/ pour la doc publique.
 docs_internes/
+
+# Voix clonées : les enregistrements restent sur la machine
+voice/xtts/voices/
+voice/xtts/.venv/

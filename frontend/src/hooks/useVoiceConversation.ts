@@ -13,6 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { speakSentences } from "@/lib/tts";
 
 // ── Web Speech API types (mirrors ChatInput.tsx) ─────────────────────────────
 
@@ -102,7 +103,7 @@ function isStopCommand(text: string): boolean {
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useVoiceConversation(options: UseVoiceConversationOptions) {
-  const { onSend, onResponse, apiUrl, enabled } = options;
+  const { onSend, onResponse, enabled } = options;
 
   const [state, setState] = useState<VoiceConversationState>({
     mode: "idle",
@@ -115,7 +116,7 @@ export function useVoiceConversation(options: UseVoiceConversationOptions) {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const wakeRecognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const blobUrlRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const finalTranscriptRef = useRef<string>("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isActiveRef = useRef(false);
@@ -162,13 +163,11 @@ export function useVoiceConversation(options: UseVoiceConversationOptions) {
   }, []);
 
   const stopAudio = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
-    }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
     }
   }, []);
 
@@ -177,48 +176,23 @@ export function useVoiceConversation(options: UseVoiceConversationOptions) {
   const playTTS = useCallback(
     async (text: string): Promise<void> => {
       if (!text.trim()) return;
-
       setState((s) => ({ ...s, mode: "speaking" }));
-
+      // Phrase par phrase, comme le lecteur du chat (lib/tts.ts) : la voix
+      // locale XTTS rend la première phrase en une seconde et demie.
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
       try {
-        const token = getAccessToken();
-        const res = await fetch(`${apiUrl}/tts/speak`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ text }),
-        });
-
-        if (!res.ok) throw new Error(`TTS ${res.status}`);
-
-        const blob = await res.blob();
-        blobUrlRef.current = URL.createObjectURL(blob);
-
-        const audio = new Audio(blobUrlRef.current);
-        audioRef.current = audio;
-
-        return new Promise<void>((resolve) => {
-          audio.onended = () => {
-            stopAudio();
-            resolve();
-          };
-          audio.onerror = () => {
-            stopAudio();
-            resolve();
-          };
-          audio.play().catch(() => {
-            stopAudio();
-            resolve();
-          });
+        await speakSentences(text, {
+          signal: abortRef.current.signal,
+          onAudio: (audio) => { audioRef.current = audio; },
         });
       } catch {
-        stopAudio();
         setState((s) => ({ ...s, mode: "idle" }));
+      } finally {
+        stopAudio();
       }
     },
-    [apiUrl, stopAudio],
+    [stopAudio],
   );
 
   // ── Start active listening ───────────────────────────────────────────────

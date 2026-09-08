@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- La voix d'Ely au démarrage du Mac. Remplacer __REPO__ par le chemin du
+     dépôt, copier dans ~/Library/LaunchAgents/, puis :
+     launchctl load ~/Library/LaunchAgents/fr.agent-ely.xtts.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>fr.agent-ely.xtts</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/voice/xtts/run.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO__/voice/xtts</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__REPO__/voice/xtts/xtts.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/voice/xtts/xtts.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
