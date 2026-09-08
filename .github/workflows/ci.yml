@@ -6,6 +6,22 @@ on:
   pull_request:
 
 jobs:
+  voice:
+    name: Voice service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: voice/xtts
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "voice/xtts/pyproject.toml"
+      # Le modèle (torch, 2 Go) n'est pas installé : un double le remplace.
+      - name: Tests
+        run: uv run --python 3.11 --extra dev pytest -q
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
