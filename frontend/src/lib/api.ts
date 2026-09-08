@@ -727,7 +727,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(params),
       headers: { "Content-Type": "application/json" },
-    }) as Promise<{ status: string; tool_name?: string; learned_skill_id?: string; python_tools_enabled: boolean }>,
+    }) as Promise<{ status: string; tool_name?: string; learned_skill_id?: string; detail?: string; python_tools_enabled: boolean }>,
 
   // ── Admin: self-diagnostic loop J4 — incidents & propositions ───────────
   /** List diagnosed incidents (dubious/failed executions with a cause).

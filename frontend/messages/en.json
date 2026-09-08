@@ -345,6 +345,8 @@
     "flash_restore": "“{name}” restored to candidate."
   },
   "incidents": {
+    "frozen_title": "Tool factory frozen.",
+    "frozen_hint": "No tool code is generated (AUTO_TOOL_GENERATION_ENABLED=false, decided 2026-09-02). Validate the hypothesis if it looks right, reject it otherwise: neither changes Ely's behaviour, it is a classification.",
     "title": "Incidents & proposals",
     "subtitle": "Dubious or failed executions Ely diagnosed — for you to arbitrate",
     "refreshTooltip": "Refresh",
