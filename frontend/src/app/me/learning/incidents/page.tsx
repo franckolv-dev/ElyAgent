@@ -67,6 +67,10 @@ export default function IncidentsPage() {
   const [busyId, setBusyId]   = useState<number | null>(null);
   const [flash, setFlash]     = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [confirmGen, setConfirmGen] = useState<Incident | null>(null);
+  // 08/09/2026 — la fabrique d'outils est gelée (#370) : le backend répond
+  // `frozen` avec sa raison. On la garde pour la page : le bouton disparaît,
+  // la raison s'affiche sur les cartes de la voie B.
+  const [fabriqueGelee, setFabriqueGelee] = useState<string | null>(null);
 
   const showFlash = (kind: "ok" | "err", text: string) => {
     setFlash({ kind, text });
@@ -139,6 +143,9 @@ export default function IncidentsPage() {
         );
         await dropOrRefetch(inc.id);
         showFlash("ok", t("flash_tool_exists", { name: result.tool_name ?? "?" }));
+      } else if (result.status === "frozen") {
+        setFabriqueGelee(result.detail ?? t("frozen_hint"));
+        showFlash("err", t("frozen_title"));
       } else {
         showFlash("err", t("flash_generation_failed", { status: result.status }));
       }
@@ -462,7 +469,12 @@ export default function IncidentsPage() {
                           {/* Actions — only while open */}
                           {isOpen && (
                             <div className="flex flex-col items-stretch gap-1.5 shrink-0">
-                              {voie === "B" && (
+                              {voie === "B" && fabriqueGelee && (
+                                <div className="max-w-[240px] text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1" title={fabriqueGelee}>
+                                  {t("frozen_title")} {t("frozen_hint")}
+                                </div>
+                              )}
+                              {voie === "B" && !fabriqueGelee && (
                                 <button
                                   onClick={() => setConfirmGen(inc)}
                                   disabled={busyId === inc.id}

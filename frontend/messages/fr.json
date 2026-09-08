@@ -345,6 +345,8 @@
     "flash_restore": "« {name} » restaurée en candidate."
   },
   "incidents": {
+    "frozen_title": "Fabrique d'outils gelée.",
+    "frozen_hint": "Aucun code d'outil n'est généré (AUTO_TOOL_GENERATION_ENABLED=false, décision du 02/09). Valide l'hypothèse si elle te paraît juste, rejette-la sinon : ni l'un ni l'autre ne change le comportement d'Ely, c'est un classement.",
     "title": "Incidents & propositions",
     "subtitle": "Exécutions douteuses ou échouées qu'Ely a diagnostiquées — à valider",
     "refreshTooltip": "Rafraîchir",
