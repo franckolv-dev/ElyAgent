@@ -425,7 +425,9 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
             le dock pour rester alignés avec la zone de saisie (même fond,
             même padding, mêmes coins arrondis). Avant ils étaient au-dessus
             du dock et flottaient bizarrement à gauche du conteneur. ── */}
-      <div className="ely-input-dock">
+      {/* `is-working` : le halo tourne autour du dock tant qu'Ely travaille
+          (voir .ely-input-dock.is-working dans globals.css). */}
+      <div className={`ely-input-dock${isLoading ? " is-working" : ""}`}>
         {/* ── Screen capture preview chip ── */}
         {screenCapture && (
           <div className="flex items-center gap-2">
