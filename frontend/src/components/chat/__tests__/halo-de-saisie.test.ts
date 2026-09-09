@@ -24,6 +24,17 @@ describe("le halo de saisie", () => {
     expect(css).toMatch(/\.ely-input-dock::after\s*\{[^}]*filter:\s*blur\(/);
   });
 
+  // 09/09 — l'ombre est floutée SANS masque (un masque coupait le flou net :
+  // « trop de type contour »), et passe sous une plaque opaque qui cache son
+  // centre : liseré + plaque à z -1, ombre à z -2, le dock isole le contexte.
+  it("est une ombre floutée sous une plaque opaque, jamais un contour masqué", () => {
+    expect(css).toMatch(/\.ely-input-dock\s*\{[^}]*isolation:\s*isolate/);
+    expect(css).toMatch(/\.ely-input-dock::before\s*\{[^}]*z-index:\s*-1[^}]*padding-box/);
+    const apres = css.match(/\.ely-input-dock::after\s*\{([^}]*z-index[^}]*)\}/)?.[1] ?? "";
+    expect(apres).toMatch(/z-index:\s*-2/);
+    expect(apres).not.toMatch(/mask/);
+  });
+
   it("ne tourne pas pour qui a demandé moins d'animations", () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce\)[\s\S]*\.ely-input-dock\.is-working::before[\s\S]*animation:\s*none/);
   });
