@@ -1076,16 +1076,29 @@ button.nav-item.active {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-/* ── Le halo : Ely travaille (08/09/2026) ─────────────────────────────────
+/* ── Le halo : Ely travaille (08/09/2026, revu le 09/09) ─────────────────
    Un liseré de deux pixels en dégradé conique qui tourne autour du dock, et
-   une lueur douce derrière lui. Quatre teintes proches de l'accent (indigo,
-   cyan, rose, ambre), une chroma contenue : ça se voit, ça ne clignote pas.
-   Le liseré est découpé par un masque (padding-box exclu), le contenu du
-   dock n'est jamais recouvert. Inerte tant que `.is-working` est absent. */
+   une ombre portée multicolore, floutée, qui tourne avec lui. Quatre teintes
+   proches de l'accent (indigo, cyan, rose, ambre). Inerte tant que
+   `.is-working` est absent.
+
+   Empilement — le dock isole son contexte (`isolation`) et ses deux
+   pseudo-éléments sont à z-index NÉGATIF : ils passent sous le contenu du
+   dock mais AU-DESSUS du fond du dock lui-même (un enfant à z négatif se
+   peint après le fond de la racine du contexte). D'où la plaque : `::before`
+   peint le liseré ET une plaque opaque couleur surface (dégradé de bordure :
+   fond `padding-box`, conique `border-box`), qui cache le centre de l'ombre.
+   `::after`, en dessous, est le même dégradé flouté, sans masque : seul son
+   bord déborde, doux. Un masque coupait le flou net au bord de la boîte
+   (« trop de type contour », Franck 09/09) ; sans la plaque, l'ombre
+   recouvrait le dock ; sans `isolation`, elle passait sous le panneau. */
 @property --halo-angle {
   syntax: "<angle>";
   inherits: false;
   initial-value: 0deg;
+}
+.ely-input-dock {
+  isolation: isolate;
 }
 .ely-input-dock::before,
 .ely-input-dock::after {
@@ -1096,37 +1109,21 @@ button.nav-item.active {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.45s var(--ease);
-  background: conic-gradient(from var(--halo-angle),
-    oklch(70% 0.16 276), oklch(76% 0.13 205), oklch(72% 0.16 340),
-    oklch(80% 0.13 75), oklch(70% 0.16 276));
 }
 .ely-input-dock::before {
-  padding: 2px;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-}
-/* La lueur : une ombre portée multicolore qui tourne. Une bande de 14 px
-   AUTOUR du dock (le masque exclut la boîte de contenu), floutée, aux
-   teintes plus saturées que le liseré — sur fond clair, un dégradé pastel
-   flouté disparaissait (retour Franck 08/09 : « un contour animé, pas un
-   halo »). Le dock isole son contexte d'empilement : la lueur passe SOUS
-   le contenu du dock mais AU-DESSUS du fond du panneau — avec un simple
-   z-index négatif elle finissait derrière le fond du panneau, invisible. */
-.ely-input-dock {
-  isolation: isolate;
+  z-index: -1;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--bg-surface) 0 0) padding-box,
+    conic-gradient(from var(--halo-angle),
+      oklch(70% 0.16 276), oklch(76% 0.13 205), oklch(72% 0.16 340),
+      oklch(80% 0.13 75), oklch(70% 0.16 276)) border-box;
 }
 .ely-input-dock::after {
-  z-index: -1;
-  inset: -20px;
-  padding: 20px;
-  border-radius: 34px;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  filter: blur(18px);
+  z-index: -2;
+  inset: -4px;
+  border-radius: 18px;
+  filter: blur(16px);
   background: conic-gradient(from var(--halo-angle),
     oklch(62% 0.2 276), oklch(70% 0.16 205), oklch(64% 0.2 340),
     oklch(74% 0.16 75), oklch(62% 0.2 276));
@@ -1140,10 +1137,10 @@ button.nav-item.active {
 }
 /* Sur fond sombre, la même lueur éblouit : on la tempère. */
 :root:not([data-theme="light"]) .ely-input-dock.is-working::after {
-  opacity: 0.55;
+  opacity: 0.7;
 }
 [data-theme="light"] .ely-input-dock.is-working::after {
-  opacity: 0.75;
+  opacity: 0.85;
 }
 .ely-input-dock.is-working {
   border-color: transparent;
