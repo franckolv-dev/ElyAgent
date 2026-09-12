@@ -4,8 +4,8 @@
 # @brief      Sprint 3.7.3 J4 — structural regression : Sprint 2.5 cognitive
 #             memory typing. The 5 typed memories exist, parse leniently, and
 #             MemoryRecallService routes per-type (SEMANTIC_USER returns typed
-#             hits ; ERROR refuse d'etre lu — il n'a aucune lecture derriere
-#             lui, cf. #246 du 25/07/2026).
+#             hits ; ERROR se lit depuis l'historique SQL du seul utilisateur
+#             depuis le 10/09/2026 — avant, il refusait d'etre lu, cf. #246).
 # @license    MIT
 #            https://opensource.org/licenses/MIT
 # =============================================================================
@@ -19,9 +19,10 @@ NAME = "V — memory 5-types + recall routing"
 DESCRIPTION = (
     "MemoryType holds the 5 typed memories + AUTO, parse() is lenient, and "
     "recall routes per-type: SEMANTIC_USER returns SEMANTIC_USER-typed hits "
-    "(Qdrant patched) while ERROR, qui n'a aucune lecture derrière lui, "
-    "REFUSE d'être lu (UnreadableMemoryType) au lieu de rendre une liste "
-    "vide qui se lirait « je n'ai jamais échoué »."
+    "(Qdrant patched) and ERROR se lit sans lever : depuis le 10/09/2026 les "
+    "échecs d'outils ont une lecture SQL propre à l'utilisateur "
+    "(`memory_recall(memory_type=\"error\")`) ; UnreadableMemoryType reste "
+    "réservé aux familles sans lecture."
 )
 TAGS = ["shallow"]
 
@@ -80,19 +81,20 @@ async def run() -> dict:
             memory_type=MemoryType.SEMANTIC_USER, query="projet ?",
             user_id=uid, limit=5,
         )
-        # ERROR n'a AUCUNE lecture derrière lui : `recall` LÈVE plutôt que
-        # de rendre []. Rendre une liste vide ferait lire au modèle « je
-        # n'ai jamais échoué là-dessus » — une absence de lecture présentée
-        # comme un fait constaté (contrat posé en #246, 25/07/2026 :
-        # « cesser de promettre au modèle une mémoire qui ne se lit pas »).
-        error_raises = False
+        # ERROR a une lecture depuis le 10/09/2026 (ErrorStore, filtré par
+        # utilisateur en SQL) : `recall` rend une liste, jamais
+        # UnreadableMemoryType. Le contrat #246 (« cesser de promettre au
+        # modèle une mémoire qui ne se lit pas ») tient toujours pour les
+        # familles restées sans lecture — il n'y en a plus aujourd'hui.
+        error_readable = False
         try:
-            await svc.recall(
+            error_hits = await svc.recall(
                 memory_type=MemoryType.ERROR, query="boom", user_id=uid,
                 limit=5,
             )
+            error_readable = isinstance(error_hits, list)
         except UnreadableMemoryType:
-            error_raises = True
+            error_readable = False
         # Une requête vide, elle, rend bien [] : rien n'a été demandé, donc
         # rien n'est affirmé.
         empty_hits = await svc.recall(
@@ -110,7 +112,7 @@ async def run() -> dict:
         "parse_rejects_junk": parse_rejects_junk,
         "semantic_user_routed_typed": bool(semantic_hits)
         and all(h.type == MemoryType.SEMANTIC_USER for h in semantic_hits),
-        "error_refuses_to_be_read": error_raises,
+        "error_is_readable": error_readable,
         "empty_query_returns_empty": empty_hits == [],
     }
     return from_checks(checks, semantic_hits=len(semantic_hits))
