@@ -40,8 +40,8 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-PATCH_KINDS: frozenset[str] = frozenset({"prompt"})  # v1 ; "config" plus tard
-PATCH_TARGET_TYPES: frozenset[str] = frozenset({"scheduled_task"})  # v1
+PATCH_KINDS: frozenset[str] = frozenset({"prompt", "tool_binding"})  # v1 ; "config" plus tard
+PATCH_TARGET_TYPES: frozenset[str] = frozenset({"scheduled_task", "user_request"})  # v1
 PATCH_STATUSES: frozenset[str] = frozenset({
     "proposed", "applied", "rejected", "reverted",
 })

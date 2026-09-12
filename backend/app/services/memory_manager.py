@@ -79,6 +79,7 @@ class MemoryManager:
                 COLLECTION_CONSTRAINTS,
                 COLLECTION_INTERACTIONS,
                 COLLECTION_PREFERENCES,
+                "profile_facts",
             ):
                 if name not in existing:
                     await asyncio.to_thread(

@@ -22,6 +22,7 @@ import { ChatWindow }          from "@/components/chat/ChatWindow";
 import { ChatInput }           from "@/components/chat/ChatInput";
 import { OnboardingFlow }      from "@/components/chat/OnboardingFlow";
 import { AvatarPanel }         from "@/components/avatar/AvatarPanel";
+import { isAvatarEvent } from "@/lib/avatarEvents";
 import { LiveBrowserPanel }    from "@/components/browser/LiveBrowserPanel";
 import { VoiceModeOverlay }    from "@/components/chat/VoiceModeOverlay";
 import { AgentWebSocket }      from "@/lib/websocket";
@@ -47,7 +48,7 @@ function usePanelResize() {
   // Hydrate from localStorage once mounted
   useEffect(() => {
     const saved = localStorage.getItem(PANEL_KEY);
-    if (saved) setWidth(Math.max(PANEL_MIN, Math.min(PANEL_MAX, parseInt(saved, 10))));
+    if (saved && Number.isFinite(Number(saved))) setWidth(Math.max(PANEL_MIN, Math.min(PANEL_MAX, parseInt(saved, 10))));
   }, []);
 
   const isDragging  = useRef(false);
@@ -210,7 +211,7 @@ function ChatPageInner() {
     };
 
     ws.onMessage((msg: WSMessage) => {
-      setLastWsMessage(msg);
+      if (isAvatarEvent(msg)) setLastWsMessage(msg);
       // Every incoming event is a sign of life — reset the idle watchdog.
       armWatchdog();
 
@@ -311,6 +312,7 @@ function ChatPageInner() {
           setProviderToast(null);
         }, 6000);
       } else if (msg.type === "provider.switched") {
+        window.dispatchEvent(new Event("ely:codex-health"));
         // Backend swapped LLM provider mid-conversation. Show a discreet
         // toast so the user understands why latency / wording may shift.
         if (providerToastTimer.current) clearTimeout(providerToastTimer.current);
@@ -588,7 +590,7 @@ function ChatPageInner() {
 
           {/* ── Avatar panel (resizable, desktop only) ── */}
           <div
-            className="hidden lg:flex shrink-0 relative"
+            className="presence-rail hidden lg:flex shrink-0 relative"
             style={{ width: avatarWidth }}
           >
             <div
@@ -601,7 +603,7 @@ function ChatPageInner() {
             </div>
 
             <div className="avatar-panel" style={{ width: "100%" }}>
-              <AvatarPanel wsMessage={lastWsMessage} isLoading={isLoading} />
+              <AvatarPanel wsMessage={lastWsMessage} isLoading={isLoading} voiceConversationActive={voiceConv.state.isActive} />
             </div>
           </div>
         </div>

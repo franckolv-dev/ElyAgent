@@ -16,9 +16,9 @@ change physical storage later (e.g. Qdrant→pgvector) without breaking
 callers.
 
 `type=AUTO` fans out to all relevant stores in parallel and merges
-results by score. `type=ERROR` returns empty in V1 (write-only — read
-path lands in Sprint 3.7).
+results by score. `type=ERROR` queries the owner-scoped SQL error history.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -57,7 +57,7 @@ class UnreadableMemoryType(RuntimeError):
 # interrogeable en langage naturel par `find_tool`. Le sprint demandait « le
 # catalogue requêtable » et non « une table de plus » — il est donc servi
 # depuis cette voie-là, pas dupliqué.
-_UNREADABLE_TYPES = frozenset({MemoryType.ERROR})
+_UNREADABLE_TYPES: frozenset[MemoryType] = frozenset()
 
 
 class MemoryRecallService:
@@ -69,7 +69,54 @@ class MemoryRecallService:
         self.episodic = EpisodicStore(infra)
         self.semantic = SemanticUserStore(infra)
 
-    async def recall(
+    async def recall(self, memory_type, query, user_id, limit=5, filter=None):
+        from app.services.memory.selection import REQUEST_SCOPE
+        from app.services.memory.context import profile_candidates
+        from app.services.memory.editing import validate_scope
+
+        scope = (filter or {}).get("scope", REQUEST_SCOPE.get())
+        if (
+            not scope
+            and user_id
+            and MemoryType.parse(memory_type) in {MemoryType.AUTO, MemoryType.SEMANTIC_USER, MemoryType.EPISODIC}
+        ):
+            from app.agent.tool_context import CURRENT_CONVERSATION_ID
+            from app.services.memory.context import work_state
+            from app.services.memory.scopes import account_scope
+
+            try:
+                _, mission_scope = await work_state(user_id, CURRENT_CONVERSATION_ID.get())
+                scope = "|".join(s for s in [mission_scope, await account_scope(user_id, query)] if s)
+            except Exception:
+                # No inferred scope means no access to scoped records.
+                scope = ""
+
+        if scope:
+            for part in scope.split("|"):
+                await validate_scope(user_id, part)
+        token = REQUEST_SCOPE.set(scope)
+        try:
+            hits = await self._recall(memory_type, query, user_id, limit, filter)
+            if MemoryType.parse(memory_type) in {MemoryType.AUTO, MemoryType.SEMANTIC_USER} and user_id and query:
+                try:
+                    facts = await profile_candidates(user_id, query, scope)
+                    hits = [
+                        MemoryHit(
+                            type=MemoryType.SEMANTIC_USER,
+                            content=f["text"],
+                            score=1.0,
+                            metadata={"ref": f["id"], "scope": f.get("scope", ""), "source": f["source"]},
+                            created_at=f.get("observed_at"),
+                        )
+                        for f in facts[:limit]
+                    ] + hits
+                except Exception as exc:
+                    logger.warning("Profile recall unavailable: %s", type(exc).__name__)
+            return hits[: max(1, min(limit, 20))]
+        finally:
+            REQUEST_SCOPE.reset(token)
+
+    async def _recall(
         self,
         memory_type: MemoryType | str,
         query: str,
@@ -84,7 +131,7 @@ class MemoryRecallService:
         contre un magasin qui n'a rien trouvé.
 
         UNE exception, et une seule : ``UnreadableMemoryType``, levée quand
-        le type demandé n'a aucune lecture derrière lui (``ERROR``). Rendre
+        le type demandé n'a aucune lecture derrière lui. Rendre
         ``[]`` dans ce cas ferait lire au modèle « je n'ai jamais échoué
         là-dessus » — une absence de lecture présentée comme un fait
         constaté. Un appelant qui interroge un type non lisible a un bug,
@@ -97,10 +144,7 @@ class MemoryRecallService:
             return []
 
         mt = MemoryType.parse(memory_type)
-        # ERROR n'a AUCUNE lecture derrière lui (écriture seule — les erreurs
-        # vont en failure_cases). Levé AVANT le try : rendre [] ferait lire au
-        # modèle « je n'ai jamais échoué là-dessus » — une affirmation fausse
-        # présentée comme un fait.
+        # Future write-only families must remain explicitly unavailable.
         if mt in _UNREADABLE_TYPES:
             raise UnreadableMemoryType(mt)
         try:
@@ -114,65 +158,83 @@ class MemoryRecallService:
                 return await self._recall_constraint(query, user_id, limit)
             if mt == MemoryType.PROCEDURAL:
                 return await self._recall_procedural(query, user_id, limit)
+            if mt == MemoryType.ERROR:
+                from app.services.memory.error_store import ErrorStore
+
+                rows = await ErrorStore().get_relevant(query, user_id, limit)
+                return [
+                    MemoryHit(
+                        type=MemoryType.ERROR,
+                        content=(
+                            f"{r['tool_name']} — {r['error_type']} : {r['error_msg']} "
+                            "(incident passé, ne présume pas qu'il persiste ; vérifie avant de réessayer)"
+                        ),
+                        score=1.0,
+                        metadata={"tool_name": r["tool_name"], "recovered": r["recovered"]},
+                        created_at=r["created_at"],
+                    )
+                    for r in rows
+                ]
         except Exception as exc:
             logger.warning(
                 "MemoryRecallService.recall(%s) failed: %s — returning []",
-                mt.value, exc,
+                mt.value,
+                exc,
             )
             return []
         return []
 
     # ── Per-type recall implementations ────────────────────────────────
 
-    async def _recall_episodic(
-        self, query: str, user_id: str, limit: int
-    ) -> list[MemoryHit]:
+    async def _recall_episodic(self, query: str, user_id: str, limit: int) -> list[MemoryHit]:
         rows = await self.episodic.get_relevant(query, user_id, limit)
         out: list[MemoryHit] = []
         for r in rows:
             content = r.get("content") or r.get("user_message") or ""
-            out.append(MemoryHit(
-                type=MemoryType.EPISODIC,
-                content=content,
-                # episodic.get_relevant doesn't currently surface the
-                # hybrid score — placeholder 1.0 here is fine for V1.
-                score=1.0,
-                metadata={
-                    "user_message": r.get("user_message"),
-                    "assistant_message": r.get("assistant_message"),
-                    "conversation_id": r.get("conversation_id"),
-                },
-                created_at=str(r.get("created_at")) if r.get("created_at") else None,
-            ))
+            out.append(
+                MemoryHit(
+                    type=MemoryType.EPISODIC,
+                    content=content,
+                    # episodic.get_relevant doesn't currently surface the
+                    # hybrid score — placeholder 1.0 here is fine for V1.
+                    score=1.0,
+                    metadata={
+                        "user_message": r.get("user_message"),
+                        "assistant_message": r.get("assistant_message"),
+                        "conversation_id": r.get("conversation_id"),
+                    },
+                    created_at=str(r.get("created_at")) if r.get("created_at") else None,
+                )
+            )
         return out
 
-    async def _recall_semantic_user(
-        self, query: str, user_id: str, limit: int
-    ) -> list[MemoryHit]:
+    async def _recall_semantic_user(self, query: str, user_id: str, limit: int) -> list[MemoryHit]:
         facts, prefs = await asyncio.gather(
             self.semantic.get_relevant_facts(query, user_id, limit),
             self.semantic.get_preferences(user_id, limit),
         )
         out: list[MemoryHit] = []
         for content in facts:
-            out.append(MemoryHit(
-                type=MemoryType.SEMANTIC_USER,
-                content=content,
-                score=1.0,
-                metadata={"kind": "fact"},
-            ))
+            out.append(
+                MemoryHit(
+                    type=MemoryType.SEMANTIC_USER,
+                    content=content,
+                    score=1.0,
+                    metadata={"kind": "fact"},
+                )
+            )
         for content in prefs:
-            out.append(MemoryHit(
-                type=MemoryType.SEMANTIC_USER,
-                content=content,
-                score=1.0,
-                metadata={"kind": "preference"},
-            ))
+            out.append(
+                MemoryHit(
+                    type=MemoryType.SEMANTIC_USER,
+                    content=content,
+                    score=1.0,
+                    metadata={"kind": "preference"},
+                )
+            )
         return out[:limit]
 
-    async def _recall_constraint(
-        self, query: str, user_id: str, limit: int
-    ) -> list[MemoryHit]:
+    async def _recall_constraint(self, query: str, user_id: str, limit: int) -> list[MemoryHit]:
         rules = await self.constraints.get_relevant(query, user_id, limit)
         return [
             MemoryHit(
@@ -184,9 +246,7 @@ class MemoryRecallService:
             for rule in rules
         ]
 
-    async def _recall_procedural(
-        self, query: str, user_id: str, limit: int
-    ) -> list[MemoryHit]:
+    async def _recall_procedural(self, query: str, user_id: str, limit: int) -> list[MemoryHit]:
         """Le catalogue d'outils, requêtable en langage naturel — §2.5.2.
 
         Pas de magasin : la source est le registre, et le classement est celui
@@ -217,9 +277,7 @@ class MemoryRecallService:
 
     # ── Fan-out (AUTO) ─────────────────────────────────────────────────
 
-    async def _recall_auto(
-        self, query: str, user_id: str, limit: int
-    ) -> list[MemoryHit]:
+    async def _recall_auto(self, query: str, user_id: str, limit: int) -> list[MemoryHit]:
         """Parallel fan-out to all reading stores, merged & sorted by score.
 
         ERROR and PROCEDURAL are both skipped. Each store gets `limit` slots

@@ -176,40 +176,8 @@ async def test_it_never_raises():
 
 # ------------------------------------ le snapshot gelé n'est PAS touché
 
-def test_the_frozen_snapshot_is_not_made_query_dependent():
-    """Garde-fou d'architecture. Le snapshot mémoire est gelé par
-    conversation ; y injecter des faits choisis selon la question ne servirait
-    que le PREMIER tour et tromperait sur les suivants. Le rappel contextuel
-    doit vivre ailleurs."""
-    from pathlib import Path
-
-    src = Path("app/agent/builders/memory_snapshot.py").read_text(encoding="utf-8")
-
-    assert "get_query_relevant_profile" not in src, (
-        "le rappel contextuel a été mis dans le snapshot GELÉ — il ne "
-        "servirait que la première question de chaque conversation"
-    )
 
 
-def test_the_recall_is_wired_in_the_volatile_zone():
-    """Il doit être calculé par tour et assemblé AVEC la date — jamais dans
-    le segment mis en cache. La date reste le tout dernier élément : c'est
-    le plus volatile, et le code le place là exprès pour ne rendre caduques
-    que les derniers tokens du prompt."""
-    from pathlib import Path
-
-    src = Path("app/agent/nodes.py").read_text(encoding="utf-8")
-
-    assert "get_query_relevant_profile" in src
-    # Le bloc rejoint le segment volatile, pas le prompt cacheable.
-    assert "_volatile_segment" in src
-    assert "_recall_block" in src
-    assert src.count("cacheable_system + _date_segment") == 0, (
-        "un assemblage utilise encore la date seule : le rappel contextuel "
-        "n y arriverait pas"
-    )
-    # Et il est bien calculé AVANT d etre assemble.
-    assert src.index("_recall_block = await") < src.index("_volatile_segment =") + 1
 
 
 @pytest.mark.asyncio

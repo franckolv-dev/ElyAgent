@@ -19,6 +19,7 @@ import {
   BrainCircuit, Loader2, AlertCircle, Trash2, Info, ChevronDown,
 } from "lucide-react";
 
+import { MemoryContextJournal, MemoryEditor } from "./controls";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -31,10 +32,12 @@ import {
 // Libellés des familles. La clé est celle du serveur — la garder telle
 // quelle évite d'avoir à synchroniser deux vocabulaires.
 const FAMILY_LABELS: Record<string, string> = {
+  profile: "Profil consolidé",
   fact: "Faits",
   preference: "Préférences",
   constraint: "Règles",
   episodic: "Conversations",
+  error: "Erreurs et corrections",
 };
 
 function familyLabel(key: string): string {
@@ -166,6 +169,8 @@ export default function MyMemoriesPage() {
               </span>
             </div>
 
+            <MemoryContextJournal />
+
             {/* ── Onglets de famille ── */}
             {families && (
               <div className="flex flex-wrap gap-1.5">
@@ -230,10 +235,14 @@ export default function MyMemoriesPage() {
                         {e.content || <em className="text-text-muted">{t("noContent")}</em>}
                       </p>
                       <p className="text-[10px] text-text-muted mt-1">
-                        {fmtDate(e.created_at)}
+                        {e.metadata.key && `${e.metadata.key} · `}{fmtDate(e.created_at)}
+                        {e.metadata.source && ` · ${e.metadata.source}`}
+                        {e.metadata.pinned && " · Épinglé"}
+                        {e.metadata.scope ? " · Limité à une mission" : " · Personnel"}
                       </p>
                     </div>
 
+                    {active !== "error" && active && <MemoryEditor key={`${active}:${e.id}`} family={active} entry={e} onSaved={() => loadFamily(active)} />}
                     {confirming === e.id ? (
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
@@ -258,7 +267,7 @@ export default function MyMemoriesPage() {
                       <button
                         onClick={() => setConfirming(e.id)}
                         title={t("forget")}
-                        className="shrink-0 p-1.5 rounded text-text-muted opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-400 transition-all"
+                        className="shrink-0 p-1.5 rounded text-text-muted opacity-100 hover:text-red-400 transition-all"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

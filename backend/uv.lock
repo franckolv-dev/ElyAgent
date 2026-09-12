@@ -750,7 +750,7 @@ wheels = [
 
 [[package]]
 name = "cyber-entity-backend"
-version = "3.0.0"
+version = "3.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -802,6 +802,7 @@ dependencies = [
     { name = "slowapi" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tavily-python" },
+    { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
     { name = "xlrd" },
@@ -867,6 +868,7 @@ requires-dist = [
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
     { name = "tavily-python", specifier = ">=0.3.0" },
+    { name = "tiktoken", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
     { name = "websockets", specifier = ">=14.0" },
     { name = "xlrd", specifier = ">=2.0.1" },

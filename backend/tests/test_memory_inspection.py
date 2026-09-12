@@ -23,6 +23,7 @@
 """
 from __future__ import annotations
 
+from tests.test_patch_service import _db  # owner-scoped deletion now invalidates SQL history too
 import pytest
 
 from app.services.memory import inspection
@@ -56,6 +57,9 @@ class _FakeInfra:
             self.refused_empty_user = True
             return [], None
         return self.points[:limit], None
+
+    async def points_by_ids(self, collection, ids, user_id):
+        return []
 
     async def delete_point(
         self, collection: str, point_id: str, user_id: str
@@ -187,7 +191,7 @@ def test_uninspectable_families_are_declared_with_a_reason():
     """`procedural` et `error` n'ont pas de surface d'audit. La page les
     affiche AVEC la raison : les masquer ferait croire à une mémoire à quatre
     familles, les montrer nus ferait croire à une panne."""
-    assert set(inspection.UNINSPECTABLE) == {"procedural", "error"}
+    assert set(inspection.UNINSPECTABLE) == {"procedural"}
     assert all(len(r) > 30 for r in inspection.UNINSPECTABLE.values())
     # Aucun recouvrement : une famille est inspectable OU expliquée, jamais
     # les deux, jamais ni l'une ni l'autre.

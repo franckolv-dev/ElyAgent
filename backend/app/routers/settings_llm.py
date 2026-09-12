@@ -1002,6 +1002,14 @@ async def codex_status_endpoint(admin: User = Depends(require_admin)) -> dict:
     return await codex_status()
 
 
+@router.get("/codex/health", status_code=status.HTTP_200_OK)
+async def codex_health_endpoint(user: User = Depends(get_current_user)) -> dict:
+    """Shared-provider warning, without credentials or subscription identifiers."""
+    from app.services.openai_codex_auth import codex_status
+    result = await codex_status()
+    return {"reconnect_required": bool(result.get("reconnect_required"))}
+
+
 @router.post("/codex/import", status_code=status.HTTP_200_OK)
 async def codex_import_endpoint(
     body: CodexImportRequest,

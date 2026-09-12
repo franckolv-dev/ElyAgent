@@ -21,7 +21,10 @@
     "connecting": "Connecting…",
     "redirecting": "Redirecting…",
     "noData": "No data available",
-    "admin": "ADMIN"
+    "admin": "ADMIN",
+    "workspace": "Workspace",
+    "workspaceSubtitle": "Your intent. In action.",
+    "openMenu": "Open menu"
   },
   "sidebar": {
     "newConversation": "New conversation",
@@ -56,7 +59,9 @@
     "navReversibleActions": "Undo history",
     "navGroupAdmin": "Admin",
     "navMemories": "My memories",
-    "navTransparency": "Transparency"
+    "navTransparency": "Transparency",
+    "tagline": "Your personal intelligence",
+    "navAutonomy": "Autonomy"
   },
   "knowledge": {
     "title": "Knowledge base",
@@ -114,7 +119,7 @@
     }
   },
   "chatInput": {
-    "placeholder": "Send a message… (Enter to send, Shift+Enter for new line)",
+    "placeholder": "Message Ely…",
     "removeCapture": "Remove capture",
     "capturePreview": "Capture preview",
     "screenshotPreview": "Screenshot preview",
@@ -124,23 +129,41 @@
     "stop": "Stop",
     "footerHelp": "Enter ↵ send · Shift+Enter new line",
     "attachedFiles": "{count} file(s) attached",
-    "transcribing": "Transcribing…"
+    "transcribing": "Transcribing…",
+    "send": "Send"
   },
   "chat": {
     "placeholder": "Ask ELY anything…",
     "send": "Send",
-    "title": "ELY IS ONLINE",
+    "title": "What shall we accomplish?",
     "suggestions": {
       "hosts": "What hosts are configured?",
       "sysinfo": "System info",
       "disk": "Disk usage",
       "unreadEmails": "Summary of unread emails"
     },
-    "welcome": "Your AI agent is ready. Ask it to run commands, analyse files or manage your systems.",
+    "welcome": "Bring me a question, a task, or a mission.",
     "resize": "Resize panel",
     "error": "Error: {message}",
     "newConversation": "New conversation",
-    "clickToRename": "Click to rename"
+    "clickToRename": "Click to rename",
+    "intents": {
+      "brief": {
+        "title": "Find clarity",
+        "description": "Summarize, research and understand",
+        "prompt": "Review my unread emails and today’s calendar, then suggest priorities."
+      },
+      "action": {
+        "title": "Make it happen",
+        "description": "Create, organize and automate",
+        "prompt": "Help me organize a project: let’s define the outcome and the actions to take."
+      },
+      "mission": {
+        "title": "Think ahead",
+        "description": "Plan an autonomous mission",
+        "prompt": "I want to give you an autonomous mission. Help me define its objective, deliverable and constraints."
+      }
+    }
   },
   "messageBubble": {
     "goodResponse": "Good response",
@@ -166,7 +189,19 @@
     "hitlSending": "Sending…",
     "hitlFailed": "Failed — retry",
     "voiceActive": "Voice active",
-    "voiceMuted": "Voice muted"
+    "voiceMuted": "Voice muted",
+    "enableVoice": "Enable voice",
+    "sessionTitle": "This session",
+    "model": "Model",
+    "latency": "Latency",
+    "states": {
+      "idle": "Ready",
+      "thinking": "Thinking",
+      "speaking": "Speaking",
+      "alert": "Approval required",
+      "listening": "Listening"
+    },
+    "voiceUnavailable": "Voice playback unavailable. Your answer remains available in the chat."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -345,24 +380,22 @@
     "flash_restore": "“{name}” restored to candidate."
   },
   "incidents": {
-    "frozen_title": "Tool factory frozen.",
-    "frozen_hint": "No tool code is generated (AUTO_TOOL_GENERATION_ENABLED=false, decided 2026-09-02). Validate the hypothesis if it looks right, reject it otherwise: neither changes Ely's behaviour, it is a classification.",
     "title": "Incidents & proposals",
-    "subtitle": "Dubious or failed executions Ely diagnosed — for you to arbitrate",
+    "subtitle": "Fix causes and follow subsequent executions",
     "refreshTooltip": "Refresh",
-    "adminNote": "When a scheduled task or mission doesn't truly succeed, Ely records a verdict then a cause hypothesis. You arbitrate: validate, reject, or act by track (B = generate a tool, C = adjust config/prompt, D = human ticket).",
+    "adminNote": "Confirming a diagnosis does not fix Ely. Prepare a correction, review its changes, then apply it. Subsequent executions provide evidence of its effect. Causes requiring intervention remain visible.",
     "errorLoad": "Couldn't load incidents.",
     "actionError": "The action failed.",
     "loading": "Loading…",
-    "filter_open": "open",
+    "filter_open": "to follow",
     "filter_all": "all",
-    "emptyOpen": "No pending incidents. Everything Ely ran recently actually succeeded.",
+    "emptyOpen": "No incident awaiting a correction or verification.",
     "emptyAll": "No incidents recorded.",
     "createdLabel": "Detected {date}",
     "outcome_dubious": "dubious",
     "outcome_failed": "failed",
     "category_gap_tool": "missing tool",
-    "category_binding": "binding",
+    "category_binding": "tools not loaded",
     "category_config_tier": "tier config",
     "category_prompt": "prompt",
     "category_code_core": "core code",
@@ -373,24 +406,22 @@
     "confidence_medium": "medium",
     "confidence_high": "high",
     "voie_A": "track A · observe",
-    "voie_B": "track B · tool",
-    "voie_C": "track C · config",
-    "voie_D": "track D · ticket",
+    "voie_B": "existing tools",
+    "voie_C": "instructions / configuration",
+    "voie_D": "technical intervention",
     "status_validated": "validated",
     "status_rejected": "rejected",
     "status_actioned": "actioned",
     "status_merged": "merged",
     "status_obsolete": "moot",
     "seenTimes": "seen {count} times · last {date}",
-    "generate": "Generate a tool",
-    "generateHint": "Runs auto-dev (tier S) to create a python_tool from this cause. Real LLM cost.",
-    "validate": "Validate",
-    "validateHint": "Confirm this diagnosis (plausible cause).",
+    "validate": "Confirm diagnosis",
+    "validateHint": "Confirm the cause without closing follow-up or changing Ely.",
     "reject": "Reject",
     "rejectHint": "Diagnosis is wrong or off-topic.",
-    "proposePatch": "Propose a fix",
-    "proposePatchHint": "Ely generates a rewrite of the scheduled task's prompt to fix the cause. You'll see the diff before applying. Real LLM cost.",
-    "patchTitle": "Proposed fix (task prompt)",
+    "proposePatch": "Prepare correction",
+    "proposePatchHint": "Prepare a concrete correction for review without generating tool code.",
+    "patchTitle": "Instruction correction",
     "patchBefore": "Before",
     "patchAfter": "After",
     "patch_status_proposed": "proposed",
@@ -398,25 +429,27 @@
     "patch_status_rejected": "rejected",
     "patch_status_reverted": "reverted",
     "apply": "Apply",
-    "applyHint": "Apply the new prompt to the scheduled task. Reversible (the old one is kept).",
+    "applyHint": "Activate this correction for future matching requests.",
     "rejectPatch": "Reject fix",
     "rejectPatchHint": "Don't apply this fix.",
     "revert": "Revert",
-    "revertHint": "Restore the prompt from before the apply.",
+    "revertHint": "Disable this correction and reopen follow-up.",
     "flash_patch_proposed": "Fix proposed — check the diff then apply.",
-    "flash_patch_applied": "Fix applied to the task (reversible).",
-    "flash_patch_reverted": "Fix reverted — previous prompt restored.",
+    "flash_patch_applied": "Correction applied. Its result will be checked after the next execution.",
+    "flash_patch_reverted": "Correction reverted.",
     "flash_patch_rejected": "Fix rejected.",
-    "confirmTitle": "Generate a tool for this cause?",
-    "confirmBody": "This calls a tier-S LLM to write Python code. The result is a candidate to review on the \"Skills to review\" page.",
     "cancel": "Cancel",
-    "confirmGenerate": "Generate",
-    "flash_validated": "Incident validated.",
+    "flash_validated": "Diagnosis confirmed. A correction still needs to be applied.",
     "flash_rejected": "Incident rejected.",
-    "flash_generated": "Tool \"{name}\" generated — review it on the candidates page.",
-    "flash_generation_failed": "Generation failed (status: {status}).",
-    "flash_tool_exists": "Hypothesis confirmed: tool “{name}” already covers this capability. Incident validated — the binding gap still stands.",
-    "flash_target_gone": "The target scheduled task no longer exists — incident closed as moot."
+    "flash_target_gone": "The target scheduled task no longer exists — incident closed as moot.",
+    "bindingPatchTitle": "Load existing tools",
+    "bindingBefore": "Usual tool selection with no saved correction for this request.",
+    "verification_pending": "Correction active · awaiting a subsequent execution.",
+    "verification_succeeded": "A successful execution was observed after applying the correction.",
+    "verification_failed": "A subsequent execution failed or remains doubtful: review the correction.",
+    "settingsRequired": "This diagnosis concerns a provider or model. Check its connection and configuration.",
+    "openSettings": "Open settings",
+    "manualRequired": "No automatic correction is available for this cause. Intervention is needed; confirming the diagnosis does not resolve the incident."
   },
   "reversibleActions": {
     "title": "Undo history",
@@ -612,10 +645,16 @@
     "modelsConfigured": "Configured models",
     "instanceDescription": "Each instance combines a provider, a model and an optional API key. You can create multiple instances for the same provider (e.g. several Ollama models) and freely assign them to routing tiers.",
     "noInstances": "No instance configured. Click \"Add\" to create your first instance.",
+    "codexReconnectTitle": "GPT connection interrupted",
+    "codexReconnectMessage": "The ChatGPT subscription connection was rejected. Ely may use a fallback model until the connection is restored.",
+    "codexReconnectMember": "An administrator needs to restore the GPT connection. Ely may use a fallback model in the meantime.",
+    "codexReconnectAction": "Reconnect GPT",
+    "codexReconnectBadge": "Reconnection required",
+    "codexReconnectInstructions": "Renew your Codex login on the Mac, then import the new connection details below. There is no need to delete the model or change routing. Do not share these details in a conversation.",
     "codexTitle": "OpenAI — ChatGPT subscription (Codex)",
     "codexBadgeConnected": "Connected",
     "codexBadgeNotConnected": "Not connected",
-    "codexDescription": "Access GPT-5.5 through your ChatGPT subscription (flat monthly fee) instead of per-token API billing — no API key.\n1. On the Mac: npm install -g @openai/codex then codex login (browser sign-in).\n2. Paste the content of ~/.codex/auth.json here and click Import.\nEly then keeps the connection alive on its own (automatic refresh, encrypted storage).",
+    "codexDescription": "Access GPT models through your ChatGPT subscription (flat monthly fee) instead of per-token API billing — no API key.\n1. On the Mac: npm install -g @openai/codex then codex login (browser sign-in).\n2. Paste the content of ~/.codex/auth.json here and click Import.\nEly then keeps the connection alive on its own (automatic refresh, encrypted storage).",
     "codexPlaceholder": "Content of ~/.codex/auth.json",
     "codexImport": "Import",
     "codexImporting": "Validating…",
@@ -1144,7 +1183,7 @@
   },
   "memories": {
     "title": "My memories",
-    "subtitle": "What ELY remembers about you — Sprint 2.5",
+    "subtitle": "Understand, correct and organize what Ely remembers",
     "loading": "Loading your memories…",
     "empty": "Nothing in this family yet.",
     "noContent": "(entry with no text)",

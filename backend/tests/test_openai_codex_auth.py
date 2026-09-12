@@ -416,3 +416,113 @@ def test_providers_meta_lists_gpt_5_6_models() -> None:
     codex = next(p for p in PROVIDERS_META if p["id"] == "openai_codex")
     for slug in ("gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"):
         assert slug in codex["models"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("http_status,requires_reconnect", [(401, True), (403, True), (429, False), (500, False)])
+async def test_actual_response_records_only_auth_failures(store, http_status, requires_reconnect):
+    TestRefresh()._seed(store, expires_in_s=86400)
+    async with httpx.AsyncClient(
+        auth=CodexBearerAuth(),
+        transport=httpx.MockTransport(lambda request: httpx.Response(http_status, text="private error body")),
+    ) as client:
+        response = await client.post(f"{CODEX_BASE_URL}/responses", json={"input": "test"})
+    assert response.status_code == http_status
+    result = await codex_status()
+    assert result["reconnect_required"] is requires_reconnect
+    assert result["connected"] is not requires_reconnect
+    assert "private error body" not in store.data[codex._CONFIG_KEY]
+    codex._reset_cache_for_tests()
+    assert (await codex_status())["reconnect_required"] is requires_reconnect
+
+
+@pytest.mark.asyncio
+async def test_success_clears_a_persisted_connection_warning(store):
+    TestRefresh()._seed(store, expires_in_s=86400)
+    token = await get_codex_access_token()
+    await codex._record_response_health(token, 401)
+    assert (await codex_status())["reconnect_required"] is True
+    async with httpx.AsyncClient(
+        auth=CodexBearerAuth(), transport=httpx.MockTransport(lambda request: httpx.Response(200, text="OK")),
+    ) as client:
+        await client.post(f"{CODEX_BASE_URL}/responses")
+    codex._reset_cache_for_tests()
+    assert (await codex_status())["reconnect_required"] is False
+
+
+@pytest.mark.asyncio
+async def test_reimport_clears_warning_and_late_failure_does_not_restore_it(store, monkeypatch):
+    TestRefresh()._seed(store, expires_in_s=86400)
+    old_token = await get_codex_access_token()
+    await codex._record_response_health(old_token, 401)
+    _FakeTokenEndpoint().install(monkeypatch)
+    result = await import_codex_tokens(_CLI_AUTH_JSON)
+    assert result["connected"] is True
+    assert result["reconnect_required"] is False
+    await codex._record_response_health(old_token, 401)
+    assert (await codex_status())["reconnect_required"] is False
+
+
+@pytest.mark.asyncio
+async def test_rejected_refresh_sets_persistent_warning(store, monkeypatch):
+    TestRefresh()._seed(store, expires_in_s=0)
+    _FakeTokenEndpoint(status=400).install(monkeypatch)
+    with pytest.raises(CodexAuthError):
+        await get_codex_access_token()
+    codex._reset_cache_for_tests()
+    assert (await codex_status())["reconnect_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_bad_import_preserves_previous_connection(store, monkeypatch):
+    TestRefresh()._seed(store, expires_in_s=86400)
+    _FakeTokenEndpoint(status=401).install(monkeypatch)
+    before = store.data[codex._CONFIG_KEY]
+    with pytest.raises(CodexAuthError):
+        await import_codex_tokens(_CLI_AUTH_JSON)
+    assert store.data[codex._CONFIG_KEY] == before
+    assert await get_codex_access_token() == "at-stored"
+    assert (await codex_status())["connected"] is True
+
+
+@pytest.mark.asyncio
+async def test_member_health_is_authenticated_and_exposes_no_account_data(store):
+    from fastapi import FastAPI
+    from app.routers.settings_llm import router
+    from app.auth.dependencies import get_current_user
+    from types import SimpleNamespace
+
+    TestRefresh()._seed(store, expires_in_s=86400)
+    await codex._record_response_health(await get_codex_access_token(), 401)
+    app = FastAPI()
+    app.include_router(router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/settings/llm/codex/health")
+        assert response.status_code in (401, 403)
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(role="user")
+        response = await client.get("/api/settings/llm/codex/health")
+        assert response.status_code == 200
+        assert response.json() == {"reconnect_required": True}
+
+
+@pytest.mark.asyncio
+async def test_codex_llm_client_reports_auth_failure_without_fallback(store):
+    from app.services.llm_provider import _make_openai_codex
+    from langchain_core.messages import HumanMessage
+    from openai import AuthenticationError
+
+    TestRefresh()._seed(store, expires_in_s=86400)
+    llm = _make_openai_codex("gpt-5.6-sol", 0.1)
+    def reject(request):
+        assert request.headers["Authorization"] == "Bearer at-stored"
+        return httpx.Response(401, json={"error": {"code": "token_expired", "message": "expired"}})
+    llm.http_async_client._transport = httpx.MockTransport(reject)
+    # Avoid environment HTTP proxy mounts in this fully isolated test.
+    llm.http_async_client._mounts = {}
+    try:
+        with pytest.raises(AuthenticationError):
+            await llm.ainvoke([HumanMessage(content="Test fictif")])
+        assert (await codex_status())["reconnect_required"] is True
+    finally:
+        await llm.http_async_client.aclose()
+        llm.http_client.close()

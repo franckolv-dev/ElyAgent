@@ -4,16 +4,7 @@
  * @file       frontend/src/app/me/learning/incidents/page.tsx
  * @brief      Boucle d'auto-diagnostic J4 — page admin « Incidents & propositions ».
  *
- *             Maillon 3 de la remontée : liste les exécutions douteuses/échouées
- *             diagnostiquées (cause + catégorie), et laisse l'admin trancher
- *             (valider / rejeter) ou agir selon la voie A/B/C/D :
- *               - voie B (gap_tool/binding) → générer un outil (auto-dev),
- *               - voie C (config_tier/prompt) → patch config/prompt (J5, différé),
- *               - voie D (code_core) → ticket humain,
- *               - voie A → rien à corriger.
- *
- *             Réutilise le gabarit de /me/learning/tool-gaps. Sous /me/* car
- *             next.config réécrit /admin/* vers le backend.
+ *             Correctifs concrets, réversibles, avec suivi des exécutions.
  *
  * @author     Franck OLLIVIER <contact@agent-ely.fr>
  * @copyright  Copyright (c) 2025-2026 Franck OLLIVIER
@@ -24,8 +15,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
-  AlertCircle, AlertTriangle, CheckCircle, CheckCircle2, FilePen, Loader2,
-  RefreshCw, Sparkles, Stethoscope, ThumbsDown, Undo2, Wrench,
+  AlertCircle, CheckCircle, CheckCircle2, FilePen, Loader2,
+  RefreshCw, Sparkles, Stethoscope, ThumbsDown, Undo2,
 } from "lucide-react";
 
 import { AdminGuard } from "@/components/layout/AuthGuard";
@@ -47,6 +38,13 @@ const VOIE: Record<string, "A" | "B" | "C" | "D"> = {
   unknown: "A",
 };
 
+function bindingDescription(value: string): string {
+  try {
+    const binding = JSON.parse(value) as { request: string; tools: string[] };
+    return `${binding.request}\n\n${binding.tools.join(" · ")}`;
+  } catch { return value; }
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   try {
@@ -66,12 +64,6 @@ export default function IncidentsPage() {
   const [error, setError]     = useState<string | null>(null);
   const [busyId, setBusyId]   = useState<number | null>(null);
   const [flash, setFlash]     = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [confirmGen, setConfirmGen] = useState<Incident | null>(null);
-  // 08/09/2026 — la fabrique d'outils est gelée (#370) : le backend répond
-  // `frozen` avec sa raison. On la garde pour la page : le bouton disparaît,
-  // la raison s'affiche sur les cartes de la voie B.
-  const [fabriqueGelee, setFabriqueGelee] = useState<string | null>(null);
-
   const showFlash = (kind: "ok" | "err", text: string) => {
     setFlash({ kind, text });
     setTimeout(() => setFlash(null), 4500);
@@ -100,55 +92,8 @@ export default function IncidentsPage() {
     setBusyId(inc.id);
     try {
       await api.adminLearningIncidentResolve(inc.id, status);
-      await dropOrRefetch(inc.id);
+      await fetchRows();
       showFlash("ok", t(status === "validated" ? "flash_validated" : "flash_rejected"));
-    } catch (e) {
-      showFlash("err", e instanceof Error ? e.message : t("actionError"));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const generateTool = async (inc: Incident) => {
-    setConfirmGen(null);
-    if (busyId) return;
-    setBusyId(inc.id);
-    try {
-      const result = await api.adminLearningToolCreatorRun({
-        task_description: inc.hypothesis,
-        user_id: inc.user_id,
-      });
-      if (result.status === "created") {
-        await api.adminLearningIncidentResolve(
-          inc.id, "actioned", `tool:${result.tool_name ?? "?"}`,
-        );
-        await dropOrRefetch(inc.id);
-        showFlash("ok", t("flash_generated", { name: result.tool_name ?? "tool" }));
-      } else if (result.status === "exists") {
-        // `exists` N'EST PAS UN ÉCHEC — c'est la confirmation de l'hypothèse.
-        // Le backend refuse de dépenser un appel tier-S parce qu'un outil
-        // couvre déjà la capacité, et il le NOMME. Or l'incident disait
-        // « l'outil existe mais n'a pas été lié à ce tour ». La réponse lui
-        // donne raison.
-        //
-        // L'affichage rangeait ça en « Génération échouée (status: exists) »
-        // et laissait l'incident ouvert : le seul retour possible était de
-        // recliquer indéfiniment. (21/08)
-        //
-        // ⚠️ `validated` et pas `actioned` : l'hypothèse est confirmée, mais
-        // RIEN n'est réparé — le trou de binding reste entier. Dire
-        // « actioned » ferait croire à un correctif qui n'existe pas.
-        await api.adminLearningIncidentResolve(
-          inc.id, "validated", `outil existant : ${result.tool_name ?? "?"}`,
-        );
-        await dropOrRefetch(inc.id);
-        showFlash("ok", t("flash_tool_exists", { name: result.tool_name ?? "?" }));
-      } else if (result.status === "frozen") {
-        setFabriqueGelee(result.detail ?? t("frozen_hint"));
-        showFlash("err", t("frozen_title"));
-      } else {
-        showFlash("err", t("flash_generation_failed", { status: result.status }));
-      }
     } catch (e) {
       showFlash("err", e instanceof Error ? e.message : t("actionError"));
     } finally {
@@ -187,7 +132,7 @@ export default function IncidentsPage() {
     setBusyId(inc.id);
     try {
       await api.adminLearningApplyPatch(patchId);
-      await dropOrRefetch(inc.id);    // l'incident passe « actioned »
+      await fetchRows();
       showFlash("ok", t("flash_patch_applied"));
     } catch (e) {
       // Même impasse un clic plus tard : correctif proposé, tâche supprimée
@@ -327,10 +272,10 @@ export default function IncidentsPage() {
                 <ul className="divide-y divide-border-dim/50">
                   {rows.map((inc) => {
                     const voie = VOIE[inc.category] ?? "A";
-                    const isOpen = inc.status === "open";
+                    const isOpen = ["open", "validated"].includes(inc.status);
                     return (
                       <li key={inc.id} className="px-4 py-3">
-                        <div className="flex items-start gap-3">
+                        <div className="flex flex-col sm:flex-row items-start gap-3">
                           <div className="flex-1 min-w-0 space-y-1.5">
                             {/* Badges row */}
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -372,6 +317,15 @@ export default function IncidentsPage() {
                             </div>
                             {/* Hypothesis */}
                             <p className="text-sm text-text-primary">{inc.hypothesis}</p>
+                            {inc.repair_verification && (
+                              <p role="status" className="text-xs text-cyber-cyan">{t(`verification_${inc.repair_verification}`)}</p>
+                            )}
+                            {!inc.repair_available && isOpen && (
+                              <p className="text-xs text-text-secondary">
+                                {t(inc.category === "config_tier" ? "settingsRequired" : "manualRequired")}
+                                {inc.category === "config_tier" && <a href="/settings" className="ml-2 text-cyber-cyan underline">{t("openSettings")}</a>}
+                              </p>
+                            )}
                             {/* Signals chips */}
                             {inc.signals.length > 0 && (
                               <div className="flex flex-wrap gap-1">
@@ -403,7 +357,7 @@ export default function IncidentsPage() {
                               <div className="mt-2 rounded border border-cyber-cyan/20 bg-cyber-cyan/5 p-2 space-y-2">
                                 <div className="flex items-center gap-2">
                                   <FilePen className="w-3 h-3 text-cyber-cyan" />
-                                  <span className="text-[11px] text-text-secondary">{t("patchTitle")}</span>
+                                  <span className="text-[11px] text-text-secondary">{t(inc.patch.kind === "tool_binding" ? "bindingPatchTitle" : "patchTitle")}</span>
                                   <span className={`px-1.5 py-0.5 text-[10px] font-mono rounded border ${
                                     inc.patch.status === "applied"
                                       ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
@@ -420,11 +374,11 @@ export default function IncidentsPage() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                   <div>
                                     <div className="text-[10px] text-text-muted mb-0.5">{t("patchBefore")}</div>
-                                    <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto rounded bg-red-500/5 border border-red-500/20 text-text-secondary p-1.5">{inc.patch.old_value ?? "—"}</pre>
+                                    <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto rounded bg-red-500/5 border border-red-500/20 text-text-secondary p-1.5">{inc.patch.kind === "tool_binding" ? t("bindingBefore") : inc.patch.old_value ?? "—"}</pre>
                                   </div>
                                   <div>
                                     <div className="text-[10px] text-text-muted mb-0.5">{t("patchAfter")}</div>
-                                    <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto rounded bg-emerald-500/5 border border-emerald-500/20 text-text-secondary p-1.5">{inc.patch.new_value}</pre>
+                                    <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-32 overflow-y-auto rounded bg-emerald-500/5 border border-emerald-500/20 text-text-secondary p-1.5">{inc.patch.kind === "tool_binding" ? bindingDescription(inc.patch.new_value) : inc.patch.new_value}</pre>
                                   </div>
                                 </div>
                                 {/* Patch actions */}
@@ -469,23 +423,7 @@ export default function IncidentsPage() {
                           {/* Actions — only while open */}
                           {isOpen && (
                             <div className="flex flex-col items-stretch gap-1.5 shrink-0">
-                              {voie === "B" && fabriqueGelee && (
-                                <div className="max-w-[240px] text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1" title={fabriqueGelee}>
-                                  {t("frozen_title")} {t("frozen_hint")}
-                                </div>
-                              )}
-                              {voie === "B" && !fabriqueGelee && (
-                                <button
-                                  onClick={() => setConfirmGen(inc)}
-                                  disabled={busyId === inc.id}
-                                  className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors disabled:opacity-50"
-                                  title={t("generateHint")}
-                                >
-                                  {busyId === inc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
-                                  {t("generate")}
-                                </button>
-                              )}
-                              {voie === "C" && inc.source === "scheduled" &&
+                              {inc.repair_available &&
                                 (!inc.patch || ["rejected", "reverted"].includes(inc.patch.status)) && (
                                 <button
                                   onClick={() => proposePatch(inc)}
@@ -497,7 +435,7 @@ export default function IncidentsPage() {
                                   {t("proposePatch")}
                                 </button>
                               )}
-                              <button
+                              {inc.status === "open" && <button
                                 onClick={() => resolve(inc, "validated")}
                                 disabled={busyId === inc.id}
                                 className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
@@ -505,7 +443,7 @@ export default function IncidentsPage() {
                               >
                                 {busyId === inc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                                 {t("validate")}
-                              </button>
+                              </button>}
                               <button
                                 onClick={() => resolve(inc, "rejected")}
                                 disabled={busyId === inc.id}
@@ -529,36 +467,6 @@ export default function IncidentsPage() {
         </div>
       </div>
 
-      {/* Confirmation modal for "Generate tool" — paid LLM call. */}
-      {confirmGen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-bg-secondary border border-border-dim rounded-lg max-w-md w-full mx-4 p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-cyber-cyan" />
-              <h2 className="text-sm font-medium text-text-primary">{t("confirmTitle")}</h2>
-            </div>
-            <p className="text-xs text-text-secondary">{t("confirmBody")}</p>
-            <p className="text-xs text-text-muted bg-bg-primary border border-border-dim rounded p-2 font-mono">
-              {confirmGen.hypothesis}
-            </p>
-            <div className="flex items-center gap-2 justify-end">
-              <button
-                onClick={() => setConfirmGen(null)}
-                className="px-3 py-1.5 text-[11px] rounded border border-border-dim text-text-muted hover:text-text-secondary"
-              >
-                {t("cancel")}
-              </button>
-              <button
-                onClick={() => generateTool(confirmGen)}
-                className="px-3 py-1.5 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 flex items-center gap-1"
-              >
-                <Wrench className="w-3 h-3" />
-                {t("confirmGenerate")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </AdminGuard>
   );
 }

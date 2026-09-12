@@ -39,15 +39,9 @@ from app.skills.decorator import register
 logger = logging.getLogger(__name__)
 
 
-# `error` n'est PAS annoncé : écriture seule. L'annoncer poussait le modèle à
-# l'interroger, et à lire la réponse vide comme « je n'ai jamais échoué
-# là-dessus ». MemoryType.parse l'accepte encore (données existantes) — la
-# réponse dit alors franchement que la mémoire n'est pas consultable.
-#
-# `procedural` est de retour (02/08) : il a désormais une lecture, servie par
-# le registre d'outils via find_tool.
+# All advertised families have a read path, including owner-scoped errors.
 _VALID_TYPES_TEXT = (
-    "episodic | semantic_user | procedural | constraint | auto"
+    "episodic | semantic_user | procedural | error | constraint | auto"
 )
 
 
@@ -90,20 +84,18 @@ async def memory_recall(
                           ``gmail_send_email``). Read from the tool catalog,
                           so it is never out of date. The tools it names
                           become callable for the rest of the conversation.
+    - **error**          : past tool failures for this user; search by tool
+                          name or error text before repeating a failed approach.
     - **constraint**     : user-imposed security rules
                           ("never delete without asking").
     - **auto**           : fan out across episodic, semantic_user and
                           constraint, merging by score. ``procedural`` is
                           NOT in the fan-out — ask for it explicitly.
 
-    One type exists but is NOT readable: ``error`` (write-only). Asking for it
-    returns an explicit message, not an empty list — the distinction avoids
-    concluding "nothing in memory" when the truth is "no read path".
-
     Args:
         query: free-text describing what you want to remember.
         memory_type: one of (``episodic | semantic_user | procedural |
-                     constraint | auto``). Default ``auto``.
+                     error | constraint | auto``). Default ``auto``.
         limit: how many hits to return. Clamped to [1, 10].
 
     Returns:

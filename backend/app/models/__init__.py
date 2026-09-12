@@ -82,3 +82,9 @@ __all__ = [
     # C5 — anticipation (mode suggestion)
     "AnticipationSuggestion", "SuggestionStatus",
 ]
+
+from app.models.autonomy import AutomationRule, AutomationEvent, MissionAssurance, AutonomyPreferences, ProcedureTrial
+
+from app.models.autonomy import ActionReceipt
+
+from app.models.memory_context import MemorySelection, MemoryVersion, MemoryCheckpoint

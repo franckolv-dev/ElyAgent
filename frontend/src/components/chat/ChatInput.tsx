@@ -416,7 +416,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
     // doivent partager le même axe, sinon le champ paraît décalé sous les
     // messages.
     <div
-      className="chat-column"
+      className="chat-column shrink-0"
       style={{ padding: "16px 0 20px", background: "transparent" }}
     >
 
@@ -568,6 +568,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
             <button
               onClick={onStop}
               title={t("stop")}
+              aria-label={t("stop")}
               className="icon-btn"
               style={{
                 background: "var(--danger-soft)",
@@ -580,6 +581,7 @@ export function ChatInput({ onSend, onStop, disabled, isLoading, prefill, onPref
           ) : (
             <button
               onClick={handleSend}
+              aria-label={t("send")}
               disabled={!canSend}
               className="icon-btn"
               style={{

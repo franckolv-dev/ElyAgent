@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 /* ============================================================================
@@ -33,164 +32,50 @@
   --color-text-muted:      var(--text-tertiary);
 }
 
-/* ============================================
-   ROOT — shared design tokens
-   ============================================ */
+/* ELY / Presence — shared tokens, fully local system typography. */
 :root {
-  /* Accent — refonte 09/2026 (claude.ai/design, « Ely Agent.dc.html »).
-     La teinte passe du cyan/vert d'eau (h=196) au bleu-indigo (h=276) :
-     c'est LE changement de couleur demandé. Tout le reste du fichier lit
-     `--accent-h`, donc la bascule tient en une ligne — y compris le
-     wireframe de l'avatar, qui suit la teinte au lieu de la recopier.
-
-     Les valeurs par thème sont posées plus bas : la maquette donne DEUX
-     accents (56 % en clair, 74 % en sombre) et pas un seul, parce qu'un
-     accent lisible sur blanc cassé est illisible sur ardoise, et
-     réciproquement. */
-  --accent-h: 276;
-  --accent-s: 75%;
-  --accent: oklch(56% 0.17 var(--accent-h));
-  --accent-strong: oklch(46% 0.18 var(--accent-h));
-  --accent-soft: oklch(94% 0.035 var(--accent-h));
-  --accent-glow: oklch(56% 0.17 var(--accent-h) / 0.28);
-
-  /* Radius scale — la maquette arrondit plus franchement que la version
-     précédente (cartes 11-13 px, composeur 14 px, pastilles 999 px). */
-  --radius-sm: 7px;
-  --radius-md: 9px;
-  --radius-lg: 13px;
-  --radius-xl: 20px;
-
-  /* Spacing */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 20px;
-  --sp-6: 24px;
-  --sp-8: 32px;
-
-  /* Motion */
+  --accent-h: 218; --accent-s: 70%;
+  --radius-sm: 7px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 20px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-
-/* ============================================
-   DARK — ardoise bleutée, volontairement PAS noire
-   ============================================ */
 [data-theme="dark"], html.dark, html:not(.light) {
-  /* Surfaces — maquette 09/2026, en oklch tel quel. Le ramp tient en quatre
-     étages sur une même teinte (262) : fond 28 %, cartes 32 %, pills 36 %,
-     bordures 40 %. La consigne « sombre sans être noir ni anthracite » est
-     tenue par la LUMINANCE (28 %) et par la chroma (0.018) : c'est ce petit
-     reste de bleu qui empêche le gris de virer au ciment.
-
-     ⚠️ Ce fond descend de trois points sous le #31363c de la révision 08/2026.
-     Si l'ensemble paraît trop sombre à l'usage, le levier est `--bg-app` et
-     lui seul — surtout pas les textes : c'est exactement la correction qui
-     avait produit « un voile blanc sur les gris » en août. */
-  --bg-app:        oklch(28% 0.018 262);
-  --bg-sidebar:    oklch(25% 0.017 262);
-  /* Le fil de conversation passe SOUS le reste du châssis (demande du 21/08).
-     La maquette ne donne qu'un fond ; on garde l'étage, un cran plus bas. */
-  --bg-chat:       oklch(26% 0.017 262);
-  --bg-surface:    oklch(32% 0.018 262);
-  --bg-surface-2:  oklch(36% 0.020 262);
-  --bg-surface-3:  oklch(40% 0.020 262);
-  --bg-hover:      oklch(34% 0.019 262);
-  --bg-active:     oklch(38% 0.020 262);
-
-  /* Text — trois étages, écartés. Ne pas les resserrer. */
-  --text-primary:   oklch(95% 0.006 262);
-  --text-secondary: oklch(76% 0.012 262);
-  --text-tertiary:  oklch(68% 0.012 262);
-  --text-muted:     oklch(60% 0.012 262);
-  /* L'accent sombre est CLAIR (74 %) : c'est l'encre qui doit être foncée
-     dessus, pas du blanc. La maquette écrit `color:white` en dur sur ses
-     boutons pleins — vrai en clair (4.9:1), faux en sombre (1.9:1). */
-  --text-on-accent: oklch(22% 0.03 var(--accent-h));
-
-  --dot-off: oklch(60% 0.012 262);
-
-  /* Borders — opaques : un blanc translucide disparaît sur une ardoise. */
-  --border-subtle:  oklch(36% 0.020 262);
-  --border-default: oklch(40% 0.020 262);
-  --border-strong:  oklch(46% 0.022 262);
-
-  --accent: oklch(74% 0.13 var(--accent-h));
-  --accent-strong: oklch(82% 0.11 var(--accent-h));
-  --accent-soft: oklch(40% 0.07 var(--accent-h));
-  --accent-glow: oklch(74% 0.13 var(--accent-h) / 0.30);
-
-  /* Status */
-  --success: oklch(72% 0.13 152);
-  --warning: oklch(78% 0.13 70);
-  --danger:  oklch(72% 0.15 25);
-  --info:    oklch(74% 0.12 230);
-
-  --success-soft: oklch(38% 0.06 152);
-  --warning-soft: oklch(42% 0.06 70);
-  --danger-soft:  oklch(42% 0.07 25);
-  --info-soft:    oklch(40% 0.06 230);
-
-  /* Shadows — maquette : une ombre courte + une ombre longue. */
-  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.20);
-  --shadow-md: 0 1px 2px oklch(0% 0 0 / 0.20), 0 8px 24px oklch(0% 0 0 / 0.25);
-  --shadow-lg: 0 20px 48px oklch(0% 0 0 / 0.34);
-
-  /* Avatar wireframe — le bord du dégradé SUIT `--bg-app` (jamais une copie
-     figée), et le trait suit `--accent-h` : l'avatar bleuit avec le reste. */
-  --wire-bg: radial-gradient(circle at 50% 40%, oklch(38% 0.055 var(--accent-h)) 0%, var(--bg-app) 65%);
-  --wire-line: oklch(78% 0.12 var(--accent-h));
-  --wire-glow: oklch(74% 0.14 var(--accent-h) / 0.5);
-
+  --bg-app: #2c3543; --bg-sidebar: #303a49; --bg-chat: #28313f;
+  --bg-surface: #354255; --bg-surface-2: #3d4b60; --bg-surface-3: #485973;
+  --bg-hover: #3a4b63; --bg-active: #3b5276;
+  --text-primary: #f3f7ff; --text-secondary: #c7d4e7;
+  --text-tertiary: #aebed5; --text-muted: #a6b7d0; --text-on-accent: #132b50;
+  --dot-off: #98a8c0;
+  --border-subtle: #45546a; --border-default: #596b86; --border-strong: #8099bb;
+  --accent: #91baff; --accent-strong: #bbd5ff; --accent-soft: #354f76;
+  --accent-glow: #78aaff26;
+  --success: #91baff; --warning: #f2c67d; --danger: #ff939a; --info: #8ecdf2;
+  --success-soft: #354f76; --warning-soft: #3b3021; --danger-soft: #40272f; --info-soft: #203647;
+  --shadow-sm: 0 2px 8px #00000012; --shadow-md: 0 8px 28px #00000025;
+  --shadow-lg: 0 20px 60px #00000040;
+  --wire-bg: #182130; --wire-line: #91baff; --wire-glow: #989fff33;
+  --bubble-user-bg: #91baff; --bubble-user-text: #172e52;
+  --bubble-assistant-bg: #3c5075; --bubble-assistant-border: #6889ba;
   color-scheme: dark;
 }
-
-/* ============================================
-   LIGHT — blanc froid très légèrement bleuté
-   ============================================ */
 [data-theme="light"], html.light {
-  --bg-app:        oklch(98% 0.004 262);
-  --bg-sidebar:    oklch(96.5% 0.005 262);
-  /* Même intention qu'en sombre, dans l'autre sens : sur un thème clair,
-     « se détacher » veut dire PLUS clair que la sidebar. */
-  --bg-chat:       oklch(99% 0.003 262);
-  --bg-surface:    oklch(99.2% 0.002 262);
-  --bg-surface-2:  oklch(96% 0.006 262);
-  --bg-surface-3:  oklch(93.5% 0.007 262);
-  --bg-hover:      oklch(95% 0.006 262);
-  --bg-active:     oklch(92.5% 0.008 262);
-
-  --text-primary:   oklch(23% 0.012 262);
-  --text-secondary: oklch(52% 0.012 262);
-  --text-tertiary:  oklch(60% 0.011 262);
-  --text-muted:     oklch(68% 0.010 262);
-  --dot-off:        oklch(68% 0.010 262);
-  /* Accent à 56 % : le blanc porte dessus (4.9:1), comme dans la maquette. */
-  --text-on-accent: oklch(99% 0.002 262);
-
-  --border-subtle:  oklch(93% 0.006 262);
-  --border-default: oklch(90% 0.007 262);
-  --border-strong:  oklch(84% 0.009 262);
-
-  --success: oklch(62% 0.13 152);
-  --warning: oklch(72% 0.14 70);
-  --danger:  oklch(60% 0.18 25);
-  --info:    oklch(58% 0.14 230);
-
-  --success-soft: oklch(93% 0.045 152);
-  --warning-soft: oklch(94% 0.050 70);
-  --danger-soft:  oklch(94% 0.050 25);
-  --info-soft:    oklch(94% 0.040 230);
-
-  --shadow-sm: 0 1px 2px oklch(20% 0.02 262 / 0.04);
-  --shadow-md: 0 1px 2px oklch(20% 0.02 262 / 0.04), 0 4px 16px oklch(20% 0.02 262 / 0.05);
-  --shadow-lg: 0 20px 48px oklch(20% 0.02 262 / 0.12);
-
-  --wire-bg: radial-gradient(circle at 50% 40%, oklch(93% 0.035 var(--accent-h)) 0%, var(--bg-surface-2) 65%);
-  --wire-line: oklch(56% 0.14 var(--accent-h));
-  --wire-glow: oklch(60% 0.16 var(--accent-h) / 0.35);
-
+  --bg-app: #f5f8ff; --bg-sidebar: #edf2fb; --bg-chat: #ffffff;
+  --bg-surface: #ffffff; --bg-surface-2: #edf3fc; --bg-surface-3: #dfe8f7;
+  --bg-hover: #e5edfb; --bg-active: #dae7ff;
+  --text-primary: #1d2e49; --text-secondary: #4b607e;
+  --text-tertiary: #586d89; --text-muted: #60738f; --text-on-accent: #ffffff;
+  --dot-off: #75859e;
+  --border-subtle: #d8e2f2; --border-default: #bdcde4; --border-strong: #8fa7c9;
+  --accent: #2860c7; --accent-strong: #1d49a0; --accent-soft: #dfebff;
+  --accent-glow: #2860c71a;
+  --success: #2860c7; --warning: #946018; --danger: #b7344d; --info: #216996;
+  --success-soft: #dfebff; --warning-soft: #fbf0db; --danger-soft: #fce9ed; --info-soft: #e6f2fa;
+  --shadow-sm: 0 2px 8px #163b2606; --shadow-md: 0 8px 28px #163b260d;
+  --shadow-lg: 0 20px 60px #163b261c;
+  --wire-bg: #182130; --wire-line: #91baff; --wire-glow: #989fff33;
+  --bubble-user-bg: #d6e6ff; --bubble-user-text: #1d3f77;
+  --bubble-assistant-bg: #edf0ff; --bubble-assistant-border: #c0cef3;
   color-scheme: light;
 }
 
@@ -557,6 +442,10 @@
   .sidebar.mobile-open {
     transform: translateX(0);
   }
+  .sidebar:not(.mobile-open) {
+    visibility: hidden;
+    box-shadow: none;
+  }
 }
 
 /* ── Mobile nav backdrop (overlay behind drawer) ── */
@@ -751,14 +640,8 @@ button.nav-item.active {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   height: 240px;
-  /* ⚠️ PLANCHER OBLIGATOIRE. `CyberpunkAvatar` pose `minHeight: 280` sur sa
-     propre racine : en dessous, la tête ne rétrécit pas, elle DÉBORDE, et
-     `overflow: hidden` lui coupe le bas — le cou et le bandeau
-     « ELY :: IDLE / EXACTLY LIKE YOU » disparaissent sans rien signaler.
-     La carte de la refonte 09/2026 a resserré le panneau à 290 px : la scène
-     est tombée à 224 px de côté (ratio 1/1) et 56 px ont été rognés. La scène
-     devient donc portrait quand le panneau est étroit, plutôt que carrée. */
-  min-height: 280px;
+  /* Minimal mode lets the canvas fit the available panel height. */
+  min-height: 0;
   position: relative;
   overflow: hidden;
 }
@@ -1021,21 +904,21 @@ button.nav-item.active {
    pastille d'auteur de chaque côté : le coin serré pointe vers son émetteur.
    C'est ce qui permet à la maquette de supprimer les icônes User/Bot. */
 .bubble-user {
-  align-self: flex-end;
+  align-self: flex-start;
   max-width: 80%;
   background: var(--accent);
   color: var(--text-on-accent);
-  border-radius: 13px 13px 3px 13px;
+  border-radius: 0 16px 16px 16px;
   padding: 12px 15px;
   font-size: 14.5px;
   line-height: 1.55;
 }
 .bubble-assistant {
-  align-self: flex-start;
+  align-self: flex-end;
   max-width: 88%;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 3px 13px 13px 13px;
+  border-radius: 16px 0 16px 16px;
   padding: 12px 15px;
   font-size: 14.5px;
   line-height: 1.6;
@@ -1432,4 +1315,90 @@ button.nav-item.active {
 @keyframes voice-fade-in {
   0%   { opacity: 0; transform: translateY(8px); }
   100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Presence workspace: open reading area and quiet, consistent chrome. */
+.ely-mark { display: inline-block; width: 35px; height: 35px; position: relative; color: var(--accent); }
+.ely-mark::before, .ely-mark::after { content: ""; position: absolute; width: 22px; height: 16px; background: currentColor; transform: skew(-30deg); }
+.ely-mark::before { top: 1px; left: 2px; }
+.ely-mark::after { bottom: 1px; right: 2px; opacity: .75; }
+.brand { font-family: var(--font-sans); gap: 12px; padding: 4px 4px 26px; }
+.brand-logo { background: transparent; width: 37px; height: 40px; }
+.brand-name { display: block; font-size: 28px; letter-spacing: -.04em; line-height: 1.2; font-weight: 700; }
+.brand-subtitle { display: block; font-size: 10px; letter-spacing: 0; font-weight: 400; color: var(--text-secondary); margin-top: 5px; }
+.sidebar { padding: 26px 18px 0; width: 240px; }
+.nav-cta { min-height: 45px; border-radius: 9px; margin-bottom: 22px; }
+.topbar { height: 76px; padding: 0 28px; gap: 16px; }
+.workspace-heading { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 3px; }
+.workspace-heading strong { font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
+.workspace-heading span { color: var(--text-secondary); font-size: 12px; }
+.topbar-center { flex: 0 0 auto; min-width: max-content; }
+.status-pill { border: 1px solid var(--border-subtle); border-radius: 8px; background: transparent; text-transform: none; font-family: var(--font-sans); letter-spacing: 0; padding: 7px 10px; font-weight: 400; }
+.status-dot { animation: none; }
+.chat-empty { min-height: 0; overflow-y: auto; padding: 32px; }
+.chat-orb { background: transparent; border: 0; margin-bottom: 22px; }
+.chat-orb::after { display: none; }
+.chat-title { font-size: clamp(23px, 2.35vw, 35px); letter-spacing: -.04em; text-align: center; font-weight: 600; }
+.chat-welcome { margin-bottom: 42px; max-width: none; font-size: 15px; }
+.chat-suggestions { display: flex; flex-direction: column; gap: 0; max-width: 570px; }
+.chat-suggestion { display: flex; flex-direction: row; align-items: center; gap: 18px; padding: 20px 8px; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; background: transparent; box-shadow: none; }
+.chat-suggestion:last-child { border-bottom: 1px solid var(--border-subtle); }
+.chat-suggestion:hover { box-shadow: none; background: var(--bg-hover); border-color: var(--border-subtle); }
+.suggestion-icon { width: 43px; height: 43px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 9px; flex-shrink: 0; color: var(--text-secondary); }
+.suggestion-copy { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.chat-suggestion-text { font-size: 15px; font-weight: 500; }
+.chat-suggestion-description { font-size: 13px; color: var(--text-secondary); }
+.suggestion-arrow { color: var(--text-tertiary); margin-right: 6px; }
+.chat-suggestion:hover .suggestion-arrow { color: var(--accent); transform: translate(2px, -2px); transition: transform .15s; }
+.ely-input-dock { border-radius: 20px; background: var(--bg-surface); border-color: var(--border-default); padding: 5px; box-shadow: 0 10px 40px #0000000a; }
+.bubble-user { background: var(--bubble-user-bg); color: var(--bubble-user-text); border: 1px solid transparent; overflow-wrap: anywhere; }
+.bubble-assistant { max-width: 95%; min-width: 0; padding: 17px 19px; background: var(--bubble-assistant-bg); border-color: var(--bubble-assistant-border); overflow-wrap: anywhere; }
+.avatar-panel { padding: 16px; background: var(--bg-sidebar); }
+.presence-rail { max-width: 34vw; }
+.presence-heading { display: flex; flex-direction: column; gap: 5px; padding: 0 3px 7px; }
+.presence-heading strong { font-size: 20px; font-weight: 600; letter-spacing: .06em; display: flex; justify-content: space-between; }
+.presence-spark { color: var(--accent); font-size: 18px; }
+.presence-heading > span { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 7px; }
+.presence-heading i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.avatar-card { padding: 0; background: transparent; border: 0; gap: 8px; }
+.avatar-surface { background: transparent; }
+.avatar-stage { height: clamp(120px, calc(100dvh - 600px), 240px); min-height: 0; width: 100%; max-width: 260px; margin-inline: auto; border: 0; border-radius: 12px; background: var(--wire-bg); }
+.avatar-stage::before { display: none; }
+.avatar-stage > div { border: 0; border-radius: 0; box-shadow: none; }
+.presence-caption { display: block; margin-top: 8px; text-align: center; font-family: var(--font-mono); font-size: 8px; letter-spacing: .28em; color: var(--accent); pointer-events: none; }
+.avatar-action { border: 1px solid var(--border-default); border-radius: 9px; min-height: 40px; font-size: 12px; background: transparent; }
+.avatar-action.primary { background: var(--accent-soft); }
+.avatar-info { border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; padding: 12px 3px 4px; background: transparent; margin-top: 0; }
+.avatar-info h4 { font-family: var(--font-sans); font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text-primary); margin-bottom: 6px; }
+.kv { padding: 4px 0; font-size: 12px; }
+.kv .v { font-size: 11px; font-weight: 400; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-height: 720px) {
+  .avatar-panel { padding: 10px 14px; }
+  .presence-heading { flex-direction: row; align-items: center; justify-content: space-between; padding-bottom: 0; }
+  .presence-heading strong { gap: 10px; }
+  .avatar-info { padding-top: 8px; }
+  .presence-caption { margin-top: 0; }
+}
+@media (max-width: 1200px) {
+  .sidebar { width: 220px; padding-left: 14px; padding-right: 14px; }
+  .topbar { padding: 0 18px; }
+  .user-role { display: none; }
+  .chat-empty { padding: 24px; }
+}
+@media (max-width: 720px) {
+  .sidebar { width: 280px; }
+  .topbar { height: 65px; padding: 0 12px; gap: 8px; }
+  .workspace-heading span, .user-chip, .topbar-center .status-pill { display: none; }
+  .workspace-heading strong { font-size: 14px; }
+  .topbar-right { gap: 4px; }
+  .chat-empty { padding: 24px 20px; justify-content: flex-start; }
+  .chat-orb { margin-top: 14px; margin-bottom: 12px; }
+  .chat-title { font-size: 25px; }
+  .chat-welcome { font-size: 13px; margin-bottom: 28px; }
+  .chat-suggestion { padding: 15px 3px; gap: 12px; }
+  .chat-suggestion-description { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }

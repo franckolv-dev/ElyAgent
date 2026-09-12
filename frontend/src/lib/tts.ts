@@ -105,6 +105,7 @@ export async function speakSentences(text: string, opts: SpeakOptions = {}): Pro
   const phrases = splitSentences(text);
   if (!phrases.length) return;
   const signal = opts.signal ?? new AbortController().signal;
+  if (signal.aborted) return;
   opts.onState?.("loading");
 
   // Une longueur d'avance : le fetch de la suivante part avant la lecture.
@@ -118,9 +119,10 @@ export async function speakSentences(text: string, opts: SpeakOptions = {}): Pro
     let blob: Blob;
     try {
       blob = await courante!;
-    } catch {
+    } catch (error) {
       if (signal.aborted) break;
-      continue; // la phrase suivante peut réussir
+      opts.onState?.("error");
+      throw error; // Never silently omit a sentence from the user's answer.
     }
     if (signal.aborted) break;
     await jouer(blob, signal, opts);
@@ -128,14 +130,20 @@ export async function speakSentences(text: string, opts: SpeakOptions = {}): Pro
   opts.onState?.("idle");
 }
 
-function jouer(blob: Blob, signal: AbortSignal, opts: SpeakOptions): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    const fin = () => {
+async function jouer(blob: Blob, signal: AbortSignal, opts: SpeakOptions): Promise<void> {
+  if (signal.aborted) return;
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  return new Promise<void>((resolve, reject) => {
+    let finished = false;
+    const fin = (error?: Error) => {
+      if (finished) return;
+      finished = true;
+      audio.onplay = audio.onended = audio.onerror = null;
       URL.revokeObjectURL(url);
       signal.removeEventListener("abort", stop);
-      resolve();
+      if (error) { opts.onState?.("error"); reject(error); }
+      else { opts.onState?.("loading"); resolve(); }
     };
     const stop = () => {
       audio.pause();
@@ -143,10 +151,10 @@ function jouer(blob: Blob, signal: AbortSignal, opts: SpeakOptions): Promise<voi
     };
     signal.addEventListener("abort", stop, { once: true });
     audio.onplay = () => opts.onState?.("playing");
-    audio.onended = fin;
-    audio.onerror = fin;
+    audio.onended = () => fin();
+    audio.onerror = () => fin(new Error("Lecture audio impossible"));
     opts.onAudio?.(audio);
-    audio.play().catch(fin);
+    audio.play().catch((error) => fin(error instanceof Error ? error : new Error(String(error))));
   });
 }
 
@@ -167,15 +175,19 @@ export class TTSPlayer {
   async speak(text: string, voice?: string): Promise<void> {
     if (!this.enabled || !text.trim()) return;
     this.stop();
-    this.controller = new AbortController();
+    const controller = new AbortController();
+    this.controller = controller;
     try {
       await speakSentences(text, {
         voice,
-        signal: this.controller.signal,
-        onState: (s) => this.onStateChange(s),
+        signal: controller.signal,
+        onState: (s) => { if (this.controller === controller) this.onStateChange(s); },
       });
     } catch {
-      this.onStateChange("idle");
+      if (this.controller === controller && !controller.signal.aborted) this.onStateChange("error");
+    } finally {
+      controller.abort(); // Release any outstanding prefetch on failure.
+      if (this.controller === controller) this.controller = null;
     }
   }
 

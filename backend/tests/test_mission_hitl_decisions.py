@@ -39,6 +39,13 @@ class _FakeRegistry:
 
 
 def _patch_common(monkeypatch, tool_name: str, *, decision: str | None, hitl_raises: bool = False):
+    # This suite isolates HITL decisions. Real persisted reservations and
+    # mission lifecycle are exercised by test_mission_assurance.
+    import app.services.mission_assurance as assurance
+    async def ready(*args): return None
+    async def reservation(*args): return None, None
+    monkeypatch.setattr(assurance, 'preflight', ready)
+    monkeypatch.setattr(assurance, 'reserve', reservation)
     import app.skills as skills_mod
     import app.services.hitl_manager as hm
     import app.services.hitl_descriptions as hd

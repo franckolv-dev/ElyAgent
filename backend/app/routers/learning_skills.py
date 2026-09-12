@@ -946,6 +946,8 @@ class IncidentOut(BaseModel):
     signals: list[str]
     # J5 — correctif proposé le plus récent (voie C), s'il existe.
     patch: Optional[PatchOut] = None
+    repair_available: bool = False
+    repair_verification: Optional[str] = None
 
 
 def _incident_to_out(diag: Any, outcome: Any, patch: Any = None) -> IncidentOut:
@@ -978,6 +980,8 @@ def _incident_to_out(diag: Any, outcome: Any, patch: Any = None) -> IncidentOut:
         model_used=outcome.model_used,
         signals=signals,
         patch=_patch_to_out(patch) if patch is not None else None,
+        repair_available=(diag.category in {"binding"} and bool(outcome.source_id or outcome.conversation_id))
+            or (diag.category == "prompt" and outcome.source == "scheduled" and bool(outcome.source_id)),
     )
 
 
@@ -1006,7 +1010,7 @@ async def list_incidents(
         )
     )
     if status == "open":
-        query = query.where(ExecutionDiagnosis.status == "open")
+        query = query.where(ExecutionDiagnosis.status.in_(["open", "validated", "actioned"]))
     if user_id:
         query = query.where(ExecutionDiagnosis.user_id == user_id)
     query = query.order_by(ExecutionDiagnosis.created_at.desc()).limit(limit)
@@ -1026,10 +1030,34 @@ async def list_incidents(
         for p in patch_rows:  # premier vu = le plus récent (tri desc)
             latest_patch.setdefault(p.execution_diagnosis_id, p)
 
-    return [
-        _incident_to_out(diag, outcome, latest_patch.get(diag.id))
-        for diag, outcome in rows
-    ]
+    result = []
+    for diag, outcome in rows:
+        patch = latest_patch.get(diag.id)
+        item = _incident_to_out(diag, outcome, patch)
+        if patch and patch.status == "applied" and patch.applied_at:
+            latest = (await db.execute(select(ExecutionOutcome).where(
+                ExecutionOutcome.user_id == diag.user_id,
+                ExecutionOutcome.source == outcome.source,
+                ExecutionOutcome.source_id == outcome.source_id,
+                ExecutionOutcome.created_at > patch.applied_at,
+            ).order_by(ExecutionOutcome.created_at.desc()).limit(1))).scalar_one_or_none() if outcome.source_id else None
+            if latest is not None:
+                from app.services.learning.binding_repair import binding_payload, recorded_request, matches_request
+                from app.services.learning.patch_service import PatchError
+                try:
+                    repaired_request = binding_payload(patch.new_value)["request"] if patch.kind == "tool_binding" else patch.new_value
+                    observed_request = await recorded_request(db, diag.user_id, latest)
+                    if not matches_request(repaired_request, observed_request):
+                        latest = None
+                except PatchError:
+                    latest = None
+            item.repair_verification = (
+                "pending" if latest is None else "succeeded" if latest.outcome == "succeeded" else "failed"
+            )
+        if status == "open" and diag.status == "actioned" and item.repair_verification not in {"pending", "failed"}:
+            continue
+        result.append(item)
+    return result
 
 
 class IncidentResolveRequest(BaseModel):

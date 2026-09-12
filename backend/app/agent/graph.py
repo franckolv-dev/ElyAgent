@@ -69,7 +69,7 @@ def build_simple_agent_graph() -> StateGraph:
     graph.add_conditional_edges(
         "verify",
         route_after_conformity,
-        {"agent": "agent", "end": END},
+        {"agent": "agent", "tools": "tools", "end": END},
     )
     graph.add_edge("tools", "agent")
     graph.add_edge("force_summary", END)

@@ -16,6 +16,7 @@ table with FTS5 — that integration is added in Jalon 3 when the
 `memory_recall` API is wired. For now this store wraps the legacy
 `interactions` collection 1:1.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,13 +51,12 @@ class EpisodicStore(BaseStore):
                 },
             )
             from app.services.fts_store import get_fts_store
+
             await get_fts_store().store(content, user_id, COLLECTION_INTERACTIONS, point_id)
         except Exception as exc:
             logger.warning("Failed to store interaction: %s", exc)
 
-    async def get_relevant(
-        self, query: str, user_id: str, limit: int = 3
-    ) -> list[dict]:
+    async def get_relevant(self, query: str, user_id: str, limit: int = 3) -> list[dict]:
         try:
             hits = await self._search_hybrid(
                 COLLECTION_INTERACTIONS,

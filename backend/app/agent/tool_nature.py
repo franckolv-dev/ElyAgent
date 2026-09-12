@@ -301,6 +301,8 @@ TOOL_NATURE: Final[dict[str, _N]] = {
     "pdf_to_docx": _N("ECRITURE", arbitrates=True),
     # ── agent/tools/python_tool ─────────────────────────────────
     "python_execute": _N("ECRITURE"),
+    "sandbox_save_tool": _N("ECRITURE"),
+    "sandbox_run_tool": _N("ECRITURE"),
     # ── agent/tools/qrcode_tool ─────────────────────────────────
     "qrcode_generate": _N("ECRITURE", arbitrates=True),
     "qrcode_generate_vcard": _N("ECRITURE", arbitrates=True),

@@ -20,7 +20,7 @@ export type AvatarState = "idle" | "thinking" | "speaking" | "alert" | "listenin
 // ── Dynamic import of Three.js scene (no SSR) ──────────────────────────────
 const AvatarScene = dynamic(
   () => import("./AvatarScene").then((m) => m.AvatarScene),
-  { ssr: false, loading: () => <div className="w-full h-full bg-[#060c16]" /> },
+  { ssr: false, loading: () => <div className="w-full h-full avatar-surface" /> },
 );
 
 // ── Color palette for HUD elements ─────────────────────────────────────────
@@ -67,7 +67,7 @@ class WebGLErrorBoundary extends Component<
     if (this.state.failed) {
       const { color, label } = this.props;
       return (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-[#060c16]">
+        <div className="w-full h-full flex flex-col items-center justify-center avatar-surface">
           {/* CSS wireframe fallback — concentric hexagons */}
           <div className="relative w-24 h-24 mb-3">
             {[0, 1, 2].map((i) => (
@@ -140,12 +140,12 @@ export function CyberpunkAvatar({
 
   return (
     <div
-      className={`relative bg-[#060c16] border border-cyber-cyan/10 overflow-hidden rounded-lg shadow-[0_0_24px_rgba(118,129,255,0.10)] ${className}`}
+      className={`relative avatar-surface overflow-hidden rounded-lg ${className}`}
       style={{ minHeight: minimal ? 0 : 280 }}
     >
       {/* Three.js canvas — with WebGL error boundary */}
       <WebGLErrorBoundary color={color} label={LABEL[state]}>
-        <Suspense fallback={<div className="w-full h-full bg-[#060c16]" />}>
+        <Suspense fallback={<div className="w-full h-full avatar-surface" />}>
           <AvatarScene state={state} />
         </Suspense>
       </WebGLErrorBoundary>

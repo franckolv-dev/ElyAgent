@@ -136,12 +136,11 @@ async def import_codex_tokens(raw: str | dict) -> dict[str, Any]:
     """Importe les tokens du CLI officiel, valide par un refresh immédiat
     (échec = feedback à l'import, pas au premier appel LLM), persiste
     chiffré. Retourne le statut."""
-    global _cache
     state = _parse_auth_json(raw)
-    _cache = state
     # Validation par usage réel : le refresh prouve que le refresh_token
     # est vivant ET nous donne un access token frais + sa durée de vie.
-    await _refresh(force=True)
+    # Validate under the refresh lock before replacing the shared connection.
+    await _refresh(force=True, candidate=state)
     return await codex_status()
 
 
@@ -158,7 +157,8 @@ async def codex_status() -> dict[str, Any]:
     if not state or not state.get("refresh_token"):
         return {"connected": False}
     return {
-        "connected": True,
+        "connected": not bool(state.get("reconnect_required")),
+        "reconnect_required": bool(state.get("reconnect_required")),
         "account_id": state.get("account_id") or None,
         "expires_at": state.get("expires_at") or None,
         "expires_in_s": max(0, int((state.get("expires_at") or 0) - time.time())) or None,
@@ -170,12 +170,33 @@ async def codex_status() -> dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-async def _refresh(*, force: bool = False) -> dict[str, Any]:
+async def _save_connection_health(state: dict[str, Any], failed: bool) -> None:
+    """Persist only a safe flag; never retain the provider's error body."""
+    if bool(state.get("reconnect_required")) == failed:
+        return
+    state["reconnect_required"] = failed
+    try:
+        await _persist(state)
+    except Exception:
+        logger.warning("Codex connection health could not be persisted")
+
+
+async def _record_response_health(token: str, status: int) -> None:
+    if status not in (401, 403) and not 200 <= status < 300:
+        return  # Quotas and outages do not call for reconnecting the account.
+    async with _refresh_lock:
+        state = _cache or await _load()
+        if state and state.get("access_token") == token:
+            # An old in-flight response cannot invalidate newly imported credentials.
+            await _save_connection_health(state, status in (401, 403))
+
+
+async def _refresh(*, force: bool = False, candidate: dict[str, Any] | None = None) -> dict[str, Any]:
     """Rafraîchit l'access token si périmé (skew 120 s). Thread-safe via
     lock asyncio ; persiste la ROTATION du refresh token (l'ancien meurt)."""
     global _cache
     async with _refresh_lock:
-        state = _cache or await _load()
+        state = candidate if candidate is not None else (_cache or await _load())
         if not state or not state.get("refresh_token"):
             raise CodexAuthError(
                 "Abonnement ChatGPT non connecté — Settings → Admin → "
@@ -195,6 +216,15 @@ async def _refresh(*, force: bool = False) -> dict[str, Any]:
                 },
             )
         if resp.status_code != 200:
+            try:
+                error = resp.json().get("error")
+            except (ValueError, AttributeError):
+                error = resp.text.strip()
+            if candidate is None and (
+                resp.status_code in (401, 403)
+                or (resp.status_code == 400 and error == "invalid_grant")
+            ):
+                await _save_connection_health(state, True)
             raise CodexAuthError(
                 f"Refresh du token Codex refusé ({resp.status_code}) : "
                 f"{resp.text[:200]} — reconnecte-toi via `codex login` + import."
@@ -248,7 +278,8 @@ class CodexBearerAuth(httpx.Auth):
         account_id = (_cache or {}).get("account_id") or ""
         if account_id:
             request.headers["chatgpt-account-id"] = account_id
-        yield request
+        response = yield request
+        await _record_response_health(token, response.status_code)
 
     def sync_auth_flow(self, request: httpx.Request):
         state = _cache

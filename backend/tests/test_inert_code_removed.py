@@ -159,13 +159,12 @@ def test_memory_recall_never_offers_a_type_it_cannot_read():
     assert "procedural" in offerts
 
     described = f"{memory_recall.description}".lower()
-    assert "not readable" in described or "pas consultable" in described, (
-        "l'outil doit dire explicitement qu'un type ne se lit pas"
-    )
+    assert "past tool failures" in described
+    assert "error" in offerts
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("memory_type", ["error"])
+@pytest.mark.parametrize("memory_type", ["unimplemented_future_memory"])
 async def test_memory_recall_on_an_unreadable_type_says_so_plainly(memory_type):
     """Si le modèle demande quand même ces types, la réponse doit être « ce
     n'est pas consultable », pas « aucun souvenir trouvé » — la seconde
@@ -184,5 +183,4 @@ async def test_memory_recall_on_an_unreadable_type_says_so_plainly(memory_type):
     assert "aucun souvenir trouvé" not in low, (
         "réponse trompeuse : une mémoire non lisible présentée comme vide"
     )
-    assert "pas consultable" in low
-    assert "ne conclus pas" in low
+    assert "invalide" in low or "inconnu" in low

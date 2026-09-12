@@ -103,15 +103,13 @@ async def test_recall_empty_query_returns_empty_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_recall_error_type_raises_unreadable() -> None:
-    """CONTRAT MODIFIÉ EN V0-5 : écriture seule ne veut pas dire « vide ».
-    Rendre `[]` faisait lire au modèle « rien en mémoire » là où la vérité est
-    « pas de lecture implémentée »."""
-    from app.services.memory.recall_service import UnreadableMemoryType
-
-    svc = MemoryRecallService()
-    with pytest.raises(UnreadableMemoryType):
-        await svc.recall(MemoryType.ERROR, "anything", user_id="u1", limit=5)
+async def test_recall_error_type_reads_owner_history(monkeypatch) -> None:
+    from unittest.mock import AsyncMock
+    from app.services.memory.error_store import ErrorStore
+    reader = AsyncMock(return_value=[])
+    monkeypatch.setattr(ErrorStore, "get_relevant", reader)
+    assert await MemoryRecallService().recall(MemoryType.ERROR, "anything", user_id="u1", limit=5) == []
+    reader.assert_awaited_once_with("anything", "u1", 5)
 
 
 @pytest.mark.asyncio

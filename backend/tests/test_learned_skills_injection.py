@@ -430,36 +430,29 @@ def test_skill_view_in_user_id_tools():
 
 @pytest.mark.asyncio
 async def test_memory_snapshot_includes_active_skills_block(_seeded_user, monkeypatch):
-    """`build_memory_snapshot` must inject the `<learned_skills>`
-    block when the user has at least one active playbook."""
+    """`build_memory_snapshot` propose la procédure active que la demande concerne."""
+    # 10/09/2026 : le dossier mémoire remplace le bloc <learned_skills> figé.
+    # Une procédure est proposée quand la DEMANDE la concerne (recouvrement
+    # lexical avec son nom ou sa description), détail chargé via skill_view.
     await _seed_active_skill(_seeded_user, "snapshot-skill",
-                              description="snapshot integration test")
+                              description="relancer les factures impayées du mois")
+    from app.services.learning import active_skills as mod
 
-    # Stub out the memory manager surface so we don't need Qdrant
-    class _StubMemory:
-        async def get_relevant_constraints(self, q, u): return []
-        async def get_relevant_memories(self, q, u): return []
-        async def get_relevant_interactions(self, q, u, limit=3): return []
-        async def get_user_preferences(self, u): return []
+    async def _empty(query, skills):
+        return {}
 
-    # Stub get_user_context for memory_snapshot
-    async def _fake_user_context(uid): return ""
-    monkeypatch.setattr(
-        "app.services.memory_service.get_user_context",
-        _fake_user_context,
-    )
+    monkeypatch.setattr(mod, "_semantic_scores", _empty)
 
     from app.agent.builders.memory_snapshot import build_memory_snapshot
     snapshot, _ = await build_memory_snapshot(
         messages=[],
         user_id=_seeded_user,
-        user_query="anything",
-        memory=_StubMemory(),
+        user_query="relancer les factures impayées",
+        memory=None,
         use_compact=False,
     )
-    assert "<learned_skills>" in snapshot
-    assert "snapshot-skill" in snapshot
-    assert "snapshot integration test" in snapshot
+    assert "Procédure snapshot-skill" in snapshot
+    assert "skill_view" in snapshot
 
 
 @pytest.mark.asyncio
@@ -767,21 +760,13 @@ async def test_memory_snapshot_surfaces_fresh_promoted_over_cap(
 ):
     for i in range(MAX_SKILLS_IN_PROMPT):
         await _seed_active_skill(_seeded_user, f"vet-{i:02d}", use_count=10 + i)
+    # 10/09/2026 : le dossier mémoire ne propose que les procédures que la
+    # demande concerne — le frais promu doit donc rester visible quand la
+    # demande le concerne, malgré les vétérans au use_count supérieur.
     await _seed_active_skill(
         _seeded_user, "fresh-over-cap", use_count=0,
+        description="relance des factures impayées",
         promoted_at=datetime.now(timezone.utc),
-    )
-
-    class _StubMemory:
-        async def get_relevant_constraints(self, q, u): return []
-        async def get_relevant_memories(self, q, u): return []
-        async def get_relevant_interactions(self, q, u, limit=3): return []
-        async def get_user_preferences(self, u): return []
-
-    async def _fake_user_context(uid): return ""
-    monkeypatch.setattr(
-        "app.services.memory_service.get_user_context",
-        _fake_user_context,
     )
     from app.services.learning import active_skills as mod
 
@@ -794,8 +779,8 @@ async def test_memory_snapshot_surfaces_fresh_promoted_over_cap(
     snapshot, _ = await build_memory_snapshot(
         messages=[],
         user_id=_seeded_user,
-        user_query="n'importe quelle demande",
-        memory=_StubMemory(),
+        user_query="relancer les factures impayées",
+        memory=None,
         use_compact=False,
     )
     assert "fresh-over-cap" in snapshot

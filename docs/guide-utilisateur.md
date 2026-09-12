@@ -1,5 +1,7 @@
 # Guide d'utilisation
 
+Pour les procédures pas à pas dans les écrans actuels (missions, tâches planifiées, connexions et incidents), consultez le [Guide de l’interface Ely](guide-interface-ely.md), vérifié le 10 septembre 2026. Le présent document décrit principalement les capacités et leur contexte historique.
+
 > Vérifié le 30 juillet 2026 contre les outils réellement enregistrés.
 
 Ely fait des choses. Ce guide dit lesquelles, comment le lui demander, et où
@@ -52,7 +54,7 @@ C'est ce qui a permis, sur une conversion de 395 pages, de retirer 347 folios su
 
 ## Ce qu'Ely sait faire
 
-**202 outils** avec les réglages par défaut. Activer le client MCP en ajoute 10,
+**204 outils** avec les réglages par défaut. Activer le client MCP en ajoute 10,
 et chaque serveur MCP connecté apporte les siens. Les grandes familles :
 
 ### Google

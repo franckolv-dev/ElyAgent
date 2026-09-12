@@ -62,7 +62,7 @@ class UserProfile(Base):
 
     __tablename__ = "user_profiles"
     __table_args__ = (
-        UniqueConstraint("user_id", "key", name="uq_user_profiles_user_key"),
+        UniqueConstraint("user_id", "key", "scope", name="uq_user_profiles_user_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -78,3 +78,9 @@ class UserProfile(Base):
     # None = permanent fact; set for time-limited facts (e.g. "working on deadline in 2 weeks")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    # Scope is a server-validated mission/account identifier; empty means personal.
+    scope: Mapped[str] = mapped_column(String(160), default="", server_default="")
+    source: Mapped[str] = mapped_column(String(200), default="consolidation", server_default="consolidation")
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")

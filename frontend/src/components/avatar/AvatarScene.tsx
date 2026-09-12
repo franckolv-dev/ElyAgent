@@ -12,12 +12,12 @@
  * @link       https://github.com/franckolv-dev/PhysicalAgent
  */
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
+import { useRef, useMemo, useState, useEffect, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
+import type { AvatarState } from "./CyberpunkAvatar";
 import { useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { useRef, useMemo, useState, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
 import * as THREE from "three";
-import type { AvatarState } from "./CyberpunkAvatar";
 
 // ─── State → RGB ───────────────────────────────────────────────────────────
 // Jumelle de `HUD_COLOR` dans CyberpunkAvatar.tsx : même table, en flottants
@@ -236,7 +236,7 @@ function FaceModel({ state }: { state: AvatarState }) {
   );
 }
 
-// ─── Error boundary: catches EffectComposer / WebGL context-lost crashes ────
+// ─── Error boundary: catches WebGL context-lost crashes ────
 interface EBProps { children: ReactNode; fallback: ReactNode }
 interface EBState { crashed: boolean }
 class WebGLErrorBoundary extends Component<EBProps, EBState> {
@@ -286,7 +286,7 @@ function AvatarFallback({ state }: { state: AvatarState }) {
   };
   const color = COLORS[state] ?? "#7681ff";
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center bg-[#060c16]">
+    <div className="w-full h-full flex flex-col items-center justify-center avatar-surface">
       <div className="relative w-28 h-28 mb-4">
         {[0, 1, 2, 3].map((i) => (
           <div
@@ -329,6 +329,17 @@ function DeferredPostFX() {
   );
 }
 
+function ContextRecovery({ onLost }: { onLost: () => void }) {
+  const gl = useThree(state => state.gl);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const lost = (event: Event) => { event.preventDefault(); onLost(); };
+    canvas.addEventListener("webglcontextlost", lost);
+    return () => canvas.removeEventListener("webglcontextlost", lost);
+  }, [gl, onLost]);
+  return null;
+}
+
 // ─── Scene wrapper ─────────────────────────────────────────────────────────
 // Une perte de contexte GPU n'est plus un arrêt de mort : on remonte un
 // Canvas neuf (key={generation}) jusqu'à 3 fois avant de se résigner au
@@ -340,7 +351,14 @@ export function AvatarScene({ state }: { state: AvatarState }) {
   const [failed, setFailed] = useState(false);
   const [generation, setGeneration] = useState(0);
   const recoveries = useRef(0);
-
+  const recoveryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (recoveryTimer.current) clearTimeout(recoveryTimer.current); }, []);
+  const onContextLost = useCallback(() => {
+    recoveries.current += 1;
+    if (recoveries.current > MAX_CONTEXT_RECOVERIES) { setFailed(true); return; }
+    if (recoveryTimer.current) clearTimeout(recoveryTimer.current);
+    recoveryTimer.current = setTimeout(() => setGeneration(g => g + 1), 1500);
+  }, []);
   // Check WebGL availability before even mounting Canvas (probe mémoïsée)
   const webglOk = typeof window !== "undefined" && isWebGLAvailable();
 
@@ -354,30 +372,16 @@ export function AvatarScene({ state }: { state: AvatarState }) {
     <WebGLErrorBoundary key={generation} fallback={fallback}>
       <Canvas
         camera={{ position: [0, -0.18, 3.1], fov: 38 }}
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-        style={{ background: "#060c16" }}
+        gl={{ antialias: true, alpha: true, powerPreference: "low-power" }}
+        style={{ background: "transparent" }}
         onCreated={({ scene, gl }) => {
-          scene.background = new THREE.Color("#060c16");
-          // Perte de contexte GPU : on retente un remontage complet après
-          // 1,5 s (le navigateur a besoin d'un battement pour libérer),
-          // fallback CSS seulement après MAX_CONTEXT_RECOVERIES échecs.
-          gl.domElement.addEventListener("webglcontextlost", (e) => {
-            e.preventDefault();
-            recoveries.current += 1;
-            if (recoveries.current <= MAX_CONTEXT_RECOVERIES) {
-              console.warn(
-                `[AvatarScene] WebGL context lost — remontage ${recoveries.current}/${MAX_CONTEXT_RECOVERIES} dans 1,5 s`,
-              );
-              setTimeout(() => setGeneration((g) => g + 1), 1500);
-            } else {
-              console.warn("[AvatarScene] WebGL context lost — fallback CSS définitif");
-              setFailed(true);
-            }
-          });
+          scene.background = null;
+          gl.setClearColor(0x000000, 0);
         }}
         onError={() => setFailed(true)}
         dpr={[1, 1.5]}
       >
+        <ContextRecovery onLost={onContextLost} />
         <FaceModel state={state} />
         <DeferredPostFX />
       </Canvas>

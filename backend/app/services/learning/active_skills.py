@@ -381,13 +381,17 @@ def format_active_skills_block(skills: list[LearnedSkill]) -> str:
     now = datetime.now(timezone.utc)
     playbooks = [
         s for s in skills
-        if getattr(s, "content_format", None) != SkillContentFormat.PYTHON_TOOL
+        if getattr(s, "content_format", None) not in (SkillContentFormat.PYTHON_TOOL, SkillContentFormat.SANDBOX_PROGRAM)
     ]
     tools = [
         s for s in skills
         if getattr(s, "content_format", None) == SkillContentFormat.PYTHON_TOOL
     ]
     lines = ["<learned_skills>"]
+    programs = [s for s in skills if getattr(s, "content_format", None) == SkillContentFormat.SANDBOX_PROGRAM]
+    if programs:
+        lines.append("Outils de calcul testés : appelle sandbox_run_tool avec leur nom et un objet JSON d'arguments. Le code reste dans le bac à sable.")
+        lines.extend(_skill_bullet(s, now) for s in programs)
     if playbooks:
         n = len(playbooks)
         lines.append(

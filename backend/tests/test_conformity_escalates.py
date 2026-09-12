@@ -95,9 +95,8 @@ async def test_the_panel_is_convened_before_giving_up(judge_says_gaps, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_the_escalated_answer_replaces_the_original(judge_says_gaps, monkeypatch):
-    """Même ``id`` ⇒ ``add_messages`` SUBSTITUE au lieu d'empiler. Sans ça
-    l'utilisateur verrait deux réponses, dont une périmée."""
+async def test_the_panel_returns_advice_to_execute_and_verify(judge_says_gaps, monkeypatch):
+    """Un panel sans outils ne remplace pas un résultat exécuté."""
     async def _panel(**kwargs):
         from app.agent.escalation import PanelResult
 
@@ -109,7 +108,11 @@ async def test_the_escalated_answer_replaces_the_original(judge_says_gaps, monke
 
     out = await conformity_node(_state(gap_count=1))
 
-    assert out["messages"][0].id == "reponse-finale"
+    from langchain_core.messages import HumanMessage
+    assert isinstance(out["messages"][0], HumanMessage)
+    assert out["messages"][0].content.startswith("[Vérification")
+    assert out["conformity_escalated"] is True
+    assert out["conformity_unresolved"]
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,273 @@
+{
+  "synthetic_only": true,
+  "model": "mistralai/ministral-3-3b",
+  "cases": [
+    {
+      "case": "resume",
+      "expected": [
+        "m1",
+        "m2"
+      ],
+      "lexical_ids": [
+        "m2"
+      ],
+      "lexical_ms": 1.49,
+      "lexical_metrics": {
+        "recall": 0.5,
+        "precision": 1.0
+      },
+      "local_ids": [
+        "m1"
+      ],
+      "local_ms": 2426.4,
+      "local_metrics": {
+        "recall": 0.5,
+        "precision": 1.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 566,
+        "completion_tokens": 18,
+        "total_tokens": 584,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 66
+    },
+    {
+      "case": "address",
+      "expected": [
+        "m5"
+      ],
+      "lexical_ids": [
+        "m5",
+        "m4"
+      ],
+      "lexical_ms": 2.55,
+      "lexical_metrics": {
+        "recall": 1.0,
+        "precision": 0.5
+      },
+      "local_ids": [
+        "m5"
+      ],
+      "local_ms": 970.0,
+      "local_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 540,
+        "completion_tokens": 20,
+        "total_tokens": 560,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 42
+    },
+    {
+      "case": "trip",
+      "expected": [
+        "m7"
+      ],
+      "lexical_ids": [
+        "m7"
+      ],
+      "lexical_ms": 1.82,
+      "lexical_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "local_ids": [
+        "m7"
+      ],
+      "local_ms": 1005.4,
+      "local_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 556,
+        "completion_tokens": 20,
+        "total_tokens": 576,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 94
+    },
+    {
+      "case": "guide",
+      "expected": [
+        "m10"
+      ],
+      "lexical_ids": [
+        "m10"
+      ],
+      "lexical_ms": 2.88,
+      "lexical_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "local_ids": [
+        "m10"
+      ],
+      "local_ms": 1010.8,
+      "local_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 543,
+        "completion_tokens": 21,
+        "total_tokens": 564,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 83
+    },
+    {
+      "case": "account",
+      "expected": [
+        "m11"
+      ],
+      "lexical_ids": [
+        "m11",
+        "n0",
+        "n1",
+        "n2",
+        "n3"
+      ],
+      "lexical_ms": 2.94,
+      "lexical_metrics": {
+        "recall": 1.0,
+        "precision": 0.2
+      },
+      "local_ids": [
+        "m11"
+      ],
+      "local_ms": 1016.2,
+      "local_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 560,
+        "completion_tokens": 21,
+        "total_tokens": 581,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 76
+    },
+    {
+      "case": "meal",
+      "expected": [
+        "m8"
+      ],
+      "lexical_ids": [
+        "m8"
+      ],
+      "lexical_ms": 1.82,
+      "lexical_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "local_ids": [
+        "m8"
+      ],
+      "local_ms": 1004.3,
+      "local_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 543,
+        "completion_tokens": 20,
+        "total_tokens": 563,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 54
+    },
+    {
+      "case": "delivery",
+      "expected": [
+        "m4"
+      ],
+      "lexical_ids": [],
+      "lexical_ms": 4.01,
+      "lexical_metrics": {
+        "recall": 0.0,
+        "precision": 0.0
+      },
+      "local_ids": [
+        "m4"
+      ],
+      "local_ms": 999.9,
+      "local_metrics": {
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 542,
+        "completion_tokens": 20,
+        "total_tokens": 562,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 80
+    },
+    {
+      "case": "empty",
+      "expected": [],
+      "lexical_ids": [
+        "n7",
+        "n8"
+      ],
+      "lexical_ms": 1.73,
+      "lexical_metrics": {
+        "recall": 0.0,
+        "precision": 0.0
+      },
+      "local_ids": [
+        "m3"
+      ],
+      "local_ms": 869.5,
+      "local_metrics": {
+        "recall": 0.0,
+        "precision": 0.0
+      },
+      "error": null,
+      "usage": {
+        "prompt_tokens": 542,
+        "completion_tokens": 14,
+        "total_tokens": 556,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "all_chars": 2657,
+      "selected_chars": 47
+    }
+  ]
+}

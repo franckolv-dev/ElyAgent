@@ -19,9 +19,30 @@ formulation casse les trois d'un coup, et un test le dit.
 """
 from __future__ import annotations
 
+import json
+
 ECHEC_PREFIXES: tuple[str, ...] = ("erreur", "error", "échec", "echec")
 
 
 def dit_un_echec(texte: object) -> bool:
     """Ce retour d'outil annonce-t-il que l'action n'a PAS abouti ?"""
-    return str(texte or "").lstrip().lower().startswith(ECHEC_PREFIXES)
+    if isinstance(texte, dict):
+        return (
+            texte.get("success") is False or texte.get("ok") is False
+            or texte.get("status") in ("error", "failed", "denied")
+            or bool(texte.get("error"))
+        )
+    value = str(texte or "").lstrip()
+    if value.startswith("{"):
+        try:
+            decoded = json.loads(value)
+        except (ValueError, TypeError):
+            pass
+        else:
+            if isinstance(decoded, dict):
+                return dit_un_echec(decoded)
+    value = value.lstrip("⚠️❌⛔ ").lower()
+    return value.startswith(ECHEC_PREFIXES) or value.startswith((
+        "action refusée", "action interdite", "accès refusé", "permission denied",
+        "code refusé par le sandbox", "timeout :", "impossible d'exécuter le code",
+    ))

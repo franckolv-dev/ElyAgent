@@ -577,7 +577,7 @@ async def gmail_trash_emails(
 
     👉 PREFERRED ROUTE for « supprime les mails de <SENDER> »:
         1) gmail_list_emails(query="from:<sender>")  → returns IDs
-        2) gmail_trash_emails(ids=[...])             → trashes those exact IDs
+        2) gmail_trash_emails(email_ids=[...])       → trashes those exact IDs
     This is the only safe way to target a sender, brand, domain, or any
     free-form Gmail query — gmail_trash_by_category is for whole-CATEGORY
     purges only and will either miss the sender or over-purge.

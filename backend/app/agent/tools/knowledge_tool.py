@@ -37,6 +37,10 @@ async def knowledge_search(
     Examples: "what does the contract say?", "summarize the report", "find in
     my documents", "what does the invoice say?", "search in my files".
 
+    Also answers questions about the Ely interface ("comment créer une
+    mission ?", "how do I connect Chrome?") when a guide is indexed for this
+    user: use the retrieved labels and steps, never invent controls.
+
     Args:
         query: The question or search terms.
     """
@@ -47,14 +51,13 @@ async def knowledge_search(
         return "Aucun document pertinent trouve dans ta base de connaissances."
 
     parts = []
-    for r in results:
+    for rank, r in enumerate(results, 1):
         source = r.get("source_file", "inconnu")
         chunk_idx = r.get("chunk_index", 0)
         total = r.get("total_chunks", 0)
         content = r.get("content", "")
-        score = r.get("score", 0.0)
         parts.append(
-            f"[Source: {source}, chunk {chunk_idx + 1}/{total}, pertinence: {score:.2f}]\n{content}"
+            f"[Source: {source}, chunk {chunk_idx + 1}/{total}, rang hybride: {rank}]\n{content}"
         )
 
     return "\n\n---\n\n".join(parts)

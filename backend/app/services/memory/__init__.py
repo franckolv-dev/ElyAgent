@@ -16,6 +16,7 @@ The legacy `MemoryManager` (in `app/services/memory_manager.py`) is now a
 thin facade delegating to these stores — 49 call sites continue to work
 unchanged. Direct use of these stores is preferred in new code.
 """
+
 from functools import lru_cache
 
 from app.services.memory._infra import MemoryInfra, get_memory_infra
@@ -34,6 +35,7 @@ from app.services.memory.types import MemoryHit, MemoryType
 # Use these in writing tools instead of `get_memory_manager()` — they
 # make the target memory type explicit at the call site, which is what
 # the Sprint 2.5 design note §5 ("routing explicite à l'écriture") asks.
+
 
 @lru_cache(maxsize=1)
 def get_constraint_store() -> ConstraintStore:

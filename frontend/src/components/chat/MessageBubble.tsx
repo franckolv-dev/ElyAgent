@@ -183,12 +183,12 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className={`flex flex-col gap-0.5 ${isUser ? "items-end" : "items-start"}`}
+      className={`flex flex-col gap-0.5 ${isUser ? "items-start" : "items-end"}`}
     >
     {/* Refonte 09/2026 : plus de pastille d'auteur de chaque côté. Le coin
         serré de la bulle pointe vers son émetteur — c'est ce qui rend les
         icônes User/Bot redondantes, pas un simple allègement visuel. */}
-    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
+    <div className={`flex w-full ${isUser ? "justify-start" : "justify-end"}`}>
       {/* Bubble */}
       <div className={isUser ? "bubble-user" : "bubble-assistant"}>
         {/* Attachment chips on user messages */}
@@ -199,8 +199,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
                 key={att.file_id}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] max-w-[180px]"
                 style={{
-                  background: "color-mix(in oklab, var(--text-on-accent) 14%, transparent)",
-                  color: "var(--text-on-accent)",
+                  background: "color-mix(in oklab, var(--text-primary) 14%, transparent)",
+                  color: "var(--text-primary)",
                 }}
                 title={att.filename}
               >
@@ -230,7 +230,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
               <button
                 onClick={() => { setIsEditing(false); setEditValue(_contentStr); }}
                 className="px-2 py-1 rounded text-xs transition-colors"
-                style={{ color: "var(--text-on-accent)", opacity: 0.75 }}
+                style={{ color: "var(--text-primary)", opacity: 0.75 }}
               >
                 {t("cancel")}
               </button>
@@ -460,7 +460,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
     {timestamp && (
       <span
         className={`text-[10px] text-text-muted/50 font-mono px-1 ${
-          isUser ? "pr-10" : "pl-10"
+          isUser ? "pl-1" : "pr-1"
         }`}
       >
         {timestamp}

@@ -116,6 +116,7 @@ export interface MissionStructure {
 }
 
 export interface CreateMissionBody {
+  checks?: import("./autonomy").Check[];
   title: string;
   goal: string;
   priority?: number;

@@ -1,0 +1,4376 @@
+{
+  "methodology": "120 synthetic French cases, 12 intents × 10 formulations; labels authored in code, not human-reviewed. Local in-memory Qdrant, SQLite FTS5, existing MiniLM encoder. Model time measured separately; no application end-to-end latency claims.",
+  "local_outputs_reused": true,
+  "models": {
+    "embedding": "all-MiniLM-L6-v2",
+    "cross_encoder": "Xenova/ms-marco-MiniLM-L-6-v2",
+    "llm": "mistralai/ministral-3-3b"
+  },
+  "cases": [
+    {
+      "query": "Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "account"
+      ],
+      "native_ms": 1.01,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "account"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.43,
+      "cross_ms": 89.14,
+      "llm_ms": 3226.96,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "meal",
+        "trip"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "cross_encoder": [
+        "meal",
+        "account",
+        "proof"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 4.63,
+      "cross_ms": 93.37,
+      "llm_ms": 676.4,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "invoice",
+        "address"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice",
+        "address"
+      ],
+      "retrieval_ms": 4.01,
+      "cross_ms": 83.87,
+      "llm_ms": 723.63,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "noise",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "noise",
+        "uncertain"
+      ],
+      "native_ms": 1.07,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "noise",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "trip",
+        "uncertain",
+        "address"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 3.13,
+      "cross_ms": 80.88,
+      "llm_ms": 690.18,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "account",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "account"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "invoice"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 3.44,
+      "cross_ms": 77.35,
+      "llm_ms": 680.24,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "noise",
+        "guide"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "noise",
+        "guide"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 3.36,
+      "cross_ms": 78.88,
+      "llm_ms": 676.33,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.89,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 3.55,
+      "cross_ms": 87.34,
+      "llm_ms": 678.31,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "noise",
+        "proof"
+      ],
+      "native_ms": 0.89,
+      "llm_raw": [
+        "contact",
+        "address"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "llm": [
+        "contact",
+        "address"
+      ],
+      "retrieval_ms": 3.15,
+      "cross_ms": 77.01,
+      "llm_ms": 720.62,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "noise",
+        "account"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "account"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 4.05,
+      "cross_ms": 89.3,
+      "llm_ms": 713.29,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 5.17,
+      "cross_ms": 102.74,
+      "llm_ms": 680.15,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "native_ms": 1.02,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 4.08,
+      "cross_ms": 92.63,
+      "llm_ms": 679.17,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "meal",
+        "address",
+        "invoice"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.86,
+      "llm_raw": [],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 3.23,
+      "cross_ms": 77.59,
+      "llm_ms": 674.61,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "account"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "account"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "noise"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.77,
+      "cross_ms": 95.72,
+      "llm_ms": 677.4,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "meal",
+        "trip",
+        "schedule"
+      ],
+      "native_ms": 0.89,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "cross_encoder": [
+        "meal",
+        "noise",
+        "proof"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 5.4,
+      "cross_ms": 104.16,
+      "llm_ms": 675.07,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "noise"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 4.58,
+      "cross_ms": 97.62,
+      "llm_ms": 677.86,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "meal",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "meal",
+        "history"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "meal",
+        "noise"
+      ],
+      "cross_encoder": [
+        "trip",
+        "noise",
+        "address"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 4.55,
+      "cross_ms": 91.1,
+      "llm_ms": 691.12,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "schedule",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "account"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 4.38,
+      "cross_ms": 91.86,
+      "llm_ms": 676.79,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "guide",
+        "proof"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "noise",
+        "contact"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 4.12,
+      "cross_ms": 92.47,
+      "llm_ms": 674.85,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "guide",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "history",
+        "guide"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "guide",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 5.05,
+      "cross_ms": 98.79,
+      "llm_ms": 675.44,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "noise",
+        "proof"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "contact"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "llm": [
+        "contact"
+      ],
+      "retrieval_ms": 3.57,
+      "cross_ms": 87.95,
+      "llm_ms": 679.08,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "proof",
+        "account"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "noise"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 4.84,
+      "cross_ms": 101.5,
+      "llm_ms": 716.59,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 6.45,
+      "cross_ms": 113.45,
+      "llm_ms": 690.19,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "proof"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 4.65,
+      "cross_ms": 107.61,
+      "llm_ms": 678.67,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Peux-tu me dire : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "meal",
+        "address",
+        "history"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 3.61,
+      "cross_ms": 88.12,
+      "llm_ms": 694.03,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "uncertain",
+        "history"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "native_ms": 1.04,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.68,
+      "cross_ms": 100.85,
+      "llm_ms": 672.81,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "uncertain",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "meal",
+        "proof"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "uncertain",
+        "noise"
+      ],
+      "cross_encoder": [
+        "meal",
+        "uncertain",
+        "account"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 6.25,
+      "cross_ms": 109.89,
+      "llm_ms": 689.04,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "trip"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 5.12,
+      "cross_ms": 103.63,
+      "llm_ms": 679.69,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "uncertain",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "history",
+        "proof"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "uncertain",
+        "noise"
+      ],
+      "cross_encoder": [
+        "trip",
+        "uncertain",
+        "noise"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 5.05,
+      "cross_ms": 98.41,
+      "llm_ms": 693.0,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "uncertain",
+        "trip"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "trip",
+        "schedule"
+      ],
+      "native_ms": 1.04,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 4.69,
+      "cross_ms": 97.95,
+      "llm_ms": 671.35,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "uncertain",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "uncertain",
+        "guide"
+      ],
+      "native_ms": 1.03,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "uncertain",
+        "account"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 4.61,
+      "cross_ms": 97.91,
+      "llm_ms": 676.36,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "uncertain",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "trip",
+        "guide"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "uncertain",
+        "guide"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 5.74,
+      "cross_ms": 105.18,
+      "llm_ms": 695.88,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "uncertain",
+        "contact",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "uncertain",
+        "trip"
+      ],
+      "native_ms": 1.01,
+      "llm_raw": [
+        "contact"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "contact",
+        "uncertain",
+        "invoice"
+      ],
+      "llm": [
+        "contact"
+      ],
+      "retrieval_ms": 4.38,
+      "cross_ms": 95.35,
+      "llm_ms": 694.35,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "native_ms": 0.98,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "account",
+        "trip"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 5.56,
+      "cross_ms": 108.59,
+      "llm_ms": 705.84,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "trip"
+      ],
+      "native_ms": 1.01,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "noise"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 6.54,
+      "cross_ms": 119.9,
+      "llm_ms": 675.56,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "trip"
+      ],
+      "native_ms": 0.99,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "uncertain"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 5.84,
+      "cross_ms": 109.96,
+      "llm_ms": 679.87,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "J’ai besoin de savoir : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "address",
+        "trip",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.98,
+      "llm_raw": [
+        "invoice",
+        "proof"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 4.66,
+      "cross_ms": 93.64,
+      "llm_ms": 728.4,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "proof"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "noise"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.5,
+      "cross_ms": 88.39,
+      "llm_ms": 678.33,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "meal",
+        "trip",
+        "schedule"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "cross_encoder": [
+        "meal",
+        "proof",
+        "address"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 4.95,
+      "cross_ms": 97.33,
+      "llm_ms": 676.08,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "noise"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 4.11,
+      "cross_ms": 91.25,
+      "llm_ms": 677.22,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "noise",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "schedule",
+        "history"
+      ],
+      "native_ms": 0.9,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "noise",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "trip",
+        "address",
+        "noise"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 4.33,
+      "cross_ms": 88.02,
+      "llm_ms": 691.97,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 4.2,
+      "cross_ms": 86.62,
+      "llm_ms": 673.23,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "proof",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "guide",
+        "proof"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "proof",
+        "guide"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "noise",
+        "address"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 4.02,
+      "cross_ms": 86.33,
+      "llm_ms": 677.68,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "schedule",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "history",
+        "schedule"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "schedule",
+        "guide"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 4.62,
+      "cross_ms": 93.4,
+      "llm_ms": 685.79,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "contact",
+        "noise",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "proof",
+        "noise"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "contact"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "address"
+      ],
+      "llm": [
+        "contact"
+      ],
+      "retrieval_ms": 3.94,
+      "cross_ms": 82.92,
+      "llm_ms": 677.93,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "meal"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "proof",
+        "account"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "meal"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "noise"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 4.99,
+      "cross_ms": 94.91,
+      "llm_ms": 708.73,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 5.64,
+      "cross_ms": 105.99,
+      "llm_ms": 680.31,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "schedule",
+        "invoice"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "schedule",
+        "address"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 5.67,
+      "cross_ms": 97.0,
+      "llm_ms": 680.66,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Rappelle-moi : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "meal",
+        "schedule",
+        "address"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "history",
+        "address"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 3.88,
+      "cross_ms": 82.45,
+      "llm_ms": 732.79,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "native_ms": 0.99,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 3.99,
+      "cross_ms": 85.85,
+      "llm_ms": 676.4,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "meal",
+        "schedule"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "cross_encoder": [
+        "meal",
+        "uncertain",
+        "noise"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 4.54,
+      "cross_ms": 93.33,
+      "llm_ms": 677.87,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 4.07,
+      "cross_ms": 87.81,
+      "llm_ms": 691.29,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "uncertain",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "history",
+        "guide"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "uncertain",
+        "guide"
+      ],
+      "cross_encoder": [
+        "trip",
+        "noise",
+        "uncertain"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 3.5,
+      "cross_ms": 84.01,
+      "llm_ms": 693.28,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "trip",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "trip"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "trip"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 3.86,
+      "cross_ms": 82.39,
+      "llm_ms": 677.77,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "guide",
+        "proof"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "schedule",
+        "guide"
+      ],
+      "hybrid": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "noise",
+        "guide"
+      ],
+      "llm": [
+        "schedule",
+        "guide"
+      ],
+      "retrieval_ms": 3.85,
+      "cross_ms": 82.22,
+      "llm_ms": 723.42,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "schedule",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "history",
+        "schedule"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "schedule",
+        "guide"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 4.04,
+      "cross_ms": 91.43,
+      "llm_ms": 675.98,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "proof",
+        "trip"
+      ],
+      "native_ms": 0.89,
+      "llm_raw": [
+        "contact"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "llm": [
+        "contact"
+      ],
+      "retrieval_ms": 3.55,
+      "cross_ms": 81.38,
+      "llm_ms": 672.91,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "proof",
+        "account"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "noise"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 4.5,
+      "cross_ms": 93.63,
+      "llm_ms": 703.4,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 5.63,
+      "cross_ms": 100.26,
+      "llm_ms": 673.91,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "proof"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 4.55,
+      "cross_ms": 93.62,
+      "llm_ms": 675.15,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Pour continuer : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "meal",
+        "history",
+        "trip"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "history",
+        "address"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 3.42,
+      "cross_ms": 81.35,
+      "llm_ms": 724.28,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "account"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "account"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.52,
+      "cross_ms": 90.15,
+      "llm_ms": 675.7,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "meal",
+        "schedule"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "cross_encoder": [
+        "meal",
+        "schedule",
+        "account"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 4.64,
+      "cross_ms": 97.5,
+      "llm_ms": 674.56,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 4.13,
+      "cross_ms": 91.92,
+      "llm_ms": 673.61,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "meal",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "history",
+        "meal"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "meal",
+        "noise"
+      ],
+      "cross_encoder": [
+        "trip",
+        "address",
+        "noise"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 4.17,
+      "cross_ms": 89.08,
+      "llm_ms": 688.11,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "schedule",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "native_ms": 0.89,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "account"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "invoice"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 4.15,
+      "cross_ms": 87.36,
+      "llm_ms": 676.57,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "proof",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "proof",
+        "guide"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "proof",
+        "account"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "noise",
+        "address"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 4.02,
+      "cross_ms": 86.22,
+      "llm_ms": 679.13,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "schedule",
+        "invoice"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "history",
+        "schedule"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "schedule",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 4.62,
+      "cross_ms": 93.71,
+      "llm_ms": 673.34,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "contact",
+        "invoice",
+        "history"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "contact",
+        "address"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "history"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "history"
+      ],
+      "llm": [
+        "contact",
+        "address"
+      ],
+      "retrieval_ms": 3.91,
+      "cross_ms": 82.27,
+      "llm_ms": 719.25,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "meal"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "proof",
+        "account"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "uncertain",
+        "contact"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "meal"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "account"
+      ],
+      "llm": [
+        "uncertain",
+        "contact"
+      ],
+      "retrieval_ms": 4.98,
+      "cross_ms": 95.33,
+      "llm_ms": 756.46,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 6.05,
+      "cross_ms": 107.3,
+      "llm_ms": 681.49,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "proof"
+      ],
+      "native_ms": 0.9,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 5.06,
+      "cross_ms": 94.95,
+      "llm_ms": 675.2,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Aujourd’hui : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "meal",
+        "history",
+        "address"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "history",
+        "address"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 3.91,
+      "cross_ms": 82.33,
+      "llm_ms": 729.75,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "schedule"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "account"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "noise"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 3.57,
+      "cross_ms": 84.16,
+      "llm_ms": 698.42,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "invoice"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "meal",
+        "guide"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "meal",
+        "schedule",
+        "noise"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 4.47,
+      "cross_ms": 93.51,
+      "llm_ms": 681.14,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "schedule"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "invoice",
+        "address"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "noise"
+      ],
+      "llm": [
+        "invoice",
+        "address"
+      ],
+      "retrieval_ms": 3.96,
+      "cross_ms": 86.88,
+      "llm_ms": 725.84,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "invoice",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "schedule",
+        "proof"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "invoice",
+        "proof"
+      ],
+      "cross_encoder": [
+        "trip",
+        "noise",
+        "schedule"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 3.96,
+      "cross_ms": 83.3,
+      "llm_ms": 688.66,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "invoice",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "invoice"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 3.65,
+      "cross_ms": 80.61,
+      "llm_ms": 672.43,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "proof",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "proof",
+        "guide"
+      ],
+      "native_ms": 0.98,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "proof",
+        "account"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "noise",
+        "guide"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 3.58,
+      "cross_ms": 81.18,
+      "llm_ms": 673.63,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "account",
+        "guide"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "account",
+        "schedule",
+        "uncertain"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 4.34,
+      "cross_ms": 89.93,
+      "llm_ms": 670.42,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "invoice",
+        "contact",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "contact"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "account"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "schedule"
+      ],
+      "llm": [
+        "contact"
+      ],
+      "retrieval_ms": 3.04,
+      "cross_ms": 78.27,
+      "llm_ms": 671.58,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "noise",
+        "account"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "noise"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 4.09,
+      "cross_ms": 90.99,
+      "llm_ms": 703.93,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.91,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 5.29,
+      "cross_ms": 100.82,
+      "llm_ms": 680.94,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "schedule",
+        "guide"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 4.17,
+      "cross_ms": 90.82,
+      "llm_ms": 679.73,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Une précision : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "invoice",
+        "meal",
+        "address"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "address",
+        "history"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 2.98,
+      "cross_ms": 78.04,
+      "llm_ms": 725.54,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.51,
+      "cross_ms": 93.34,
+      "llm_ms": 679.94,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "meal",
+        "trip",
+        "schedule"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "cross_encoder": [
+        "meal",
+        "noise",
+        "account"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 5.11,
+      "cross_ms": 101.18,
+      "llm_ms": 680.03,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.9,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 4.55,
+      "cross_ms": 94.86,
+      "llm_ms": 688.26,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "noise",
+        "meal"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "history",
+        "meal"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "noise",
+        "meal"
+      ],
+      "cross_encoder": [
+        "trip",
+        "noise",
+        "uncertain"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 4.11,
+      "cross_ms": 91.06,
+      "llm_ms": 695.59,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "uncertain",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "noise"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "invoice"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 4.51,
+      "cross_ms": 91.16,
+      "llm_ms": 681.67,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "guide",
+        "proof"
+      ],
+      "native_ms": 1.07,
+      "llm_raw": [
+        "schedule",
+        "guide"
+      ],
+      "hybrid": [
+        "schedule",
+        "uncertain",
+        "proof"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "noise",
+        "account"
+      ],
+      "llm": [
+        "schedule",
+        "guide"
+      ],
+      "retrieval_ms": 5.2,
+      "cross_ms": 93.3,
+      "llm_ms": 725.71,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "schedule",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "history",
+        "schedule"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "schedule",
+        "guide"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 5.0,
+      "cross_ms": 99.28,
+      "llm_ms": 678.68,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "contact",
+        "noise",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "noise",
+        "proof"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "contact"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "noise"
+      ],
+      "llm": [
+        "contact"
+      ],
+      "retrieval_ms": 4.01,
+      "cross_ms": 86.72,
+      "llm_ms": 673.1,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "meal"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "proof",
+        "account"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "meal"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "noise"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 5.11,
+      "cross_ms": 98.96,
+      "llm_ms": 706.31,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 6.23,
+      "cross_ms": 108.56,
+      "llm_ms": 679.3,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "proof"
+      ],
+      "native_ms": 0.9,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 5.11,
+      "cross_ms": 99.19,
+      "llm_ms": 672.05,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "S’il te plaît : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "meal",
+        "noise",
+        "address"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 4.07,
+      "cross_ms": 86.97,
+      "llm_ms": 697.18,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.13,
+      "cross_ms": 90.76,
+      "llm_ms": 677.23,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "meal",
+        "trip",
+        "history"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "uncertain",
+        "meal",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "meal",
+        "uncertain",
+        "noise"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 5.17,
+      "cross_ms": 98.41,
+      "llm_ms": 686.26,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 4.54,
+      "cross_ms": 93.5,
+      "llm_ms": 677.38,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "noise",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "history",
+        "uncertain"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "uncertain",
+        "noise"
+      ],
+      "cross_encoder": [
+        "trip",
+        "uncertain",
+        "noise"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 4.51,
+      "cross_ms": 87.48,
+      "llm_ms": 691.34,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "uncertain"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 4.03,
+      "cross_ms": 89.8,
+      "llm_ms": 682.46,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "uncertain",
+        "history"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "guide",
+        "uncertain"
+      ],
+      "native_ms": 1.01,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "uncertain",
+        "history"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "uncertain",
+        "noise"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 4.1,
+      "cross_ms": 88.11,
+      "llm_ms": 674.11,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "schedule",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "schedule",
+        "trip"
+      ],
+      "native_ms": 0.9,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "account",
+        "uncertain",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "proof"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 5.02,
+      "cross_ms": 95.0,
+      "llm_ms": 678.1,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "noise",
+        "contact",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "noise",
+        "trip"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "contact",
+        "address"
+      ],
+      "hybrid": [
+        "contact",
+        "uncertain",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "contact",
+        "uncertain",
+        "invoice"
+      ],
+      "llm": [
+        "contact",
+        "address"
+      ],
+      "retrieval_ms": 3.58,
+      "cross_ms": 84.19,
+      "llm_ms": 731.68,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "account",
+        "proof"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "address"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "trip",
+        "noise"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 4.69,
+      "cross_ms": 97.0,
+      "llm_ms": 720.36,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "native_ms": 0.92,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "proof",
+        "invoice",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 5.71,
+      "cross_ms": 107.23,
+      "llm_ms": 680.46,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "address"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "trip"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "uncertain"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 4.91,
+      "cross_ms": 97.81,
+      "llm_ms": 674.86,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Avant de poursuivre : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "history",
+        "meal",
+        "address"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "history",
+        "address"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 3.56,
+      "cross_ms": 84.87,
+      "llm_ms": 719.27,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Quelle est mon adresse actuelle ?",
+      "expected": "address",
+      "dense": [
+        "address",
+        "history",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "address",
+        "history",
+        "account"
+      ],
+      "native_ms": 0.98,
+      "llm_raw": [
+        "address"
+      ],
+      "hybrid": [
+        "address",
+        "history",
+        "account"
+      ],
+      "cross_encoder": [
+        "address",
+        "history",
+        "uncertain"
+      ],
+      "llm": [
+        "address"
+      ],
+      "retrieval_ms": 4.07,
+      "cross_ms": 85.93,
+      "llm_ms": 671.76,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Quel repas convient à mes préférences alimentaires ?",
+      "expected": "meal",
+      "dense": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "qdrant_native_rrf": [
+        "meal",
+        "trip",
+        "proof"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "meal"
+      ],
+      "hybrid": [
+        "meal",
+        "schedule",
+        "proof"
+      ],
+      "cross_encoder": [
+        "meal",
+        "account",
+        "uncertain"
+      ],
+      "llm": [
+        "meal"
+      ],
+      "retrieval_ms": 4.55,
+      "cross_ms": 96.47,
+      "llm_ms": 676.92,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Où retrouver la facture FAC-42 ?",
+      "expected": "invoice",
+      "dense": [
+        "invoice",
+        "proof",
+        "noise"
+      ],
+      "qdrant_native_rrf": [
+        "invoice",
+        "proof",
+        "history"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "invoice",
+        "proof",
+        "noise"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "uncertain"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 4.12,
+      "cross_ms": 93.76,
+      "llm_ms": 675.73,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Quand partir pour Rennes lundi ?",
+      "expected": "trip",
+      "dense": [
+        "trip",
+        "meal",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "trip",
+        "history",
+        "uncertain"
+      ],
+      "native_ms": 0.99,
+      "llm_raw": [
+        "trip"
+      ],
+      "hybrid": [
+        "trip",
+        "meal",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "trip",
+        "uncertain",
+        "invoice"
+      ],
+      "llm": [
+        "trip"
+      ],
+      "retrieval_ms": 3.64,
+      "cross_ms": 87.24,
+      "llm_ms": 689.54,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Comment créer une mission dans ton interface ?",
+      "expected": "guide",
+      "dense": [
+        "guide",
+        "account",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "guide",
+        "schedule",
+        "invoice"
+      ],
+      "native_ms": 0.99,
+      "llm_raw": [
+        "guide"
+      ],
+      "hybrid": [
+        "guide",
+        "schedule",
+        "account"
+      ],
+      "cross_encoder": [
+        "guide",
+        "schedule",
+        "invoice"
+      ],
+      "llm": [
+        "guide"
+      ],
+      "retrieval_ms": 3.99,
+      "cross_ms": 86.46,
+      "llm_ms": 674.74,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Comment programmer une tâche récurrente ?",
+      "expected": "schedule",
+      "dense": [
+        "schedule",
+        "proof",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "schedule",
+        "proof",
+        "guide"
+      ],
+      "native_ms": 0.96,
+      "llm_raw": [
+        "schedule"
+      ],
+      "hybrid": [
+        "schedule",
+        "proof",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "schedule",
+        "uncertain",
+        "noise"
+      ],
+      "llm": [
+        "schedule"
+      ],
+      "retrieval_ms": 3.89,
+      "cross_ms": 82.92,
+      "llm_ms": 674.54,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Quel compte utiliser pour consulter mon agenda ?",
+      "expected": "account",
+      "dense": [
+        "account",
+        "invoice",
+        "guide"
+      ],
+      "qdrant_native_rrf": [
+        "account",
+        "invoice",
+        "history"
+      ],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "account"
+      ],
+      "hybrid": [
+        "account",
+        "invoice",
+        "guide"
+      ],
+      "cross_encoder": [
+        "account",
+        "uncertain",
+        "invoice"
+      ],
+      "llm": [
+        "account"
+      ],
+      "retrieval_ms": 4.16,
+      "cross_ms": 90.88,
+      "llm_ms": 674.04,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : À qui livrer le document ?",
+      "expected": "contact",
+      "dense": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "qdrant_native_rrf": [
+        "contact",
+        "proof",
+        "account"
+      ],
+      "native_ms": 0.97,
+      "llm_raw": [
+        "contact"
+      ],
+      "hybrid": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "cross_encoder": [
+        "contact",
+        "invoice",
+        "uncertain"
+      ],
+      "llm": [
+        "contact"
+      ],
+      "retrieval_ms": 3.44,
+      "cross_ms": 80.48,
+      "llm_ms": 677.75,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Le mail incertain peut-il être renvoyé ?",
+      "expected": "uncertain",
+      "dense": [
+        "uncertain",
+        "account",
+        "contact"
+      ],
+      "qdrant_native_rrf": [
+        "uncertain",
+        "account",
+        "proof"
+      ],
+      "native_ms": 0.94,
+      "llm_raw": [
+        "uncertain"
+      ],
+      "hybrid": [
+        "uncertain",
+        "account",
+        "contact"
+      ],
+      "cross_encoder": [
+        "uncertain",
+        "account",
+        "trip"
+      ],
+      "llm": [
+        "uncertain"
+      ],
+      "retrieval_ms": 4.52,
+      "cross_ms": 93.31,
+      "llm_ms": 709.71,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Reprends la facture FAC-42 sans refaire l’étape terminée ?",
+      "expected": "proof",
+      "dense": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "qdrant_native_rrf": [
+        "proof",
+        "invoice",
+        "meal"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "invoice"
+      ],
+      "hybrid": [
+        "proof",
+        "invoice",
+        "schedule"
+      ],
+      "cross_encoder": [
+        "invoice",
+        "proof",
+        "meal"
+      ],
+      "llm": [
+        "invoice"
+      ],
+      "retrieval_ms": 5.57,
+      "cross_ms": 100.21,
+      "llm_ms": 685.87,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Quelle était mon ancienne adresse en 2023 ?",
+      "expected": "history",
+      "dense": [
+        "history",
+        "invoice",
+        "account"
+      ],
+      "qdrant_native_rrf": [
+        "history",
+        "address",
+        "proof"
+      ],
+      "native_ms": 0.93,
+      "llm_raw": [
+        "history"
+      ],
+      "hybrid": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "cross_encoder": [
+        "history",
+        "address",
+        "invoice"
+      ],
+      "llm": [
+        "history"
+      ],
+      "retrieval_ms": 4.6,
+      "cross_ms": 93.54,
+      "llm_ms": 673.66,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    },
+    {
+      "query": "Ma question est : Combien font 7 × 8 ?",
+      "expected": null,
+      "dense": [
+        "meal",
+        "invoice",
+        "trip"
+      ],
+      "qdrant_native_rrf": [],
+      "native_ms": 0.95,
+      "llm_raw": [
+        "trip",
+        "address"
+      ],
+      "hybrid": [],
+      "cross_encoder": [],
+      "llm": [],
+      "retrieval_ms": 3.36,
+      "cross_ms": 81.17,
+      "llm_ms": 735.04,
+      "llm_valid": true,
+      "llm_error": null,
+      "within_500ms": false
+    }
+  ],
+  "summary": {
+    "dense": {
+      "hit_at_1": 0.875,
+      "recall_at_3": 0.9166666666666666
+    },
+    "hybrid": {
+      "hit_at_1": 0.9916666666666667,
+      "recall_at_3": 1.0
+    },
+    "qdrant_native_rrf": {
+      "hit_at_1": 0.9333333333333333,
+      "recall_at_3": 1.0
+    },
+    "cross_encoder": {
+      "hit_at_1": 0.9833333333333333,
+      "recall_at_3": 1.0
+    },
+    "llm": {
+      "hit_at_1": 0.9083333333333333,
+      "recall_at_3": 0.9083333333333333
+    },
+    "retrieval_ms": {
+      "median": 4.404999999999999,
+      "p95": 5.74,
+      "max": 6.54
+    },
+    "native_ms": {
+      "median": 0.94,
+      "p95": 1.01,
+      "max": 1.07
+    },
+    "cross_ms": {
+      "median": 91.64500000000001,
+      "p95": 107.61,
+      "max": 119.9
+    },
+    "llm_ms": {
+      "median": 679.8,
+      "p95": 728.4,
+      "max": 3226.96
+    },
+    "llm_schema_valid": 120,
+    "llm_within_500ms": 0
+  }
+}

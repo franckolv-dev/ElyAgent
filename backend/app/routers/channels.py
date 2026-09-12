@@ -221,7 +221,15 @@ async def active_channels(current_user: User = Depends(get_current_user)) -> dic
     fb_configured = bool(get_settings().firebase_credentials_path)
     user_has_fcm = bool(getattr(current_user, "fcm_token", None))
 
+    # Live sessions belong to the calling user, never to the whole instance.
+    from app.services import browser_extension_registry, desktop_registry
+
+    chrome_connected = browser_extension_registry.is_connected(current_user.id)
+    system_connected = desktop_registry.is_connected(current_user.id)
+
     return {
+        "chrome": {"connected": chrome_connected},
+        "system": {"connected": system_connected},
         "telegram": {
             "configured": bool(tel_token),
             "running": await _is_running("_bot_app", "app.channels.telegram_bot"),

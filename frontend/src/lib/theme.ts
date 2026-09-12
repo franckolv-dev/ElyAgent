@@ -17,20 +17,18 @@ export type Theme = "dark" | "light";
 
 export function getTheme(): Theme {
   if (typeof window === "undefined") return "dark";
-  return (localStorage.getItem(KEY) as Theme) ?? "dark";
+  try { return localStorage.getItem(KEY) === "light" ? "light" : "dark"; }
+  catch { return document.documentElement.classList.contains("light") ? "light" : "dark"; }
 }
 
 export function applyTheme(theme: Theme) {
   const html = document.documentElement;
   html.classList.remove("dark", "light");
   html.classList.add(theme);
-  // Also set data-theme on <body> so the new design tokens (--bg-app etc.)
-  // resolve correctly. The CSS rules in globals.css honor BOTH selectors
-  // so legacy components (html.light) keep working during the refonte.
-  if (typeof document !== "undefined" && document.body) {
-    document.body.dataset.theme = theme;
-  }
-  localStorage.setItem(KEY, theme);
+  // Keep theme state on the hydration-suppressed root, not on body.
+  html.dataset.theme = theme;
+  document.body?.removeAttribute("data-theme");
+  try { localStorage.setItem(KEY, theme); } catch { /* Storage can be disabled. */ }
 }
 
 export function toggleTheme(): Theme {
@@ -39,15 +37,11 @@ export function toggleTheme(): Theme {
   return next;
 }
 
-/** Inline script string — paste into <script> to avoid FOUC. */
 export const THEME_SCRIPT = `
 (function(){
-  var t=localStorage.getItem('ely-theme')||'dark';
+  var t='dark';
+  try { if(localStorage.getItem('ely-theme')==='light') t='light'; } catch(e) {}
   document.documentElement.classList.add(t);
-  // data-theme on body for the new design tokens (refonte mai 2026)
-  document.addEventListener('DOMContentLoaded', function(){
-    if (document.body) document.body.dataset.theme = t;
-  });
-  if (document.body) document.body.dataset.theme = t;
+  document.documentElement.dataset.theme=t;
 })();
 `.trim();

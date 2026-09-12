@@ -453,6 +453,10 @@ export const api = {
 
   // ── Mes mémoires (Sprint 2.5 §2.5.6) ────────────────────────────────────
   /** Familles de mémoire, inspectables ou non (avec la raison). */
+  memoryScopes: () => fetchAPI("/api/me/memories/scopes") as Promise<Array<{id:string;label:string}>>,
+  memorySelections: () => fetchAPI("/api/me/memories/selections") as Promise<MemorySelection[]>,
+  memoryEdit: (family: string, id: string, body: {content:string;scope:string;pinned:boolean}) =>
+    fetchAPI(`/api/me/memories/${encodeURIComponent(family)}/${encodeURIComponent(id)}`, {method:"PATCH", body:JSON.stringify(body)}),
   memoryFamilies: () =>
     fetchAPI("/api/me/memories/families") as Promise<MemoryFamiliesResponse>,
 
@@ -975,7 +979,7 @@ export interface MemoryEntry {
   type: string;
   content: string;
   created_at: string | null;
-  metadata: { family?: string; conversation_id?: string | null };
+  metadata: { family?: string; conversation_id?: string | null; key?:string; scope?:string; source?:string; pinned?:boolean; confirmed?:boolean };
 }
 
 export interface MemoryFamiliesResponse {
@@ -1178,6 +1182,8 @@ export interface Incident {
   signals: string[];
   /** J5 — most recent proposed patch (voie C), if any. */
   patch?: Patch | null;
+  repair_available?: boolean;
+  repair_verification?: "pending" | "succeeded" | "failed" | null;
 }
 
 /** Self-diagnostic loop J5 — a validable config/prompt patch proposed by Ely. */
@@ -1353,4 +1359,9 @@ export interface TransparencyEgress {
      *  pendant CE tour. La page l'annonce au lieu de l'inventer. */
     substitutions_measured: boolean;
   };
+}
+
+export interface MemorySelection {
+  id:string; query:string; conversation_id:string; scope:string; tokens:number; elapsed_ms:number; created_at:string;
+  selected:Array<{id:string;text:string;source:string;scope?:string;observed_at?:string;reason:string;tokens:number}>;
 }

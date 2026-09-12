@@ -1,0 +1,50 @@
+{
+  "shadow_on_database_copy": true,
+  "cases": [
+    {
+      "case": 1,
+      "tokens": 0,
+      "latencies_ms": [
+        159.9,
+        1.9,
+        1.1
+      ],
+      "bounded": true
+    },
+    {
+      "case": 2,
+      "tokens": 1325,
+      "latencies_ms": [
+        2125.6,
+        28.8,
+        29.2
+      ],
+      "bounded": true
+    },
+    {
+      "case": 3,
+      "tokens": 1283,
+      "latencies_ms": [
+        121.2,
+        34.1,
+        34.0
+      ],
+      "bounded": true
+    },
+    {
+      "case": 4,
+      "tokens": 1296,
+      "latencies_ms": [
+        115.7,
+        27.9,
+        27.5
+      ],
+      "bounded": true
+    }
+  ],
+  "tools_before": 214,
+  "tools_after": 48,
+  "schema_tokens_before": 37895,
+  "schema_tokens_after": 7969,
+  "find_tool_kept": true
+}

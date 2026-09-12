@@ -126,11 +126,17 @@ class FTSStore:
         try:
             async with _connect(_db_path()) as db:
                 await db.execute(
+                    "DELETE FROM memory_fts WHERE user_id=? AND collection=? AND qdrant_id=?",
+                    (user_id, collection, qdrant_id),
+                )
+                await db.execute(
                     "INSERT INTO memory_fts(text, user_id, collection, qdrant_id)"
                     " VALUES (?, ?, ?, ?)",
                     (text, user_id, collection, qdrant_id),
                 )
                 await db.commit()
+            from app.services.memory.query_cache import invalidate
+            invalidate(user_id)
         except Exception as exc:
             logger.warning("FTS store failed: %s", exc)
 
@@ -196,6 +202,8 @@ class FTSStore:
                     (qdrant_id, user_id),
                 )
                 await db.commit()
+            from app.services.memory.query_cache import invalidate
+            invalidate(user_id)
         except Exception as exc:
             logger.warning("FTS delete_point failed: %s", exc)
 

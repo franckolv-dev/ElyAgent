@@ -36,7 +36,7 @@ const SHELL_URLS = [
   "/icons/icon.svg",
 ];
 
-const NEVER_CACHE_PREFIXES = ["/api/", "/ws/", "/auth/", "/tts/"];
+const NEVER_CACHE_PREFIXES = ["/api/", "/admin/", "/ws/", "/auth/", "/tts/"];
 
 // ---- Install: prefetch the shell -------------------------------------------
 self.addEventListener("install", (event) => {
@@ -74,7 +74,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   // Never cache live endpoints
-  if (NEVER_CACHE_PREFIXES.some((p) => url.pathname.startsWith(p))) {
+  if (request.headers.has("Authorization") || NEVER_CACHE_PREFIXES.some((p) => url.pathname.startsWith(p))) {
     return; // let the browser handle it (no SW interference)
   }
 

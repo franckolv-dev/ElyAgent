@@ -147,6 +147,7 @@ _NO_TOOL_CLAIM = re.compile(
     r"aucun\s+outil\s+(pour|disponible|ne\s+)|"
     r"je\s+ne\s+(peux|dispose)\s+pas\s+d['e]?\s*outil|"
     r"je\s+n['e]?\s*ai\s+aucun\s+(moyen|outil)|"
+    r"je\s+ne\s+dispose\s+(?:d'aucun|pas\s+d'un|pas\s+de)\s+outil|"
     r"outil\s+(non\s+disponible|manquant|indisponible)|"
     r"i\s+(don'?t|do\s+not)\s+have\s+(a\s+|the\s+|any\s+)?tool|"
     r"no\s+tool\s+(available|for|to)|"
@@ -204,7 +205,7 @@ def detect_empty_outcome(text: str | None) -> bool:
 
 def detect_claimed_no_tool(text: str | None) -> bool:
     """Le texte affirme-t-il « je n'ai pas d'outil » ? (suspicion, pas vérité)"""
-    return bool(text) and bool(_NO_TOOL_CLAIM.search(text))
+    return bool(text) and bool(_NO_TOOL_CLAIM.search(text.replace("’", "'")))
 
 
 def asked_to_schedule(text: str | None) -> bool:

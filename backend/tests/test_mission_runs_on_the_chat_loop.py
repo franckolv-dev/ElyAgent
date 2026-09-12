@@ -225,10 +225,19 @@ async def test_la_mission_voit_tout_le_catalogue_pas_le_filtre_de_mots_cles(
     finally:
         registre.unregister("_bench_boucle_chat")
 
-    assert "zzz_outil_00" in getattr(modele, "outils_lies", []), (
-        "la mission est retombee sur le filtre de mots-cles : elle ne verra "
-        "pas les outils que son objectif ne nomme pas"
+    # 10/09/2026 : le catalogue complet passe ensuite par un budget de schémas
+    # (`tool_budget.fit_tool_schemas`, 8 000 tokens) : `find_tool` est toujours
+    # lié, les outils que l'objectif ne nomme pas (gmail_, tasks_, browser_) le
+    # sont jusqu'au budget, et la découverte complète le reste. Le filtre de
+    # mots-clés, lui, n'aurait gardé que « tableur » → sheets_.
+    # Registre plein (suite complète) ou réduit aux faux (fichier seul) : dans
+    # les deux cas des outils que l'objectif ne nomme pas sont liés.
+    lies = getattr(modele, "outils_lies", [])
+    assert any(n.startswith(("zzz_outil_", "gmail_", "tasks_", "browser_")) for n in lies), (
+        "la mission est retombee sur le filtre de mots-cles : elle ne verra pas "
+        "les outils que son objectif ne nomme pas"
     )
+    assert len(lies) > 20, f"{len(lies)} outils lies : le catalogue n'est pas passe"
 
 
 # ── La memoire entre deux reveils ────────────────────────────────────────────

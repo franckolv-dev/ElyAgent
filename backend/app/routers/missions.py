@@ -40,7 +40,10 @@ logger = logging.getLogger(__name__)
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
+from app.services.mission_assurance import Check
+
 class MissionCreate(BaseModel):
+    checks: list[Check] = Field(default_factory=list, max_length=20)
     title: str = Field(..., min_length=1, max_length=255)
     goal: str = Field(..., min_length=5)
     priority: int = Field(5, ge=1, le=10)
@@ -193,6 +196,7 @@ async def create_mission(
         tick_interval_seconds=body.tick_interval_seconds,
         deadline=body.deadline,
         autonomous=body.autonomous,
+        checks=[c.model_dump() for c in body.checks],
     )
     return MissionOut.model_validate(m)
 
@@ -708,11 +712,12 @@ async def delete(
         Mission, MissionDailyCounter, MissionPlan, MissionStep, MissionStepRun,
     )
     from app.models.mission_critique import MissionCritique
+    from app.models.autonomy import MissionAssurance, ActionReceipt
     from sqlalchemy import delete as _sqldel
     async with async_session() as db:
         for _modele in (
             MissionStep, MissionPlan, MissionStepRun,
-            MissionCritique, MissionDailyCounter,
+            MissionCritique, MissionDailyCounter, MissionAssurance, ActionReceipt,
         ):
             await db.execute(
                 _sqldel(_modele).where(_modele.mission_id == mission_id)
@@ -747,6 +752,14 @@ async def restart(
     """
     body = body or _RestartBody()
     m = await _own_or_404(mission_id, current_user)
+    from app.models.autonomy import ActionReceipt, MissionAssurance
+    from app.database import async_session as _assurance_session
+    from sqlalchemy import select as _assurance_select
+    async with _assurance_session() as adb:
+        unresolved=(await adb.execute(_assurance_select(ActionReceipt.id).where(ActionReceipt.mission_id==mission_id,ActionReceipt.effect!='LECTURE',ActionReceipt.status.in_(['started','uncertain'])).limit(1))).first()
+        if unresolved:
+            raise HTTPException(409,'Vérifie les actions incertaines dans Autonomie → Suivi avant de relancer cette mission.')
+
 
     from app.database import async_session
     from app.models.mission import Mission, MissionPlan, MissionStep, MissionStepRun
@@ -782,6 +795,13 @@ async def restart(
         if fresh is None:
             raise HTTPException(status_code=404, detail="Mission not found")
 
+        assurance = await db.get(MissionAssurance, mission_id)
+        if assurance:
+            assurance.results_json = "[]"
+            assurance.retries = 0
+            assurance.waiting_for = None
+            assurance.waiting_since = None
+            assurance.verified_at = None
         fresh.status = "draft"
         fresh.failure_reason = None
         fresh.iterations_used = 0

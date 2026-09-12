@@ -7,6 +7,7 @@
 # @version    1.3.0
 # =============================================================================
 """Constraint store — Qdrant `security_constraints` (no decay)."""
+
 from __future__ import annotations
 
 import logging
@@ -28,13 +29,12 @@ class ConstraintStore(BaseStore):
                 {"rule": rule, "user_id": user_id, "priority": "high"},
             )
             from app.services.fts_store import get_fts_store
+
             await get_fts_store().store(rule, user_id, COLLECTION_CONSTRAINTS, point_id)
         except Exception as exc:
             logger.warning("Failed to store constraint: %s", exc)
 
-    async def get_relevant(
-        self, query: str, user_id: str, limit: int = 5
-    ) -> list[str]:
+    async def get_relevant(self, query: str, user_id: str, limit: int = 5) -> list[str]:
         try:
             hits = await self._search_hybrid(
                 COLLECTION_CONSTRAINTS,

@@ -2,30 +2,30 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// 08/09/2026 — « Générer un outil » : trois clics, rien. Le backend répondait
-// `status: "frozen"` (la fabrique d'outils est gelée depuis #370) et la page
-// ne montrait qu'un flash fugace « Génération échouée (status: frozen) »,
-// puis proposait à nouveau le bouton. Désormais la raison s'affiche sur la
-// carte, le bouton disparaît, et les deux issues restantes sont claires.
+// La page ne doit jamais appeler la fabrique gelée, même au premier clic.
 const page = readFileSync(join(__dirname, "..", "incidents", "page.tsx"), "utf-8");
 const fr = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "..", "..", "messages", "fr.json"), "utf-8"));
 const en = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "..", "..", "messages", "en.json"), "utf-8"));
 
-describe("la fabrique d'outils gelée", () => {
-  it("est reconnue dans la réponse et retenue pour la page", () => {
-    expect(page).toContain('result.status === "frozen"');
-    expect(page).toContain("setFabriqueGelee(");
+describe("les corrections d’incidents", () => {
+  it("ne propose plus une génération impossible, même au premier affichage", () => {
+    expect(page).not.toContain("adminLearningIncidentGenerate");
+    expect(page).not.toContain("generateTool");
+    expect(page).not.toContain('t("generate")');
   });
 
-  it("cache le bouton et affiche la raison sur les cartes de la voie B", () => {
-    expect(page).toMatch(/voie === "B" && !fabriqueGelee &&/);
-    expect(page).toMatch(/voie === "B" && fabriqueGelee &&/);
+  it("offre une correction applicable et son annulation", () => {
+    expect(page).toContain("inc.repair_available");
+    expect(page).toContain("api.adminLearningApplyPatch");
+    expect(page).toContain("api.adminLearningRevertPatch");
   });
 
-  it("a ses textes en français et en anglais", () => {
+  it("distingue correction active et résultat vérifié dans les deux langues", () => {
     for (const dict of [fr, en]) {
-      expect(dict.incidents.frozen_title).toBeTruthy();
-      expect(dict.incidents.frozen_hint).toBeTruthy();
+      expect(dict.incidents.verification_pending).toBeTruthy();
+      expect(dict.incidents.verification_succeeded).toBeTruthy();
+      expect(dict.incidents.verification_failed).toBeTruthy();
+      expect(dict.incidents.manualRequired).toBeTruthy();
     }
   });
 });

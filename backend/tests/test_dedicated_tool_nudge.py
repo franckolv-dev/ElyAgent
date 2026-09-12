@@ -43,8 +43,10 @@ def test_prompt_has_dedicated_tool_first_rule():
 
 
 def test_memory_snapshot_passes_query_to_skill_selection():
-    src = (_REPO / "app/agent/builders/memory_snapshot.py").read_text(encoding="utf-8")
-    assert "query=user_query" in src, (
+    # 10/09/2026 : le dossier mémoire (`memory/context.py`) a remplacé le
+    # snapshot figé ; c'est lui qui sélectionne les procédures pour la demande.
+    src = (_REPO / "app/services/memory/context.py").read_text(encoding="utf-8")
+    assert "get_active_skills_for_user(user_id, limit=3, query=query)" in src, (
         "build_memory_snapshot doit transmettre la requête du tour à "
         "get_active_skills_for_user — sans elle, pas de tri par pertinence "
         "(C4-3.2), retour au top-20 use_count aveugle."

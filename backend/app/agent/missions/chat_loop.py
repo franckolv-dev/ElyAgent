@@ -838,6 +838,8 @@ async def run_mission_chat_passage(
     from app.agent.missions.pii import deanonymize_any, mission_filter
 
     filtre = mission_filter(mission_id)
+    from app.services.mission_assurance import requirements
+    goal += await requirements(mission_id)
     _preparer_carnet(mission)
     # Les familles d'outils de la mission : choisies au premier passage,
     # relues ensuite — après le carnet, pour que la ligne « Outils » s'y

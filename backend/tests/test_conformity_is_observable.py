@@ -112,7 +112,7 @@ async def test_a_broken_usage_logger_never_breaks_the_turn(judge, monkeypatch):
 
     monkeypatch.setattr(conf, "log_response_usage", _boom)
     judge("CONFORME")
-    assert await conformity_node(_turn()) == {"messages": []}
+    assert await conformity_node(_turn()) == {"messages": [], "conformity_unresolved": ""}
 
 
 @pytest.mark.asyncio

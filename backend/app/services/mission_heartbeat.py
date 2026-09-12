@@ -240,6 +240,9 @@ async def _notify_terminal(mission, kind: str, summary: str) -> None:
     Errors in any one notification path are caught and logged — they
     must not block the others or the heartbeat loop.
     """
+    from app.services.autonomy_policy import should_notify
+    if not await should_notify(mission.user_id, kind): return
+
     emoji = {"completed": "✅", "failed": "❌", "aborted": "🛑"}.get(kind, "ℹ️")
     # Cycle PII missions (2026-06-12) — ceinture défensive : l'invariant
     # garantit que summary/goal sont déjà en clair (dé-anonymisés à la
@@ -355,6 +358,8 @@ async def heartbeat_tick() -> None:
     from app.services.background_tasks import spawn
 
     try:
+        from app.services.mission_assurance import resume_connected
+        await resume_connected()
         due = await mission_service.list_due_missions()
     except Exception as exc:
         logger.exception("Mission heartbeat: list_due_missions failed: %s", exc)

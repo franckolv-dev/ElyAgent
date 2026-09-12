@@ -89,8 +89,8 @@ async def test_reranks_documents_and_formats_response():
     # Every chunk shown with source citation
     assert "contrat.pdf" in result
     assert "chunk 1/4" in result
-    # Combined score appears
-    assert "score combine" in result or "score combiné" in result
+    # The hybrid rank replaced the combined score (memory rework, 10/09/2026)
+    assert "rang hybride" in result
 
 
 @pytest.mark.asyncio

@@ -184,7 +184,7 @@ def test_the_slm_prompt_stops_the_find_tool_loop():
     from app.agent.prompts import _SYSTEM_PROMPT_SLM
 
     bas = _SYSTEM_PROMPT_SLM.lower()
-    assert "ne passe pas par `find_tool`" in bas, (
+    assert "si son schéma couvre l'action demandée" in bas, (
         "rien ne dit au modèle d'appeler directement l'outil qu'il a déjà"
     )
     assert "se traite avec `web_search`" in bas, (
