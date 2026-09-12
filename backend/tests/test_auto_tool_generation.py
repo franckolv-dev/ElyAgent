@@ -307,7 +307,8 @@ async def test_report_records_and_triggers_on_real_gap(monkeypatch):
     monkeypatch.setattr(fts, "_record_gap_and_trigger", rec)
     out = await fts.report_missing_capability.ainvoke(
         {"capability": "convertir un pdf en docx"})
-    assert out == "consigné — génération lancée"
+    assert out.startswith("consigné — génération lancée")
+    assert "python_execute" in out
     assert len(rec.calls) == 1
 
 

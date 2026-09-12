@@ -78,10 +78,9 @@ def test_chitchat_is_not_verified():
     assert should_verify_conformity(_turn(tool_ran=False)) is False
 
 
-def test_the_retry_budget_is_enforced():
-    """Sans plafond, deux modèles se renvoient la balle sur une exigence
-    qu'aucun ne sait satisfaire."""
-    assert should_verify_conformity(_turn(tool_ran=True, retries=MAX_CONFORMITY_RETRIES)) is False
+def test_the_last_attempt_is_still_verified():
+    """Le plafond borne les reprises, pas la vérification du dernier résultat."""
+    assert should_verify_conformity(_turn(tool_ran=True, retries=MAX_CONFORMITY_RETRIES)) is True
 
 
 def test_the_budget_allows_at_least_one_retry():

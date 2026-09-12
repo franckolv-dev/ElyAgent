@@ -182,9 +182,9 @@ async def propose_patch(diagnosis_id: int) -> ProposedPatch | None:
     """Génère un correctif de prompt pour l'incident donné. Retourne le
     ProposedPatch (status=proposed), ou lève PatchError si non applicable.
 
-    v1 : seulement les incidents d'une tâche planifiée (source=scheduled) dont
-    on retrouve la tâche. La catégorie n'est pas imposée (l'humain décide), mais
-    l'UI ne propose le bouton que pour la voie C.
+    Une cause binding propose une liaison d’outils existants ; une cause
+    prompt propose une réécriture de consigne de tâche planifiée. Les autres
+    catégories nécessitent une intervention et ne produisent pas de faux correctif.
     """
     async with async_session() as db:
         diag = (await db.execute(
@@ -192,6 +192,13 @@ async def propose_patch(diagnosis_id: int) -> ProposedPatch | None:
         )).scalar_one_or_none()
         if diag is None:
             raise PatchError("incident introuvable")
+        if diag.status not in {"open", "validated"}:
+            raise PatchError("Cet incident n’est plus ouvert à une proposition.")
+        if diag.category == "binding":
+            from app.services.learning.binding_repair import propose_binding
+            return await propose_binding(diagnosis_id)
+        if diag.category != "prompt":
+            raise PatchError("Cette cause nécessite une intervention sur la configuration ou le code ; une réécriture de consigne ne la répare pas.")
         outcome = (await db.execute(
             select(ExecutionOutcome).where(
                 ExecutionOutcome.id == diag.execution_outcome_id
@@ -274,6 +281,9 @@ async def apply_patch(patch_id: int) -> ProposedPatch:
         )).scalar_one_or_none()
         if patch is None:
             raise PatchError("correctif introuvable")
+        if patch.kind == "tool_binding":
+            from app.services.learning.binding_repair import change_binding
+            return await change_binding(patch_id)
         if patch.status != "proposed":
             raise PatchError(f"correctif déjà {patch.status} — non applicable")
         if patch.target_type != "scheduled_task" or patch.field != "prompt":
@@ -294,9 +304,8 @@ async def apply_patch(patch_id: int) -> ProposedPatch:
                 "La tâche planifiée visée n'existe plus : le correctif est "
                 "caduc et l'incident est classé sans suite."
             )
-        # Snapshot de la valeur RÉELLE au moment d'appliquer (revert exact même
-        # si la tâche a changé depuis la proposition).
-        patch.old_value = task.prompt
+        if task.user_id != patch.user_id or task.prompt != patch.old_value:
+            raise PatchError("La consigne a changé depuis la proposition : préparez un nouveau correctif.")
         task.prompt = patch.new_value
         patch.status = "applied"
         patch.applied_at = datetime.now(timezone.utc)
@@ -306,7 +315,7 @@ async def apply_patch(patch_id: int) -> ProposedPatch:
                 ExecutionDiagnosis.id == patch.execution_diagnosis_id
             )
         )).scalar_one_or_none()
-        if diag is not None and diag.status == "open":
+        if diag is not None and diag.status in {"open", "validated"}:
             diag.status = "actioned"
             diag.processed_at = datetime.now(timezone.utc)
         await db.commit()
@@ -323,6 +332,9 @@ async def revert_patch(patch_id: int) -> ProposedPatch:
         )).scalar_one_or_none()
         if patch is None:
             raise PatchError("correctif introuvable")
+        if patch.kind == "tool_binding":
+            from app.services.learning.binding_repair import change_binding
+            return await change_binding(patch_id, revert=True)
         if patch.status != "applied":
             raise PatchError(f"correctif {patch.status} — rien à annuler")
         task = (await db.execute(
@@ -330,8 +342,15 @@ async def revert_patch(patch_id: int) -> ProposedPatch:
         )).scalar_one_or_none()
         if task is None:
             raise PatchError("tâche planifiée introuvable (supprimée ?)")
+        if task.user_id != patch.user_id or task.prompt != patch.new_value:
+            raise PatchError("La consigne a été modifiée après ce correctif : annulation refusée pour préserver vos changements.")
         task.prompt = patch.old_value or ""
         patch.status = "reverted"
+        diag = await db.get(ExecutionDiagnosis, patch.execution_diagnosis_id)
+        if diag is not None:
+            diag.status = "open"
+            diag.processed_at = None
+            diag.resolution = None
         await db.commit()
         await db.refresh(patch)
         logger.info("revert_patch: patch=%s task=%s annulé", patch.id, task.id)

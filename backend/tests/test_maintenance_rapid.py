@@ -247,6 +247,10 @@ async def test_extract_facts_parses_clean_json(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.llm_provider.get_llm_for_tier", lambda tier: _LLM()
     )
+    # 10/09/2026 : la consolidation exige un fournisseur LOCAL — le double se présente comme tel.
+    monkeypatch.setattr(
+        "app.services.llm_provider.describe_llm", lambda llm: ("lm_studio", "double-de-test")
+    )
 
     facts = await agent._extract_facts("dummy conversation")
     assert len(facts) == 2
@@ -269,6 +273,10 @@ async def test_extract_facts_caps_at_five_even_if_model_spams(monkeypatch) -> No
     monkeypatch.setattr(
         "app.services.llm_provider.get_llm_for_tier", lambda tier: _LLM()
     )
+    # 10/09/2026 : la consolidation exige un fournisseur LOCAL — le double se présente comme tel.
+    monkeypatch.setattr(
+        "app.services.llm_provider.describe_llm", lambda llm: ("lm_studio", "double-de-test")
+    )
 
     facts = await agent._extract_facts("x")
     assert len(facts) == 5
@@ -287,6 +295,10 @@ async def test_extract_facts_returns_empty_on_invalid_json(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "app.services.llm_provider.get_llm_for_tier", lambda tier: _LLM()
+    )
+    # 10/09/2026 : la consolidation exige un fournisseur LOCAL — le double se présente comme tel.
+    monkeypatch.setattr(
+        "app.services.llm_provider.describe_llm", lambda llm: ("lm_studio", "double-de-test")
     )
 
     assert await agent._extract_facts("x") == []
@@ -410,12 +422,14 @@ async def test_schedule_consolidation_returns_a_task_we_can_await(monkeypatch) -
         called.append((conv_id, user_id))
         return {"status": "ok", "preferences": 0, "facts": 0, "duration_ms": 1}
 
+    # 10/09/2026 : le wrapper met la conversation en file durable
+    # (`consolidation.enqueue_conversation`), il n'appelle plus `consolidate`.
+    async def fake_enqueue(conv_id, user_id):
+        called.append((conv_id, user_id))
+
     monkeypatch.setattr(
-        maintenance_rapid.MaintenanceAgentRapid, "consolidate", fake_consolidate
+        "app.services.memory.consolidation.enqueue_conversation", fake_enqueue
     )
-    # Force a fresh instance so the monkeypatch on the class takes effect
-    # via the lru_cache singleton.
-    maintenance_rapid.get_maintenance_agent_rapid.cache_clear()
 
     task = maintenance_rapid.schedule_consolidation("c1", "u1")
     assert task is not None

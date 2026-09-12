@@ -12,10 +12,10 @@
  * @link       https://github.com/franckolv-dev/PhysicalAgent
  */
 
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
-import { Zap } from "lucide-react";
+import { Zap, Compass, FileText, ArrowUpRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 // Maps backend tool names → human-readable French labels
@@ -71,7 +71,11 @@ interface ChatWindowProps {
 
 export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent, conversationId, activeTool, onRegenerate, onEditMessage }: ChatWindowProps) {
   const t = useTranslations("chat");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const previousConversation = useRef(conversationId);
+  const previousMessageCount = useRef(0);
 
   // J4 — only the last assistant gets a "regenerate" affordance, and only the
   // last user message gets an "edit" affordance.
@@ -83,33 +87,61 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
   }
 
   const SUGGESTIONS = [
-    t("suggestions.hosts"),
-    t("suggestions.sysinfo"),
-    t("suggestions.disk"),
-    t("suggestions.unreadEmails"),
-  ];
+    { key: "brief", icon: FileText },
+    { key: "action", icon: Zap },
+    { key: "mission", icon: Compass },
+  ] as const;
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: streamingContent ? "auto" : "smooth" });
-  }, [messages, streamingContent]);
+  useLayoutEffect(() => {
+    const newConversation = previousConversation.current !== conversationId;
+    const newMessage = messages.length > previousMessageCount.current;
+    if (newConversation || newMessage) followLatest.current = true;
+    previousConversation.current = conversationId;
+    previousMessageCount.current = messages.length;
+    const scroll = scrollRef.current;
+    if (!scroll || !followLatest.current) return;
+    // Confine scrolling to the message list so the composer stays in place.
+    scroll.scrollTop = scroll.scrollHeight;
+    const latest = contentRef.current?.querySelector<HTMLElement>("[data-latest-answer]");
+    if (!isLoading && newMessage && latest && latest.offsetHeight > scroll.clientHeight - 32) {
+      // An answer taller than the viewport opens at its beginning for reading.
+      scroll.scrollTop += latest.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 16;
+      followLatest.current = false;
+    }
+  }, [messages, streamingContent, conversationId, isLoading, activeTool]);
+
+  const hasMessages = messages.length > 0;
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    const content = contentRef.current;
+    if (!scroll || !content) return;
+    // Images, Markdown and a growing composer can change height after render.
+    const observer = new ResizeObserver(() => {
+      if (followLatest.current) scroll.scrollTop = scroll.scrollHeight;
+    });
+    observer.observe(scroll);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [hasMessages]);
 
   if (messages.length === 0) {
     return (
       <div className="chat-empty">
         <div className="chat-orb">
-          <Zap size={26} />
+          <span className="ely-mark" aria-hidden="true" />
         </div>
         <h2 className="chat-title">{t("title")}</h2>
         <p className="chat-welcome">{t("welcome")}</p>
         <div className="chat-suggestions">
-          {SUGGESTIONS.map((s, i) => (
-            <button
-              key={s}
-              onClick={() => onSuggestion?.(s)}
-              className="chat-suggestion"
-            >
-              <span className="chat-suggestion-tag">SUGGESTION 0{i + 1}</span>
-              <span className="chat-suggestion-text">{s}</span>
+          {SUGGESTIONS.map(({ key, icon: Icon }) => (
+            <button key={key} onClick={() => onSuggestion?.(t(`intents.${key}.prompt`))}
+              className="chat-suggestion">
+              <span className="suggestion-icon"><Icon size={21} strokeWidth={1.5} /></span>
+              <span className="suggestion-copy">
+                <span className="chat-suggestion-text">{t(`intents.${key}.title`)}</span>
+                <span className="chat-suggestion-description">{t(`intents.${key}.description`)}</span>
+              </span>
+              <ArrowUpRight size={18} className="suggestion-arrow" />
             </button>
           ))}
         </div>
@@ -147,8 +179,11 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
   // partagent `.chat-column`, sinon le champ de saisie paraît décalé sous
   // les messages.
   return (
-    <div className="flex-1 overflow-y-auto px-6 pt-7 pb-3">
-      <div className="chat-column flex flex-col gap-[18px]">
+    <div ref={scrollRef} className="chat-scroll flex-1 min-h-0 overflow-y-auto px-6 pt-7 pb-6" onScroll={(event) => {
+      const el = event.currentTarget;
+      followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    }}>
+      <div ref={contentRef} className="chat-column flex flex-col gap-[18px]">
       {messages.map((msg, i) => {
         // Find the last user message before this assistant message (for feedback context)
         const lastUserMsg = msg.role === "assistant"
@@ -159,7 +194,7 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
         const showDateSeparator =
           msg.created_at && (!prevMsg || dayKey(prevMsg.created_at) !== dayKey(msg.created_at));
         return (
-          <div key={i}>
+          <div key={i} data-latest-answer={i === messages.length - 1 && msg.role === "assistant" ? "" : undefined}>
             {showDateSeparator && msg.created_at && (
               <div className="flex items-center my-6">
                 <div className="flex-grow border-t border-border-dim"></div>
@@ -192,9 +227,9 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
 
       {/* Tool execution indicator — shown when a tool is running */}
       {isLoading && activeTool && (
-        <div className="flex flex-col">
+        <div className="flex flex-col items-end">
           <div
-            className="bubble-trace self-start flex-row items-center gap-2.5 text-xs"
+            className="bubble-trace self-end flex-row items-center gap-2.5 text-xs"
             style={{ color: "var(--accent)" }}
           >
             {/* Spinning ring */}
@@ -206,7 +241,7 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
 
       {/* Thinking indicator — shown before first token and when no tool is active */}
       {isLoading && !streamingContent && !activeTool && messages[messages.length - 1]?.role !== "assistant" && (
-        <div className="flex flex-col">
+        <div className="flex flex-col items-end">
           <div className="bubble-assistant flex-row items-center gap-1.5 py-4">
             {[0, 1, 2].map((i) => (
               <span
@@ -223,7 +258,6 @@ export function ChatWindow({ messages, isLoading, onSuggestion, streamingContent
         </div>
       )}
 
-      <div ref={bottomRef} />
       </div>
     </div>
   );

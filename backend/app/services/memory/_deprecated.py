@@ -14,6 +14,7 @@ calls :py:func:`log_deprecation` at entry. The first call logs a
 spam. After Sprint 2.5 V2 we remove these wrappers entirely and the
 LLM-facing tool name disappears.
 """
+
 from __future__ import annotations
 
 import logging

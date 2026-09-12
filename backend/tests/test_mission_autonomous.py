@@ -76,6 +76,8 @@ async def _user():
 
 
 def _patch(monkeypatch, tool_name, *, hitl_decision="deny", hitl_raises=False):
+    from app.services import desktop_registry
+    monkeypatch.setattr(desktop_registry, "is_connected", lambda _: True)
     import app.skills as skills_mod
     import app.services.hitl_manager as hm
     import app.services.hitl_descriptions as hd
@@ -101,6 +103,7 @@ async def _mission(user_id, autonomous: bool) -> str:
     m = await mission_service.create_mission(
         user_id=user_id, title="T", goal="objectif de test autonome", autonomous=autonomous,
     )
+    await mission_service.start_mission(m.id)
     return m.id
 
 

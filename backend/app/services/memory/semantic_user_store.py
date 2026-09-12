@@ -21,6 +21,7 @@ the two collections + reconciliation with SQL happens in V2 (Sprint 2.8).
 For now this store keeps them separate, mirroring the legacy
 `MemoryManager` behaviour 1:1.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -45,7 +46,7 @@ class SemanticUserStore(BaseStore):
         user_id: str,
         conversation_id: str = "",
         extra_payload: dict | None = None,
-    ) -> None:
+    ) -> bool:
         try:
             payload: dict = {
                 "content": content,
@@ -57,19 +58,31 @@ class SemanticUserStore(BaseStore):
                 for k, v in extra_payload.items():
                     if k not in payload:
                         payload[k] = v
-            point_id = await self._infra.upsert(
-                COLLECTION_MEMORIES,
-                await self._infra.embed(content),
-                payload,
+            # Exact content replay is idempotent, including background retries.
+            import hashlib
+            import uuid
+            from qdrant_client.models import PointStruct
+
+            point_id = str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    user_id + ":fact:" + hashlib.sha256(content.strip().casefold().encode()).hexdigest(),
+                )
+            )
+            await asyncio.to_thread(
+                self._infra.client.upsert,
+                collection_name=COLLECTION_MEMORIES,
+                points=[PointStruct(id=point_id, vector=await self._infra.embed(content), payload=payload)],
             )
             from app.services.fts_store import get_fts_store
+
             await get_fts_store().store(content, user_id, COLLECTION_MEMORIES, point_id)
+            return True
         except Exception as exc:
             logger.warning("Failed to store fact: %s", exc)
+            return False
 
-    async def get_relevant_facts(
-        self, query: str, user_id: str, limit: int = 3
-    ) -> list[str]:
+    async def get_relevant_facts(self, query: str, user_id: str, limit: int = 3) -> list[str]:
         try:
             hits = await self._search_hybrid(
                 COLLECTION_MEMORIES,
@@ -88,19 +101,18 @@ class SemanticUserStore(BaseStore):
 
     # ── Preferences (`user_profile` collection — no decay, dedup) ──────
 
-    async def store_preference(self, preference: str, user_id: str) -> None:
+    async def store_preference(self, preference: str, user_id: str) -> bool:
         """Store a preference. Dedup near-identical via cosine ≥ 0.88."""
         try:
             vector = await self._infra.embed(preference)
             from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+
             client = self._infra.client
             candidates = await asyncio.to_thread(
                 client.query_points,
                 collection_name=COLLECTION_PREFERENCES,
                 query=vector,
-                query_filter=Filter(
-                    must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
-                ),
+                query_filter=Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]),
                 limit=3,
                 score_threshold=0.88,
                 with_payload=True,
@@ -111,16 +123,18 @@ class SemanticUserStore(BaseStore):
                 await asyncio.to_thread(
                     client.upsert,
                     collection_name=COLLECTION_PREFERENCES,
-                    points=[PointStruct(
-                        id=point_id,
-                        vector=vector,
-                        payload={
-                            "content": preference,
-                            "user_id": user_id,
-                            "created_at": existing.payload.get("created_at", time.time()),
-                            "updated_at": time.time(),
-                        },
-                    )],
+                    points=[
+                        PointStruct(
+                            id=point_id,
+                            vector=vector,
+                            payload={
+                                "content": preference,
+                                "user_id": user_id,
+                                "created_at": existing.payload.get("created_at", time.time()),
+                                "updated_at": time.time(),
+                            },
+                        )
+                    ],
                 )
                 logger.debug("Updated existing preference (dedup): %s", preference[:60])
             else:
@@ -132,26 +146,30 @@ class SemanticUserStore(BaseStore):
                 logger.debug("Stored new preference: %s", preference[:60])
 
             from app.services.fts_store import get_fts_store
-            await get_fts_store().store(
-                preference, user_id, COLLECTION_PREFERENCES, point_id
-            )
+
+            await get_fts_store().store(preference, user_id, COLLECTION_PREFERENCES, point_id)
+            return True
         except Exception as exc:
             logger.warning("Failed to store preference: %s", exc)
+            return False
 
     async def get_preferences(self, user_id: str, limit: int = 10) -> list[str]:
         """Scroll-fetch all preferences for the user (no semantic query)."""
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
+
             result = await asyncio.to_thread(
                 self._infra.client.scroll,
                 collection_name=COLLECTION_PREFERENCES,
-                scroll_filter=Filter(
-                    must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
-                ),
+                scroll_filter=Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]),
                 limit=limit,
                 with_payload=True,
             )
-            return [p.payload["content"] for p in result[0]]
+            from app.services.memory.selection import eligible_payload, REQUEST_SCOPE
+
+            return [
+                p.payload["content"] for p in result[0] if eligible_payload(p.payload, user_id, REQUEST_SCOPE.get())
+            ]
         except Exception as exc:
             logger.warning("Failed to fetch preferences: %s", exc)
             return []

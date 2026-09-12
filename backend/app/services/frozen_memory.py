@@ -165,3 +165,12 @@ def snapshot_size() -> int:
 def _reset_for_tests() -> None:
     """Test-only helper. Never call from production code."""
     _snapshots.clear()
+
+
+def invalidate_user(user_id: str) -> None:
+    """A suspended/reactivated procedure must disappear from existing sessions."""
+    for cid, entry in list(_snapshots.items()):
+        if entry.get('user_id') == user_id:
+            invalidate(cid)
+            from app.services import system_prompt_cache
+            system_prompt_cache.invalidate(cid)

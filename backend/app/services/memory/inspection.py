@@ -26,6 +26,7 @@ n°4 du dépôt nomme — un repli qui se présente comme nominal.
 Les identifiants Qdrant remontent ici, alors que `MemoryHit` ne les porte pas :
 sans eux, aucun bouton « oublier » n'est possible.
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,7 +71,9 @@ class MemoryEntry:
 # `semantic_user` occupe DEUX collections (facts + preferences) — c'est
 # l'héritage documenté dans semantic_user_store, pas un oubli.
 _INSPECTABLE: dict[str, tuple[str, tuple[str, ...], MemoryType]] = {
+    "profile": ("__sql_profile__", ("value",), MemoryType.SEMANTIC_USER),
     "fact": (COLLECTION_MEMORIES, ("content",), MemoryType.SEMANTIC_USER),
+    "error": ("__sql_errors__", ("error_msg",), MemoryType.ERROR),
     "preference": (COLLECTION_PREFERENCES, ("content",), MemoryType.SEMANTIC_USER),
     "constraint": (COLLECTION_CONSTRAINTS, ("rule", "content"), MemoryType.CONSTRAINT),
     "episodic": (
@@ -87,10 +90,6 @@ UNINSPECTABLE: dict[str, str] = {
         "Pas de magasin : la mémoire procédurale est le catalogue d'outils, "
         "lu à la volée depuis le registre. Il n'y a rien à parcourir ni à "
         "oublier — retirer un outil se fait dans le code."
-    ),
-    "error": (
-        "Écriture seule : les erreurs partent dans les cas d'échec de la "
-        "boucle d'apprentissage, et rien ne les relit ici."
     ),
 }
 
@@ -119,30 +118,79 @@ async def list_entries(
     if family not in _INSPECTABLE:
         raise KeyError(family)
     collection, text_fields, mem_type = _INSPECTABLE[family]
+    if family == "profile":
+        from sqlalchemy import select
+        from app.database import async_session
+        from app.models.user_memory import UserProfile
+
+        stmt = select(UserProfile).where(UserProfile.user_id == user_id)
+        if offset:
+            stmt = stmt.where(UserProfile.id > int(offset))
+        async with async_session() as db:
+            rows = (await db.execute(stmt.order_by(UserProfile.id).limit(limit + 1))).scalars().all()
+            return [
+                MemoryEntry(
+                    id=str(r.id),
+                    type=MemoryType.SEMANTIC_USER,
+                    content=r.value,
+                    created_at=str(r.last_seen),
+                    metadata={
+                        "key": r.key,
+                        "scope": r.scope,
+                        "pinned": r.pinned,
+                        "source": r.source,
+                        "confirmed": r.confirmed,
+                    },
+                )
+                for r in rows[:limit]
+            ], (str(rows[limit - 1].id) if len(rows) > limit else None)
+    if family == "error":
+        from sqlalchemy import select
+        from app.database import async_session
+        from app.models.error_log import ErrorLog
+
+        limit = max(1, min(limit, 100))
+        statement = select(ErrorLog).where(ErrorLog.user_id == user_id)
+        if offset:
+            statement = statement.where(ErrorLog.id < int(offset))
+        async with async_session() as db:
+            rows = (await db.execute(statement.order_by(ErrorLog.id.desc()).limit(limit + 1))).scalars().all()
+            entries = [
+                MemoryEntry(
+                    id=str(r.id),
+                    type=MemoryType.ERROR,
+                    content=f"{r.tool_name} — {r.error_type} : {r.error_msg}",
+                    created_at=str(r.created_at),
+                    metadata={"family": "error", "recovered": r.recovered},
+                )
+                for r in rows[:limit]
+            ]
+            return entries, str(rows[limit - 1].id) if len(rows) > limit else None
     try:
-        points, next_offset = await get_memory_infra().scroll_entries(
-            collection, user_id, limit, offset
-        )
+        points, next_offset = await get_memory_infra().scroll_entries(collection, user_id, limit, offset)
     except Exception as exc:
-        logger.warning(
-            "inspection: scroll %s impossible (%s) — page vide", collection, exc
-        )
+        logger.warning("inspection: scroll %s impossible (%s) — page vide", collection, exc)
         return [], None
 
     entries: list[MemoryEntry] = []
     for p in points:
         payload = p.payload or {}
         created = payload.get("created_at")
-        entries.append(MemoryEntry(
-            id=str(p.id),
-            type=mem_type,
-            content=_first_text(payload, text_fields),
-            created_at=str(created) if created is not None else None,
-            metadata={
-                "family": family,
-                "conversation_id": payload.get("conversation_id"),
-            },
-        ))
+        entries.append(
+            MemoryEntry(
+                id=str(p.id),
+                type=mem_type,
+                content=_first_text(payload, text_fields),
+                created_at=str(created) if created is not None else None,
+                metadata={
+                    "family": family,
+                    "scope": payload.get("scope", ""),
+                    "source": payload.get("source", ""),
+                    "pinned": payload.get("pinned", False),
+                    "conversation_id": payload.get("conversation_id"),
+                },
+            )
+        )
     return entries, next_offset
 
 
@@ -162,11 +210,31 @@ async def forget_entry(family: str, entry_id: str, user_id: str) -> bool:
     if family not in _INSPECTABLE:
         raise KeyError(family)
     collection, _, _ = _INSPECTABLE[family]
+    if family == "profile":
+        from app.services.memory.editing import forget_profile
+
+        return await forget_profile(user_id, entry_id)
+    if family == "error":
+        from sqlalchemy import delete
+        from app.database import async_session
+        from app.models.error_log import ErrorLog
+
+        if not entry_id.isdigit():
+            return False
+        async with async_session() as db:
+            result = await db.execute(delete(ErrorLog).where(ErrorLog.id == int(entry_id), ErrorLog.user_id == user_id))
+            await db.commit()
+            return bool(result.rowcount)
+    # Background-derived episodes carry their durable checkpoint key. Mark the
+    # checkpoint so the next scanner cannot recreate an explicitly forgotten item.
+    points = await get_memory_infra().points_by_ids(collection, [entry_id], user_id)
+    checkpoint_key = points[0].payload.get("checkpoint_key") if points else None
     deleted = await get_memory_infra().delete_point(collection, entry_id, user_id)
     if not deleted:
         return False
     try:
         from app.services.fts_store import get_fts_store
+
         await get_fts_store().delete_point(entry_id, user_id)
     except Exception as exc:
         # Le vecteur est parti : l'entrée ne s'affichera plus et ne sera plus
@@ -175,6 +243,25 @@ async def forget_entry(family: str, entry_id: str, user_id: str) -> bool:
         logger.warning(
             "inspection: vecteur %s supprimé mais ligne FTS conservée (%s) — "
             "elle continuera de peser sur le classement plein-texte",
-            entry_id, exc,
+            entry_id,
+            exc,
         )
+    from sqlalchemy import delete
+    from app.database import async_session
+    from app.models.memory_context import MemoryVersion, MemoryCheckpoint
+
+    async with async_session() as db:
+        if checkpoint_key:
+            checkpoint = await db.get(MemoryCheckpoint, checkpoint_key)
+            if checkpoint:
+                checkpoint.value = "forgotten"
+        await db.execute(
+            delete(MemoryVersion).where(
+                MemoryVersion.user_id == user_id, MemoryVersion.family == family, MemoryVersion.entry_id == entry_id
+            )
+        )
+        await db.commit()
+    from app.services.memory.editing import invalidate
+
+    await invalidate(user_id)
     return True

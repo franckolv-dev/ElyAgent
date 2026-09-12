@@ -33,7 +33,6 @@ from app.services.memory_manager import get_memory_manager
 from app.services.llm_provider import get_fallback_llms
 from app.services import fallback_manager as _fb
 from app.services import system_prompt_cache as _spc
-from app.services import frozen_memory as _frozen_mem
 from app.services.intent_router import get_intent_router
 from app.services.security_filter import ALWAYS_CRITICAL_TOOLS, SecurityFilter
 
@@ -453,6 +452,9 @@ def _slm_toolset(registry, demande: str = "") -> list:
     """
     voulus = set(_SLM_CORE_TOOLS) | set(_outils_reclames(demande))
     try:
+        from app.agent.capability_binding import requested_action_names
+
+        voulus |= requested_action_names(demande, registry.all_tools, voulus)
         retenus = [t for t in registry.all_tools
                    if getattr(t, "name", "") in voulus]
         if retenus:
@@ -466,7 +468,7 @@ def _slm_toolset(registry, demande: str = "") -> list:
     return list(registry.all_tools)
 
 
-def _slm_discovered_extras(registry, conversation_id: str) -> list:
+def _slm_discovered_extras(registry, conversation_id: str, demande: str = "") -> list:
     """Les outils que `find_tool` a surfacés dans CETTE conversation.
 
     ⚠️ LE TROU QUE ÇA BOUCHE (23/08). La voie cloud unionne déjà les
@@ -504,7 +506,10 @@ def _slm_discovered_extras(registry, conversation_id: str) -> list:
         noms = get_discovered(conversation_id)
         if not noms:
             return []
-        deja = set(_SLM_TOOL_NAMES)
+        # Only exclude tools actually bound for THIS request. A conditional
+        # tool discovered for a follow-up must not disappear just because it
+        # belongs to the universe of possible local tools.
+        deja = {t.name for t in _slm_toolset(registry, demande)}
         return [t for t in registry.all_tools
                 if getattr(t, "name", "") in noms
                 and getattr(t, "name", "") not in deja]
@@ -784,6 +789,15 @@ def create_agent_node():
         # première ne s'exécute pas.
         _a_router = _derniere_demande_humaine(messages, user_query)
 
+        # Applied incident repairs survive new conversations and service restarts.
+        # These only add schemas; both paths still apply user preferences below.
+        _repair_tools = []
+        try:
+            from app.services.learning.binding_repair import tools_for_request
+            _repair_tools = await tools_for_request(user_id, _a_router, registry.all_tools)
+        except Exception as exc:
+            logger.warning("Incident binding unavailable: %s", type(exc).__name__)
+
         # Hot-reload: clear tier cache when tool registry OR tier routing config changes
         from app.services.llm_provider import get_tier_config_version
         current_version = registry.tools_version
@@ -886,6 +900,12 @@ def create_agent_node():
             decision = intent_router.route(_a_router, history=messages[:-1])
             routing_score = decision.score
             use_slm = (decision.tier == ModelTier.SLM)
+            if use_slm:
+                from app.services.qwen_no_think import is_local_openai_llm
+                from app.services.llm_provider import describe_llm
+                # A configured cloud fallback needs the full instruction base.
+                use_slm = is_local_openai_llm(_slm_base) or describe_llm(_slm_base)[0] == "ollama"
+
             if use_slm and _historique_deborde(
                 messages, _slm_real_name(_slm_base, settings),
             ):
@@ -946,22 +966,7 @@ def create_agent_node():
         )
         date_str, _date_segment = compute_date_segment()
 
-        # C2-b — rappel contextuel du profil. Les clés classées « bruyantes »
-        # (upcoming_events, gmail_preferences…) sont absentes du profil
-        # permanent, et le commentaire de _PROFILE_NOISY_KEYS promettait
-        # qu'elles resteraient récupérables « via the semantic RAG path » —
-        # promesse qu'AUCUN code ne tient (user_profiles n'est lu que par
-        # l'injection plafonnée et un rapport admin). Elles redeviennent ici
-        # atteignables quand la question les appelle.
-        #
-        # Placé dans la ZONE VOLATILE, avec la date, et JAMAIS dans le
-        # snapshot mémoire — celui-ci est gelé par conversation, le bloc n'y
-        # servirait que la première question du fil.
-        from app.services.memory_service import get_query_relevant_profile
-        _recall_block = await get_query_relevant_profile(user_id, user_query)
-        _volatile_segment = (
-            f"\n\n{_recall_block}\n" if _recall_block else ""
-        ) + _date_segment
+        _volatile_segment = _date_segment
         _user_language, _lang_directive, _lang_reminder = await fetch_user_language(user_id)
         logger.info(
             "[general] lang=%s user=%s",
@@ -969,11 +974,14 @@ def create_agent_node():
             (user_id[:8] + "…") if user_id else "(none)",
         )
 
+        if state.get("mission_tools"):
+            use_slm = False  # Mission proofs are mandatory, including simple substeps.
+
         if use_slm:
-            # ── Lightweight path: minimal prompt, no memory queries ────────
-            # Fetching Qdrant memory adds ~150-300ms and is useless for simple tasks.
-            # SLM path is short enough that caching is not worthwhile.
-            system = _SYSTEM_PROMPT_SLM.format(date_str=date_str)
+            # Self-contained requests retrieve no memories. Personal questions
+            # still receive the bounded dossier, including on the fast model.
+            from app.services.memory.context import dossier
+            system = _SYSTEM_PROMPT_SLM.format(date_str=date_str) + await dossier(user_id, _a_router, _conv_id_fb)
             _use_compact = False  # ensure variable is defined for downstream branches
         else:
             # ── Full path: complete prompt + memory context ────────────────
@@ -1027,21 +1035,10 @@ def create_agent_node():
                 and is_local_openai_llm(_llm_for_detect)
             )
 
-            # Memory snapshot — cacheable per-conversation via frozen_memory.
-            # On the first turn, we run the 5-way Qdrant + SQL gather; on
-            # subsequent turns, the snapshot is returned from cache in O(1)
-            # without re-querying Qdrant. New facts archived mid-session
-            # appear in the snapshot of the NEXT conversation, not this one.
-            #
-            # Refactor 2026-05-25 Phase 4.1 — the business logic lives in
-            # app/agent/builders/memory_snapshot.py as a pure async fn that
-            # returns (snapshot_text, compact_pieces). The thin wrapper
-            # below only exists to satisfy frozen_memory's `() -> str`
-            # builder signature and to propagate compact_pieces via the
-            # only remaining `nonlocal` in this path.
+            # The stable prompt prefix is cached; this request's evidence is
+            # rebuilt from the latest human goal and never frozen by conversation.
             from app.agent.builders.memory_snapshot import (
                 build_memory_snapshot,
-                refetch_compact_pieces,
             )
 
             _compact_pieces: dict | None = None
@@ -1051,7 +1048,8 @@ def create_agent_node():
                 snapshot, pieces = await build_memory_snapshot(
                     messages=messages,
                     user_id=user_id,
-                    user_query=user_query,
+                    user_query=_a_router,
+                    conversation_id=_conv_id_fb,
                     memory=memory,
                     use_compact=_use_compact,
                 )
@@ -1059,23 +1057,11 @@ def create_agent_node():
                     _compact_pieces = pieces
                 return snapshot
 
-            memory_snapshot = await _frozen_mem.get_or_build(
-                _conv_id_fb, user_id, _build_memory_snapshot,
-            )
+            memory_snapshot = await _build_memory_snapshot()
 
             if _use_compact:
                 # Local LLMs get a compact prompt — uncached, builds from the
                 # snapshot pieces we just gathered.
-                if _compact_pieces is None:
-                    # Cache hit on frozen_memory means _build_memory_snapshot
-                    # didn't run this turn, so _compact_pieces is empty.
-                    # Re-fetch the minimal trio synchronously (rare path —
-                    # only on cache hit + compact mode together).
-                    _compact_pieces = await refetch_compact_pieces(
-                        user_id=user_id,
-                        user_query=user_query,
-                        memory=memory,
-                    )
                 system = build_compact_system_prompt(
                     agent_name="general",
                     date_str=date_str,
@@ -1098,7 +1084,6 @@ def create_agent_node():
                         _lang_directive
                         + _SYSTEM_PROMPT_BASE
                         + LLM_INTROSPECTION_NOTE
-                        + memory_snapshot
                     )
 
                 cacheable_system = _spc.get_or_build(
@@ -1106,7 +1091,7 @@ def create_agent_node():
                 )
                 # Final assembly: cacheable + dynamic date + lang reminder.
                 # Email block + lang reminder are appended further down.
-                system = cacheable_system + _volatile_segment
+                system = cacheable_system + _volatile_segment + memory_snapshot
 
         # ── Sandwich tail: language reminder ──────────────────────────────
         # Front-load (primacy) was already applied INSIDE the cacheable
@@ -1182,14 +1167,14 @@ def create_agent_node():
                 # option de plus dans un choix qu'il fait mal. On lie donc le
                 # socle plus ce que la DEMANDE réclame — et le coût est un
                 # `bind_tools` local, sans réseau, sur trois à cinq schémas.
-                _slm_extras = _slm_discovered_extras(registry, _conv_id_fb)
+                _slm_extras = _slm_discovered_extras(registry, _conv_id_fb, _a_router)
                 _slm_runtime = _slm_with_tools
                 try:
                     # Les préférences valent AUSSI ici. Une compétence coupée
                     # dans l'interface ne doit pas revenir par la voie locale
                     # — ce serait un demi-interrupteur, pire qu'aucun.
                     _slm_outils = appliquer_preferences(
-                        _slm_toolset(registry, _a_router) + _slm_extras,
+                        list({t.name: t for t in _slm_toolset(registry, _a_router) + _slm_extras + _repair_tools}.values()),
                         await disabled_tool_names(user_id),
                         contexte="slm",
                     )
@@ -1317,28 +1302,10 @@ def create_agent_node():
                 # follows the same cacheable/dynamic split as the primary
                 # full path. This gives the SLM-fallback flow the same prompt
                 # cache hit benefit on subsequent turns.
-                from app.services.memory_service import get_user_context as _guc
-
-                async def _fb_build_snapshot() -> str:
-                    constraints, memories_, past_interactions, preferences, user_profile = (
-                        await asyncio.gather(
-                            memory.get_relevant_constraints(user_query, user_id),
-                            memory.get_relevant_memories(user_query, user_id),
-                            memory.get_relevant_interactions(user_query, user_id, limit=3),
-                            memory.get_user_preferences(user_id),
-                            _guc(user_id),
-                        )
-                    )
-                    return _format_memory_block(
-                        user_profile or "",
-                        preferences or [],
-                        constraints or [],
-                        memories_ or [],
-                        past_interactions or [],
-                    )
-
-                _fb_snapshot = await _frozen_mem.get_or_build(
-                    _conv_id_fb, user_id, _fb_build_snapshot,
+                from app.agent.builders.memory_snapshot import build_memory_snapshot
+                _fb_snapshot, _ = await build_memory_snapshot(
+                    messages=messages, user_id=user_id, user_query=_a_router,
+                    memory=memory, use_compact=False, conversation_id=_conv_id_fb,
                 )
                 # Use the same IMPORTANT note as the primary path
                 # (LLM_INTROSPECTION_NOTE imported from builders.system_prompt).
@@ -1350,7 +1317,6 @@ def create_agent_node():
                         _lang_directive
                         + _SYSTEM_PROMPT_BASE
                         + LLM_INTROSPECTION_NOTE
-                        + _fb_snapshot
                     )
 
                 _fb_cacheable = _spc.get_or_build(_conv_id_fb, _fb_build_cacheable)
@@ -1741,6 +1707,7 @@ def create_agent_node():
                 #
                 # APRÈS les outils appris, délibérément : l'utilisateur doit
                 # pouvoir couper aussi ce qu'Ely s'est créé.
+                _filtered_tools = list({t.name: t for t in _filtered_tools + _repair_tools}.values())
                 _desactives = await disabled_tool_names(user_id)
                 _filtered_tools = appliquer_preferences(
                     _filtered_tools, _desactives, contexte=f"tier-{_tier_key}",
@@ -1766,6 +1733,14 @@ def create_agent_node():
                             "[find_tool] +%d discovered tool(s) bound: %s",
                             len(_extra_d), sorted(t.name for t in _extra_d),
                         )
+
+                from app.agent.tool_budget import fit_tool_schemas, CORE as _MEMORY_CORE
+                _core_missing = [t for t in registry.all_tools if t.name in _MEMORY_CORE and t.name not in {x.name for x in _filtered_tools}]
+                _filtered_tools = fit_tool_schemas(
+                    _filtered_tools + _core_missing, _a_router,
+                    set(_discovered) | {t.name for t in _repair_tools} | set(state.get("mission_tools") or []),
+                )
+                _filtered_tools = appliquer_preferences(_filtered_tools, _desactives, contexte="budget-mémoire")
 
                 # Mini-chantier A — apply parallel_tool_calls policy by
                 # model family. Permissive models (Qwen, Mistral…) and OpenAI

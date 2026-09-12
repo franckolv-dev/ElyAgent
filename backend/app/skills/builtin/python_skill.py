@@ -14,6 +14,7 @@
 from app.skills.base import Skill, Domain
 from app.skills.registry import get_skill_registry
 from app.agent.tools.python_tool import python_execute
+from app.agent.tools.sandbox_tools import sandbox_save_tool, sandbox_run_tool
 
 get_skill_registry().register(Skill(
     name="python-sandbox",
@@ -22,5 +23,5 @@ get_skill_registry().register(Skill(
     icon="🐍",
     scopes=[],
     domains=[Domain.CREATIVE, Domain.DATA],
-    tools=[python_execute],
+    tools=[python_execute, sandbox_save_tool, sandbox_run_tool],
 ))

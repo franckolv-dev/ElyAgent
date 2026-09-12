@@ -41,6 +41,7 @@ extract_and_store_facts pipeline still land in UserMemoryLog and get
 consolidated nightly. Only the speedy update of the typed
 SemanticUserStore is skipped.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -121,7 +122,10 @@ Conversation :
 def _is_disabled() -> bool:
     """True if the rapid maintenance is turned off by env var."""
     return os.environ.get("MAINTENANCE_RAPID_DISABLED", "").lower() in (
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
 
@@ -202,7 +206,9 @@ class MaintenanceAgentRapid:
             # user_id/conversation_id transmis pour que l'appel soit RATTACHABLE :
             # sans user_id la ligne d'usage n'est pas écrivable (clé étrangère).
             facts = await self._extract_facts(
-                conversation_text, user_id, conversation_id,
+                conversation_text,
+                user_id,
+                conversation_id,
             )
         except Exception as exc:
             logger.debug("maintenance_rapid: LLM call failed: %s", exc)
@@ -222,7 +228,10 @@ class MaintenanceAgentRapid:
                 "duration_ms": duration_ms,
             }
 
-        pref_count, fact_count = await self._store_facts(facts, user_id, conversation_id)
+        try:
+            pref_count, fact_count = await self._store_facts(facts, user_id, conversation_id)
+        except Exception:
+            return {"status": "failed", "reason": "store_failed"}
 
         # Sprint 3 Jalon 2 — refresh the User State Vector after fact store.
         state_status = await self._refresh_user_state(user_id, conversation_id)
@@ -230,7 +239,12 @@ class MaintenanceAgentRapid:
         duration_ms = int((time.monotonic() - started) * 1000)
         logger.info(
             "maintenance_rapid : user=%s conv=%s facts=%d preferences=%d user_state=%s duration=%dms",
-            user_id, conversation_id, fact_count, pref_count, state_status, duration_ms,
+            user_id,
+            conversation_id,
+            fact_count,
+            pref_count,
+            state_status,
+            duration_ms,
         )
         return {
             "status": "ok",
@@ -248,8 +262,10 @@ class MaintenanceAgentRapid:
         try:
             from app.services.frozen_memory import invalidate as _fm_invalidate
             from app.services.learning.user_state import (
-                compute_user_state, is_disabled as _us_disabled,
+                compute_user_state,
+                is_disabled as _us_disabled,
             )
+
             if _us_disabled():
                 return "skipped"
             await compute_user_state(
@@ -263,7 +279,8 @@ class MaintenanceAgentRapid:
         except Exception as exc:
             logger.debug(
                 "maintenance_rapid: user_state refresh failed conv=%s : %s",
-                conversation_id, exc,
+                conversation_id,
+                exc,
             )
             return "failed"
 
@@ -298,7 +315,9 @@ class MaintenanceAgentRapid:
         return "\n".join(parts)
 
     async def _extract_facts(
-        self, conversation_text: str, user_id: str = "",
+        self,
+        conversation_text: str,
+        user_id: str = "",
         conversation_id: str | None = None,
     ) -> list[dict]:
         """Call the Ministral 3B tier and parse the JSON response.
@@ -309,6 +328,11 @@ class MaintenanceAgentRapid:
         from app.services.llm_provider import ComplexityTier, get_llm_for_tier
 
         llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
+        from app.services.llm_provider import describe_llm
+
+        provider, _ = describe_llm(llm)
+        if provider not in {"lm_studio", "ollama", "local"}:
+            raise RuntimeError("La consolidation rapide exige un modèle local ; aucun repli cloud.")
         # Le tier MAINTENANCE est local par défaut, mais c'est une
         # configuration d'administrateur : la conversation passe par un
         # masque, et les faits extraits se démasquent avec le même
@@ -316,6 +340,7 @@ class MaintenanceAgentRapid:
         # tourne après la déconnexion, quand le filtre du tour a déjà quitté
         # le registre ; en réclamer un au registre en laisserait un orphelin.
         from app.services.security_filter import SecurityFilter
+
         _sf = SecurityFilter()
         prompt = _EXTRACTION_PROMPT.format(
             conversation=_sf.anonymize(conversation_text, ner_detection=False),
@@ -332,8 +357,10 @@ class MaintenanceAgentRapid:
         # niveau du tour — sans consignation propre, la corvée dépense hors
         # bilan (défaut diagnostiqué le 05/08).
         from app.services.background_llm import ainvoke_background_with_usage
+
         raw, _reponse = await ainvoke_background_with_usage(
-            llm, [{"role": "user", "content": prompt}],
+            llm,
+            [{"role": "user", "content": prompt}],
         )
         try:
             from app.services.analytics_service import log_response_usage
@@ -341,8 +368,12 @@ class MaintenanceAgentRapid:
 
             _provider, _model = describe_llm(llm)
             await log_response_usage(
-                user_id, _reponse, provider=_provider, model=_model,
-                channel="background", skill_used="memory_maintenance",
+                user_id,
+                _reponse,
+                provider=_provider,
+                model=_model,
+                channel="background",
+                skill_used="memory_maintenance",
                 conversation_id=conversation_id,
             )
         except Exception as exc:  # noqa: BLE001 — consigner ne bloque jamais
@@ -369,6 +400,7 @@ class MaintenanceAgentRapid:
 
         store = get_semantic_user_store()
         pref_count, fact_count = 0, 0
+        failures = 0
 
         for item in facts:
             text = str(item.get("fact", "")).strip()
@@ -381,13 +413,16 @@ class MaintenanceAgentRapid:
                 # so the typed stores never see a paragraph.
                 logger.warning(
                     "maintenance_rapid: rejected over-long fact (%d chars) user=%s : %.80s...",
-                    len(text), user_id, text,
+                    len(text),
+                    user_id,
+                    text,
                 )
                 continue
             if not _is_safe_fact(text):
                 logger.warning(
                     "maintenance_rapid: rejected possibly-injected fact user=%s : %.100s",
-                    user_id, text,
+                    user_id,
+                    text,
                 )
                 continue
 
@@ -397,13 +432,15 @@ class MaintenanceAgentRapid:
                     # Sprint 2.5 Jalon 4 — routing explicite:
                     #     MemoryType  = SEMANTIC_USER (kind=preference)
                     #     Store       = SemanticUserStore.store_preference
-                    await store.store_preference(text, user_id)
+                    stored = await store.store_preference(text, user_id)
+                    if stored is False:
+                        raise RuntimeError("Preference storage unavailable")
                     pref_count += 1
                 else:
                     # Sprint 2.5 Jalon 4 — routing explicite:
                     #     MemoryType  = SEMANTIC_USER (kind=fact)
                     #     Store       = SemanticUserStore.store_fact
-                    await store.store_fact(
+                    stored = await store.store_fact(
                         content=text,
                         user_id=user_id,
                         conversation_id=conversation_id,
@@ -412,12 +449,15 @@ class MaintenanceAgentRapid:
                             "source": "maintenance_rapid",
                         },
                     )
+                    if stored is False:
+                        raise RuntimeError("Fact storage unavailable")
                     fact_count += 1
             except Exception as exc:
-                logger.debug(
-                    "maintenance_rapid: store failed for fact %r: %s", text[:60], exc
-                )
+                failures += 1
+                logger.warning("maintenance_rapid: storage deferred: %s", type(exc).__name__)
 
+        if failures:
+            raise RuntimeError("Memory writes incomplete")
         return pref_count, fact_count
 
 
@@ -444,11 +484,14 @@ def schedule_consolidation(conversation_id: str, user_id: str) -> asyncio.Task |
 
     async def _safe_run() -> None:
         try:
-            await get_maintenance_agent_rapid().consolidate(conversation_id, user_id)
+            from app.services.memory.consolidation import enqueue_conversation
+
+            await enqueue_conversation(conversation_id, user_id)
         except Exception as exc:
             logger.debug("maintenance_rapid schedule wrapper swallowed: %s", exc)
 
     # Laisse : un ``create_task`` nu que l'appelant jetait pouvait être
     # ramassé en vol (dernier cas du genre, relecture du 03/09/2026).
     from app.services.background_tasks import spawn
+
     return spawn(_safe_run(), label=f"maintenance-rapid-{conversation_id[:8]}")

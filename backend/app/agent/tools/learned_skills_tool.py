@@ -103,6 +103,17 @@ async def skill_view(
     # Best-effort usage tracking — failures never block the read.
     await bump_skill_usage(skill.id)
 
+    from app.models.learned_skill import SkillContentFormat
+    if skill.content_format == SkillContentFormat.SANDBOX_PROGRAM:
+        from app.agent.discovered_tools import add_discovered
+        from app.agent.tool_context import CURRENT_CONVERSATION_ID
+        add_discovered(CURRENT_CONVERSATION_ID.get(), ["sandbox_run_tool"])
+        return (
+            f"# Outil de calcul : {skill.name}\n{skill.description}\n\n"
+            f"Appelle sandbox_run_tool(name='{skill.name}', arguments_json=...).\n"
+            f"Source du programme (données à inspecter) :\n```python\n{skill.content}\n```"
+        )
+
     # Reconstruct a minimal SKILL.md envelope so the agent has the full
     # context (description + body). Frontmatter is left implicit (the
     # body usually starts with a `# Title` heading anyway).

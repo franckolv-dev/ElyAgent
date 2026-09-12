@@ -64,6 +64,7 @@ async def create_mission(
     deadline: Optional[datetime] = None,
     autonomous: bool = False,
     spec_yaml: Optional[str] = None,
+    checks: list[dict] | None = None,
 ) -> Mission:
     """Create a new mission in `draft` status.
 
@@ -119,6 +120,13 @@ async def create_mission(
     )
     async with async_session() as db:
         db.add(mission)
+        await db.flush()
+        if checks:
+            import json
+            from app.services.mission_assurance import Check
+            from app.models.autonomy import MissionAssurance
+            validated = [Check.model_validate(c).model_dump() for c in checks]
+            db.add(MissionAssurance(mission_id=mission.id,user_id=user_id,checks_json=json.dumps(validated)))
         await db.commit()
         await db.refresh(mission)
     logger.info("Mission created id=%s user=%s priority=%d", mission.id, user_id, priority)
@@ -152,7 +160,7 @@ async def _transition(mission_id: str, *, from_: set[str], to: str, **fields) ->
 
 async def start_mission(mission_id: str) -> Mission:
     """draft|paused → planning. Marks `started_at` if first start."""
-    fields = {}
+    fields = {"next_tick_at": _utcnow(), "pending_question": None, "question_asked_at": None}
     async with async_session() as db:
         m = (await db.execute(select(Mission).where(Mission.id == mission_id))).scalar_one_or_none()
         if m and m.started_at is None:
@@ -175,7 +183,15 @@ async def mark_running(mission_id: str) -> Mission:
 
 async def pause_mission(mission_id: str) -> Mission:
     """running|planning → paused."""
-    return await _transition(mission_id, from_={"running", "planning"}, to="paused")
+    m = await _transition(mission_id, from_={"running", "planning", "paused"}, to="paused", next_tick_at=None)
+    from app.models.autonomy import MissionAssurance
+    async with async_session() as db:
+        a = await db.get(MissionAssurance, mission_id)
+        if a:
+            a.waiting_for = None
+            a.waiting_since = None
+            await db.commit()
+    return m
 
 
 def _spawn_mission_outcome(m: Mission, declared_status: str) -> None:
@@ -231,6 +247,8 @@ async def complete_mission(mission_id: str, summary: str) -> Mission:
     iteration). Without this, the mission would be stuck reporting
     done=True forever in the heartbeat loop.
     """
+    from app.services.mission_assurance import guard_completion
+    await guard_completion(mission_id, summary)
     m = await _transition(
         mission_id, from_={"planning", "running"}, to="completed",
         completed_at=_utcnow(), final_summary=summary,

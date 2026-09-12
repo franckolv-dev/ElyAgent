@@ -401,7 +401,14 @@ async def report_missing_capability(capability: str) -> str:
             )
     except Exception:  # noqa: BLE001
         pass
-    return await _record_gap_and_trigger(capability, model_judged=True) + caveat
+    return await _record_gap_and_trigger(capability, model_judged=True) + caveat + (
+        "\n\nLa consignation ne termine pas la tâche. Pour le besoin immédiat, "
+        "cherche python_execute avec find_tool et écris puis teste un script "
+        "dans le bac à sable, ou compose les outils disponibles. Utilise "
+        "les résultats réels et vérifie le livrable. Une candidate en attente "
+        "n'est pas encore un outil utilisable. Si un accès est indispensable, "
+        "prépare les autres étapes avant de demander cet accès."
+    )
 
 
 async def _select_with_model(capability: str, k: int) -> list[str]:
@@ -555,7 +562,7 @@ async def _playbooks_for_capability(
                 ).where(
                     LearnedSkill.user_id == user_id,
                     LearnedSkill.status == SkillStatus.ACTIVE,
-                    LearnedSkill.content_format == SkillContentFormat.MARKDOWN_PLAYBOOK,
+                    LearnedSkill.content_format.in_((SkillContentFormat.MARKDOWN_PLAYBOOK, SkillContentFormat.SANDBOX_PROGRAM)),
                 )
             )).all()
     except Exception as exc:  # noqa: BLE001 — une source absente n'est pas fatale
@@ -626,7 +633,7 @@ async def _learned_tool_for_capability(q_tokens: list[str], user_id: str) -> str
         rows = (await db.execute(
             select(LearnedSkill.name, LearnedSkill.description).where(
                 LearnedSkill.user_id == user_id,
-                LearnedSkill.content_format == "python_tool",
+                LearnedSkill.content_format.in_(("python_tool", "sandbox_program")),
             )
         )).all()
     if not rows:

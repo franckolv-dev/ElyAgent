@@ -1,0 +1,17 @@
+{
+  "batches": [
+    64,
+    64,
+    64,
+    64,
+    64,
+    64,
+    64,
+    64,
+    43,
+    0
+  ],
+  "profiles": 619,
+  "profile_checkpoints": 619,
+  "knowledge_fts_done": true
+}

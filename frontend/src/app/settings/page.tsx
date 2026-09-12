@@ -300,6 +300,7 @@ export default function SettingsPage() {
   // OpenAI Codex (abonnement ChatGPT) state — connexion par import des
   // tokens du CLI officiel, pas de clé API (voir carte onglet Modèles)
   const [codexConnected, setCodexConnected] = useState<boolean | null>(null);
+  const [codexReconnectRequired, setCodexReconnectRequired] = useState(false);
   const [codexAuthJson, setCodexAuthJson]   = useState("");
   const [codexBusy, setCodexBusy]           = useState(false);
 
@@ -414,6 +415,12 @@ export default function SettingsPage() {
     setActiveTab(nextTab);
   }, [searchParams]);
 
+  useEffect(() => {
+    if (activeTab === "modeles" && window.location.hash === "#codex-connection") {
+      document.getElementById("codex-connection")?.scrollIntoView({ block: "center" });
+    }
+  }, [activeTab, searchParams]);
+
   // ---------------------------------------------------------------------------
   // Load LLM instances from API
   // ---------------------------------------------------------------------------
@@ -444,13 +451,17 @@ export default function SettingsPage() {
       if (!res.ok) return;
       const d = await res.json();
       setCodexConnected(!!d.connected);
+      setCodexReconnectRequired(d.reconnect_required === true);
     } catch {
       // silently ignore
     }
   }, []);
 
   useEffect(() => {
-    if (admin) loadCodexStatus();
+    if (!admin) return;
+    void loadCodexStatus();
+    const timer = setInterval(loadCodexStatus, 30_000);
+    return () => clearInterval(timer);
   }, [admin, loadCodexStatus]);
 
   const handleCodexImport = async () => {
@@ -468,7 +479,9 @@ export default function SettingsPage() {
         return;
       }
       setCodexConnected(true);
+      setCodexReconnectRequired(false);
       setCodexAuthJson("");
+      window.dispatchEvent(new Event("ely:codex-health"));
       push("success", t("codexConnectedToast"));
     } catch {
       push("error", t("serverUnreachable"));
@@ -485,6 +498,8 @@ export default function SettingsPage() {
       });
       if (res.ok) {
         setCodexConnected(false);
+        setCodexReconnectRequired(false);
+        window.dispatchEvent(new Event("ely:codex-health"));
         push("success", t("codexDisconnectedToast"));
       }
     } catch {
@@ -1237,18 +1252,20 @@ export default function SettingsPage() {
                 )}
 
                 {/* ── OpenAI Codex — abonnement ChatGPT (pas de clé API) ── */}
-                <div className="mt-6 bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3">
+                <div id="codex-connection" className="mt-6 bg-bg-secondary border border-border-dim rounded-lg p-4 space-y-3 scroll-mt-6">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-base shrink-0">💳</span>
                       <h3 className="text-xs font-medium text-text-primary truncate">{t("codexTitle")}</h3>
                       {codexConnected !== null && (
                         <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${
-                          codexConnected
+                          codexReconnectRequired
+                            ? "bg-amber-400/10 border-amber-400/40 text-amber-300"
+                            : codexConnected
                             ? "bg-cyber-cyan/10 border-cyber-cyan/20 text-cyber-cyan"
                             : "bg-bg-primary border-border-dim text-text-muted"
                         }`}>
-                          {codexConnected ? t("codexBadgeConnected") : t("codexBadgeNotConnected")}
+                          {codexReconnectRequired ? t("codexReconnectBadge") : codexConnected ? t("codexBadgeConnected") : t("codexBadgeNotConnected")}
                         </span>
                       )}
                     </div>
@@ -1265,6 +1282,11 @@ export default function SettingsPage() {
                   <p className="text-[10px] text-text-muted whitespace-pre-line">
                     {t("codexDescription")}
                   </p>
+                  {codexReconnectRequired && (
+                    <p role="status" className="rounded-md border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-text-primary">
+                      {t("codexReconnectInstructions")}
+                    </p>
+                  )}
                   {!codexConnected && (
                     <div className="space-y-2">
                       <textarea

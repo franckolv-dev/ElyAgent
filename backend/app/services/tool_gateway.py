@@ -507,6 +507,21 @@ async def execute_tool_call(
     memory = ctx.memory
 
     tool_name = tool_call["name"]
+    if tool_name not in tool_map:
+        # An unavailable name has no action to authorise. Return discovery
+        # guidance before looking up credentials or presenting an approval.
+        from difflib import get_close_matches
+        from langchain_core.messages import ToolMessage
+        from app.agent.recovery import recovery_hint
+
+        nearby = get_close_matches(tool_name, sorted(tool_map), n=3, cutoff=0.65)
+        detail = f"Erreur : outil '{tool_name}' non disponible."
+        if nearby:
+            detail += " Noms proches à vérifier : " + ", ".join(nearby) + "."
+        return ToolMessage(
+            content=detail + recovery_hint(tool_name, detail),
+            name=tool_name, status="error", tool_call_id=tool_call["id"],
+        )
     # Deanonymize tool args BEFORE any other processing so HITL preview,
     # logs, and the actual API call all see the real values.
     args = deanonymize_args(_vault_sf, dict(tool_call["args"]))
@@ -573,11 +588,28 @@ async def execute_tool_call(
         except KeyError as exc:
             return _tool_result(f"⛔ Secret introuvable dans le Vault : {exc}", tc_id)
 
+    from app.services.autonomy_policy import permission_for
+    _permission = await permission_for(user_id, tool_name)
+    if _permission == 'deny':
+        if ctx.label == 'mission':
+            from app.services.mission_assurance import suspend
+            await suspend(ctx.conversation_id, 'permission', 'Action interdite par tes réglages d’autonomie : ' + tool_name)
+        return _tool_result('Action non exécutée : interdite dans Autonomie → Autorisations.', tc_id)
+    # Sans identité de mission (tests, appels hors tick), il n'y a rien à
+    # accuser ni à suspendre : l'assurance ne s'applique qu'à une mission nommée.
+    _mission_suivie = ctx.label == 'mission' and bool(ctx.conversation_id)
+    if _mission_suivie:
+        from app.services.mission_assurance import preflight
+        _blocked = await preflight(ctx.conversation_id, user_id, tool_name)
+        if _blocked:
+            return _tool_result(_blocked, tc_id)
+
     if ctx.needs_hitl_final is not None:
         # C3b-2 — décision de l'appelant (gate mandat mission).
         needs_hitl = ctx.needs_hitl_final
     else:
         needs_hitl = await _decide_hitl(ctx, tool_name, args, display_args)
+    needs_hitl = needs_hitl or _permission == "confirm"
     if needs_hitl:
         # Fix #21 (Temu, mai 2026) — description HITL humanisée : pré-compte,
         # demande d'origine de l'utilisateur, alertes d'écart args/intention.
@@ -802,6 +834,16 @@ async def execute_tool_call(
             logger.debug("snapshot_before failed (%s): %s", tool_name, _snap_exc)
 
     tool = tool_map.get(tool_name)
+    _receipt_id = None
+    if tool and _mission_suivie:
+        from app.services.mission_assurance import reserve, suspend
+        _receipt_id, _previous = await reserve(ctx.conversation_id, user_id, tool_name, display_args)
+        if _previous:
+            if _previous['status'] in {'success', 'human_confirmed'}:
+                if meta is not None: meta['success'] = _previous['status'] == 'success'
+                return _tool_result('Action déjà confirmée, non répétée. Résultat conservé : ' + _previous['result'], tc_id)
+            await suspend(ctx.conversation_id, 'uncertain_action', 'Vérifie l’effet de ' + tool_name + ' dans Autonomie → Suivi avant tout nouvel essai.')
+            return _tool_result('Action non répétée : une exécution précédente reste incertaine. Attends la vérification humaine.', tc_id)
     if tool:
         try:
             import time as _tt
@@ -875,7 +917,7 @@ async def execute_tool_call(
             # réversible : `agent.tool_failure`. Le texte, lui, repart tel
             # quel au modèle — c'est lui qui doit lire l'erreur.
             from app.agent.tool_failure import dit_un_echec
-            _echec_en_texte = dit_un_echec(_raw_result)
+            _echec_en_texte = dit_un_echec(result)
             _safe_result = _sanitize_tool_result_for_history(_raw_result)
             if len(_safe_result) < len(_raw_result):
                 logger.info(
@@ -898,6 +940,9 @@ async def execute_tool_call(
                 # web/GitHub/emails sont publics ; les masquer casse
                 # l'agent — retour terrain 2026-06-11).
                 _safe_result = _vault_sf.anonymize(_safe_result, ner_detection=False)
+            if _receipt_id:
+                from app.services.mission_assurance import finish
+                await finish(_receipt_id, not _echec_en_texte, _safe_result)
             if ctx.post_execute is not None:
                 try:
                     ctx.post_execute(
@@ -935,6 +980,18 @@ async def execute_tool_call(
                 )
             _msg = _tool_result(_rendu, tc_id)
             if _echec_en_texte:
+                from app.agent.recovery import recovery_hint
+                _msg["content"] += recovery_hint(tool_name, _safe_result)
+                _msg["status"] = "error"
+                try:
+                    from app.services.learning import record_tool_error
+                    spawn(record_tool_error(
+                        user_id=user_id, tool_name=tool_name,
+                        args=display_args, error_type="ToolReportedError",
+                        error_msg=_safe_result[:4000], traceback="",
+                    ))
+                except Exception as exc:
+                    logger.debug("reported tool failure learning skipped: %s", exc)
                 logger.warning("Tool %s a échoué (en texte) : %.200s", tool_name, _raw_result)
                 if _action_fp is not None:
                     from app.services.event_envelope import EventKind, emit
@@ -968,6 +1025,9 @@ async def execute_tool_call(
             return _msg
         except Exception as exc:
             logger.warning("Tool %s failed: %s", tool_name, exc)
+            if _receipt_id:
+                from app.services.mission_assurance import finish
+                await finish(_receipt_id, False, 'Exécution interrompue : ' + type(exc).__name__)
             if ctx.post_execute is not None:
                 try:
                     ctx.post_execute(tool_name, False, _tt.monotonic() - _ts, exc)
@@ -986,7 +1046,7 @@ async def execute_tool_call(
                 spawn(record_tool_error(
                     user_id=user_id,
                     tool_name=tool_name,
-                    args=args,
+                    args=display_args,
                     error_type=type(exc).__name__,
                     error_msg=str(exc),
                     traceback=_tb.format_exc(),
@@ -997,7 +1057,10 @@ async def execute_tool_call(
             _err = f"Erreur d'exécution: {exc}"
             if _vault_sf is not None and ctx.anonymize_results:
                 _err = _vault_sf.anonymize(_err, ner_detection=False)
-            return _tool_result(_err, tc_id)
+            from app.agent.recovery import recovery_hint
+            _msg = _tool_result(_err + recovery_hint(tool_name, _err), tc_id)
+            _msg["status"] = "error"
+            return _msg
     else:
         from langchain_core.messages import ToolMessage
         return ToolMessage(

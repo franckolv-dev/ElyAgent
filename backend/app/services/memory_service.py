@@ -23,7 +23,11 @@ This service provides these async entry points:
     consolidate_user_memory()      — nightly job: merges logs into UserProfile
     consolidate_all_users()        — called by APScheduler at 3 AM
 """
+
 from __future__ import annotations
+
+from app.services.memory.selection import REQUEST_SCOPE
+from app.services.memory.scopes import allowed_scopes
 
 import json
 import logging
@@ -45,8 +49,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _INJECTION_PATTERNS = re.compile(
-    r'\b(ignore|oublie|forget|override|bypass|system\s+prompt|new\s+instruction|'
-    r'tu\s+es\s+maintenant|act\s+as|pretend|jailbreak|disregard|instruc)\b',
+    r"\b(ignore|oublie|forget|override|bypass|system\s+prompt|new\s+instruction|"
+    r"tu\s+es\s+maintenant|act\s+as|pretend|jailbreak|disregard|instruc)\b",
     re.IGNORECASE,
 )
 
@@ -177,7 +181,10 @@ def _per_turn_extraction_enabled() -> bool:
     de la boucle, qui eux ne sont pas stockés.
     """
     return os.getenv("MEMORY_EXTRACTION_PER_TURN", "").strip().lower() in (
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
 
@@ -259,9 +266,7 @@ async def extract_and_store_facts(
             content = getattr(msg, "content", "")
             if isinstance(content, str) and content.strip():
                 role_label = "Utilisateur" if role == "human" else "Assistante"
-                conversation_parts.append(
-                    f"{role_label}: {content[:_EXTRACTION_CHAR_CAP]}"
-                )
+                conversation_parts.append(f"{role_label}: {content[:_EXTRACTION_CHAR_CAP]}")
     except Exception as exc:  # noqa: BLE001
         logger.debug("extract_and_store_facts failed silently: %s", exc)
         return
@@ -269,9 +274,7 @@ async def extract_and_store_facts(
     if not conversation_parts:
         return
 
-    await _extract_facts_from_text(
-        user_id, conversation_id, "\n".join(conversation_parts)
-    )
+    await _extract_facts_from_text(user_id, conversation_id, "\n".join(conversation_parts))
 
 
 async def _extract_facts_from_text(
@@ -290,6 +293,7 @@ async def _extract_facts_from_text(
     try:
         # Use MAINTENANCE tier (configurable via Settings → Niveaux de routage)
         from app.services.llm_provider import get_llm_for_tier, ComplexityTier
+
         llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
 
         prompt = _EXTRACTION_PROMPT.format(conversation=conversation_text)
@@ -302,15 +306,19 @@ async def _extract_facts_from_text(
         # L'isolation du stream et le retrait du bloc <think> sont dans le
         # helper. Voir services/background_llm.py.
         from app.services.background_llm import ainvoke_background_with_usage
+
         raw, response = await ainvoke_background_with_usage(
-            llm, [{"role": "user", "content": prompt}],
+            llm,
+            [{"role": "user", "content": prompt}],
         )
 
         # A-6b — chemin background compté dans UsageLog (best-effort)
         try:
             from app.services.analytics_service import log_response_usage
+
             await log_response_usage(
-                user_id, response,
+                user_id,
+                response,
                 skill_used="memory_extraction",
                 conversation_id=conversation_id,
             )
@@ -344,7 +352,8 @@ async def _extract_facts_from_text(
                 if not _is_safe_fact(fact_text):
                     logger.warning(
                         "Rejected potentially injected fact for user %s: %.100s",
-                        user_id, fact_text,
+                        user_id,
+                        fact_text,
                     )
                     continue
                 if fact_type not in ("preference", "context", "event", "skill", "personal"):
@@ -470,9 +479,7 @@ async def extract_new_facts_for_user(user_id: str) -> int:
                 query = query.where(Message.created_at > bound)
             # Les plus RÉCENTS d'abord pour que le plafond coupe le vieux,
             # puis remise en ordre chronologique pour le prompt.
-            query = query.order_by(Message.created_at.desc()).limit(
-                _DAILY_EXTRACTION_MESSAGE_WINDOW
-            )
+            query = query.order_by(Message.created_at.desc()).limit(_DAILY_EXTRACTION_MESSAGE_WINDOW)
             rows = list((await db.execute(query)).all())
 
         if not rows:
@@ -497,19 +504,14 @@ async def extract_new_facts_for_user(user_id: str) -> int:
             # Anonymiser AVANT de tronquer : couper d'abord pourrait scinder
             # une adresse en deux et en laisser la moitié passer en clair,
             # que la regex ne reconnaît plus.
-            masque = filtre.anonymize(
-                content, ner_detection=venant_de_l_utilisateur
-            )[:_EXTRACTION_CHAR_CAP]
+            masque = filtre.anonymize(content, ner_detection=venant_de_l_utilisateur)[:_EXTRACTION_CHAR_CAP]
             role_label = "Utilisateur" if venant_de_l_utilisateur else "Assistante"
             fils.setdefault(fil_id, []).append(f"{role_label}: {masque}")
 
         if not fils:
             return 0
 
-        blocs = [
-            f"--- Fil {rang} ---\n" + "\n".join(lignes)
-            for rang, lignes in enumerate(fils.values(), start=1)
-        ]
+        blocs = [f"--- Fil {rang} ---\n" + "\n".join(lignes) for rang, lignes in enumerate(fils.values(), start=1)]
 
         # conversation_id volontairement None : le lot couvre la journée,
         # pas un fil.
@@ -528,6 +530,7 @@ async def extract_facts_for_all_users() -> None:
     """
     try:
         from app.models.user import User
+
         async with async_session() as db:
             result = await db.execute(select(User.id))
             user_ids: list[str] = [row[0] for row in result.fetchall()]
@@ -537,9 +540,7 @@ async def extract_facts_for_all_users() -> None:
             try:
                 total_facts += await extract_new_facts_for_user(uid)
             except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "extract_facts_for_all_users: failed for user %s: %s", uid, exc
-                )
+                logger.error("extract_facts_for_all_users: failed for user %s: %s", uid, exc)
 
         logger.info(
             "extract_facts_for_all_users: %d faits extraits sur %d utilisateurs",
@@ -557,32 +558,52 @@ async def extract_facts_for_all_users() -> None:
 
 # Keys that are ALWAYS included (identity-critical, cheap on tokens).
 # Anything else goes through a verbosity/relevance filter.
-_PROFILE_CORE_KEYS: frozenset[str] = frozenset({
-    "user_name", "preferred_language", "response_style",
-    "main_project", "email_provider", "timezone_reminder",
-    # Onboarding-sourced keys — always injected so agent knows them from turn 1
-    "location", "profession", "routines", "strict_rules",
-    # C2-a — identité stable que le classement ne doit jamais évincer.
-    # L'adresse de l'utilisateur est nécessaire au « mail à soi-même »
-    # (_SELF_MAIL_TOOLS), et le fuseau à toute planification. Sans ces clés
-    # au noyau, la pondération par récence les faisait sortir au profit de
-    # faits plus frais mais moins utiles (constaté sur le profil réel).
-    "primary_email", "user_email", "timezone",
-})
+_PROFILE_CORE_KEYS: frozenset[str] = frozenset(
+    {
+        "user_name",
+        "preferred_language",
+        "response_style",
+        "main_project",
+        "email_provider",
+        "timezone_reminder",
+        # Onboarding-sourced keys — always injected so agent knows them from turn 1
+        "location",
+        "profession",
+        "routines",
+        "strict_rules",
+        # C2-a — identité stable que le classement ne doit jamais évincer.
+        # L'adresse de l'utilisateur est nécessaire au « mail à soi-même »
+        # (_SELF_MAIL_TOOLS), et le fuseau à toute planification. Sans ces clés
+        # au noyau, la pondération par récence les faisait sortir au profit de
+        # faits plus frais mais moins utiles (constaté sur le profil réel).
+        "primary_email",
+        "user_email",
+        "timezone",
+    }
+)
 
 # Keys we deliberately SKIP in the compact injection — they're too
 # situation-specific to be useful in every prompt and they inflate the
 # token count. They remain in the DB and can still be retrieved via the
 # semantic RAG path when relevant.
-_PROFILE_NOISY_KEYS: frozenset[str] = frozenset({
-    "current_delivery", "ionos_client_id",
-    "upcoming_events", "daily_summary_config",
-    "news_format_preference", "news_recency_preference",
-    "news_date_tolerance", "news_topics",
-    "dev_context_tag", "gmail_preferences",
-    "notification_methods", "location_interest",
-    "shopping_routine", "secondary_project",
-})
+_PROFILE_NOISY_KEYS: frozenset[str] = frozenset(
+    {
+        "current_delivery",
+        "ionos_client_id",
+        "upcoming_events",
+        "daily_summary_config",
+        "news_format_preference",
+        "news_recency_preference",
+        "news_date_tolerance",
+        "news_topics",
+        "dev_context_tag",
+        "gmail_preferences",
+        "notification_methods",
+        "location_interest",
+        "shopping_routine",
+        "secondary_project",
+    }
+)
 
 
 # C2-a — fenêtre de candidats. Le `.limit(20)` historique écartait 218 des
@@ -590,7 +611,6 @@ _PROFILE_NOISY_KEYS: frozenset[str] = frozenset({
 # plafond de 800 caractères, qui décidait de ce qu'Ely sait de son
 # utilisateur. La table fait quelques centaines de lignes par personne ;
 # élargir la fenêtre ne coûte rien de sensible et ne touche pas au prompt.
-_PROFILE_CANDIDATE_WINDOW = 200
 
 # Demi-vie de la récence, en jours. Un fait revu il y a une semaine pèse
 # ~0,8 fois un fait revu aujourd'hui ; un fait vieux d'un an, ~0,1.
@@ -621,9 +641,7 @@ def _rank_profile_rows(rows: list) -> list:
     now = datetime.now(timezone.utc)
 
     def _score(row) -> float:
-        base = float(getattr(row, "confidence", 1.0) or 1.0) * float(
-            getattr(row, "source_count", 1) or 1
-        )
+        base = float(getattr(row, "confidence", 1.0) or 1.0) * float(getattr(row, "source_count", 1) or 1)
         last_seen = getattr(row, "last_seen", None)
         if last_seen is None:
             return base * 0.5  # jamais revu : on ne le privilégie pas
@@ -633,7 +651,7 @@ def _rank_profile_rows(rows: list) -> list:
         recency = 0.5 ** (age_days / _PROFILE_RECENCY_HALFLIFE_DAYS)
         # Racine de la fréquence : redire dix fois vaut mieux qu'une, mais pas
         # dix fois mieux — sans quoi la trivialité répétée regagne la partie.
-        return (base ** 0.5) * (0.3 + 0.7 * recency)
+        return (base**0.5) * (0.3 + 0.7 * recency)
 
     return sorted(rows, key=_score, reverse=True)
 
@@ -644,19 +662,57 @@ def _rank_profile_rows(rows: list) -> list:
 _CONTEXTUAL_RECALL_BUDGET = 500
 
 # Mots trop courants pour discriminer quoi que ce soit dans une question.
-_RECALL_STOPWORDS: frozenset[str] = frozenset({
-    "les", "des", "mes", "mon", "ma", "est", "que", "qui", "quoi", "quel",
-    "quelle", "pour", "dans", "avec", "sur", "une", ", ", "tu", "je", "il",
-    "elle", "ce", "cette", "ces", "sont", "ai", "as", "peux", "fait", "faire",
-    "deja", "déjà", "bien", "plus", "moins", "tout", "tous", "toute",
-})
+_RECALL_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "les",
+        "des",
+        "mes",
+        "mon",
+        "ma",
+        "est",
+        "que",
+        "qui",
+        "quoi",
+        "quel",
+        "quelle",
+        "pour",
+        "dans",
+        "avec",
+        "sur",
+        "une",
+        ", ",
+        "tu",
+        "je",
+        "il",
+        "elle",
+        "ce",
+        "cette",
+        "ces",
+        "sont",
+        "ai",
+        "as",
+        "peux",
+        "fait",
+        "faire",
+        "deja",
+        "déjà",
+        "bien",
+        "plus",
+        "moins",
+        "tout",
+        "tous",
+        "toute",
+    }
+)
 
 
 def _recall_tokens(text: str) -> set[str]:
     """Tokens signifiants d'un texte, pour le rapprochement lexical."""
     import re
-    raw = re.findall(r"[\w\u00c0-\u024f]+", (text or "").lower())
-    return {t for t in raw if len(t) >= 4 and t not in _RECALL_STOPWORDS}
+
+    raw = re.findall(r"[\w\u00c0-\u024f]+", (text or "").lower().replace("_", " "))
+    identifiers = set(re.findall(r"[a-z]+[-_]\d+[a-z0-9_-]*", (text or "").casefold()))
+    return identifiers | {t for t in raw if len(t) >= 4 and t not in _RECALL_STOPWORDS}
 
 
 # Seuil de quasi-doublon. 0,72 sépare les trois paraphrases mesurées en
@@ -680,14 +736,10 @@ def _too_similar(candidate: str, kept: str) -> bool:
         jaccard = len(a & b) / len(a | b)
         if jaccard >= _RECALL_SIMILARITY_THRESHOLD:
             return True
-    return difflib.SequenceMatcher(None, candidate, kept).ratio() >= (
-        _RECALL_SIMILARITY_THRESHOLD + 0.08
-    )
+    return difflib.SequenceMatcher(None, candidate, kept).ratio() >= (_RECALL_SIMILARITY_THRESHOLD + 0.08)
 
 
-async def get_query_relevant_profile(
-    user_id: str, query: str, budget: int = _CONTEXTUAL_RECALL_BUDGET
-) -> str:
+async def get_query_relevant_profile(user_id: str, query: str, budget: int = _CONTEXTUAL_RECALL_BUDGET) -> str:
     """Faits du profil pertinents POUR CETTE DEMANDE, ou chaîne vide.
 
     C'est la strate « rappel à la demande » du chantier C2 — et elle comble
@@ -725,11 +777,11 @@ async def get_query_relevant_profile(
             result = await db.execute(
                 select(UserProfile)
                 .where(UserProfile.user_id == user_id)
+                .where(UserProfile.scope.in_(allowed_scopes(REQUEST_SCOPE.get())))
                 .where(
                     (UserProfile.expires_at == None)  # noqa: E711
                     | (UserProfile.expires_at > datetime.now(timezone.utc))
                 )
-                .limit(_PROFILE_CANDIDATE_WINDOW)
             )
             rows: list[UserProfile] = list(result.scalars().all())
 
@@ -743,11 +795,13 @@ async def get_query_relevant_profile(
             overlap = q_tokens & haystack
             if not overlap:
                 continue
-            scored.append((
-                len(overlap) / len(q_tokens),
-                f"{row.key}: {str(row.value)[:110]}",
-                str(row.value).strip().lower()[:120],
-            ))
+            scored.append(
+                (
+                    len(overlap) / len(q_tokens),
+                    f"{row.key}: {str(row.value)[:110]}",
+                    str(row.value).strip().lower()[:120],
+                )
+            )
 
         if not scored:
             return ""
@@ -820,14 +874,12 @@ async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) 
             result = await db.execute(
                 select(UserProfile)
                 .where(UserProfile.user_id == user_id)
+                .where(UserProfile.scope.in_(allowed_scopes(REQUEST_SCOPE.get())))
                 .where(
                     (UserProfile.expires_at == None)  # noqa: E711
                     | (UserProfile.expires_at > datetime.now(timezone.utc))
                 )
-                .order_by(
-                    (UserProfile.confidence * UserProfile.source_count).desc()
-                )
-                .limit(max(limit, _PROFILE_CANDIDATE_WINDOW))
+                .order_by((UserProfile.confidence * UserProfile.source_count).desc())
             )
             rows: list[UserProfile] = list(result.scalars().all())
 
@@ -890,6 +942,7 @@ async def get_user_context(user_id: str, limit: int = 20, compact: bool = True) 
 # Memory consolidation
 # ---------------------------------------------------------------------------
 
+
 async def consolidate_user_memory(user_id: str) -> int:
     """Consolidate UserMemoryLog entries into UserProfile for a single user.
 
@@ -925,22 +978,21 @@ async def consolidate_user_memory(user_id: str) -> int:
             return 0
 
         log_ids = [log.id for log in logs]
-        raw_facts_text = "\n".join(
-            f"[{log.fact_type}] {log.fact}" for log in logs
-        )
+        raw_facts_text = "\n".join(f"[{log.fact_type}] {log.fact}" for log in logs)
 
         # Step 2: Fetch existing profile
         async with async_session() as db:
             result = await db.execute(
-                select(UserProfile).where(UserProfile.user_id == user_id)
+                select(UserProfile)
+                .where(UserProfile.user_id == user_id)
+                .where(UserProfile.scope.in_(allowed_scopes(REQUEST_SCOPE.get())))
             )
             existing_rows: list[UserProfile] = list(result.scalars().all())
 
         existing_profile_text = ""
         if existing_rows:
             existing_profile_text = "\n".join(
-                f"- {row.key} : {row.value} (confidence={row.confidence:.2f})"
-                for row in existing_rows
+                f"- {row.key} : {row.value} (confidence={row.confidence:.2f})" for row in existing_rows
             )
         else:
             existing_profile_text = "(aucun profil existant)"
@@ -948,6 +1000,7 @@ async def consolidate_user_memory(user_id: str) -> int:
         # Step 3: Use MAINTENANCE tier for consolidation — background task,
         # no real-time interaction required. Configurable via Settings → Niveaux de routage.
         from app.services.llm_provider import get_llm_for_tier, ComplexityTier
+
         llm = get_llm_for_tier(ComplexityTier.MAINTENANCE)
 
         prompt = _CONSOLIDATION_PROMPT.format(
@@ -957,15 +1010,20 @@ async def consolidate_user_memory(user_id: str) -> int:
         # OPTIM — 6 675 tokens de sortie par consolidation mesurés en prod,
         # le pire ratio de toutes les tâches de fond. Voir background_llm.py.
         from app.services.background_llm import ainvoke_background_with_usage
+
         raw, response = await ainvoke_background_with_usage(
-            llm, [{"role": "user", "content": prompt}],
+            llm,
+            [{"role": "user", "content": prompt}],
         )
 
         # A-6b — consolidation nocturne comptée dans UsageLog (best-effort)
         try:
             from app.services.analytics_service import log_response_usage
+
             await log_response_usage(
-                user_id, response, skill_used="memory_consolidation",
+                user_id,
+                response,
+                skill_used="memory_consolidation",
             )
         except Exception:
             pass
@@ -997,6 +1055,7 @@ async def consolidate_user_memory(user_id: str) -> int:
                 result = await db.execute(
                     select(UserProfile)
                     .where(UserProfile.user_id == user_id)
+                    .where(UserProfile.scope.in_(allowed_scopes(REQUEST_SCOPE.get())))
                     .where(UserProfile.key == key)
                 )
                 existing = result.scalar_one_or_none()
@@ -1008,22 +1067,20 @@ async def consolidate_user_memory(user_id: str) -> int:
                     existing.last_seen = datetime.now(timezone.utc)
                     existing.updated_at = datetime.now(timezone.utc)
                 else:
-                    db.add(UserProfile(
-                        user_id=user_id,
-                        key=key,
-                        value=value,
-                        confidence=confidence,
-                        source_count=1,
-                        last_seen=datetime.now(timezone.utc),
-                        updated_at=datetime.now(timezone.utc),
-                    ))
+                    db.add(
+                        UserProfile(
+                            user_id=user_id,
+                            key=key,
+                            value=value,
+                            confidence=confidence,
+                            source_count=1,
+                            last_seen=datetime.now(timezone.utc),
+                            updated_at=datetime.now(timezone.utc),
+                        )
+                    )
 
             # Step 5: Mark logs as consolidated
-            await db.execute(
-                update(UserMemoryLog)
-                .where(UserMemoryLog.id.in_(log_ids))
-                .values(is_consolidated=True)
-            )
+            await db.execute(update(UserMemoryLog).where(UserMemoryLog.id.in_(log_ids)).values(is_consolidated=True))
             await db.commit()
 
         logger.info(
@@ -1046,10 +1103,12 @@ async def consolidate_user_memory(user_id: str) -> int:
 # Nightly scheduler entry point
 # ---------------------------------------------------------------------------
 
+
 async def consolidate_all_users() -> None:
     """Consolidate memory for ALL users. Called by APScheduler at 3 AM."""
     try:
         from app.models.user import User
+
         async with async_session() as db:
             result = await db.execute(select(User.id))
             user_ids: list[str] = [row[0] for row in result.fetchall()]

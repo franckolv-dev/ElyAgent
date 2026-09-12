@@ -197,3 +197,27 @@ async def test_gateway_google_multiaccount_alias():
     assert "messages" in msg["content"]
     assert captured.get("user_google_credentials_json") == '{"tok":"pro"}'
     assert "account" not in captured
+
+
+@pytest.mark.asyncio
+async def test_reported_error_is_recorded_and_returns_recovery_guidance(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+    from app.services.tool_gateway import execute_tool_call
+
+    recorded = AsyncMock()
+    monkeypatch.setattr('app.services.learning.record_tool_error', recorded)
+    class FailingTool:
+        name = 'lookup_test'
+        async def ainvoke(self, args):
+            return {'ok': False, 'error': 'Timeout: upstream unavailable'}
+
+    ctx = _ctx()
+    msg = await execute_tool_call(ctx, {'name': 'lookup_test', 'args': {'query': 'x'}, 'id': 'recover'},
+                                  {'lookup_test': FailingTool()})
+    await asyncio.sleep(0)  # Let the existing background task recorder run.
+    assert msg['status'] == 'error'
+    assert 'déjà abouti' in msg['content']
+    recorded.assert_awaited_once()
+    assert recorded.call_args.kwargs['user_id'] == ctx.user_id
+    assert recorded.call_args.kwargs['error_type'] == 'ToolReportedError'

@@ -300,22 +300,17 @@ async def test_memory_search_legacy_and_memory_recall_unified_agree(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_error_type_recall_is_explicitly_unreadable(monkeypatch) -> None:
-    """CONTRAT MODIFIÉ EN V0-5. Avant : `recall(ERROR)` rendait `[]`, et le
-    modèle lisait « aucun souvenir » — donc « je n'ai jamais échoué là-dessus ».
-    Maintenant : le service lève `UnreadableMemoryType`, et l'outil dit
-    explicitement que cette mémoire ne se lit pas. Les erreurs sont toujours
-    capturées (failure_cases) ; c'est la LECTURE qui n'existe pas, et le modèle
-    ne doit pas confondre les deux."""
-    from app.services.memory.recall_service import UnreadableMemoryType
-
-    svc = get_memory_recall_service()
-    with pytest.raises(UnreadableMemoryType):
-        await svc.recall(MemoryType.ERROR, "doctolib", user_id="u1", limit=5)
-
+async def test_error_type_recall_is_available_to_the_agent(monkeypatch) -> None:
+    from unittest.mock import AsyncMock
+    from app.services.memory.error_store import ErrorStore
     from app.agent.tools.memory_recall_tool import memory_recall
+    reader = AsyncMock(return_value=[{
+        "id": "failure-1", "tool_name": "doctolib", "error_type": "TimeoutError",
+        "error_msg": "délai dépassé", "recovered": False, "created_at": "2026-09-09",
+    }])
+    monkeypatch.setattr(ErrorStore, "get_relevant", reader)
     out = await memory_recall.ainvoke({
         "query": "doctolib", "user_id": "u1", "memory_type": "error",
     })
-    assert "pas consultable" in out
-    assert "ne conclus pas" in out.lower()
+    assert "doctolib" in out and "délai dépassé" in out
+    assert "pas consultable" not in out

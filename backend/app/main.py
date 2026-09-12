@@ -168,6 +168,9 @@ def _build_vault_scheduler():
         # maintenant de _job_defaults() — inutile de le reposer ici.
     )
 
+    from app.services.event_automations import tick as _event_tick
+    _vault_scheduler.add_job(_event_tick, trigger="interval", seconds=60, id="event_automations")
+
     return _vault_scheduler
 
 
@@ -187,6 +190,9 @@ def _build_memory_scheduler():
         extract_facts_for_all_users,
     )
     _memory_scheduler = AsyncIOScheduler(job_defaults=_job_defaults())
+    from app.services.memory.consolidation import run_consolidation
+    _memory_scheduler.add_job(run_consolidation, trigger="interval", seconds=60, id="memory_execution_evidence", max_instances=1, coalesce=True)
+
     # ⚠️ CE QUE ÇA CORRIGE (02/09/2026) : l'extraction de faits partait à la
     # FIN DE CHAQUE TOUR — 336 appels de modèle sur 30 jours, contre 208
     # demandes web réelles. Elle est groupée : un appel par utilisateur et par
@@ -453,6 +459,14 @@ async def lifespan(app: FastAPI):
 
     await get_memory_manager().init_collections()
     await get_fts_store().init()
+    # Warm the local encoder before accepting requests, not on the first question.
+    try:
+        import asyncio
+        from app.services.memory._infra import get_memory_infra
+        await asyncio.wait_for(get_memory_infra().embed("préparation du contexte mémoire"), timeout=10)
+    except Exception as exc:
+        _startup_logger.warning("Memory encoder warm-up deferred: %s", type(exc).__name__)
+
     # Sprint 1 — Memory recall: messages_fts indexes the literal messages
     # of every conversation for cross-session retrieval. Separate from
     # memory_fts (which indexes extracted facts).
@@ -621,7 +635,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Cyber-Entity Agent API",
-    version="3.0.0",
+    version="3.1.0",
     lifespan=lifespan,
 )
 
@@ -762,3 +776,6 @@ import os as _os
 _desktop_static = _os.path.join(_os.path.dirname(__file__), "..", "static", "desktop")
 if _os.path.isdir(_desktop_static):
     app.mount("/static/desktop", StaticFiles(directory=_desktop_static), name="desktop-static")
+
+from app.routers.autonomy import router as autonomy_router
+app.include_router(autonomy_router)

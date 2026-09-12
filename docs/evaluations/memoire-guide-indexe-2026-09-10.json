@@ -1,0 +1,23 @@
+{
+  "indexed": {
+    "document_id": "bd1696e6-0720-4252-90aa-b2cd91e8c03b",
+    "title": "Comprendre et gérer les souvenirs d’Ely",
+    "source_file": "docs/guide-memoire-ely.md",
+    "chunk_count": 3,
+    "status": "ingested"
+  },
+  "search_checks": [
+    {
+      "query": "Comment corriger un souvenir dans ton interface ?",
+      "guide_found": true
+    },
+    {
+      "query": "Comment limiter un souvenir à mon compte bureau ?",
+      "guide_found": true
+    },
+    {
+      "query": "Comment voir quels souvenirs tu as utilisés pour une réponse ?",
+      "guide_found": true
+    }
+  ]
+}

@@ -137,8 +137,10 @@ class SkillContentFormat:
 
     MARKDOWN_PLAYBOOK = "markdown_playbook"
     PYTHON_TOOL = "python_tool"
+    # Pure programs run by sandbox_run_tool; never imported or bound as code.
+    SANDBOX_PROGRAM = "sandbox_program"
 
-    ALL = {MARKDOWN_PLAYBOOK, PYTHON_TOOL}
+    ALL = {MARKDOWN_PLAYBOOK, PYTHON_TOOL, SANDBOX_PROGRAM}
 
 
 # ── Tool profile enum (V3, Sprint 4b) ───────────────────────────────────────

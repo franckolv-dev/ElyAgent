@@ -22,6 +22,7 @@ import { api } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LangSwitcher } from "@/components/layout/LangSwitcher";
 import { useTranslations } from "next-intl";
+import { CodexConnectionBanner } from "./CodexConnectionBanner";
 
 interface HeaderProps {
   wsStatus?: "connected" | "disconnected" | "connecting";
@@ -37,12 +38,14 @@ export function Header({ wsStatus, children }: HeaderProps) {
   }, []);
 
   return (
+    <>
     <header className="topbar">
       {/* Hamburger — mobile only, opens the sidebar drawer */}
       <button
         type="button"
         className="mobile-nav-toggle"
-        aria-label="Open menu"
+        aria-label={t("openMenu")}
+        aria-controls="ely-sidebar"
         onClick={() =>
           window.dispatchEvent(new CustomEvent("ely-toggle-mobile-nav"))
         }
@@ -52,6 +55,8 @@ export function Header({ wsStatus, children }: HeaderProps) {
 
       {/* La marque a quitté l'entête : elle vit en tête de sidebar depuis la
           refonte 09/2026, et l'entête commence directement par l'état. */}
+
+      <div className="workspace-heading"><strong>{t("workspace")}</strong><span>{t("workspaceSubtitle")}</span></div>
 
       {/* Left: status pill (only when a connection status is provided) */}
       <div className="topbar-center">
@@ -100,5 +105,7 @@ export function Header({ wsStatus, children }: HeaderProps) {
         )}
       </div>
     </header>
+    <CodexConnectionBanner />
+    </>
   );
 }

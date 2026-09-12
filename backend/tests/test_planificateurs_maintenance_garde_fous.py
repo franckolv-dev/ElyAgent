@@ -50,11 +50,16 @@ CRONS_ATTENDUS = {
         "oauth_state_cleanup",
         "credential_store_eviction",
         "watched_folders_autoindex",
+        # 10/09/2026 — les automatismes (mail, agenda, document) sont
+        # interrogés toutes les minutes, sans modèle de langage.
+        "event_automations",
     },
     "_build_memory_scheduler": {
         # 02/09/2026 — l'extraction de faits est passée du fil du chat à une
         # passe quotidienne (02:45, avant la consolidation de 03:00).
         "memory_extraction_daily",
+        # 10/09/2026 — les preuves d'exécution (accusés) alimentent la mémoire.
+        "memory_execution_evidence",
         "memory_consolidation_night",
         "memory_consolidation_afternoon",
         "qdrant_backup",

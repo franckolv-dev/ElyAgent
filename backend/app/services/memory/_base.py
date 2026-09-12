@@ -21,6 +21,7 @@ Provides:
 The base does not own any state itself — it composes a `MemoryInfra`
 singleton passed in by every concrete store.
 """
+
 from __future__ import annotations
 
 import logging
@@ -59,9 +60,8 @@ class BaseStore:
         if isinstance(created_at_ts, str):
             try:
                 from datetime import datetime
-                created_at_ts = datetime.fromisoformat(
-                    created_at_ts.replace("Z", "+00:00")
-                ).timestamp()
+
+                created_at_ts = datetime.fromisoformat(created_at_ts.replace("Z", "+00:00")).timestamp()
             except (ValueError, TypeError):
                 return 1.0
         age_days = max(0.0, (time.time() - created_at_ts) / 86400.0)
@@ -71,9 +71,7 @@ class BaseStore:
     def _keyword_score(query: str, text: str) -> float:
         """Fraction of significant query words present in *text*, in [0, 1]."""
         words = {
-            w.strip(".,!?;:\"'()[]")
-            for w in query.lower().split()
-            if len(w.strip(".,!?;:\"'()[]")) > 2
+            w.strip(".,!?;:\"'()[]") for w in query.lower().split() if len(w.strip(".,!?;:\"'()[]")) > 2
         } - STOP_WORDS
         if not words:
             return 0.0
@@ -118,18 +116,45 @@ class BaseStore:
         beta: float = 0.25,
         fts_boost: float = 0.10,
     ) -> list:
+        import asyncio
+        from types import SimpleNamespace
         from app.services.fts_store import get_fts_store
-        fts_matches = set(
-            await get_fts_store().search(
-                query, user_id, collection, limit=limit * 4
-            )
-        )
-        candidates = await self._infra.qdrant_candidates(
-            collection, vector, user_id, limit, score_threshold
-        )
-        if not candidates:
+        from app.services.memory.selection import fuse_ranks, eligible_payload, REQUEST_SCOPE
+
+        if not user_id:
             return []
-        return self._rerank(
-            candidates, query, text_fields,
-            fts_matches, decay_lambda, alpha, beta, fts_boost, limit,
+
+        # Independent engines: an unavailable dense index must not hide exact matches.
+        async def safe(task):
+            try:
+                return await asyncio.wait_for(task, 1.5)
+            except Exception:
+                return []
+
+        lexical, dense = await asyncio.gather(
+            safe(get_fts_store().search(query, user_id, collection, limit=limit * 4)),
+            safe(self._infra.qdrant_candidates(collection, vector, user_id, limit, score_threshold)),
         )
+        by_id = {str(h.id): h for h in dense}
+        missing = [i for i in lexical if i not in by_id]
+        for h in await safe(self._infra.points_by_ids(collection, missing, user_id)):
+            by_id[str(h.id)] = SimpleNamespace(id=h.id, payload=h.payload, score=0.0)
+        ranks = fuse_ranks([[str(h.id) for h in dense], lexical])
+        # Pin only helps among relevant matches, never introduces unrelated facts.
+        ranks.sort(key=lambda item: (not bool(by_id.get(item[0]) and by_id[item[0]].payload.get("pinned")), -item[1]))
+        # Old, still-valid facts are not made obsolete by elapsed wall time.
+        # Version/expiry/scope filters apply before any optional model sees data.
+        selected = []
+        fingerprints = set()
+        for key, score in ranks:
+            h = by_id.get(key)
+            if h is None or not eligible_payload(h.payload, user_id, REQUEST_SCOPE.get()):
+                continue
+            fingerprint = " ".join(str(h.payload.get(f, "")) for f in text_fields).casefold().strip()
+            if not fingerprint or fingerprint in fingerprints:
+                continue
+            fingerprints.add(fingerprint)
+            selected.append(SimpleNamespace(id=h.id, payload=h.payload, score=score))
+            if len(selected) == limit:
+                break
+        return selected

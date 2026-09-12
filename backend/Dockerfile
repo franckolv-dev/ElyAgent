@@ -23,6 +23,9 @@ COPY pyproject.toml uv.lock ./
 
 # Install dependencies (no editable install in production)
 RUN uv sync --frozen --no-dev --no-editable
+# Preload the reference tokenizer at build time: no network on user requests.
+ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
+RUN uv run --no-sync python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
 # ── Couche 2 PII NER — install opt-in (PII_NER_ENABLED) ───────────────
 # Le package gliner tire torch (~800 Mo installés) : on ne l'embarque QUE
@@ -33,7 +36,7 @@ RUN uv sync --frozen --no-dev --no-editable
 # l'hôte (scripts/export_gliner_onnx.py) vers ./data/pii_ner, monté en volume.
 ARG PII_NER_INSTALL=0
 RUN if [ "$PII_NER_INSTALL" = "1" ]; then \
-        uv pip install "gliner>=0.2.26"; \
+        uv pip install "gliner==0.2.28" "torch==2.14.0" "transformers==5.13.1" "triton==3.8.0" "numpy==2.4.3" "tokenizers==0.22.2" "huggingface-hub==1.7.2"; \
     fi
 
 # Config files (hosts, providers) mounted via volume at runtime

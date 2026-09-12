@@ -13,7 +13,7 @@
 """Auto-indexer service — scans WatchedFolder rows and ingests files into RAG.
 
 Pipeline (per folder) :
-  1. Ask the user's ELY Desktop daemon to walk the folder (search_files)
+  1. Ask the user's ELY Desktop daemon to list each folder (list_dir)
   2. Filter by allowed extensions + excluded path substrings
   3. For each candidate file, check if it's already ingested
      (matching ``source_file`` in the user's knowledge collection)
@@ -54,7 +54,7 @@ import logging
 import os
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from sqlalchemy import select
 
@@ -69,9 +69,9 @@ logger = logging.getLogger(__name__)
 # the same folder concurrently. Keys are folder.id, values are bools.
 _running_scans: set[str] = set()
 
-# Cap to keep a single scan bounded — the daemon's search_files already
-# truncates at 50 by default, but a user might have a custom build.
+# Cap new files per scan, after excluding already indexed documents.
 _MAX_FILES_PER_SCAN = 500
+_MAX_DIRECTORIES_PER_SCAN = 10_000
 
 # Per-file size cap to skip huge files that would clobber the embedder
 # and bloat Qdrant. RAG handles up to 50 MB but for auto-index we're more
@@ -178,24 +178,53 @@ async def _local_read(path: str) -> tuple[bytes, str]:
     return await asyncio.to_thread(_lire), "binary"
 
 
-async def _daemon_walk(user_id: str, folder: str, recursive: bool) -> list[str]:
-    """Ask the daemon to list every file in *folder*. Returns absolute paths.
+async def _daemon_walk(
+    user_id: str, folder: str, recursive: bool, excludes: list[str] | None = None,
+) -> list[str]:
+    """List files using the Desktop v1 protocol, preserving host path syntax.
 
-    Uses the existing `search_files` daemon command with a permissive
-    pattern. Recursive is implemented client-side by recursing on dir
-    entries returned by `list_dir` if `recursive=True` and `search_files`
-    doesn't support recursive globs on this daemon version.
+    Desktop's search_files matches basenames with Go filepath.Match: **/*
+    cannot match, and no matches serialize as null. Its results are relative
+    and include directories. list_dir gives explicit types and also reports
+    missing/inaccessible directories instead of silently treating them as empty.
+    Symlinks are not followed; each visited directory is sandbox-checked by Desktop.
     """
-    pattern = "**/*" if recursive else "*"
-    try:
+    path_type = PureWindowsPath if PureWindowsPath(folder).is_absolute() else PurePosixPath
+    pending = [path_type(folder)]
+    visited = set()
+    paths: list[str] = []
+    while pending:
+        directory = pending.pop()
+        if directory in visited:
+            continue
+        if len(visited) >= _MAX_DIRECTORIES_PER_SCAN:
+            raise ValueError("Trop de sous-dossiers : choisissez un dossier plus précis.")
+        visited.add(directory)
         result = await desktop_registry.send_command(
-            user_id, "search_files", {"directory": folder, "pattern": pattern}
+            user_id, "list_dir", {"path": str(directory)}
         )
-        matches = result.get("matches", [])
-        return [m for m in matches if isinstance(m, str)]
-    except Exception as exc:
-        logger.warning("auto_indexer: walk failed for %s: %s", folder, exc)
-        raise
+        if not isinstance(result, dict) or "entries" not in result:
+            raise ValueError("Réponse de parcours invalide reçue d’ELY Desktop.")
+        entries = result["entries"]
+        if entries is None:  # Go nil slices can be encoded as JSON null.
+            entries = []
+        if not isinstance(entries, list):
+            raise ValueError("Liste de fichiers invalide reçue d’ELY Desktop.")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError("Entrée de dossier invalide reçue d’ELY Desktop.")
+            name = entry.get("name")
+            if (not isinstance(name, str) or not name or name in {".", ".."}
+                    or path_type(name).anchor or len(path_type(name).parts) != 1):
+                raise ValueError("Nom de fichier invalide reçu d’ELY Desktop.")
+            child = directory / name
+            if _file_excluded(str(child), excludes or []):
+                continue
+            if entry.get("type") == "file":
+                paths.append(str(child))
+            elif entry.get("type") == "dir" and recursive:
+                pending.append(child)
+    return paths
 
 
 async def _daemon_read(user_id: str, path: str) -> tuple[bytes, str]:
@@ -323,7 +352,7 @@ async def scan_folder(folder_id: str) -> dict:
             if mode == "local":
                 all_paths = await _local_walk(path, recursive)
             else:
-                all_paths = await _daemon_walk(user_id, path, recursive)
+                all_paths = await _daemon_walk(user_id, path, recursive, excludes)
         except Exception as exc:
             summary["status"] = "error"
             summary["message"] = f"Parcours du dossier impossible : {exc}"
@@ -336,21 +365,6 @@ async def scan_folder(folder_id: str) -> dict:
             if _ext_of(p) in allowed_ext
             and not _file_excluded(p, excludes)
         ]
-        candidates = retenus[:_MAX_FILES_PER_SCAN]
-        # ⚠️ Une troncature muette se lit comme « tout est indexé ». Sur un
-        # `Documents` de plusieurs milliers de fichiers, le plafond mord au
-        # premier scan et l'utilisateur n'a aucun moyen de le savoir — c'est
-        # la même classe de silence que le reste de ce module. Les scans
-        # horaires suivants avancent, puisque les fichiers déjà ingérés sont
-        # ignorés à l'étape 3.
-        tronque = len(retenus) - len(candidates)
-        if tronque > 0:
-            logger.info(
-                "auto_indexer: %s — %d fichiers retenus, %d traités ce tour "
-                "(plafond %d), le reste suivra aux prochains scans",
-                path, len(retenus), len(candidates), _MAX_FILES_PER_SCAN,
-            )
-
         # ── 3. Dedup against current RAG knowledge for this user ──────────
         rag = get_rag_service()
         try:
@@ -359,12 +373,17 @@ async def scan_folder(folder_id: str) -> dict:
         except Exception:
             existing_sources = set()
 
+        # Applying the cap before dedup would revisit the same first 500
+        # documents forever, starving every later file on subsequent scans.
+        new_paths = [p for p in retenus
+                     if p not in existing_sources and Path(p).name not in existing_sources]
+        summary["skipped"] = len(retenus) - len(new_paths)
+        candidates = new_paths[:_MAX_FILES_PER_SCAN]
+        remaining = len(new_paths) - len(candidates)
+
         # ── 4. Ingest new ─────────────────────────────────────────────────
         for fpath in candidates:
             fname = Path(fpath).name
-            if fpath in existing_sources or fname in existing_sources:
-                summary["skipped"] += 1
-                continue
             try:
                 if mode == "local":
                     raw_bytes, _enc = await _local_read(fpath)
@@ -406,7 +425,7 @@ async def scan_folder(folder_id: str) -> dict:
         # ── 5. Compute status + persist ───────────────────────────────────
         if summary["errors"] > 0 and summary["indexed"] == 0:
             summary["status"] = "error"
-        elif summary["errors"] > 0:
+        elif summary["errors"] > 0 or remaining:
             summary["status"] = "partial"
         else:
             summary["status"] = "ok"
@@ -419,6 +438,8 @@ async def scan_folder(folder_id: str) -> dict:
             f"Indexé {summary['indexed']}, ignoré {summary['skipped']}, "
             f"erreurs {summary['errors']} — via {_source}"
         )
+        if remaining:
+            summary["message"] += f" — {remaining} fichier(s) restant(s) au prochain scan"
 
         await _consigner(
             folder_id, summary["status"], summary["message"], summary["indexed"],

@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import {CriteriaEditor} from "@/app/autonomy/criteria";
+import {type Check} from "@/lib/autonomy";
 import { useTranslations } from "next-intl";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -362,6 +364,7 @@ function MissionCard({ mission, onChanged, onEdit }: { mission: Mission; onChang
 function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => void; onCreated: () => void; mission?: Mission }) {
   const t = useTranslations("missions");
   const isEdit = !!mission;
+  const [checks, setChecks] = useState<Check[]>([]);
   const [title, setTitle]   = useState(mission?.title ?? "");
   const [goal, setGoal]     = useState(mission?.goal ?? "");
   const [budgetIter, setBudgetIter] = useState(mission?.budget_iterations ?? 100);
@@ -391,7 +394,7 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
       if (isEdit) {
         await missionsApi.update(mission!.id, body);
       } else {
-        await missionsApi.create(body);
+        await missionsApi.create({...body, checks});
       }
       onCreated();
     } catch (e) {
@@ -409,7 +412,7 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
           <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
           <div>
             <label className="text-[11px] text-text-muted block mb-1">{t("titleLabel")}</label>
             <input
@@ -433,6 +436,7 @@ function CreateMissionModal({ onClose, onCreated, mission }: { onClose: () => vo
           </div>
 
 
+          {!isEdit && <CriteriaEditor value={checks} onChange={setChecks}/>}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-text-muted block mb-1">

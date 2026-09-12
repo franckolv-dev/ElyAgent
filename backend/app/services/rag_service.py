@@ -414,7 +414,12 @@ class RAGService:
             points=points,
         )
 
+        from app.services.fts_store import get_fts_store
+        for point in points:
+            await get_fts_store().store(point.payload["content"], user_id, collection, str(point.id))
         logger.info("Document '%s' ingested: %d chunks stored", source_file, total_chunks)
+        from app.services.memory.query_cache import invalidate
+        invalidate(user_id)
         return {
             "document_id": document_id,
             "title": doc_title,
@@ -450,16 +455,9 @@ class RAGService:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
 
             vector = await self._embed(query)
-            result = await asyncio.to_thread(
-                self.client.query_points,
-                collection_name=_COLLECTION_KNOWLEDGE,
-                query=vector,
-                query_filter=Filter(
-                    must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
-                ),
-                limit=limit,
-                score_threshold=score_threshold,
-                with_payload=True,
+            from app.services.memory._base import BaseStore
+            hits = await BaseStore(get_memory_manager()._infra)._search_hybrid(
+                _COLLECTION_KNOWLEDGE, query, vector, user_id, limit, score_threshold, ["content"], decay_lambda=0,
             )
             return [
                 {
@@ -470,7 +468,7 @@ class RAGService:
                     "total_chunks": hit.payload.get("total_chunks", 0),
                     "score": hit.score,
                 }
-                for hit in result.points
+                for hit in hits
             ]
         except Exception as exc:
             logger.warning("Knowledge search failed: %s", exc)
@@ -480,7 +478,7 @@ class RAGService:
     # Management
     # ------------------------------------------------------------------
 
-    async def list_documents(self, user_id: str) -> list[dict]:
+    async def list_documents(self, user_id: str, *, created_since: float | None = None) -> list[dict]:
         """List all documents ingested by *user_id*.
 
         Multi-tenant safety: refuse empty user_id (see search_knowledge).
@@ -491,7 +489,7 @@ class RAGService:
             logger.warning("list_documents refused: empty user_id (tenant isolation)")
             return []
         try:
-            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 
             # Scroll all points for this user in the knowledge collection
             all_points = []
@@ -500,10 +498,10 @@ class RAGService:
                 scroll_kwargs = {
                     "collection_name": _COLLECTION_KNOWLEDGE,
                     "scroll_filter": Filter(
-                        must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+                        must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))] + ([FieldCondition(key="created_at",range=Range(gte=created_since))] if created_since is not None else [])
                     ),
                     "limit": 100,
-                    "with_payload": True,
+                    "with_payload": ["document_id", "title", "source_file", "total_chunks", "created_at"],
                 }
                 if offset is not None:
                     scroll_kwargs["offset"] = offset
@@ -584,6 +582,17 @@ class RAGService:
                 MatchValue,
             )
 
+            point_ids = []
+            cursor = None
+            while True:
+                page, cursor = await asyncio.to_thread(
+                    self.client.scroll, collection_name=_COLLECTION_KNOWLEDGE,
+                    scroll_filter=Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id)), FieldCondition(key="document_id", match=MatchValue(value=document_id))]),
+                    offset=cursor, limit=256, with_payload=False,
+                )
+                point_ids.extend(str(p.id) for p in page)
+                if cursor is None:
+                    break
             # Qdrant supports deleting by filter via FilterSelector
             await asyncio.to_thread(
                 self.client.delete,
@@ -597,6 +606,13 @@ class RAGService:
                     )
                 ),
             )
+            from app.services.fts_store import _connect, _db_path
+            async with _connect(_db_path()) as db:
+                for point_id in point_ids:
+                    await db.execute("DELETE FROM memory_fts WHERE user_id=? AND collection=? AND qdrant_id=?", (user_id, _COLLECTION_KNOWLEDGE, point_id))
+                await db.commit()
+            from app.services.memory.query_cache import invalidate
+            invalidate(user_id)
             logger.info("Deleted document %s for user %s", document_id, user_id)
             return True
         except Exception as exc:

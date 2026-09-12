@@ -1,0 +1,32 @@
+{
+  "/api/me/memories/families": {
+    "status": 200,
+    "items": 0
+  },
+  "/api/me/memories/profile": {
+    "status": 200,
+    "items": 50
+  },
+  "/api/me/memories/selections": {
+    "status": 200,
+    "items": 1
+  },
+  "/api/me/memories/scopes": {
+    "status": 200,
+    "items": 4
+  },
+  "/api/autonomy/rules": {
+    "status": 200,
+    "items": 0
+  },
+  "unauthenticated_status": 401,
+  "revision": "0039_memory_context",
+  "integrity": "ok",
+  "foreign_key_violations": 599,
+  "dependencies": {
+    "gliner": "0.2.28",
+    "transformers": "5.13.1",
+    "torch": "2.14.0",
+    "tiktoken": "0.12.0"
+  }
+}

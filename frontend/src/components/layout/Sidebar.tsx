@@ -211,13 +211,16 @@ export function Sidebar() {
         onClick={() => setMobileOpen(false)}
         aria-hidden="true"
       />
-      <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+      <aside id="ely-sidebar" className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
+        }}>
       {/* Marque — reprise de la topbar à la refonte 09/2026 */}
       <div className="brand">
         <div className="brand-logo">
-          <Zap size={16} />
+          <span className="ely-mark" aria-hidden="true" />
         </div>
-        <span className="brand-name">ELY AGENT</span>
+        <div><span className="brand-name">ELY</span><span className="brand-subtitle">{t("tagline")}</span></div>
       </div>
 
       {/* New conversation CTA — au-dessus de la navigation */}

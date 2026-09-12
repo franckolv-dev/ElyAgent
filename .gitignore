@@ -174,3 +174,6 @@ docs_internes/
 # Voix clonées : les enregistrements restent sur la machine
 voice/xtts/voices/
 voice/xtts/.venv/
+
+# Journal du service vocal local
+voice/xtts/*.log

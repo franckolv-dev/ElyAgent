@@ -93,7 +93,7 @@ async def test_list_incidents_joins_outcome_context() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_incident_sets_status_and_excludes_from_open() -> None:
+async def test_confirming_diagnosis_keeps_it_in_follow_up() -> None:
     from app.database import async_session
     from app.routers.learning_skills import (
         IncidentResolveRequest,
@@ -112,14 +112,15 @@ async def test_resolve_incident_sets_status_and_excludes_from_open() -> None:
     assert out.processed_at is not None
     assert out.resolution == "cause juste"
 
-    # n'apparaît plus dans "open", mais bien dans "all"
+    # Confirmation is classification, not a repair.
     async with async_session() as db:
         open_rows = await list_incidents(status="open", user_id=uid, limit=100,
                                          _admin=_fake_admin(), db=db)
     async with async_session() as db:
         all_rows = await list_incidents(status="all", user_id=uid, limit=100,
                                         _admin=_fake_admin(), db=db)
-    assert open_rows == []
+    assert len(open_rows) == 1
+    assert open_rows[0].status == "validated"
     assert len(all_rows) == 1
     assert all_rows[0].status == "validated"
 

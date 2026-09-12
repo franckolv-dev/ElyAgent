@@ -269,9 +269,13 @@ async def python_execute(code: str) -> str:
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(), timeout=_TIMEOUT
                 )
-            except asyncio.TimeoutError:
-                proc.kill()
+            except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+                # A stopped mission must stop its computation as well.
+                if proc.returncode is None:
+                    proc.kill()
                 await proc.communicate()
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
                 return f"Timeout : l'exécution a dépassé {_TIMEOUT} secondes."
 
             out = stdout.decode("utf-8", errors="replace").strip()

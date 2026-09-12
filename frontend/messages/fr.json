@@ -21,7 +21,10 @@
     "connecting": "Connexion…",
     "redirecting": "Redirection…",
     "noData": "Aucune donnée disponible",
-    "admin": "ADMIN"
+    "admin": "ADMIN",
+    "workspace": "Espace de travail",
+    "workspaceSubtitle": "Une intention. Des actions.",
+    "openMenu": "Ouvrir le menu"
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",
@@ -56,7 +59,9 @@
     "navReversibleActions": "Annulations",
     "navGroupAdmin": "Admin",
     "navMemories": "Mes mémoires",
-    "navTransparency": "Transparence"
+    "navTransparency": "Transparence",
+    "tagline": "Votre intelligence personnelle",
+    "navAutonomy": "Autonomie"
   },
   "knowledge": {
     "title": "Base de connaissances",
@@ -114,7 +119,7 @@
     }
   },
   "chatInput": {
-    "placeholder": "Envoyer un message… (Entrée pour envoyer, Maj+Entrée pour nouvelle ligne)",
+    "placeholder": "Écrivez à Ely…",
     "removeCapture": "Retirer la capture",
     "capturePreview": "Aperçu capture",
     "screenshotPreview": "Aperçu de la capture d'écran",
@@ -124,23 +129,41 @@
     "stop": "Interrompre",
     "footerHelp": "Entrée ↵ envoyer · Maj+Entrée nouvelle ligne",
     "attachedFiles": "{count} fichier(s) joint(s)",
-    "transcribing": "Transcription en cours…"
+    "transcribing": "Transcription en cours…",
+    "send": "Envoyer"
   },
   "chat": {
     "placeholder": "Demandez à Ély n'importe quoi…",
     "send": "Envoyer",
-    "title": "ELY EST EN LIGNE",
+    "title": "Qu’allons-nous accomplir ?",
     "suggestions": {
       "hosts": "Quels hôtes sont configurés ?",
       "sysinfo": "Infos système",
       "disk": "Utilisation du disque",
       "unreadEmails": "Résumé des emails non lus"
     },
-    "welcome": "Votre agent IA est prêt. Demandez-lui d'exécuter des commandes, analyser des fichiers ou gérer vos systèmes.",
+    "welcome": "Confiez-moi une question, une tâche ou une mission.",
     "resize": "Redimensionner le panneau",
     "error": "Erreur : {message}",
     "newConversation": "Nouvelle conversation",
-    "clickToRename": "Cliquer pour renommer"
+    "clickToRename": "Cliquer pour renommer",
+    "intents": {
+      "brief": {
+        "title": "Faire le point",
+        "description": "Résumer, rechercher et clarifier",
+        "prompt": "Fais le point sur mes mails non lus et mon agenda du jour, puis propose les priorités."
+      },
+      "action": {
+        "title": "Passer à l’action",
+        "description": "Créer, organiser et automatiser",
+        "prompt": "Aide-moi à organiser un projet : définissons le résultat attendu et les actions à réaliser."
+      },
+      "mission": {
+        "title": "Voir plus loin",
+        "description": "Planifier une mission autonome",
+        "prompt": "Je veux te confier une mission autonome. Aide-moi à préciser son objectif, le livrable et les contraintes."
+      }
+    }
   },
   "messageBubble": {
     "goodResponse": "Bonne réponse",
@@ -166,7 +189,19 @@
     "hitlSending": "Envoi…",
     "hitlFailed": "Échec — réessaie",
     "voiceActive": "Voix active",
-    "voiceMuted": "Voix muette"
+    "voiceMuted": "Voix muette",
+    "enableVoice": "Activer la voix",
+    "sessionTitle": "Cette session",
+    "model": "Modèle",
+    "latency": "Latence",
+    "states": {
+      "idle": "Disponible",
+      "thinking": "En réflexion",
+      "speaking": "Je vous parle",
+      "alert": "Votre accord est requis",
+      "listening": "À votre écoute"
+    },
+    "voiceUnavailable": "Lecture vocale indisponible. La réponse reste accessible dans le chat."
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -345,24 +380,22 @@
     "flash_restore": "« {name} » restaurée en candidate."
   },
   "incidents": {
-    "frozen_title": "Fabrique d'outils gelée.",
-    "frozen_hint": "Aucun code d'outil n'est généré (AUTO_TOOL_GENERATION_ENABLED=false, décision du 02/09). Valide l'hypothèse si elle te paraît juste, rejette-la sinon : ni l'un ni l'autre ne change le comportement d'Ely, c'est un classement.",
     "title": "Incidents & propositions",
-    "subtitle": "Exécutions douteuses ou échouées qu'Ely a diagnostiquées — à valider",
+    "subtitle": "Corriger les causes et suivre les prochaines exécutions",
     "refreshTooltip": "Rafraîchir",
-    "adminNote": "Quand une tâche planifiée ou une mission n'aboutit pas vraiment, Ely pose un verdict puis une hypothèse de cause. Tu arbitres : valider, rejeter, ou agir selon la voie (B = générer un outil, C = ajuster config/prompt, D = ticket humain).",
+    "adminNote": "Confirmer un diagnostic ne corrige pas Ely. Propose un correctif, examine ce qu’il change, puis applique-le. Son effet est suivi lors des prochaines exécutions. Les causes qui nécessitent une intervention restent signalées.",
     "errorLoad": "Impossible de charger les incidents.",
     "actionError": "L'action a échoué.",
     "loading": "Chargement…",
-    "filter_open": "ouverts",
+    "filter_open": "à suivre",
     "filter_all": "tous",
-    "emptyOpen": "Aucun incident en attente. Tout ce qu'Ely a exécuté récemment a réellement abouti.",
+    "emptyOpen": "Aucun incident en attente de correction ou de vérification.",
     "emptyAll": "Aucun incident enregistré.",
     "createdLabel": "Détecté le {date}",
     "outcome_dubious": "douteux",
     "outcome_failed": "échoué",
     "category_gap_tool": "outil manquant",
-    "category_binding": "binding",
+    "category_binding": "outils non chargés",
     "category_config_tier": "config tier",
     "category_prompt": "prompt",
     "category_code_core": "code cœur",
@@ -373,24 +406,22 @@
     "confidence_medium": "moyenne",
     "confidence_high": "élevée",
     "voie_A": "voie A · observer",
-    "voie_B": "voie B · outil",
-    "voie_C": "voie C · config",
-    "voie_D": "voie D · ticket",
+    "voie_B": "outils existants",
+    "voie_C": "consigne / configuration",
+    "voie_D": "intervention technique",
     "status_validated": "validé",
     "status_rejected": "rejeté",
     "status_actioned": "traité",
     "status_merged": "fusionné",
     "status_obsolete": "sans objet",
     "seenTimes": "vu {count} fois · dernier le {date}",
-    "generate": "Générer un outil",
-    "generateHint": "Lance l'auto-développement (tier S) pour créer un python_tool depuis cette cause. Coût LLM réel.",
-    "validate": "Valider",
-    "validateHint": "Confirmer ce diagnostic (cause plausible).",
+    "validate": "Confirmer le diagnostic",
+    "validateHint": "Confirme la cause sans clore le suivi ni modifier Ely.",
     "reject": "Rejeter",
     "rejectHint": "Diagnostic faux ou hors sujet.",
-    "proposePatch": "Proposer un correctif",
-    "proposePatchHint": "Ely génère une réécriture du prompt de la tâche planifiée pour corriger la cause. Tu verras le diff avant d'appliquer. Coût LLM réel.",
-    "patchTitle": "Correctif proposé (prompt de la tâche)",
+    "proposePatch": "Préparer un correctif",
+    "proposePatchHint": "Prépare une correction concrète à examiner avant application, sans générer de code d’outil.",
+    "patchTitle": "Correction de la consigne",
     "patchBefore": "Avant",
     "patchAfter": "Après",
     "patch_status_proposed": "proposé",
@@ -398,25 +429,27 @@
     "patch_status_rejected": "rejeté",
     "patch_status_reverted": "annulé",
     "apply": "Appliquer",
-    "applyHint": "Applique le nouveau prompt à la tâche planifiée. Réversible (l'ancien est conservé).",
+    "applyHint": "Active ce correctif pour les prochaines demandes concernées.",
     "rejectPatch": "Rejeter le correctif",
     "rejectPatchHint": "Ne pas appliquer ce correctif.",
     "revert": "Revenir en arrière",
-    "revertHint": "Restaure le prompt d'avant l'application.",
+    "revertHint": "Désactive ce correctif et réouvre le suivi.",
     "flash_patch_proposed": "Correctif proposé — vérifie le diff puis applique.",
-    "flash_patch_applied": "Correctif appliqué à la tâche (réversible).",
-    "flash_patch_reverted": "Correctif annulé — ancien prompt restauré.",
+    "flash_patch_applied": "Correctif appliqué. Son résultat sera vérifié lors de la prochaine exécution.",
+    "flash_patch_reverted": "Correctif annulé.",
     "flash_patch_rejected": "Correctif rejeté.",
-    "confirmTitle": "Générer un outil pour cette cause ?",
-    "confirmBody": "Cela appelle un LLM tier-S pour écrire du code Python. Le résultat sera un candidat à revoir sur la page « Compétences à valider ».",
     "cancel": "Annuler",
-    "confirmGenerate": "Générer",
-    "flash_validated": "Incident validé.",
+    "flash_validated": "Diagnostic confirmé. Il reste à appliquer une correction.",
     "flash_rejected": "Incident rejeté.",
-    "flash_generated": "Outil « {name} » généré — à valider sur la page des candidates.",
-    "flash_generation_failed": "Génération échouée (status: {status}).",
-    "flash_tool_exists": "Hypothèse confirmée : l'outil « {name} » couvre déjà cette capacité. Incident validé — le trou de liaison reste à traiter.",
-    "flash_target_gone": "La tâche planifiée visée n'existe plus — incident classé sans suite."
+    "flash_target_gone": "La tâche planifiée visée n'existe plus — incident classé sans suite.",
+    "bindingPatchTitle": "Chargement des outils existants",
+    "bindingBefore": "Sélection habituelle des outils, sans correction mémorisée pour cette demande.",
+    "verification_pending": "Correctif actif · en attente d’une prochaine exécution.",
+    "verification_succeeded": "Une exécution réussie a été observée après l’application du correctif.",
+    "verification_failed": "Une exécution a de nouveau échoué ou reste douteuse : le correctif doit être revu.",
+    "settingsRequired": "Ce diagnostic concerne un fournisseur ou un modèle. Vérifie sa connexion et sa configuration.",
+    "openSettings": "Ouvrir les paramètres",
+    "manualRequired": "Aucun correctif automatique disponible pour cette cause. Une intervention est nécessaire ; confirmer le diagnostic ne résout pas l’incident."
   },
   "reversibleActions": {
     "title": "Annulations",
@@ -612,10 +645,16 @@
     "modelsConfigured": "Modèles configurés",
     "instanceDescription": "Chaque instance combine un provider, un modèle et une clé API optionnelle. Vous pouvez créer plusieurs instances du même provider (ex. plusieurs modèles Ollama) et les assigner librement aux niveaux de routage.",
     "noInstances": "Aucune instance configurée. Cliquez sur \"Ajouter\" pour créer votre première instance.",
+    "codexReconnectTitle": "Connexion GPT interrompue",
+    "codexReconnectMessage": "La connexion à l’abonnement ChatGPT a été refusée. Ely peut utiliser un modèle de secours en attendant la reconnexion.",
+    "codexReconnectMember": "La connexion GPT doit être rétablie par un administrateur. Ely peut utiliser un modèle de secours en attendant.",
+    "codexReconnectAction": "Reconnecter GPT",
+    "codexReconnectBadge": "Reconnexion nécessaire",
+    "codexReconnectInstructions": "Renouvelez votre connexion Codex sur le Mac, puis importez les nouvelles informations de connexion ci-dessous. Aucune suppression du modèle ni modification du routage n’est nécessaire. Ne partagez pas ces informations dans une conversation.",
     "codexTitle": "OpenAI — Abonnement ChatGPT (Codex)",
     "codexBadgeConnected": "Connecté",
     "codexBadgeNotConnected": "Non connecté",
-    "codexDescription": "Accède à GPT-5.5 via ton abonnement ChatGPT (forfait mensuel) au lieu de l'API au token — aucune clé API.\n1. Sur le Mac : npm install -g @openai/codex puis codex login (connexion navigateur).\n2. Colle ici le contenu de ~/.codex/auth.json puis Importer.\nEly garde ensuite la connexion vivante tout seul (refresh automatique, stockage chiffré).",
+    "codexDescription": "Accède aux modèles GPT via ton abonnement ChatGPT (forfait mensuel) au lieu de l'API au token — aucune clé API.\n1. Sur le Mac : npm install -g @openai/codex puis codex login (connexion navigateur).\n2. Colle ici le contenu de ~/.codex/auth.json puis Importer.\nEly garde ensuite la connexion vivante tout seul (refresh automatique, stockage chiffré).",
     "codexPlaceholder": "Contenu de ~/.codex/auth.json",
     "codexImport": "Importer",
     "codexImporting": "Validation…",
@@ -1144,7 +1183,7 @@
   },
   "memories": {
     "title": "Mes mémoires",
-    "subtitle": "Ce qu'ELY retient de toi — Sprint 2.5",
+    "subtitle": "Comprendre, corriger et organiser ce qu’Ely retient",
     "loading": "Chargement de tes mémoires…",
     "empty": "Rien dans cette famille pour l'instant.",
     "noContent": "(entrée sans texte)",

@@ -344,9 +344,10 @@ def test_the_escalation_note_says_the_answer_came_without_tools():
     se lit comme un constat d'impuissance d'Ely, pas comme la limite connue
     d'un relais textuel. Nommer la limite, c'est ce qui la rend lisible.
     """
-    from app.agent.conformity import _ESCALATION_NOTE
+    import inspect
+    from app.agent.conformity import _try_escalation
 
-    note = _ESCALATION_NOTE.lower()
+    note = inspect.getsource(_try_escalation).lower()
     assert "sans outil" in note, (
         "l'utilisateur doit pouvoir situer une réponse qui ne peut pas agir"
     )

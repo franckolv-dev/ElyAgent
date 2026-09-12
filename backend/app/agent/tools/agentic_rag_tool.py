@@ -83,16 +83,14 @@ async def smart_knowledge_query(
     ranked = sorted(results, key=_combined_score, reverse=True)[:5]
 
     parts = []
-    for r in ranked:
+    for rank, r in enumerate(ranked, 1):
         source = r.get("source_file", "inconnu")
         chunk_idx = r.get("chunk_index", 0)
         total = r.get("total_chunks", 0)
         content = r.get("content", "")
-        score = r.get("score", 0.0)
-        combined = _combined_score(r)
         parts.append(
             f"[Source: {source}, chunk {chunk_idx + 1}/{total}, "
-            f"pertinence: {score:.2f}, score combine: {combined:.2f}]\n{content}"
+            f"rang hybride: {rank}]\n{content}"
         )
 
     header = (

@@ -1,22 +1,21 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/app/services/memory/error_store.py
-# @brief      Error memory — write-only in V1. Read path lands in Sprint 3.7.
+# @brief      Per-user error memory — capture and bounded SQL recall.
 # @license    MIT
 #            https://opensource.org/licenses/MIT
 # @version    1.3.0
 # =============================================================================
 """Error store — Sprint 2.5 §7.
 
-V1 status — write-only. Every tool/mission failure is captured here so
-the data is ready when Sprint 3.7 (auto-improvement loop) consumes it.
-There is no `get_relevant` in V1: the design note (§7) calls for the
-read path to land alongside the agent self-reflection loop, not before.
+Tool and mission failures can be recalled before repeating an approach.
+Recall never includes stored arguments or stack traces.
 
 Source of truth = SQL table `error_log` (Sprint 2.5 Jalon 1). No Qdrant
 collection in V1 — errors are searched by exact tool name + error class,
 not by semantic similarity (yet).
 """
+
 from __future__ import annotations
 
 import json
@@ -30,7 +29,54 @@ logger = logging.getLogger(__name__)
 
 
 class ErrorStore:
-    """Write-only capture of tool/mission failures."""
+    """Capture and recall tool/mission failures scoped to their owner."""
+
+    async def get_relevant(self, query: str, user_id: str, limit: int = 5) -> list[dict]:
+        """Recall this user's failures, without arguments, traces or secrets.
+
+        Literal escaped text search works offline and needs no embeddings.
+        SQL applies the owner filter BEFORE the bounded search and ordering.
+        """
+        import re
+        from sqlalchemy import or_, select
+        from app.database import async_session
+        from app.models.error_log import ErrorLog
+
+        if not user_id or not query.strip():
+            return []
+        terms = list(dict.fromkeys(re.findall(r"[\w-]{3,}", query.lower())))[:8]
+        if not terms:
+            return []
+        matches = [
+            column.contains(term, autoescape=True)
+            for term in terms
+            for column in (
+                ErrorLog.tool_name,
+                ErrorLog.error_type,
+                ErrorLog.error_msg,
+            )
+        ]
+        statement = (
+            select(ErrorLog)
+            .where(
+                ErrorLog.user_id == user_id,
+                or_(*matches),
+            )
+            .order_by(ErrorLog.created_at.desc(), ErrorLog.id.desc())
+            .limit(max(1, min(limit, 10)))
+        )
+        async with async_session() as db:
+            rows = (await db.execute(statement)).scalars().all()
+            return [
+                {
+                    "tool_name": row.tool_name,
+                    "error_type": row.error_type,
+                    "error_msg": row.error_msg[:600],
+                    "recovered": row.recovered,
+                    "created_at": str(row.created_at),
+                }
+                for row in rows
+            ]
 
     async def store(
         self,
@@ -62,11 +108,13 @@ class ErrorStore:
         if prompt_version is None:
             try:
                 from app.services.learning import current_system_prompt_version
+
                 prompt_version = current_system_prompt_version()
             except Exception:
                 prompt_version = None
         try:
             from app.models.error_log import ErrorLog
+
             row = ErrorLog(
                 user_id=user_id,
                 mission_id=mission_id,

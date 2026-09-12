@@ -42,6 +42,7 @@ export const isGroup = (e: NavEntry): e is NavGroup => "children" in e;
 export const NAV: NavEntry[] = [
   { href: "/chat",      labelKey: "navChat",      icon: MessageSquare },
   { href: "/missions",  labelKey: "navMissions",  icon: Target },
+  { href: "/autonomy", labelKey: "navAutonomy", icon: Compass },
   { href: "/scheduled", labelKey: "navScheduled", icon: Clock },
   { href: "/knowledge", labelKey: "navKnowledge", icon: BookOpen },
   {

@@ -93,3 +93,7 @@ class AgentState(TypedDict):
     # mission le lit pour refuser de conclure « completed » sur la parole du
     # modèle.
     conformity_unresolved: str
+    # Successful distinct tool calls at the previous verification, hashed.
+    conformity_evidence: list[str]
+    # At most one panel strategy, then back to real execution + verification.
+    conformity_escalated: bool

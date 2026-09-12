@@ -117,6 +117,8 @@ async def test_la_consolidation_extrait_sur_un_texte_masque_et_demasque_les_fait
     import app.services.llm_provider as llm_mod
     monkeypatch.setattr(fond, "ainvoke_background_with_usage", _faux_fond)
     monkeypatch.setattr(llm_mod, "get_llm_for_tier", lambda tier: object())
+    # 10/09/2026 : la consolidation exige un fournisseur LOCAL — le double se présente comme tel.
+    monkeypatch.setattr(llm_mod, "describe_llm", lambda llm: ("lm_studio", "double-de-test"))
 
     from app.services.memory.maintenance_rapid import MaintenanceAgentRapid
     agent = MaintenanceAgentRapid()

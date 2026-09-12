@@ -39,7 +39,7 @@ async def free_mission():
     from sqlalchemy import delete
 
     from app.database import async_session, init_db
-    from app.models.mission import Mission, MissionStep
+    from app.models.mission import Mission, MissionStep, MissionDailyCounter
     from app.models.user import User
     from app.services import mission_service
     from app.services.alembic_runner import ensure_migrations
@@ -56,6 +56,7 @@ async def free_mission():
     )
     yield uid, m.id
     async with async_session() as db:
+        await db.execute(delete(MissionDailyCounter).where(MissionDailyCounter.mission_id == m.id))
         await db.execute(delete(MissionStep).where(MissionStep.mission_id == m.id))
         await db.execute(delete(Mission).where(Mission.user_id == uid))
         u = await db.get(User, uid)

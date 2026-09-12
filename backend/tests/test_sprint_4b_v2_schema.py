@@ -81,7 +81,8 @@ def test_validation_report_defaults_to_empty_object() -> None:
 def test_content_format_enum_values() -> None:
     assert SkillContentFormat.MARKDOWN_PLAYBOOK == "markdown_playbook"
     assert SkillContentFormat.PYTHON_TOOL == "python_tool"
-    assert SkillContentFormat.ALL == {"markdown_playbook", "python_tool"}
+    assert SkillContentFormat.SANDBOX_PROGRAM == "sandbox_program"
+    assert SkillContentFormat.ALL == {"markdown_playbook", "python_tool", "sandbox_program"}
 
 
 # ── 3. _safe_columns declares both new columns (existing-DB migration) ───────

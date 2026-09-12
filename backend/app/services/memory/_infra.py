@@ -20,6 +20,7 @@ encoder, and the same embedding cache — three benefits:
      fan-out in `memory_recall(type=AUTO)`).
   3. Single Qdrant gRPC channel — fewer file descriptors.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -76,6 +77,7 @@ class MemoryInfra:
     def client(self):
         if self._client is None:
             from qdrant_client import QdrantClient
+
             self._client = QdrantClient(url=get_settings().qdrant_url)
         return self._client
 
@@ -83,6 +85,7 @@ class MemoryInfra:
     def encoder(self):
         if self._encoder is None:
             from fastembed import TextEmbedding
+
             cache_dir = os.environ.get("FASTEMBED_CACHE_DIR", "/app/.cache/fastembed")
             os.makedirs(cache_dir, exist_ok=True)
             self._encoder = TextEmbedding(
@@ -105,9 +108,7 @@ class MemoryInfra:
             async with lock:
                 if text in self._embed_cache:
                     return self._embed_cache[text]
-                result = await asyncio.to_thread(
-                    lambda: list(self.encoder.embed([text]))[0].tolist()
-                )
+                result = await asyncio.to_thread(lambda: list(self.encoder.embed([text]))[0].tolist())
                 self._embed_cache[text] = result
         finally:
             # Le dernier sorti éteint la lumière : un verrou ne vit que le
@@ -124,6 +125,7 @@ class MemoryInfra:
         a caller (e.g. `SemanticUserStore.store`) chose to put in the payload.
         """
         from qdrant_client.models import PointStruct
+
         point_id = str(uuid.uuid4())
         stamped = dict(payload)
         stamped.setdefault("created_at", time.time())
@@ -150,16 +152,28 @@ class MemoryInfra:
         if not user_id:
             logger.warning(
                 "Qdrant candidates query refused: empty user_id on collection=%s "
-                "(would have leaked across tenants — returning [])", collection
+                "(would have leaked across tenants — returning [])",
+                collection,
             )
             return []
-        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        from qdrant_client.models import FieldCondition, Filter, MatchValue, MatchAny, IsEmptyCondition, PayloadField
+        from app.services.memory.selection import REQUEST_SCOPE
+        from app.services.memory.scopes import allowed_scopes
+
         result = await asyncio.to_thread(
             self.client.query_points,
             collection_name=collection,
             query=vector,
             query_filter=Filter(
-                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))],
+                should=[
+                    IsEmptyCondition(is_empty=PayloadField(key="scope")),
+                    FieldCondition(key="scope", match=MatchAny(any=allowed_scopes(REQUEST_SCOPE.get()))),
+                ],
+                must_not=[
+                    FieldCondition(key="superseded", match=MatchValue(value=True)),
+                    FieldCondition(key="forgotten", match=MatchValue(value=True)),
+                ],
             ),
             limit=limit * 4,
             score_threshold=max(0.0, score_threshold - 0.15),
@@ -167,6 +181,25 @@ class MemoryInfra:
         )
         return result.points
 
+    async def points_by_ids(self, collection: str, ids: list[str], user_id: str) -> list:
+        """Revalidate ownership in Qdrant even when IDs came from scoped FTS."""
+        if not user_id or not ids:
+            return []
+        from qdrant_client.models import FieldCondition, Filter, MatchValue, HasIdCondition
+
+        points, _ = await asyncio.to_thread(
+            self.client.scroll,
+            collection_name=collection,
+            scroll_filter=Filter(
+                must=[
+                    HasIdCondition(has_id=ids),
+                    FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+                ]
+            ),
+            limit=min(len(ids), 200),
+            with_payload=True,
+        )
+        return points
 
     # ── Surface d'inspection (page « Mes mémoires », §2.5.6) ────────────
     # La recherche par pertinence ne suffit pas à auditer : pour savoir ce
@@ -197,26 +230,23 @@ class MemoryInfra:
         """
         if not user_id:
             logger.warning(
-                "Scroll refused: empty user_id on collection=%s "
-                "(would have listed every tenant — returning [])", collection
+                "Scroll refused: empty user_id on collection=%s (would have listed every tenant — returning [])",
+                collection,
             )
             return [], None
         from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         points, next_offset = await asyncio.to_thread(
             self.client.scroll,
             collection_name=collection,
-            scroll_filter=Filter(
-                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
-            ),
+            scroll_filter=Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]),
             limit=limit,
             offset=offset,
             with_payload=True,
         )
         return points, (str(next_offset) if next_offset is not None else None)
 
-    async def delete_point(
-        self, collection: str, point_id: str, user_id: str
-    ) -> bool:
+    async def delete_point(self, collection: str, point_id: str, user_id: str) -> bool:
         """Supprimer UN point, à condition qu'il appartienne à *user_id*.
 
         Le filtre porte sur l'identifiant ET le propriétaire dans la MÊME
@@ -232,8 +262,13 @@ class MemoryInfra:
         if not user_id or not point_id:
             return False
         from qdrant_client.models import (
-            FieldCondition, Filter, FilterSelector, HasIdCondition, MatchValue,
+            FieldCondition,
+            Filter,
+            FilterSelector,
+            HasIdCondition,
+            MatchValue,
         )
+
         selector = FilterSelector(
             filter=Filter(
                 must=[

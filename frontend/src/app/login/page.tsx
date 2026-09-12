@@ -60,7 +60,7 @@ export default function LoginPage() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-28 h-36 mx-auto mb-4 rounded-xl overflow-hidden border border-cyber-cyan/25 bg-[#060c16]">
+          <div className="w-28 h-36 mx-auto mb-4 rounded-xl overflow-hidden border border-cyber-cyan/25">
             <CyberpunkAvatar state="idle" minimal className="w-full h-full" />
           </div>
           <h1 className="text-2xl font-bold text-cyber-cyan glow-cyan-text tracking-widest">

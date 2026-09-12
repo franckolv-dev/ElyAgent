@@ -72,6 +72,9 @@ _COLLECTIONS_VIVANTES = {
     "user_profile",
     "security_constraints",
     "interactions",
+    # 10/09/2026 — les faits du profil SQL sont aussi indexés en vecteurs
+    # (`memory/indexing.py`, PROFILE_COLLECTION) : cinquième collection vivante.
+    "profile_facts",
 }
 
 

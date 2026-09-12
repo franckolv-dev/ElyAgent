@@ -239,13 +239,13 @@ def missing_playbook_sections(body: str) -> list[str]:
     ]
 
 
-def should_propose_skill_from_success(*, conforme: bool, retries: int) -> bool:
+def should_propose_skill_from_success(*, conforme: bool, retries: int, recovered: bool = False) -> bool:
     """Ce tour mérite-t-il qu'on en tire une compétence ?
 
     Oui uniquement s'il a fini CONFORME **après au moins une reprise**. Voir le
     docstring du module pour pourquoi les deux autres cas n'apprennent rien.
     """
-    return bool(conforme) and int(retries or 0) > 0
+    return bool(conforme) and (int(retries or 0) > 0 or recovered)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -262,6 +262,9 @@ def build_success_skill_prompt(messages: list) -> str:
     """
     if not messages:
         return ""
+    from app.agent.recovery import current_turn
+    from app.agent.tool_failure import dit_un_echec
+    messages = current_turn(messages)
 
     demande = ""
     ecarts: list[str] = []
@@ -278,6 +281,8 @@ def build_success_skill_prompt(messages: list) -> str:
                 name = tc.get("name") if isinstance(tc, dict) else None
                 if name and name not in outils:
                     outils.append(name)
+        elif isinstance(m, ToolMessage) and (m.status == "error" or dit_un_echec(m.content)):
+            ecarts.append(content_to_text(m.content)[:800])
 
     if not demande:
         return ""

@@ -13,7 +13,6 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { neuralScoreForModel } from "@/lib/neuralScore";
 import { Volume2, VolumeX, ShieldAlert, Check, X, Ban } from "lucide-react";
 import { CyberpunkAvatar, AvatarState } from "./CyberpunkAvatar";
 import { TTSPlayer } from "@/lib/tts";
@@ -27,6 +26,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 interface AvatarPanelProps {
   wsMessage: WSMessage | null;
   isLoading: boolean;
+  voiceConversationActive?: boolean;
 }
 
 function formatTokens(n: number): string {
@@ -35,7 +35,7 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
+export function AvatarPanel({ wsMessage, isLoading, voiceConversationActive = false }: AvatarPanelProps) {
   const t = useTranslations("avatar");
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   // ttsEnabled persists per user (mai 2026 — was previously local state
@@ -44,12 +44,14 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   // first message of a session before we know the user's choice.
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [voiceError, setVoiceError] = useState(false);
   const [hitlAction, setHitlAction] = useState<{ id: string; description: string } | null>(null);
   const [hitlPending, setHitlPending] = useState<
     "allow" | "allow_for_task" | "allow_always" | "deny" | "ban" | null
   >(null);
   const [hitlError, setHitlError] = useState<string | null>(null);
   const ttsRef = useRef<TTSPlayer | null>(null);
+  const lastProcessedMessage = useRef<WSMessage | null>(null);
 
   // ── Resolve HITL via web — hits the same endpoint as the Android app ──
   const resolveHitl = async (
@@ -80,9 +82,6 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
 
   // HUD metrics
   const [latencyMs,   setLatencyMs]   = useState<number | undefined>(undefined); // undefined → "—" before first response
-  const [syncPercent, setSyncPercent] = useState<number>(100);
-  const [neuralScore, setNeuralScore] = useState<number | undefined>(undefined); // undefined until first model known
-  const [version,     setVersion]     = useState<string>("…");
   // Last known model — persisted across WS messages so SESSION panel keeps
   // the value visible after the streaming ends (wsMessage drops to null).
   const [lastModel,   setLastModel]   = useState<string>("");
@@ -102,21 +101,11 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   // backend estime alors, et le dit. Cf. `estimate_tokens_if_missing`.
   const [tokensEstimated, setTokensEstimated] = useState(false);
 
-  // SYNC = rolling success rate over last 10 messages (1=success, 0=error)
-  const recentOutcomes = useRef<number[]>([]);
   const messageStartTime = useRef<number>(0);
-
-  // Fetch backend version once on mount
-  useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? "";
-    fetch(`${base}/health`)
-      .then((r) => r.json())
-      .then((d) => setVersion(d.version ?? "1.0.0"))
-      .catch(() => setVersion("1.0.0"));
-  }, []);
 
   useEffect(() => {
     ttsRef.current = new TTSPlayer((s) => {
+      setVoiceError(s === "error");
       if (s === "playing")      setAvatarState("speaking");
       else if (s === "loading") setAvatarState("thinking");
       else                      setAvatarState("idle");
@@ -125,8 +114,8 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   }, []);
 
   useEffect(() => {
-    ttsRef.current?.setEnabled(ttsEnabled);
-  }, [ttsEnabled]);
+    ttsRef.current?.setEnabled(ttsEnabled && !voiceConversationActive);
+  }, [ttsEnabled, voiceConversationActive]);
 
   // Load persisted TTS preference once at mount (fire-and-forget).
   // If the user is not logged in or the API fails, we fall back to the
@@ -161,9 +150,14 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
   };
 
   useEffect(() => {
-    if (!wsMessage) return;
+    if (!wsMessage || lastProcessedMessage.current === wsMessage) return;
+    // Keep the answer pending until the preference is known. Otherwise a
+    // fast response during startup is marked processed and never spoken.
+    if (wsMessage.type === "message" && !prefsLoaded) return;
+    lastProcessedMessage.current = wsMessage;
 
     if (wsMessage.type === "start") {
+      ttsRef.current?.stop();
       messageStartTime.current = performance.now();
       setEnVol(true);
       setAvatarState("thinking");
@@ -189,20 +183,8 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       setEnVol(false);
       setLatencyMs(lat);
 
-      // SYNC — rolling success rate over last 10 exchanges
-      recentOutcomes.current = [...recentOutcomes.current.slice(-9), 1];
-      const rate = recentOutcomes.current.reduce((a, b) => a + b, 0) / recentOutcomes.current.length;
-      setSyncPercent(parseFloat((rate * 100).toFixed(1)));
-
-      // NEURAL — capability tier of the active model
-      //
-      // ⚠️ LE GARDE `if (modelUsed)` GARDAIT L'ANCIENNE VALEUR (corrigé le
-      // 24/08). Un tour terminé sans `model_used` laissait le panneau afficher
-      // le modèle du tour PRÉCÉDENT, avec la même assurance. Un indicateur qui
-      // ment est pire qu'un indicateur vide : on écrit « — ».
       const modelUsed = wsMessage.model_used ?? "";
       setLastModel(modelUsed);
-      if (modelUsed) setNeuralScore(neuralScoreForModel(modelUsed));
       // Tokens cumulés sur la session (incrément par message).
       // Le `as unknown as {…}` qui vivait ici a été retiré le 21/08 : les
       // champs sont déclarés dans `WSMessage`. Il masquait le vrai défaut —
@@ -218,95 +200,40 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
       }
 
       setHitlAction(null);
-      if (ttsEnabled && prefsLoaded && wsMessage.content) ttsRef.current?.speak(wsMessage.content);
+      if (ttsEnabled && !voiceConversationActive && wsMessage.content) ttsRef.current?.speak(wsMessage.content);
       else setAvatarState("idle");
     }
-    if (wsMessage.type === "error") {
+    if (wsMessage.type === "error" || wsMessage.type === "stopped") {
       // Un tour qui échoue est un tour TERMINÉ : sans ça le panneau resterait
       // en attente jusqu'au prochain message, donc muet sur le tour d'avant.
       setEnVol(false);
-      // Count errors in SYNC rate
-      recentOutcomes.current = [...recentOutcomes.current.slice(-9), 0];
-      const rate = recentOutcomes.current.reduce((a, b) => a + b, 0) / recentOutcomes.current.length;
-      setSyncPercent(parseFloat((rate * 100).toFixed(1)));
+      ttsRef.current?.stop();
       setAvatarState("idle");
     }
-  }, [wsMessage, ttsEnabled, prefsLoaded]);
+  }, [wsMessage, ttsEnabled, prefsLoaded, voiceConversationActive]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)", width: "100%" }}>
-      {/* ── Carte avatar (maquette 09/2026) ────────────────────────────────
-          La maquette posait ici une icône SVG de visage. On garde la TÊTE 3D
-          existante — consigne explicite de Franck — et on ne reprend que le
-          pavé qui l'entoure : fond `--surface-2`, coins 13 px, signature et
-          ligne d'état dessous. Le wireframe suit `--accent-h`, il passe donc
-          au bleu avec le reste de l'interface ; les couleurs par état de la
-          tête (idle / thinking / …) restent gérées par CyberpunkAvatar. */}
+      <div className="presence-heading">
+        <strong>ELY<span className="presence-spark">✦</span></strong>
+        <span role="status"><i />{t(`states.${avatarState}`)}</span>
+      </div>
       <div className="avatar-card">
-      {/* ── Avatar wireframe stage : grille + halo + tête 3D ── */}
-      <div className="avatar-stage" style={{ height: "auto", aspectRatio: "1 / 1" }}>
-        {/* Corners HUD */}
-        <div className="avatar-corner tl">
-          NEURAL:{neuralScore !== undefined ? neuralScore.toFixed(1) : "—"}
+        <div className="avatar-stage">
+          <CyberpunkAvatar state={avatarState} minimal className="w-full h-full" />
         </div>
-        <div className="avatar-corner tr">
-          LAT:{latencyMs !== undefined ? `${latencyMs}ms` : "—"}
-        </div>
-        <div className="avatar-corner bl">SYNC:{syncPercent.toFixed(1)}%</div>
-        <div className="avatar-corner br">VER:{version}</div>
-
-        {/* Halo de fond derrière la tête */}
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "radial-gradient(circle at 50% 45%, var(--accent-glow) 0%, transparent 55%)",
-            pointerEvents: "none",
-          }}
-        />
-
-        {/* Tête 3D Cyberpunk — composant existant, intacte */}
-        <div style={{ position: "absolute", inset: 0 }}>
-          <CyberpunkAvatar
-            state={avatarState}
-            className="w-full h-full"
-            latencyMs={latencyMs}
-            syncPercent={syncPercent}
-            neuralScore={neuralScore}
-            version={version}
-          />
+        <span className="presence-caption">EXACTLY LIKE YOU</span>
+        <div className="avatar-actions">
+          <button onClick={toggleTts} aria-pressed={ttsEnabled}
+            disabled={!prefsLoaded}
+            className={`avatar-action ${ttsEnabled ? "primary" : ""}`}>
+            {ttsEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {ttsEnabled ? t("voiceActive") : t("enableVoice")}
+          </button>
         </div>
       </div>
 
-      {/* ── Actions (TTS) + ligne d'état ── */}
-      {/* La signature « ELY :: EXACTLY LIKE YOU » de la maquette n'est pas
-          reprise ici : le bandeau de la tête 3D l'affiche déjà, en alternance
-          avec « ELY :: IDLE ». */}
-      <div className="avatar-actions">
-        <button
-          onClick={toggleTts}
-          className={`avatar-action ${ttsEnabled ? "primary" : ""}`}
-        >
-          {ttsEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
-          {ttsEnabled ? t("voiceActive") : t("voiceMuted")}
-        </button>
-        <div className="avatar-action ghost" style={{ justifyContent: "center" }}>
-          {/* Le point reprend la couleur de l'état courant : c'est le même
-              signal que la tête, en 5 px, pour qui ne regarde pas l'avatar. */}
-          <span
-            style={{
-              width: 5,
-              height: 5,
-              borderRadius: 999,
-              background: avatarState === "idle" ? "var(--success)" : "var(--accent)",
-            }}
-          />
-          ELY :: {avatarState.toUpperCase()}
-        </div>
-      </div>
-      </div>
+      {voiceError && <p role="status" style={{ color: "var(--warning)", fontSize: 12 }}>{t("voiceUnavailable")}</p>}
 
       {/* ── HITL — Approve / Deny / Ban ── */}
       {hitlAction && (
@@ -422,9 +349,9 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
 
       {/* ── Panneau SESSION ── */}
       <div className="avatar-info">
-        <h4>SESSION</h4>
+        <h4>{t("sessionTitle")}</h4>
         <div className="kv">
-          <span className="k">MODEL</span>
+          <span className="k">{t("model")}</span>
           <span className="v" style={{ fontSize: 10, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {enVol || !lastModel
               ? "—"
@@ -432,7 +359,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
           </span>
         </div>
         <div className="kv">
-          <span className="k">LATENCY</span>
+          <span className="k">{t("latency")}</span>
           <span className="v">
             {enVol || latencyMs === undefined ? "—" : `${latencyMs}ms`}
           </span>
@@ -444,16 +371,6 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
               ? `${tokensEstimated ? "~" : ""}${formatTokens(tokensUsed.input + tokensUsed.output)}`
               : "—"}
           </span>
-        </div>
-        <div className="kv">
-          <span className="k">NEURAL</span>
-          <span className="v">
-            {neuralScore !== undefined ? neuralScore.toFixed(1) : "—"}
-          </span>
-        </div>
-        <div className="kv">
-          <span className="k">SYNC</span>
-          <span className="v">{syncPercent.toFixed(1)}%</span>
         </div>
       </div>
 
@@ -470,7 +387,7 @@ export function AvatarPanel({ wsMessage, isLoading }: AvatarPanelProps) {
 //   LINK = configuré + ce user a lié son compte (Telegram /link, etc.)
 //   OFF  = pas configuré
 //
-// Refresh toutes les 60s pour suivre les hot-restart admin.
+// Refresh toutes les 10s et au retour dans la fenêtre.
 interface ChannelStatus {
   configured: boolean;
   running: boolean;
@@ -480,6 +397,8 @@ interface ActiveChannelsResponse {
   telegram: ChannelStatus;
   ely_android: ChannelStatus;
   ntfy: ChannelStatus;
+  chrome?: { connected: boolean };
+  system?: { connected: boolean };
 }
 
 function ChannelsPanel() {
@@ -490,60 +409,78 @@ function ChannelsPanel() {
     const fetchOnce = async () => {
       try {
         const r = await authFetch(`${API_BASE}/api/channels/active`);
-        if (!r.ok) return;
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const json = await r.json();
         if (!cancelled) setData(json);
       } catch {
-        // silent
+        // A failed refresh is unknown, not a stale "connected" badge.
+        if (!cancelled) setData(null);
       }
     };
     fetchOnce();
-    const interval = setInterval(fetchOnce, 60_000);
+    const interval = setInterval(fetchOnce, 10_000);
+    window.addEventListener("focus", fetchOnce);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      window.removeEventListener("focus", fetchOnce);
     };
   }, []);
 
-  const Row = ({ label, status }: { label: string; status: ChannelStatus | undefined }) => {
-    const on = !!status?.configured;
-    const linked = !!status?.linked;
-    let badge = "OFF";
-    // `--dot-off` et non `--text-muted` : la maquette du 21/08 donne les deux
-    // séparément, et à 6 px un point d'état a besoin de plus de présence
-    // qu'une étiquette. Le muted est descendu à #6c6f73 dans la même
-    // révision — le point y aurait disparu.
-    let color = "var(--dot-off)";
-    if (on && linked) { badge = "LINK"; color = "var(--success)"; }
-    else if (on) { badge = "ON"; color = "var(--info)"; }
-    return (
-      <div className="kv">
-        <span className="k">{label}</span>
-        <span
-          className="v"
-          style={{ color, display: "flex", alignItems: "center", gap: 4 }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 999,
-              background: color,
-              boxShadow: on ? `0 0 6px ${color}` : "none",
-            }}
-          />
-          {badge}
-        </span>
-      </div>
-    );
-  };
-
   return (
     <div className="avatar-info">
-      <h4>CANAUX ACTIFS</h4>
-      <Row label="ANDROID"  status={data?.ely_android} />
-      <Row label="TELEGRAM" status={data?.telegram} />
-      <Row label="NTFY"     status={data?.ntfy} />
+      <h4>Connexions</h4>
+      <ConnectionRow label="Chrome" connected={data?.chrome?.connected} />
+      <ConnectionRow label="Système" connected={data?.system?.connected} />
+      <ChannelRow label="Android"  status={data?.ely_android} />
+      <ChannelRow label="Telegram" status={data?.telegram} />
+      <ChannelRow label="Notifications"     status={data?.ntfy} />
+    </div>
+  );
+}
+
+function ConnectionRow({ label, connected }: { label: string; connected: boolean | undefined }) {
+  const color = connected ? "var(--accent)" : "var(--dot-off)";
+  return (
+    <div className="kv">
+      <span className="k">{label}</span>
+      <span className="v" style={{ color, display: "flex", alignItems: "center", gap: 4 }}>
+        <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+        {connected === undefined ? "—" : connected ? "Connecté" : "Déconnecté"}
+      </span>
+    </div>
+  );
+}
+
+function ChannelRow({ label, status }: { label: string; status: ChannelStatus | undefined }) {
+  const on = !!status?.configured;
+  const linked = !!status?.linked;
+  let badge = status ? "Inactif" : "—";
+  // `--dot-off` et non `--text-muted` : la maquette du 21/08 donne les deux
+  // séparément, et à 6 px un point d'état a besoin de plus de présence
+  // qu'une étiquette. Le muted est descendu à #6c6f73 dans la même
+  // révision — le point y aurait disparu.
+  let color = "var(--dot-off)";
+  if (on && linked) { badge = "Lié"; color = "var(--success)"; }
+  else if (on) { badge = "Configuré"; color = "var(--info)"; }
+  return (
+    <div className="kv">
+      <span className="k">{label}</span>
+      <span
+        className="v"
+        style={{ color, display: "flex", alignItems: "center", gap: 4 }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            background: color,
+            boxShadow: on ? `0 0 6px ${color}` : "none",
+          }}
+        />
+        {badge}
+      </span>
     </div>
   );
 }

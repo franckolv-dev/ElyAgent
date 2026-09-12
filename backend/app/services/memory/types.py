@@ -13,6 +13,7 @@
 A `MemoryHit` is the type-safe envelope that hides the underlying
 store's payload shape from callers.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -42,10 +43,7 @@ class MemoryType(str, Enum):
         for member in cls:
             if member.value == s:
                 return member
-        raise ValueError(
-            f"Unknown MemoryType {value!r}. "
-            f"Valid: {[m.value for m in cls]}"
-        )
+        raise ValueError(f"Unknown MemoryType {value!r}. Valid: {[m.value for m in cls]}")
 
 
 @dataclass(slots=True)

@@ -296,3 +296,51 @@ def test_patch_routes_registered() -> None:
     assert "/admin/learning/patches/{patch_id}/apply" in paths
     assert "/admin/learning/patches/{patch_id}/revert" in paths
     assert "/admin/learning/patches/{patch_id}/reject" in paths
+
+
+@pytest.mark.asyncio
+async def test_prompt_repair_preserves_later_user_edits(monkeypatch):
+    import app.services.learning.patch_service as ps
+    from app.database import async_session
+    from app.models.scheduled_task import ScheduledTask
+    monkeypatch.setattr(ps, '_call_patch_llm', _fake_patch_llm)
+    uid = await _seed_user()
+    tid, _, did = await _seed_scheduled_incident(uid, prompt='ancien prompt')
+    patch = await ps.propose_patch(did)
+    async with async_session() as db:
+        task = await db.get(ScheduledTask, tid)
+        task.prompt = 'Consigne modifiée par l’utilisateur'
+        await db.commit()
+    with pytest.raises(ps.PatchError): await ps.apply_patch(patch.id)
+    assert await _task_prompt(tid) == 'Consigne modifiée par l’utilisateur'
+
+
+@pytest.mark.asyncio
+async def test_prompt_undo_reopens_validated_incident_and_preserves_user_edits(monkeypatch):
+    import app.services.learning.patch_service as ps
+    from app.database import async_session
+    from app.models.scheduled_task import ScheduledTask
+    from app.models.execution_diagnosis import ExecutionDiagnosis
+    monkeypatch.setattr(ps, '_call_patch_llm', _fake_patch_llm)
+    uid = await _seed_user()
+    tid, _, did = await _seed_scheduled_incident(uid, prompt='ancien prompt')
+    async with async_session() as db:
+        diag = await db.get(ExecutionDiagnosis, did)
+        diag.status = 'validated'
+        await db.commit()
+    patch = await ps.propose_patch(did)
+    await ps.apply_patch(patch.id)
+    assert await _diag_status(did) == 'actioned'
+    async with async_session() as db:
+        task = await db.get(ScheduledTask, tid)
+        task.prompt = 'Nouvelle consigne'
+        await db.commit()
+    with pytest.raises(ps.PatchError): await ps.revert_patch(patch.id)
+    assert await _task_prompt(tid) == 'Nouvelle consigne'
+    async with async_session() as db:
+        task = await db.get(ScheduledTask, tid)
+        task.prompt = patch.new_value
+        await db.commit()
+    await ps.revert_patch(patch.id)
+    assert await _diag_status(did) == 'open'
+    assert await _task_prompt(tid) == 'ancien prompt'

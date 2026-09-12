@@ -44,7 +44,7 @@ def _bloc(css: str, selecteur: str) -> dict[str, str]:
     """Les propriétés personnalisées déclarées dans un bloc de sélecteur."""
     i = css.index(selecteur)
     j = css.index("\n}", i)
-    return dict(re.findall(r"^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);", css[i:j], re.M))
+    return dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*([^;]+);", css[i:j], re.M))
 
 
 @pytest.fixture(scope="module")
@@ -74,33 +74,13 @@ def test_theme_tokens_exist_in_both_themes(css):
 
 
 def test_the_dark_ramp_matches_the_design_values(css):
-    """Les valeurs fournies par la maquette, posées telles quelles.
-
-    ⚠️ Ce pin existe parce que je les ai déjà modifiées une fois « pour bien
-    faire », et que c'est ce qui a produit le brouillard. Les changer à nouveau
-    doit être un geste DÉLIBÉRÉ, qui casse ce test et oblige à revenir ici.
-
-    Mis à jour à la refonte 09/2026 (« Ely Agent.dc.html », claude.ai/design) :
-    la maquette repose tout le ramp en oklch sur la teinte 262, et l'accent
-    passe du cyan (h=196) au bleu-indigo (h=276). Les hex du 21/08 ont donc été
-    remplacés — délibérément, par ce commit-ci, et non dérivés « pour bien
-    faire » comme la fois précédente.
-
-    ⚠️ Le fond descend de #31363c à oklch(28 %), soit trois points de luminance
-    plus bas. Si l'ensemble paraît trop sombre à l'usage, le levier est
-    `--bg-app` SEUL : c'est la remontée des TEXTES qui avait produit le
-    brouillard d'août, pas celle des fonds.
-    """
+    """Palette de la refonte Presence, vérifiée dans les deux thèmes."""
     sombre = _bloc(css, '[data-theme="dark"]')
     maquette = {
-        "--bg-app": "oklch(28% 0.018 262)",
-        "--bg-surface": "oklch(32% 0.018 262)",
-        "--bg-surface-2": "oklch(36% 0.020 262)",
-        "--border-default": "oklch(40% 0.020 262)",
-        "--text-primary": "oklch(95% 0.006 262)",
-        "--text-secondary": "oklch(76% 0.012 262)",
-        "--text-muted": "oklch(60% 0.012 262)",
-        "--dot-off": "oklch(60% 0.012 262)",
+        "--bg-app": "#2c3543", "--bg-surface": "#354255",
+        "--bg-surface-2": "#3d4b60", "--border-default": "#596b86",
+        "--text-primary": "#f3f7ff", "--text-secondary": "#c7d4e7",
+        "--text-muted": "#a6b7d0", "--dot-off": "#98a8c0",
     }
     for jeton, attendu in maquette.items():
         actuel = (sombre.get(jeton) or "").strip().lower()
@@ -110,20 +90,11 @@ def test_the_dark_ramp_matches_the_design_values(css):
         )
 
 
-def test_the_accent_is_blue(css):
-    """La teinte de l'accent, épinglée.
-
-    Le seul changement de couleur que Franck a nommé explicitement : « du vert
-    au bleu ». Toute l'interface — jusqu'au wireframe de l'avatar — lit
-    `--accent-h`, donc cette ligne unique porte la bascule. La repasser à 196
-    (cyan) sans y penser reteindrait tout d'un coup ; ce pin l'interdit en
-    silence.
-    """
-    racine = _bloc(css, "\n:root {")
-    assert racine.get("--accent-h", "").strip() == "276", (
-        f"`--accent-h` vaut « {racine.get('--accent-h')} » ; la refonte 09/2026 "
-        f"pose 276 (bleu-indigo). 196 était le cyan d'avant."
-    )
+def test_the_accent_matches_the_slate_blue_palette(css):
+    """Palette demandée le 10/09 : ardoise et bleu."""
+    assert _bloc(css, '\n:root {')["--accent-h"].strip() == "218"
+    assert _bloc(css, '[data-theme="dark"]')["--accent"].strip() == "#91baff"
+    assert _bloc(css, '[data-theme="light"]')["--accent"].strip() == "#2860c7"
 
 
 def test_the_conversation_thread_sits_below_the_rest(css):
