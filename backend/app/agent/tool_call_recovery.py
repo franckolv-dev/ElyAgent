@@ -465,6 +465,18 @@ _BARE_CALL_RE = re.compile(
 # jamais à fabriquer un appel.
 _MENTION_APPEL_RE = re.compile(r"`?([a-z][a-z0-9_]{2,63})`?\s*\(")
 
+# Les formes BALISÉES, pour le même constat. Le XML de MiniCPM 5 n'a pas de
+# parenthèse : le 16/09 il passait sous `_MENTION_APPEL_RE` et s'affichait
+# brut. Ces motifs ne servent qu'à décider d'un échec ; le repêchage, lui,
+# passe par `parse_text_tool_calls`.
+_MENTIONS_BALISEES_RE = (
+    re.compile(r'<function\s*name\s*=\s*["\']([\w.-]+)["\']', re.IGNORECASE),
+    re.compile(
+        r'<(?:tool_call|function_call)[^>]*>\s*\{[^{}]*?"name"\s*:\s*"([\w.-]+)"',
+        re.IGNORECASE | re.DOTALL,
+    ),
+)
+
 
 def _arguments_dun_appel_nu(
     brut: str, nom: str, premier_parametre: Any,
@@ -549,7 +561,51 @@ def looks_like_an_unexecuted_tool_call(
     for m in _MENTION_APPEL_RE.finditer(content):
         if m.group(1) in real_tool_names:
             return m.group(1)
+    for motif in _MENTIONS_BALISEES_RE:
+        for m in motif.finditer(content):
+            if m.group(1) in real_tool_names:
+                return m.group(1)
     return None
+
+
+def forme_de_l_appel_texte(content: str) -> str | None:
+    """Le nom lisible de la forme sous laquelle un appel a été écrit.
+
+    Sert au message rendu à l'utilisateur et au constat de la sonde : dire
+    « en texte » ne suffit pas, la forme dit quel serveur ou quel modèle est
+    en cause (le XML `<function name=…>` est celui de MiniCPM 5, par exemple).
+    """
+    if not content or not isinstance(content, str):
+        return None
+    bas = content.lower()
+    if re.search(r"<function\s*name\s*=", bas):
+        return "XML <function name=…>"
+    if "<tool_call" in bas:
+        return "<tool_call>{…}</tool_call>"
+    if "<function_call" in bas:
+        return "<function_call>{…}</function_call>"
+    if _BARE_CALL_RE.search(content) or _MENTION_APPEL_RE.search(content):
+        return "appel nu nom(…)"
+    return None
+
+
+def message_appel_non_converti(nom_outil: str, forme: str | None, modele: str) -> str:
+    """Ce que lit l'utilisateur à la place d'un appel d'outil brut.
+
+    16/09/2026 : la personne qui installe Ely avec un modèle non testé lisait
+    `<function name="weather_get">…` et concluait qu'Ely ne fonctionne pas.
+    Le message nomme le modèle, l'outil, la forme, et la vraie cause : le
+    serveur d'inférence n'a pas converti l'appel — ce n'est pas Ely.
+    """
+    forme_txt = f" sous la forme {forme}" if forme else ""
+    return (
+        f"Le modèle {modele} a écrit un appel à l'outil `{nom_outil}`{forme_txt}, "
+        f"mais le serveur qui le sert ne l'a pas converti en appel d'outil : "
+        f"rien ne s'est exécuté. Ce n'est pas une panne d'Ely, c'est le couple "
+        f"modèle/serveur qui ne gère pas le tool calling dans ce format. "
+        f"Essaie un autre modèle, ou un serveur d'inférence qui connaît ce "
+        f"format (la sonde au démarrage le signale dans le journal du backend)."
+    )
 
 
 def recover_tool_calls_into_response(
