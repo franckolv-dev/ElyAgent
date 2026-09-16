@@ -150,6 +150,11 @@ async def test_une_mission_terminee_laisse_la_suivante_partir(monkeypatch):
     await sched._execute_task(tid)
     premiere = (await _missions_de(tid))[0]
     await mission_service.complete_mission(premiere.id, "Boîte triée.")
+    # `complete_mission` spawne le verdict en fond ; sous `:memory:` sa session
+    # partage la connexion et pourrait effacer l'INSERT de la seconde mission
+    # avant son commit (#404).
+    from app.services.background_tasks import drain
+    await drain()
 
     await sched._execute_task(tid)
 

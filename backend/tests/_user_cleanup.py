@@ -22,11 +22,16 @@ Vingt-sept tables référencent ``users``. Toute liste écrite à la main périm
 prochain modèle ajouté, et le défaut ne se voit qu'en CI. On lit donc le
 métamodèle : les clés étrangères SONT la liste, et elles sont toujours à jour.
 
-⚠️ POURQUOI LA CI SEULE VOYAIT LE DÉFAUT. Avec ``:memory:``, chaque connexion
-aiosqlite ouvre SA propre base : une écriture faite par le heartbeat dans une
-autre session n'existe pas pour le nettoyage, et la contrainte ne se déclenche
-jamais. Le défaut ne sort que sur une base PARTAGÉE. Pour le reproduire en
-local : ``DATABASE_URL=sqlite+aiosqlite:////tmp/x.db``.
+⚠️ ``:memory:`` = UNE SEULE CONNEXION PARTAGÉE (16/09/2026, #404). Avec
+``:memory:``, SQLAlchemy monte l'engine aiosqlite sur un ``StaticPool`` :
+toutes les sessions se relaient sur la même connexion sqlite. Une tâche de
+fond (``spawn``) qui ferme sa session émet un ROLLBACK qui efface l'écriture
+encore non commitée d'une autre session — c'est ce qui rendait le test de
+relance de mission instable. D'où le ``drain()`` en tête de ``purge_user`` :
+on attend les tâches de fond avant de supprimer quoi que ce soit. Sur une base
+FICHIER (``AsyncAdaptedQueuePool``), chaque session a sa connexion et le
+problème n'existe pas — mais une tâche de fond peut alors ré-insérer une ligne
+fille APRÈS le DELETE des enfants, d'où la contrainte de clé étrangère en CI.
 """
 from __future__ import annotations
 
@@ -54,7 +59,9 @@ async def purge_user(uid: str) -> None:
     """
     from app import models  # noqa: F401 — enregistre toutes les tables
     from app.database import Base, async_session
+    from app.services.background_tasks import drain
 
+    await drain()
     tables = list(reversed(Base.metadata.sorted_tables))
     directes = {
         t.name: _colonnes_vers(t, _TABLE_UTILISATEURS)[0]
