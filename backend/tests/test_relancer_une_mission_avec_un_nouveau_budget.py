@@ -79,6 +79,7 @@ def test_le_plafond_de_creation_est_de_dix_millions():
 async def test_une_mission_a_bout_de_budget_se_relance_avec_dix_millions(mission, monkeypatch):
     uid, mid = mission
     from app.services import mission_service
+    from app.services.background_tasks import drain
     from app.services.mission_workspace import carnet_append_section, read_carnet
 
     await mission_service.start_mission(mid)
@@ -86,6 +87,13 @@ async def test_une_mission_a_bout_de_budget_se_relance_avec_dix_millions(mission
     await mission_service.add_tokens_used(mid, 5_100_000)
     carnet_append_section(mid, "Passages", "**Passage 3** — compte créé, mail confirmé")
     await mission_service.fail_mission(mid, "budget de tokens de la mission épuisé")
+    # `fail_mission` lance en fond l'enregistrement du verdict
+    # (`record_mission_outcome`). Sous SQLite `:memory:`, toutes les sessions
+    # partagent UNE connexion (StaticPool) : la fermeture de la session de
+    # fond émet un ROLLBACK qui efface l'UPDATE encore non commité de
+    # `restart`, et la mission relue est toujours `failed` (CI de #403,
+    # 16/09/2026). On attend donc la tâche de fond avant de relancer.
+    await drain()
 
     out = await _relancer(uid, mid, monkeypatch, keep_history=True, max_tokens=10_000_000)
 
