@@ -89,9 +89,14 @@ def _deepseek_extra_body(model: str) -> dict:
 
 class ComplexityTier(str, Enum):
     """Message complexity tiers for LLM routing."""
-    SIMPLE      = "simple"      # Tier A — fast, local (Ollama)
-    MEDIUM      = "medium"      # Tier B — standard tasks, tools
-    COMPLEX     = "complex"     # Tier C — deep reasoning, multi-step
+    SIMPLE      = "simple"      # Tier A — fast, local : sous le seuil SLM
+    # Tier B — travail de FOND uniquement (16/09/2026) : le chat ne le choisit
+    # jamais depuis le 27/07 (classify_complexity rend IMAGE ou COMPLEX). Ses
+    # appelants : mission_spec_runtime, mission_critic / diagnostician réglés
+    # sur « B », mandats YAML `llm_tier: medium`, paramètres par défaut d'un
+    # modèle construit sans tier.
+    MEDIUM      = "medium"
+    COMPLEX     = "complex"     # Tier C — le CHAT au-dessus du seuil SLM, outils complets
     IMAGE       = "image"       # Tier IMG — multimodal / vision
     MAINTENANCE = "maintenance" # Tier SYS — background tasks (memory, scheduler)
     # Tier M — les missions (07/09/2026) : un travail long, à plusieurs

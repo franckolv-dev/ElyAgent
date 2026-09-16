@@ -773,20 +773,27 @@ TIER_META = [
         "badge": "A",
         "color": "emerald",
         "description": (
-            "Questions courtes, calculs rapides, réponses directes sans outil. "
-            "Un modèle local (Ollama) est idéal : zéro latence réseau, coût nul, "
-            "100 % privé. Le score de complexité est < 30."
+            "Questions courtes, calculs rapides, réponses directes avec le noyau "
+            "d'outils. Un modèle local est idéal : zéro latence réseau, coût nul, "
+            "100 % privé. Prend les demandes que le routeur d'intention note sous "
+            "le seuil SLM (SLM_COMPLEXITY_THRESHOLD) ; au-dessus, le tour part au "
+            "niveau C."
         ),
     },
     {
         "id": "medium",
-        "label": "Niveau B — Standard",
+        "label": "Niveau B — Travail de fond",
         "badge": "B",
         "color": "blue",
         "description": (
-            "Conversations standards, utilisation des outils (agenda, e-mail, recherche), "
-            "raisonnement modéré. Représente la majorité des échanges. "
-            "Score de complexité 30-70."
+            "Le chat ne l'appelle JAMAIS : depuis le 27/07/2026, une demande part "
+            "au niveau A sous le seuil SLM, au niveau C au-dessus. Cette chaîne "
+            "sert le travail de fond qui la demande explicitement : les étapes "
+            "des missions YAML, la critique de mission et le diagnostiqueur "
+            "quand ils sont réglés sur « B » (CRITIC_TIER, DIAGNOSTICIAN_TIER), "
+            "et les mandats de mission qui déclarent llm_tier: medium. Ces "
+            "appels tournent en arrière-plan et tolèrent la latence : un modèle "
+            "local y a sa place, contrairement au niveau C."
         ),
     },
     {
@@ -795,9 +802,12 @@ TIER_META = [
         "badge": "C",
         "color": "violet",
         "description": (
-            "Analyses approfondies, génération de code, workflows multi-étapes, "
-            "documents longs. Nécessite un modèle performant avec une grande fenêtre "
-            "de contexte. Score de complexité > 70."
+            "Le niveau du CHAT : toute demande au-dessus du seuil SLM arrive ici, "
+            "avec le catalogue d'outils complet (décision du 27/07/2026 : un seul "
+            "modèle principal, plus de classement par mots-clés). Analyses, code, "
+            "workflows multi-étapes, documents longs. Nécessite un modèle "
+            "performant, fiable en tool calling, avec une grande fenêtre de "
+            "contexte."
         ),
     },
     {
@@ -819,8 +829,8 @@ TIER_META = [
             "Écriture des outils et des compétences qu'Ely se crée elle-même : "
             "génération de code Python, évaluation et itération. Les prompts y "
             "sont courts (~1,7k tokens) et sans boucle agentique, donc un modèle "
-            "local spécialisé en code est ici un choix viable, contrairement aux "
-            "niveaux B et C. Un plafond mensuel distinct s'applique "
+            "local spécialisé en code est ici un choix viable, contrairement au "
+            "niveau C. Un plafond mensuel distinct s'applique "
             "(LLM_TIER_S_MONTHLY_BUDGET_USD, 50 $ par défaut) : une fois atteint, "
             "le premier modèle de la chaîne est sauté au profit du suivant."
         ),
