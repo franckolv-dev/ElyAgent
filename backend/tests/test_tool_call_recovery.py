@@ -242,3 +242,50 @@ def test_empty_promise_real_status_report():
 def test_empty_promise_empty():
     assert detect_empty_promise("") is False
     assert detect_empty_promise(None) is False  # type: ignore[arg-type]
+
+
+# ── Le format XML « function / param » (MiniCPM 5 sous LM Studio, 16/09) ─────
+
+
+def test_parse_xml_function_param_format():
+    content = (
+        '<function name="weather_get">'
+        '<param name="location">Poitiers</param>'
+        '</function>'
+    )
+    calls = parse_text_tool_calls(content)
+    assert calls == [{"name": "weather_get", "arguments": {"location": "Poitiers"}}]
+
+
+def test_parse_xml_function_several_params_and_prose():
+    content = (
+        "Je regarde ça.\n"
+        '<function name="weather_get">\n'
+        '  <param name="location">Poitiers</param>\n'
+        '  <param name="days">3</param>\n'
+        "</function>\n"
+    )
+    calls = parse_text_tool_calls(content)
+    assert calls == [{"name": "weather_get", "arguments": {"location": "Poitiers", "days": 3}}]
+
+
+def test_parse_xml_function_tags_glued_to_name():
+    """`<functionname=` : la soudure que le parseur officiel de MiniCPM normalise."""
+    content = '<functionname="weather_get"><paramname="location">Poitiers</param></function>'
+    calls = parse_text_tool_calls(content)
+    assert calls == [{"name": "weather_get", "arguments": {"location": "Poitiers"}}]
+
+
+def test_parse_xml_function_without_params():
+    calls = parse_text_tool_calls('<function name="os_screenshot"></function>')
+    assert calls == [{"name": "os_screenshot", "arguments": {}}]
+
+
+def test_recover_xml_function_strips_content():
+    content = '<function name="weather_get"><param name="location">Poitiers</param></function>'
+    resp = _MockResponse(content)
+    n = recover_tool_calls_into_response(resp, {"weather_get"})
+    assert n == 1
+    assert resp.tool_calls[0]["name"] == "weather_get"
+    assert resp.tool_calls[0]["args"] == {"location": "Poitiers"}
+    assert "<function" not in resp.content

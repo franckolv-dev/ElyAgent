@@ -23,6 +23,8 @@ Patterns observed in production:
 2. ``<function_call>{"name":"X","arguments":"..."}</function_call>``
 3. Pure JSON block at the start of content (Qwen 3.6 Flash)
 4. Markdown JSON code fence ` ```json\\n{"name":"X",...}\\n``` `
+5. ``<function name="X"><param name="k">v</param></function>`` — XML sans
+   JSON, vu avec MiniCPM 5 servi par LM Studio (16/09/2026)
 
 In every case, ELY's LangGraph receives ``response.tool_calls = []``
 and the workflow stalls because no tool was scheduled to run.
@@ -70,6 +72,30 @@ _TOOL_CALL_PATTERNS: list[re.Pattern] = [
         re.DOTALL | re.IGNORECASE,
     ),
 ]
+
+# <function name="X"><param name="k">v</param></function> — le format natif de
+# MiniCPM 5 (tool_parsers/minicpm5xml_tool_parser.py dans leur dépôt), que
+# seul SGLang convertit en `tool_calls` ; LM Studio le laisse passer en texte.
+# Pas de JSON : le nom est un attribut, chaque argument un <param>. Le `\s*`
+# entre la balise et `name` absorbe `<functionname=` / `<paramname=`, une
+# soudure que leur parseur officiel normalise aussi.
+_XML_FUNCTION_RE = re.compile(
+    r'<function\s*name\s*=\s*["\']([a-zA-Z][\w.-]{1,63})["\'][^>]*>(.*?)</function>',
+    re.DOTALL | re.IGNORECASE,
+)
+_XML_PARAM_RE = re.compile(
+    r'<param\s*name\s*=\s*["\']([\w.-]+)["\'][^>]*>(.*?)</param>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _valeur_xml(brute: str) -> Any:
+    """`3` → 3, `true` → True, `Poitiers` → "Poitiers" : JSON si ça en est."""
+    brute = brute.strip()
+    try:
+        return json.loads(brute)
+    except json.JSONDecodeError:
+        return brute
 
 # Lines starting with `{` are candidate roots for balanced-brace extraction
 # (Qwen DashScope sometimes emits a multi-line raw JSON object in content).
@@ -171,6 +197,11 @@ def parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
                 args = {"_value": args}
 
             found.append({"name": str(obj["name"]), "arguments": args})
+
+    # XML sans JSON (MiniCPM 5) : nom en attribut, arguments en <param>.
+    for m in _XML_FUNCTION_RE.finditer(content):
+        args = {k: _valeur_xml(v) for k, v in _XML_PARAM_RE.findall(m.group(2))}
+        found.append({"name": m.group(1), "arguments": args})
 
     # Fallback: balanced-brace extraction for raw multi-line JSON objects
     # (Qwen DashScope pattern). Skip if we already found something via regex.
@@ -584,7 +615,8 @@ def recover_tool_calls_into_response(
         # Strip the text-formatted tool calls from content to avoid the
         # frontend showing the raw JSON to the user.
         # Conservatively: only strip if content is mostly the tool call.
-        if content.strip().startswith("<tool_call") or content.strip().startswith("{"):
+        _debut = content.strip().lower()
+        if _debut.startswith(("<tool_call", "<function", "{")):
             response.content = "[Outil exécuté automatiquement]"
     except Exception as exc:
         logger.warning("tool_call_recovery: failed to inject (%s) — leaving response untouched", exc)
