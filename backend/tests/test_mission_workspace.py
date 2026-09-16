@@ -327,8 +327,11 @@ async def test_complete_promotes_lessons(_ws, _user_j4, monkeypatch):
     carnet_append_section(mid, "Leçons", "- publier le mardi marche mieux")
     await mission_service.start_mission(mid)
     await mission_service.complete_mission(mid, "terminée")
-    # la promotion est spawnée — laisser la boucle la traiter
-    import asyncio
-    await asyncio.sleep(0.05)
+    # la promotion est spawnée — on attend sa fin (et celle du verdict) avant
+    # d'affirmer quoi que ce soit ou de nettoyer (#404 : `:memory:` = une
+    # connexion partagée, une session de fond qui se ferme peut effacer une
+    # écriture non commitée).
+    from app.services.background_tasks import drain
+    await drain()
     assert "publier le mardi" in stored.get("content", "")
     assert stored["extra"]["source"] == "mission_carnet"
