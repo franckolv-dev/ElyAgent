@@ -210,6 +210,11 @@ async def test_une_mission_en_attente_n_est_pas_reveillee(mission):
     from sqlalchemy import update
 
     await mission_questions.poser(mid, _QUESTION)
+    # `poser` notifie, ce qui spawne l'indexation FTS du message ; sous
+    # `:memory:` (une connexion partagée) sa session pourrait se fermer entre
+    # notre UPDATE et son COMMIT et l'effacer (#404).
+    from app.services.background_tasks import drain
+    await drain()
     async with async_session() as db:
         await db.execute(update(Mission).where(Mission.id == mid).values(
             next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=5),

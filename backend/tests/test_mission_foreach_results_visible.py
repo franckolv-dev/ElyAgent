@@ -71,6 +71,11 @@ async def mission():
         user_id=uid, title="Bilan", goal="prospecter",
     )
     yield uid, m.id
+    # `act_node` spawne `mission.log_usage` ; sous `:memory:` (une connexion
+    # partagée) sa session pourrait se fermer entre nos DELETE et le COMMIT
+    # et les effacer (#404). On attend les tâches de fond avant de nettoyer.
+    from app.services.background_tasks import drain
+    await drain()
     async with async_session() as db:
         for modele in (MissionStepRun, MissionStep):
             await db.execute(delete(modele).where(modele.mission_id == m.id))
