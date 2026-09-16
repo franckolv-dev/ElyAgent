@@ -61,7 +61,15 @@ jobs:
           # The Settings validator refuses to boot with the default JWT key
           # (deliberate hardening), so we inject a random one per CI run.
           JWT_SECRET_KEY: ci-runner-ephemeral-jwt-secret-not-for-production-use-only
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          # Base FICHIER, pas `:memory:` (#404, #407, 16/09/2026). Avec
+          # `:memory:`, SQLAlchemy monte aiosqlite sur un StaticPool : toutes
+          # les sessions partagent UNE connexion, et la fermeture d'une tâche
+          # de fond (`spawn`) émet un ROLLBACK qui efface l'écriture encore
+          # non commitée du premier plan — 74 cas internes à l'app relevés par
+          # l'audit de #407, hors de portée d'un `drain()` dans les tests.
+          # Sur un fichier, chaque session a sa connexion. Le runner est
+          # neuf à chaque job : le fichier naît vide et meurt avec lui.
+          DATABASE_URL: "sqlite+aiosqlite:///./ci_backend.db"
           QDRANT_URL: "http://localhost:6333"
           ENVIRONMENT: test
         # `--cov` sans plancher (audit CI 02/09/2026) : la couverture n'etait
