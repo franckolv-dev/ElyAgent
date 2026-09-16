@@ -1240,6 +1240,7 @@ def create_agent_node():
                 if not _tc_slm:
                     _noms_reels = {t.name for t in registry.all_tools}
                     from app.agent.tool_call_recovery import (
+                        forme_de_l_appel_texte,
                         looks_like_an_unexecuted_tool_call,
                         recover_tool_calls_into_response,
                     )
@@ -1272,7 +1273,9 @@ def create_agent_node():
                             )
                             _annoncer_repli_slm(
                                 state, _slm_real_name(_slm_base, settings),
-                                f"appel à {_rate} écrit en texte au lieu d'être exécuté",
+                                f"appel à {_rate} écrit en texte "
+                                f"({forme_de_l_appel_texte(_contenu)}) que le serveur "
+                                f"local n'a pas converti en appel d'outil",
                             )
                             response = None
                             model_used = "llm:tier-routed"
@@ -1879,8 +1882,11 @@ def create_agent_node():
                 # hallucinated tool names like `send_email` →
                 # `gmail_send_email` via fuzzy matching.
                 from app.agent.tool_call_recovery import (
-                    recover_tool_calls_into_response,
                     detect_empty_promise,
+                    forme_de_l_appel_texte,
+                    looks_like_an_unexecuted_tool_call,
+                    message_appel_non_converti,
+                    recover_tool_calls_into_response,
                 )
                 # DIAG 2026-05-06: log raw response shape BEFORE recovery
                 _raw_tc = getattr(response, "tool_calls", None) or []
@@ -1957,6 +1963,33 @@ def create_agent_node():
                                 logger.warning("[empty_promise] retry STILL promises without tool — keeping original")
                     except Exception as _retry_exc:
                         logger.warning("[empty_promise] retry failed (%s)", _retry_exc)
+
+                # 16/09/2026 : rien de repêchable, mais le texte EST un appel
+                # (MiniCPM 5 sous LM Studio, ou le prochain format inconnu).
+                # Affiché brut, l'utilisateur conclut qu'Ely ne fonctionne
+                # pas. Il lit à la place qui a écrit quoi, et que c'est le
+                # serveur qui n'a pas converti l'appel.
+                _tc_fin = getattr(response, "tool_calls", None) or []
+                if not _tc_fin:
+                    _txt_fin = getattr(response, "content", "") or ""
+                    _txt_fin = _txt_fin if isinstance(_txt_fin, str) else str(_txt_fin)
+                    _rate_cloud = looks_like_an_unexecuted_tool_call(
+                        _txt_fin, {t.name for t in registry.all_tools},
+                    )
+                    if _rate_cloud:
+                        _modele_fin = (
+                            getattr(_base_llm, "model_name", None)
+                            or getattr(_base_llm, "model", None) or _tier_key
+                        )
+                        logger.warning(
+                            "[text_tool_call] tier=%s modèle=%s — appel à %s écrit en "
+                            "texte (%s), non converti par le serveur ; expliqué à "
+                            "l'utilisateur", _tier_key, _modele_fin, _rate_cloud,
+                            forme_de_l_appel_texte(_txt_fin),
+                        )
+                        response.content = message_appel_non_converti(
+                            _rate_cloud, forme_de_l_appel_texte(_txt_fin), str(_modele_fin),
+                        )
 
                 logger.warning("⏱ TIMING[general.infer] %.2fs — tier=%s, tool_calls=%d",
                     _t.monotonic() - _infer_t, _tier_key, len(getattr(response, 'tool_calls', []) or []))

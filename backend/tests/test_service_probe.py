@@ -88,6 +88,9 @@ async def test_a_model_that_answers_produces_no_finding(monkeypatch) -> None:
     class _LlmOk:
         model_name = "modele-sain"
 
+        def bind_tools(self, _tools):
+            return self
+
         async def ainvoke(self, _messages):
             class _R:
                 content = "OK"
@@ -295,3 +298,112 @@ async def test_each_provider_probe_carries_its_own_key(monkeypatch) -> None:
         "chaque fournisseur doit recevoir SA clé ; si plusieurs fermetures "
         "partagent un nom de variable, elles reçoivent toutes la dernière"
     )
+
+
+# ---------------------------------------------------------------------------
+# 7. Les appels d'outils émis en TEXTE — le cas MiniCPM 5 sous LM Studio
+# ---------------------------------------------------------------------------
+#
+# 16/09/2026 : MiniCPM5-2B répond à « quelle météo à Poitiers » par
+# `<function name="weather_get"><param name="location">Poitiers</param></function>`,
+# en texte. Le modèle sait appeler des outils ; c'est LM Studio qui ne connaît
+# pas son format et laisse passer l'appel dans `content`. Répondre « OK » au
+# ping ne dit rien de ça : il faut brancher un outil et demander de l'appeler.
+
+
+class _Reponse:
+    def __init__(self, content="", tool_calls=None):
+        self.content = content
+        self.tool_calls = tool_calls or []
+
+
+def _tete(reponse_ping, reponse_outil, *, refuse_les_outils=False):
+    class _Llm:
+        model_name = "minicpm5-2b"
+        appels: list = []
+
+        def bind_tools(self, tools):
+            if refuse_les_outils:
+                raise ValueError("tools are not supported by this model")
+            self.outils = tools
+            return self
+
+        async def ainvoke(self, messages):
+            self.appels.append(messages)
+            return reponse_outil if getattr(self, "outils", None) else reponse_ping
+    return _Llm()
+
+
+@pytest.mark.asyncio
+async def test_a_head_that_emits_tool_calls_as_text_is_reported(monkeypatch) -> None:
+    from app.services import service_probe as sp
+
+    tete = _tete(
+        _Reponse("OK"),
+        _Reponse('<function name="sonde_outil"><param name="valeur">42</param></function>'),
+    )
+    monkeypatch.setattr(sp, "_chain_heads", lambda: {"simple": ("id-x", "minicpm5-2b")})
+    monkeypatch.setattr(sp, "_build", lambda _pid: tete)
+    monkeypatch.setattr(sp, "_search_providers", lambda: {})
+
+    constats = await sp.probe_services()
+    assert [c.kind for c in constats] == ["head_tool_calls_as_text"]
+    assert "minicpm5-2b" in constats[0].subject
+    assert "<function name=" in constats[0].detail
+    assert "affiché" in constats[0].detail
+
+
+@pytest.mark.asyncio
+async def test_a_head_that_calls_the_probe_tool_natively_is_silent(monkeypatch) -> None:
+    from app.services import service_probe as sp
+
+    tete = _tete(
+        _Reponse("OK"),
+        _Reponse("", tool_calls=[{"name": "sonde_outil", "args": {"valeur": 42}, "id": "c1"}]),
+    )
+    monkeypatch.setattr(sp, "_chain_heads", lambda: {"medium": ("id-x", "gpt")})
+    monkeypatch.setattr(sp, "_build", lambda _pid: tete)
+    monkeypatch.setattr(sp, "_search_providers", lambda: {})
+
+    assert await sp.probe_services() == []
+    assert [t.name for t in tete.outils] == ["sonde_outil"]
+
+
+@pytest.mark.asyncio
+async def test_a_head_that_answers_in_prose_without_calling_is_not_accused(monkeypatch) -> None:
+    """Fail-closed sur l'accusation : ne pas appeler n'est pas émettre en texte."""
+    from app.services import service_probe as sp
+
+    tete = _tete(_Reponse("OK"), _Reponse("La valeur est 42."))
+    monkeypatch.setattr(sp, "_chain_heads", lambda: {"complex": ("id-x", "m")})
+    monkeypatch.setattr(sp, "_build", lambda _pid: tete)
+    monkeypatch.setattr(sp, "_search_providers", lambda: {})
+
+    assert await sp.probe_services() == []
+
+
+@pytest.mark.asyncio
+async def test_a_head_that_refuses_tools_is_reported(monkeypatch) -> None:
+    from app.services import service_probe as sp
+
+    tete = _tete(_Reponse("OK"), _Reponse("OK"), refuse_les_outils=True)
+    monkeypatch.setattr(sp, "_chain_heads", lambda: {"medium": ("id-x", "m")})
+    monkeypatch.setattr(sp, "_build", lambda _pid: tete)
+    monkeypatch.setattr(sp, "_search_providers", lambda: {})
+
+    constats = await sp.probe_services()
+    assert [c.kind for c in constats] == ["head_no_tools"]
+    assert "not supported" in constats[0].detail
+
+
+@pytest.mark.asyncio
+async def test_tool_less_tiers_are_not_probed_with_a_tool(monkeypatch) -> None:
+    """Le tier maintenance ne branche jamais d'outil : l'accuser serait faux."""
+    from app.services import service_probe as sp
+
+    tete = _tete(_Reponse("OK"), _Reponse("OK"), refuse_les_outils=True)
+    monkeypatch.setattr(sp, "_chain_heads", lambda: {"maintenance": ("id-x", "m")})
+    monkeypatch.setattr(sp, "_build", lambda _pid: tete)
+    monkeypatch.setattr(sp, "_search_providers", lambda: {})
+
+    assert await sp.probe_services() == []

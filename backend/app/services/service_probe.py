@@ -77,6 +77,11 @@ logger = logging.getLogger(__name__)
 _TIMEOUT_S = 40.0
 
 _PING = "Réponds exactement : OK"
+
+# Les tiers qui branchent des outils. Sonder le tool calling d'une tête qui
+# n'en aura jamais (maintenance, image) accuserait un service sain.
+_TIERS_A_OUTILS = {"simple", "medium", "complex", "mission"}
+_DEMANDE_OUTIL = "Appelle l'outil sonde_outil avec valeur = 42. N'écris rien d'autre."
 _REQUETE_TEMOIN = "France"   # terme générique : zéro résultat = anomalie
 
 
@@ -161,6 +166,76 @@ def _search_providers() -> dict[str, object]:
     return sondes
 
 
+def _outil_temoin():
+    """Un outil qui n'existe que le temps de la sonde.
+
+    Construit SANS `@tool` : le pin `test_every_declared_tool_is_classified`
+    relit l'AST de tout `app/` et exigerait de le classer dans `TOOL_NATURE`,
+    alors qu'il n'est jamais enregistré ni exposé au modèle en conversation.
+    """
+    from langchain_core.tools import StructuredTool
+
+    def sonde_outil(valeur: int) -> str:
+        return str(valeur)
+
+    return StructuredTool.from_function(
+        func=sonde_outil, name="sonde_outil",
+        description="Outil témoin de la sonde : renvoie la valeur reçue.",
+    )
+
+
+async def _probe_tool_calling(tier: str, llm, modele: str) -> Finding | None:
+    """Branche un outil témoin et demande de l'appeler.
+
+    16/09/2026 : MiniCPM5-2B sous LM Studio répondait « OK » au ping et
+    passait la sonde. Mais à « quelle météo à Poitiers » il rendait
+    `<function name="weather_get">…` en TEXTE : LM Studio ne connaît pas son
+    format d'appel et le laisse dans `content`. Répondre ne prouve pas qu'on
+    sait appeler.
+
+    ⚠️ Fail-closed sur l'accusation : seuls un refus explicite des outils et
+    un appel ÉCRIT en texte sont signalés. Un modèle qui répond en prose sans
+    appeler n'est pas accusé — on ne sait pas si c'est lui ou le serveur.
+    """
+    from langchain_core.messages import HumanMessage
+
+    from app.agent.tool_call_recovery import (
+        forme_de_l_appel_texte, looks_like_an_unexecuted_tool_call,
+    )
+
+    try:
+        avec_outil = llm.bind_tools([_outil_temoin()])
+    except Exception as exc:  # noqa: BLE001
+        return Finding("head_no_tools", f"{modele} (tier {tier})",
+                       f"n'accepte pas les outils : {exc}"[:200])
+    try:
+        reponse = await asyncio.wait_for(
+            avec_outil.ainvoke([HumanMessage(content=_DEMANDE_OUTIL)]),
+            timeout=_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        return Finding("head_mute", f"{modele} (tier {tier})",
+                       f"répond au ping mais pas en {_TIMEOUT_S:.0f} s avec un "
+                       f"outil branché — chaque tour à outils de ce tier attendra "
+                       f"puis basculera sur le repli")
+    except Exception as exc:  # noqa: BLE001
+        return Finding("head_no_tools", f"{modele} (tier {tier})",
+                       f"refuse l'appel dès qu'un outil est branché : {exc}"[:200])
+
+    if getattr(reponse, "tool_calls", None):
+        return None
+    contenu = getattr(reponse, "content", "") or ""
+    contenu = contenu if isinstance(contenu, str) else str(contenu)
+    if looks_like_an_unexecuted_tool_call(contenu, {"sonde_outil"}):
+        return Finding(
+            "head_tool_calls_as_text", f"{modele} (tier {tier})",
+            f"émet ses appels d'outils en TEXTE ({forme_de_l_appel_texte(contenu)}) "
+            f"que le serveur ne convertit pas — un outil demandé sera affiché "
+            f"à l'utilisateur au lieu d'être exécuté, sauf si Ely repêche cette forme",
+        )
+    return None
+
+
 async def _probe_model(tier: str, instance_id: str, nom: str) -> Finding | None:
     from langchain_core.messages import HumanMessage
 
@@ -185,6 +260,8 @@ async def _probe_model(tier: str, instance_id: str, nom: str) -> Finding | None:
     except Exception as exc:  # noqa: BLE001
         return Finding("head_mute", f"{modele} (tier {tier})",
                        f"se construit mais REFUSE l'appel : {exc}"[:200])
+    if tier in _TIERS_A_OUTILS:
+        return await _probe_tool_calling(tier, llm, modele)
     return None
 
 
