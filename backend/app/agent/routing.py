@@ -52,6 +52,27 @@ logger = logging.getLogger(__name__)
 MAX_AGENT_ITERATIONS: int = 80
 
 
+def iterations_avant_plafond(recursion_limit: int) -> int:
+    """Combien d'itérations d'outils tiennent sous un plafond LangGraph donné,
+    bilan forcé compris.
+
+    Le chat dérive son plafond de ``MAX_AGENT_ITERATIONS`` ; le planificateur
+    fait l'inverse : son plafond est un garde-fou de COÛT (60 super-pas), et
+    c'est le nombre d'itérations qui doit s'y plier. Sans cela ``force_summary``
+    (80 itérations) ne se déclenchait jamais avant le plafond (~29 itérations),
+    et une tâche qui débordait mourait sur « Recursion limit of 60 » en perdant
+    le compte rendu d'un travail parfois terminé (17/09/2026).
+
+    Pire cas d'un tour : T itérations (agent + outils = 2 super-pas), puis une
+    réponse finale et une vérification par ronde du juge (``MAX_CONFORMITY_
+    RETRIES`` reprises + la première), puis le bilan forcé (1 super-pas).
+    """
+    from app.agent.conformity import MAX_CONFORMITY_RETRIES
+
+    marge = 2 * (MAX_CONFORMITY_RETRIES + 1) + 1
+    return max(1, (int(recursion_limit) - marge) // 2)
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Branchement des outils
 # ──────────────────────────────────────────────────────────────────────
@@ -166,16 +187,18 @@ def should_continue(state: AgentState) -> str:
     """
     last_message = state["messages"][-1]
     iter_count = state.get("iteration_count", 0)
+    # Le planificateur pose son propre plafond (cf. `iterations_avant_plafond`).
+    plafond = int(state.get("max_iterations") or 0) or MAX_AGENT_ITERATIONS
 
     if (
         isinstance(last_message, AIMessage)
         and last_message.tool_calls
-        and iter_count >= MAX_AGENT_ITERATIONS
+        and iter_count >= plafond
     ):
         logger.warning(
             "[iteration_budget] count=%d ≥ %d — forcing final summary "
             "without tools (Chantier 9)",
-            iter_count, MAX_AGENT_ITERATIONS,
+            iter_count, plafond,
         )
         return "force_summary"
 
