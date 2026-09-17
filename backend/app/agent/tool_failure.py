@@ -45,4 +45,7 @@ def dit_un_echec(texte: object) -> bool:
     return value.startswith(ECHEC_PREFIXES) or value.startswith((
         "action refusée", "action interdite", "accès refusé", "permission denied",
         "code refusé par le sandbox", "timeout :", "impossible d'exécuter le code",
+        # Les ~80 retours « Google non connecté… » des outils Google : sans
+        # cela la passerelle les comptait comme des SUCCÈS (17/09/2026).
+        "google non connecté", "google drive non connecté",
     ))

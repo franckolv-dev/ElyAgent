@@ -260,9 +260,14 @@ async def test_no_refresh_token_means_no_refresh_attempted(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_refresh_failure_returns_stale_creds_not_none(monkeypatch):
-    """If the refresh round-trip fails (network, revoked, etc.), we return
-    the stale creds so the API call surfaces the real Google error message
-    instead of the misleading « Google non connecté »."""
+    """If the refresh round-trip fails for a TRANSIENT reason (network, Google
+    5xx), we return the stale creds so the API call surfaces the real Google
+    error instead of the misleading « Google non connecté ».
+
+    A REVOKED token (``invalid_grant``) is the opposite case since 17/09/2026 :
+    nothing will revive it, the account really is disconnected, and saying so
+    is the accurate message — see
+    ``test_un_compte_google_deconnecte_se_dit.py``."""
     async def _fake_oauth():
         return ("cid", "cs", "http://x")
     monkeypatch.setattr("app.services.google_auth._get_oauth_client", _fake_oauth)
@@ -279,7 +284,7 @@ async def test_refresh_failure_returns_stale_creds_not_none(monkeypatch):
             return False
 
         def refresh(self, request):
-            raise Exception("invalid_grant: refresh token revoked")
+            raise Exception("Connection reset by peer")
 
     async def _fake_build(creds_dict):
         return _FakeCreds()
