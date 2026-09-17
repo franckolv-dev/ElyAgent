@@ -34,6 +34,44 @@ from app.agent.nodes import (
 )
 
 
+class CompteGoogleDeconnecte(RuntimeError):
+    """Une tâche sans humain a besoin de Google, et le compte est déconnecté."""
+
+
+def route_after_tools(state: AgentState) -> str:
+    """Après les outils : on retourne à l'agent, sauf compte Google déconnecté
+    pendant une tâche AUTOMATISÉE.
+
+    « Traitement factures » (17/09/2026) : jeton révoqué dès la première
+    action, puis cinq minutes de contournements par le navigateur jusqu'à
+    « Recursion limit of 60 ». Personne ne lit une tâche planifiée pendant
+    qu'elle tourne ; la laisser chercher une autre porte brûle du temps et des
+    tokens pour un résultat qui ne peut pas arriver. En CHAT on ne coupe pas :
+    quelqu'un lit, le conseil de reprise suffit, et le reste de la demande
+    peut encore être traité.
+    """
+    if not state.get("automated_task"):
+        return "agent"
+    from langchain_core.messages import ToolMessage
+
+    from app.agent.recovery import dit_compte_google_deconnecte
+
+    for message in reversed(state.get("messages") or []):
+        if not isinstance(message, ToolMessage):
+            break   # on ne regarde que les retours des outils qui viennent de tourner
+        if dit_compte_google_deconnecte(message.content):
+            return "compte_deconnecte"
+    return "agent"
+
+
+async def compte_deconnecte_node(state: AgentState) -> dict:
+    """Arrête la tâche en LEVANT : le planificateur écrit ``Erreur: {exc}`` sur
+    la tâche, et c'est ce texte que la page affiche."""
+    from app.agent.recovery import MESSAGE_COMPTE_GOOGLE_DECONNECTE
+
+    raise CompteGoogleDeconnecte(MESSAGE_COMPTE_GOOGLE_DECONNECTE)
+
+
 def build_simple_agent_graph() -> StateGraph:
     """Single-agent graph (original architecture).
 
@@ -71,7 +109,13 @@ def build_simple_agent_graph() -> StateGraph:
         route_after_conformity,
         {"agent": "agent", "tools": "tools", "end": END},
     )
-    graph.add_edge("tools", "agent")
+    graph.add_node("compte_deconnecte", compte_deconnecte_node)
+    graph.add_conditional_edges(
+        "tools",
+        route_after_tools,
+        {"agent": "agent", "compte_deconnecte": "compte_deconnecte"},
+    )
+    graph.add_edge("compte_deconnecte", END)
     graph.add_edge("force_summary", END)
     return graph.compile()
 

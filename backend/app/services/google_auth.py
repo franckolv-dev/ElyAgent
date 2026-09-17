@@ -355,6 +355,22 @@ async def get_user_credentials(
             try:
                 await asyncio.to_thread(creds.refresh, Request())
             except Exception as refresh_exc:
+                # `invalid_grant` = Google a révoqué ou fait expirer le jeton
+                # de rafraîchissement. Rien ne le ressuscitera : seul un
+                # nouveau consentement le fera. Rendre quand même les
+                # identifiants périmés envoyait chaque outil Google se casser
+                # le nez en 401, avec un message (« invalid_grant ») que ni le
+                # modèle ni Franck ne lisaient comme « compte déconnecté » —
+                # une tâche planifiée a tâtonné cinq minutes dans le
+                # navigateur avant « Recursion limit of 60 » (17/09/2026).
+                # On rend `None` : les outils répondent « Google non connecté ».
+                if "invalid_grant" in str(refresh_exc).lower():
+                    logger.warning(
+                        "Compte Google déconnecté : jeton de rafraîchissement "
+                        "révoqué ou expiré (%s) — un nouveau consentement est "
+                        "nécessaire", refresh_exc,
+                    )
+                    return None
                 logger.warning(
                     "Google token refresh failed: %s — returning stale creds, "
                     "API call will likely 401",

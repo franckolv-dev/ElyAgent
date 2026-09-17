@@ -55,9 +55,31 @@ def successful_evidence(messages: list) -> list[str]:
     return sorted(evidence)
 
 
+MESSAGE_COMPTE_GOOGLE_DECONNECTE = (
+    "Compte Google déconnecté : l'autorisation Google est absente, expirée ou "
+    "révoquée. Reconnecte ton compte Google dans Réglages, puis relance."
+)
+
+
+def dit_compte_google_deconnecte(texte: object) -> bool:
+    """Ce retour d'outil dit-il que le compte Google n'est pas (ou plus) connecté ?"""
+    value = content_to_text(texte).lstrip("⚠️❌⛔ ").lower()
+    return value.startswith(("google non connecté", "google drive non connecté"))
+
+
 def recovery_hint(tool_name: str, error: str) -> str:
     """Make the next step explicit, without retrying an uncertain side effect."""
     lower = error.lower()
+    if dit_compte_google_deconnecte(error) or "invalid_grant" in lower:
+        # Aucun outil Google ne marchera, et passer par le navigateur ou un
+        # script reviendrait à forcer une porte que l'utilisateur doit rouvrir.
+        return (
+            f"\n\n[Reprise de {tool_name}] {MESSAGE_COMPTE_GOOGLE_DECONNECTE} "
+            "Aucun outil Google ne fonctionnera d'ici là : n'essaie aucune autre "
+            "voie pour atteindre Gmail, Drive, Agenda ou Sheets. Traite ce qui ne "
+            "dépend pas de Google, puis dis clairement à l'utilisateur : "
+            "« Compte Google déconnecté »."
+        )
     if any(word in lower for word in ("403", "401", "unauthorized", "credential", "oauth", "permission", "interdit", "refus")):
         action = (
             "Vérifie le compte et les autorisations. Ne contourne pas un refus. "
