@@ -187,6 +187,7 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
         # (bug terrain 13/06, Prospection). Voir config.py.
         from app.config import get_settings as _get_settings
         _recursion = _get_settings().scheduler_recursion_limit
+        from app.agent.routing import iterations_avant_plafond as _iterations_avant_plafond
         # ── PII (C0, audit 16/07 §6.2) : le prompt d'une tâche peut contenir
         # adresse, téléphone ou consigne personnelle → anonymiser AVANT le
         # LLM cloud, avec le filtre PARTAGÉ de la conversation (tool_node
@@ -208,6 +209,10 @@ async def _execute_task(task_id: str, catchup_for: str | None = None) -> None:
                 "conversation_id": conv_id,
                 "google_credentials": google_credentials or "",
                 "automated_task": True,
+                # Le bilan forcé doit arriver AVANT `recursion_limit` : sinon
+                # une tâche qui déborde meurt sur « Recursion limit of 60 » et
+                # perd son compte rendu (17/09/2026).
+                "max_iterations": _iterations_avant_plafond(_recursion),
                 # Le canal sur lequel LE PLANIFICATEUR livrera lui-même. Le
                 # nœud `agent` s'en sert pour ne pas brancher l'outil qui
                 # ferait doublon : le 01/08, Franck recevait son briefing deux
