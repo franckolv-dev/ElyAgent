@@ -231,6 +231,12 @@ function ChatPageInner() {
       } else if (msg.type === "tool_end") {
         setActiveTool(null);
         if (msg.image) pendingToolImages.current.push(msg.image);
+      } else if (msg.type === "stream_reset") {
+        // La voie locale vient d'être écartée (délai, erreur, appel d'outil
+        // écrit en texte) : ce qu'elle avait commencé à afficher n'est pas la
+        // réponse. Sans ce vidage, la réponse du modèle distant venait se
+        // coller derrière un bout d'appel d'outil (19/09/2026).
+        setStreamingContent("");
       } else if (msg.type === "token") {
         setActiveTool(null);
         setStreamingContent((prev) => prev + (msg.content ?? ""));

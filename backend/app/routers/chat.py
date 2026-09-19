@@ -40,6 +40,7 @@ from app.auth.jwt import decode_token
 from app.database import async_session
 from app.models.conversation import Conversation, Message
 from app.models.user import User
+from app.agent.local_abandonne import EVENEMENT as _LOCAL_ABANDONNE, retirer_le_passage
 from app.services.background_tasks import spawn
 from app.services.memory_manager import get_memory_manager
 from app.services.security_filter import SecurityFilter
@@ -481,6 +482,10 @@ async def websocket_chat(websocket: WebSocket):
             # fin, si des outils ont tourné, on ne garde que ce dernier tour =
             # la vraie réponse (cf. réassignation après la boucle de streaming).
             _answer_content = ""
+            # Longueurs des deux tampons au début du DERNIER appel de modèle :
+            # si la voie locale est abandonnée, on retire ce qu'elle a streamé
+            # depuis, et rien d'autre (19/09/2026, `app.agent.local_abandonne`).
+            _marque_passage = (0, 0)
             model_used_out: str = ""
             routing_score_out: int | None = None
             context_breakdown_out: str | None = None
@@ -556,7 +561,23 @@ async def websocket_chat(websocket: WebSocket):
               ):
                 if stop_event.is_set():
                     break
-                if event["event"] == "on_chat_model_stream":
+                if event["event"] == "on_chat_model_start":
+                    if event.get("metadata", {}).get("langgraph_node", "") != "router":
+                        _marque_passage = (len(ai_content), len(_answer_content))
+                elif event["event"] == "on_custom_event" and event.get("name") == _LOCAL_ABANDONNE:
+                    # La voie locale vient d'être écartée (délai, erreur, appel
+                    # écrit en texte). Ses tokens déjà partis quittent la
+                    # réponse — donc l'historique — et l'écran.
+                    ai_content, _answer_content, _retire = retirer_le_passage(
+                        ai_content, _answer_content, _marque_passage,
+                    )
+                    if _retire:
+                        logger.info(
+                            "voie locale abandonnée : %d caractère(s) déjà streamé(s) retiré(s)",
+                            len(_retire),
+                        )
+                        await _ws_send(_dumps({"type": "stream_reset"}))
+                elif event["event"] == "on_chat_model_stream":
                     # Only stream tokens from specialist nodes, not the router
                     node = event.get("metadata", {}).get("langgraph_node", "")
                     if node == "router":
