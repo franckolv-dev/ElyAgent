@@ -733,44 +733,6 @@ export const api = {
       headers: { "Content-Type": "application/json" },
     }) as Promise<{ status: string; tool_name?: string; learned_skill_id?: string; detail?: string; python_tools_enabled: boolean }>,
 
-  // ── Admin: self-diagnostic loop J4 — incidents & propositions ───────────
-  /** List diagnosed incidents (dubious/failed executions with a cause).
-   *  `open` = not yet arbitrated; `all` = include validated/rejected/actioned. */
-  adminLearningIncidents: (status: "open" | "all" = "open") =>
-    fetchAPI(`/admin/learning/incidents?status=${status}`) as Promise<Incident[]>,
-
-  /** Arbitrate an incident: validated | rejected | actioned (+ optional note). */
-  adminLearningIncidentResolve: (
-    id: number,
-    status: "validated" | "rejected" | "actioned",
-    resolution?: string,
-  ) =>
-    fetchAPI(`/admin/learning/incidents/${id}/resolve`, {
-      method: "POST",
-      body: JSON.stringify(resolution ? { status, resolution } : { status }),
-      headers: { "Content-Type": "application/json" },
-    }) as Promise<Incident>,
-
-  // ── Admin: self-diagnostic loop J5 — validable patches (voie C) ─────────
-  /** Generate (LLM) a prompt-rewrite patch for a scheduled-task incident.
-   *  Does NOT apply it — returns the proposed patch (diff) for review. */
-  adminLearningProposePatch: (incidentId: number) =>
-    fetchAPI(`/admin/learning/incidents/${incidentId}/propose-patch`, {
-      method: "POST",
-    }) as Promise<Patch>,
-
-  /** Apply a proposed patch (reversible — old value is kept). */
-  adminLearningApplyPatch: (patchId: number) =>
-    fetchAPI(`/admin/learning/patches/${patchId}/apply`, { method: "POST" }) as Promise<Patch>,
-
-  /** Revert an applied patch (restore the pre-apply value). */
-  adminLearningRevertPatch: (patchId: number) =>
-    fetchAPI(`/admin/learning/patches/${patchId}/revert`, { method: "POST" }) as Promise<Patch>,
-
-  /** Reject a proposed patch (without applying). */
-  adminLearningRejectPatch: (patchId: number) =>
-    fetchAPI(`/admin/learning/patches/${patchId}/reject`, { method: "POST" }) as Promise<Patch>,
-
   // ── Reversible Action Journal (J2b) — annuler ses actions ──────────────
   /** List the current user's still-undoable actions (most recent first). */
   reversibleActions: () =>
@@ -1146,64 +1108,6 @@ export interface ToolGap {
   processed_at: string | null;
   /** If resolved by generating a candidate, the candidate's id. */
   learned_skill_id: string | null;
-}
-
-/** Self-diagnostic loop J4 — a diagnosed incident: the cause hypothesis +
- *  category for a dubious/failed execution, joined to its outcome context. */
-export interface Incident {
-  id: number;
-  execution_outcome_id: number;
-  user_id: string;
-  source: string;
-  source_id: string | null;
-  /** gap_tool | binding | config_tier | prompt | code_core | user_interaction | unknown */
-  category: string;
-  hypothesis: string;
-  /** low | medium | high */
-  confidence: string;
-  /** open | validated | rejected | actioned | merged (folded duplicate) */
-  status: string;
-  resolution: string | null;
-  /** Model that produced the diagnosis, or "rule-based" fallback. */
-  critic_model: string | null;
-  created_at: string;
-  processed_at: string | null;
-  /** Dedup: number of runs folded into this incident (1 = never deduped). */
-  occurrences: number;
-  /** Dedup: timestamp of the latest folded run, null if never deduped. */
-  last_seen_at: string | null;
-  // Execution context (joined from execution_outcomes)
-  /** dubious | failed */
-  outcome: string;
-  declared_status: string | null;
-  channel: string | null;
-  tier_llm: string | null;
-  model_used: string | null;
-  signals: string[];
-  /** J5 — most recent proposed patch (voie C), if any. */
-  patch?: Patch | null;
-  repair_available?: boolean;
-  repair_verification?: "pending" | "succeeded" | "failed" | null;
-}
-
-/** Self-diagnostic loop J5 — a validable config/prompt patch proposed by Ely. */
-export interface Patch {
-  id: number;
-  execution_diagnosis_id: number;
-  /** "prompt" (v1) */
-  kind: string;
-  /** "scheduled_task" (v1) */
-  target_type: string;
-  target_id: string;
-  field: string;
-  old_value: string | null;
-  new_value: string;
-  rationale: string | null;
-  /** proposed | applied | rejected | reverted */
-  status: string;
-  critic_model: string | null;
-  applied_at: string | null;
-  created_at: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

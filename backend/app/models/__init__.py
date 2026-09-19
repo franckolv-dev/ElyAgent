@@ -31,9 +31,7 @@ from app.models.provider_switch import ProviderSwitch
 from app.models.mission_critique import MissionCritique
 # Boucle d'auto-diagnostic J1 — verdict d'aboutissement réel par exécution.
 from app.models.execution_outcome import ExecutionOutcome
-# Boucle d'auto-diagnostic J3 — hypothèse de cause + catégorie (maillon 2).
-from app.models.execution_diagnosis import ExecutionDiagnosis
-# Boucle d'auto-diagnostic J5 — correctif config/prompt validable (voie C).
+# « Améliorer la consigne » d'une tâche planifiée — réécriture validable.
 from app.models.proposed_patch import ProposedPatch
 from app.models.user_state import UserState
 # Sprint 4b Phase 1 — auto-amélioration par création de skills (Hermes-style)
@@ -69,7 +67,7 @@ __all__ = [
     "Licence", "ExtensionToken", "ApiKey",
     "Procedure", "ErrorLog",
     "HitlRefusal", "HallucinationBlock", "ProviderSwitch", "MissionCritique",
-    "ExecutionOutcome", "ExecutionDiagnosis", "ProposedPatch",
+    "ExecutionOutcome", "ProposedPatch",
     "UserState",
     "FailureCase", "LearnedSkill", "SkillStatus", "SkillSource",
     "IoToolDispatch",

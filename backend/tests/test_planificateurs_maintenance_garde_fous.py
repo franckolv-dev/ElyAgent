@@ -69,7 +69,6 @@ CRONS_ATTENDUS = {
         "reversible_journal_purge",
         "browser_idle_cleanup",
         "mission_critic_loop",
-        "execution_diagnostician_loop",
         "purge_revoked_tokens",
         "learned_skills_curator",
         "anticipation_cycle",

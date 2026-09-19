@@ -14,9 +14,9 @@ Mais la page Routage disait encore « la majorité des échanges, score de
 complexité 30-70 ». Une description qui promet un routage mort fait
 configurer une chaîne pour rien.
 
-Le niveau B n'est pas mort pour autant : l'exécuteur de missions YAML, la
-critique de mission et le diagnostiqueur (réglés sur « B ») le demandent
-explicitement. C'est du travail de fond, et c'est ce que la description doit
+Le niveau B n'est pas mort pour autant : l'exécuteur de missions YAML et la
+critique de mission (réglée sur « B ») le demandent explicitement. Le
+diagnostiqueur, troisième appelant à l'origine, a été retiré le 19/09/2026. C'est du travail de fond, et c'est ce que la description doit
 dire. Ce pin relie le texte aux appelants : si un appelant bouge, le texte
 devra bouger avec.
 """
@@ -60,19 +60,19 @@ def test_le_niveau_b_se_presente_comme_du_travail_de_fond():
     assert "fond" in b["label"].lower()
     desc = b["description"].lower()
     assert "travail de fond" in desc
-    for appelant in ("missions yaml", "critique", "diagnostic"):
+    for appelant in ("missions yaml", "critique"):
         assert appelant in desc, f"l'appelant « {appelant} » n'est pas nommé"
     assert "jamais" in desc and "chat" in desc, "doit dire que le chat ne l'appelle pas"
+    assert "diagnosti" not in desc, "le diagnostiqueur est retiré depuis le 19/09/2026"
     assert "majorité des échanges" not in desc
     assert "score" not in desc
 
 
 def test_les_appelants_nommes_demandent_vraiment_le_niveau_b():
-    """Le texte cite trois appelants ; chacun doit demander MEDIUM dans son code."""
+    """Le texte cite deux appelants ; chacun doit demander MEDIUM dans son code."""
     for chemin in (
         "services/mission_spec_runtime.py",
         "services/learning/mission_critic.py",
-        "services/learning/diagnostician.py",
     ):
         src = (_APP / chemin).read_text()
         assert "ComplexityTier.MEDIUM" in src, f"{chemin} ne demande plus le niveau B"

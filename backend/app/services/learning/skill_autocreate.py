@@ -20,7 +20,7 @@ with no human in the loop ; this tick restores that for Ely, reusing the
 existing engine unchanged.
 
 Registered as a periodic interval job next to the mission-critic and
-diagnostician loops (``main.py``). Each tick:
+critic loops (``main.py``). Each tick:
   - is a no-op when ``SKILL_AUTOCREATE_DISABLED`` is set (kill switch) ;
   - finds users with at least ``MIN_UNPROCESSED_CASES`` unprocessed
     ``failure_cases`` (the raw material the creator clusters into playbooks) ;
@@ -29,7 +29,7 @@ diagnostician loops (``main.py``). Each tick:
   - never raises — a failure on one user is logged and skipped.
 
 This is deliberately off the request hot-path (a background tick, like the
-diagnostician), faithful to Hermes' inactivity-triggered curator philosophy
+critic), faithful to Hermes' inactivity-triggered curator philosophy
 rather than blocking a user's conversation on a tier-S generation.
 """
 from __future__ import annotations

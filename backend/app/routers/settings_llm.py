@@ -789,9 +789,9 @@ TIER_META = [
             "Le chat ne l'appelle JAMAIS : depuis le 27/07/2026, une demande part "
             "au niveau A sous le seuil SLM, au niveau C au-dessus. Cette chaîne "
             "sert le travail de fond qui la demande explicitement : les étapes "
-            "des missions YAML, la critique de mission et le diagnostiqueur "
-            "quand ils sont réglés sur « B » (CRITIC_TIER, DIAGNOSTICIAN_TIER), "
-            "et les mandats de mission qui déclarent llm_tier: medium. Ces "
+            "des missions YAML, la critique de mission quand elle est réglée "
+            "sur « B » (CRITIC_TIER), et les mandats de mission qui déclarent "
+            "llm_tier: medium. Ces "
             "appels tournent en arrière-plan et tolèrent la latence : un modèle "
             "local y a sa place, contrairement au niveau C."
         ),

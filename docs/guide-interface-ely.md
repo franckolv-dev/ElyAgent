@@ -241,40 +241,35 @@ Les indicateurs **Chrome** et **Système** signalent la connexion de l’extensi
 d’ELY Desktop. Ils ne garantissent pas qu’un site tiers est authentifié ou qu’un
 répertoire particulier est autorisé.
 
-## Comment traiter un incident et appliquer un correctif ?
+## Comment améliorer la consigne d’une tâche planifiée qui n’aboutit pas ?
 
-Accès **administrateur** : **Compétences → Incidents & propositions**
-(`/me/learning/incidents`).
+Ouvrez **Tâches planifiées**. Quand la dernière exécution d’une tâche est en
+erreur, ou qu’elle s’est déclarée réussie sans avoir vraiment abouti, sa fiche
+propose **Améliorer la consigne**.
 
-1. Lisez la cause proposée et les indices de l’exécution concernée.
-2. **Confirmer le diagnostic** classe l’hypothèse comme pertinente ; cette action
-   seule ne modifie pas le comportement d’Ely.
-3. Si **Préparer un correctif** est proposé, cliquez dessus et examinez **Avant**,
-   **Après** et l’explication. Un problème d’outils non chargés propose une liaison
-   d’outils existants. Une consigne de tâche inadaptée peut proposer sa réécriture.
-4. Cliquez sur **Appliquer** pour activer le correctif, ou rejetez la proposition.
-5. L’état **Correctif actif · en attente d’une prochaine exécution** indique que
-   le changement est actif, mais que son résultat n’est pas encore confirmé.
-6. Après une exécution pertinente, le suivi indique une réussite observée ou
-   un nouvel échec. **Revenir en arrière** retire le correctif appliqué.
+1. Cliquez sur **Améliorer la consigne**. Ely relit la consigne, le dernier
+   résultat et les signaux de la dernière exécution, puis propose une réécriture.
+   Rien n’est modifié à ce stade.
+2. Comparez **Avant** et **Après**, et lisez l’explication.
+3. Cliquez sur **Appliquer** pour remplacer la consigne, ou **Rejeter** pour
+   écarter la proposition.
+4. Après application, **Revenir en arrière** restaure l’ancienne consigne tant
+   que vous ne l’avez pas modifiée entre-temps.
 
-Il n’y a pas de bouton **Générer un outil** dans ce parcours : la génération de
-code d’outil y est indisponible. Une correction de liaison utilise les outils déjà
-présents, respecte les désactivations et concerne les demandes identiques du bon
-utilisateur. Elle ne garantit pas qu’une formulation différente ou une panne d’un
-service externe sera résolue. Une cause de configuration ou de code peut nécessiter
-une intervention ; la page le signale au lieu de proposer une réparation fictive.
+Si vous modifiez la consigne à la main après une proposition, celle-ci ne peut
+plus être appliquée : demandez-en une nouvelle. Une cause de configuration, par
+exemple un fournisseur qui rejette la requête ou un compte déconnecté, ne se
+répare pas par une réécriture : le dernier résultat de la tâche l’indique.
 
-Le filtre **à suivre** conserve les incidents ouverts, les diagnostics confirmés
-et les correctifs attendant une vérification ou associés à un nouvel échec.
-Le filtre **tous** permet de retrouver aussi les autres états.
+L’ancienne page **Incidents & propositions** a été retirée le 19 septembre 2026,
+avec le diagnostic automatique de chaque exécution douteuse.
 
 ## Comment utiliser les autres écrans Compétences et Analyse ?
 
 **Compétences → Apprentissage** présente le suivi de l’apprentissage.
 **Compétences apprises** permet de consulter les compétences enregistrées.
-**Compétences à valider**, **Capacités manquantes** et **Incidents & propositions**
-sont réservés aux administrateurs dans cette version.
+**Compétences à valider** et **Capacités manquantes** sont réservés aux
+administrateurs dans cette version.
 
 Dans **Analyse**, les écrans de tableau de bord, état, mémoires et actions réversibles
 servent à examiner ce qu’Ely a retenu ou effectué. Une mémoire personnelle, une
@@ -296,20 +291,19 @@ séparément dans **Connexions** et dans les paramètres de chaque intégration.
 
 | Situation | Vérification utile |
 | --- | --- |
-| Je ne vois pas Incidents & propositions | Vérifier que le compte est administrateur et déplier Compétences |
 | Ma mission reste en brouillon | Ouvrir la mission puis cliquer sur Démarrer |
 | Ely attend ma réponse | Répondre à la question dans la page de la mission |
 | Ma tâche planifiée ne se lance pas | Vérifier Active, la cadence Europe/Paris et le dernier état |
 | Chrome ou Système est inactif | Vérifier l’extension ou ELY Desktop, puis sa connexion |
 | Ely ne retrouve pas mon guide | Importer le MD dans Connaissances avec le même compte, puis Tester la recherche |
 | Un dossier est offline | Vérifier ELY Desktop ou demander à l’administrateur de contrôler son accès serveur |
-| L’incident est confirmé mais continue | Préparer et appliquer un vrai correctif si disponible ; confirmer seul ne répare rien |
+| Ma tâche planifiée se déclare réussie sans rien faire | Ouvrir sa fiche et cliquer sur Améliorer la consigne |
 | L’écran semble afficher une ancienne version | Recharger la page après la mise à jour |
 
 ## Référence éditoriale du manuel
 
 Les procédures ont été vérifiées dans les écrans Chat, Missions, Tâches planifiées,
-Connaissances, Paramètres et Incidents, dans la navigation et les libellés français
+Connaissances et Paramètres, dans la navigation et les libellés français
 ainsi que dans les services de planification et d’indexation de la version du
 10 septembre 2026. Les noms et disponibilités peuvent évoluer après une mise à jour.
 Ce manuel ne contient ni identifiants, ni tokens, ni données personnelles réelles.

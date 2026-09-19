@@ -74,7 +74,6 @@ const ROUTES_RESERVEES_AUX_ADMINS: Record<string, string> = {
   "/security": "garde-fous et journal de securite",
   "/me/learning/candidates": "file de graduation des competences",
   "/me/learning/tool-gaps": "trous d'outillage remontes par l'agent",
-  "/me/learning/incidents": "incidents de l'instance",
 };
 
 /** Chaque dossier portant un `page.tsx` est une route livree. */

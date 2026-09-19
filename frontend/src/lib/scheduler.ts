@@ -37,6 +37,23 @@ export interface ScheduledTask {
   // au lieu d'un tour de chat — pour les travaux longs (0036, 04/09).
   as_mission: boolean;
   created_at: string;
+  // Verdict de la dernière exécution jugée. Une tâche peut se déclarer
+  // « success » et n'avoir rien écrit : c'est `dubious`.
+  last_outcome?: "succeeded" | "dubious" | "failed" | null;
+  // La fiche propose « Améliorer la consigne » (erreur, ou verdict douteux / échoué).
+  needs_attention?: boolean;
+  // La réécriture en cours : proposée, ou appliquée et encore annulable.
+  prompt_patch?: PromptPatch | null;
+}
+
+/** Une réécriture de consigne, avec son avant / après (19/09/2026). */
+export interface PromptPatch {
+  id: number;
+  status: "proposed" | "applied" | "rejected" | "reverted";
+  old_value: string | null;
+  new_value: string;
+  rationale: string | null;
+  applied_at: string | null;
 }
 
 async function call<T>(path: string, opts: RequestInit = {}): Promise<T> {
@@ -93,6 +110,14 @@ export const schedulerApi = {
   /** Trigger a task immediately, out-of-band (result delivered via its channel). */
   runNow: (id: string): Promise<{ message: string }> =>
     call(`/scheduler/${id}/run`, { method: "POST" }),
+
+  /** Demande à Ely une réécriture de la consigne. N'applique rien. */
+  improvePrompt: (id: string): Promise<PromptPatch> =>
+    call(`/scheduler/${id}/improve-prompt`, { method: "POST" }),
+
+  /** Applique, annule ou écarte une réécriture proposée. */
+  patchAction: (patchId: number, action: "apply" | "revert" | "reject"): Promise<PromptPatch> =>
+    call(`/scheduler/prompt-patches/${patchId}/${action}`, { method: "POST" }),
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────

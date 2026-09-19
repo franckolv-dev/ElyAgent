@@ -55,7 +55,7 @@ Qwen 3 servis en local, et qu'il est inerte ailleurs — mais **il ne faut
 attendre aucun gain de tokens de ce module**. Sa valeur est la robustesse.
 
 **Ce module ne décide pas à la place de l'appelant** : un juge
-(``mission_critic``, ``diagnostician``) peut vouloir raisonner et passe
+(``mission_critic``, ``patch_service``) peut vouloir raisonner et passe
 ``reasoning=True``.
 """
 from __future__ import annotations

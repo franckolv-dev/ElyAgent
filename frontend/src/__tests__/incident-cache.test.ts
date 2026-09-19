@@ -9,9 +9,9 @@ runInNewContext(readFileSync(resolve(process.cwd(), 'public/sw.js'), 'utf8'), {
   URL,
 });
 
-describe('fresh incident state after apply and undo', () => {
+describe('fresh admin and authenticated state', () => {
   it.each([
-    ['/admin/learning/incidents?status=open', false],
+    ['/admin/learning/candidates?status=candidate', false],
     ['/api/conversations', false],
     ['/some-authenticated-data', true],
   ])('never serves a cached response for %s', (path, authenticated) => {
