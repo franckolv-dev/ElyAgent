@@ -619,7 +619,7 @@ def _premier_parametre_de(registry):
     return _resoudre
 
 
-def _annoncer_repli_slm(state, model: str, raison: str) -> None:
+async def _annoncer_repli_slm(state, model: str, raison: str) -> None:
     """Fait remonter le repli local → cloud jusqu'à l'utilisateur, ET à la trace.
 
     Il n'était que journalisé. Voir `fallback_manager.note_slm_fallback`.
@@ -649,6 +649,13 @@ def _annoncer_repli_slm(state, model: str, raison: str) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.debug("SLM : repli non tracé (%s)", exc)
+    # TROISIÈME MOITIÉ, 19/09 : ce que le local a déjà streamé doit quitter
+    # l'écran et la réponse. Coupé à 25 s au milieu d'un appel d'outil, MiniCPM
+    # laissait `<function name="web_search"><param…` devant la réponse du cloud,
+    # jusque dans l'historique. Voir `app.agent.local_abandonne`.
+    from app.agent.local_abandonne import signaler
+
+    await signaler()
 
 
 def create_agent_node():
@@ -1262,7 +1269,7 @@ def create_agent_node():
                                 "SLM : « %s(…) » écrit en texte, jamais exécuté "
                                 "— repli cloud", _rate,
                             )
-                            _annoncer_repli_slm(
+                            await _annoncer_repli_slm(
                                 state, _slm_real_name(_slm_base, settings),
                                 f"appel à {_rate} écrit en texte "
                                 f"({forme_de_l_appel_texte(_contenu)}) que le serveur "
@@ -1275,7 +1282,7 @@ def create_agent_node():
                     "SLM timeout after %.1fs (score=%d) — falling back to LLM",
                     settings.slm_timeout, decision.score,
                 )
-                _annoncer_repli_slm(
+                await _annoncer_repli_slm(
                     state, _slm_real_name(_slm_base, settings),
                     f"délai de {settings.slm_timeout:.0f} s dépassé",
                 )
@@ -1284,7 +1291,7 @@ def create_agent_node():
                     "SLM error (score=%d): %s — falling back to LLM",
                     decision.score, exc,
                 )
-                _annoncer_repli_slm(
+                await _annoncer_repli_slm(
                     state, _slm_real_name(_slm_base, settings), str(exc)[:160],
                 )
 

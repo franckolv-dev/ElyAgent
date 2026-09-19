@@ -72,6 +72,8 @@ export interface Conversation {
 export interface WSMessage {
   type:
     | "start" | "message" | "error" | "stream" | "token"
+    // La voie locale a été écartée : vider ce qu'elle avait commencé à afficher.
+    | "stream_reset"
     | "hitl_pending" | "hitl_resolved"
     | "browser_frame" | "tool_start" | "tool_end" | "stopped"
     // Hotfix 2026-05-23 — explicit "turn-end" signal emitted by the
