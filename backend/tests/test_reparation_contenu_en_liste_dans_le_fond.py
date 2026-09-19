@@ -47,13 +47,15 @@ class _LLMEnBlocs:
 
 
 @pytest.mark.asyncio
-async def test_le_diagnostiqueur_rend_du_texte_quand_le_modele_rend_des_blocs(monkeypatch):
+async def test_la_reecriture_de_consigne_rend_du_texte_quand_le_modele_rend_des_blocs(monkeypatch):
+    # Le diagnostiqueur, où ce défaut a été vu, est retiré (19/09/2026) ; la
+    # réécriture de consigne appelle le modèle de la même façon.
     import app.services.llm_provider as llm_mod
-    from app.services.learning.diagnostician import _call_diagnostician_llm
+    from app.services.learning.patch_service import _call_patch_llm
 
     monkeypatch.setattr(llm_mod, "get_llm_for_tier", lambda tier: _LLMEnBlocs())
 
-    raw, model = await _call_diagnostician_llm("diagnostique ceci")
+    raw, model = await _call_patch_llm("réécris ceci")
 
     assert isinstance(raw, str)
     assert "HYPOTHESE: le jeton a expiré" in raw
@@ -69,11 +71,11 @@ def test_les_six_chemins_de_fond_aplatissent_le_contenu():
     import inspect
 
     from app.services.learning import (
-        diagnostician, skill_creator, skill_eval, skill_iteration,
+        patch_service, skill_creator, skill_eval, skill_iteration,
         tool_generator, user_state,
     )
 
-    for mod in (diagnostician, skill_creator, skill_eval, skill_iteration,
+    for mod in (patch_service, skill_creator, skill_eval, skill_iteration,
                 tool_generator, user_state):
         source = inspect.getsource(mod)
         assert 'raw = getattr(response, "content", "") or ""' not in source, mod.__name__

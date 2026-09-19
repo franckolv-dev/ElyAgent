@@ -20,7 +20,7 @@
 import {
   MessageSquare, LayoutDashboard, Settings, Shield, ShieldCheck,
   Clock, Search, BookOpen, Target, Brain, Compass,
-  Sparkles, ClipboardCheck, Stethoscope, Undo2, BrainCircuit, Eye,
+  Sparkles, ClipboardCheck, Undo2, BrainCircuit, Eye,
   type LucideIcon,
 } from "lucide-react";
 
@@ -52,7 +52,6 @@ export const NAV: NavEntry[] = [
       { href: "/me/learning/skills",     labelKey: "navLearningSkills",     icon: Sparkles },
       { href: "/me/learning/candidates", labelKey: "navLearningCandidates", icon: ClipboardCheck, admin: true },
       { href: "/me/learning/tool-gaps",  labelKey: "navLearningToolGaps",   icon: Search, admin: true },
-      { href: "/me/learning/incidents",  labelKey: "navLearningIncidents",  icon: Stethoscope, admin: true },
     ],
   },
   {

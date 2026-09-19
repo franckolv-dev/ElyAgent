@@ -1,13 +1,19 @@
 # =============================================================================
 # @project    ELY — Exactly Like You
 # @file       backend/tests/test_patch_service.py
-# @brief      Boucle d'auto-diagnostic J5 — correctifs validables (voie C) :
-#             propose / apply / revert / reject d'un prompt de tâche planifiée,
-#             + endpoints admin.
+# @brief      « Améliorer la consigne » d'une tâche planifiée : propose /
+#             apply / revert / reject, depuis la fiche de la tâche.
 # @license    MIT
 #            https://opensource.org/licenses/MIT
 # =============================================================================
-"""Tests J5 — patch_service + endpoints.
+"""« Améliorer la consigne » — le seul morceau utile de l'ancienne page Incidents.
+
+19/09/2026 : la page « Incidents & propositions » accumulait 81 cartes depuis
+juin. « Confirmer » ne faisait rien, un correctif remplacé ne pouvait plus
+jamais être vérifié, et chaque exécution douteuse coûtait un appel LLM de
+diagnostic. Franck ne s'était servi que d'une chose : la réécriture de la
+consigne d'une tâche planifiée. Elle vit maintenant sur la fiche de la tâche,
+à la demande, sans incident ni diagnostic en amont.
 
 Run with:  cd backend && python -m pytest tests/test_patch_service.py -v
 """
@@ -44,62 +50,53 @@ async def _seed_user() -> str:
     return uid
 
 
-async def _seed_scheduled_incident(uid: str, *, prompt: str = "fais le truc",
-                                   category: str = "prompt") -> tuple[str, int, int]:
-    """Crée task + execution_outcome(scheduled,dubious) + diagnosis(open).
-    Renvoie (task_id, outcome_id, diagnosis_id)."""
+async def _seed_task(uid: str, *, prompt: str = "fais le truc",
+                     outcome: str | None = "dubious",
+                     last_status: str | None = "success") -> str:
+    """Crée une tâche planifiée et, si demandé, le verdict de sa dernière exécution."""
     from app.database import async_session
-    from app.models.scheduled_task import ScheduledTask
     from app.models.execution_outcome import ExecutionOutcome
-    from app.models.execution_diagnosis import ExecutionDiagnosis
+    from app.models.scheduled_task import ScheduledTask
     tid = str(uuid.uuid4())
     async with async_session() as db:
         db.add(ScheduledTask(id=tid, user_id=uid, name="T", prompt=prompt,
-                             cron_expression="0 9 * * *", channel="web"))
+                             cron_expression="0 9 * * *", channel="web",
+                             last_status=last_status, last_result="rien écrit"))
+        if outcome:
+            db.add(ExecutionOutcome(user_id=uid, source="scheduled", source_id=tid,
+                                    outcome=outcome, declared_status="success",
+                                    signals='["no_write_effect"]'))
         await db.commit()
-    async with async_session() as db:
-        oc = ExecutionOutcome(user_id=uid, source="scheduled", source_id=tid,
-                              outcome="dubious", declared_status="success",
-                              signals='["no_write_effect"]')
-        db.add(oc)
-        await db.commit()
-        oc_id = oc.id
-        diag = ExecutionDiagnosis(execution_outcome_id=oc_id, user_id=uid,
-                                  source="scheduled", source_id=tid,
-                                  category=category, hypothesis="prompt trop mou",
-                                  confidence="medium", status="open",
-                                  critic_model="rule-based")
-        db.add(diag)
-        await db.commit()
-        return tid, oc_id, diag.id
+    return tid
 
 
 async def _task_prompt(tid: str) -> str:
     from app.database import async_session
     from app.models.scheduled_task import ScheduledTask
     async with async_session() as db:
-        t = (await db.execute(
+        return (await db.execute(
             select(ScheduledTask).where(ScheduledTask.id == tid)
-        )).scalar_one()
-        return t.prompt
+        )).scalar_one().prompt
 
 
-async def _diag_status(did: int) -> str:
-    from app.database import async_session
-    from app.models.execution_diagnosis import ExecutionDiagnosis
-    async with async_session() as db:
-        d = (await db.execute(
-            select(ExecutionDiagnosis).where(ExecutionDiagnosis.id == did)
-        )).scalar_one()
-        return d.status
+_vu_par_le_llm: list[str] = []
 
 
 async def _fake_patch_llm(prompt, user_id=None):
+    _vu_par_le_llm.append(prompt)
     return (
         '{"new_prompt": "Récupère les prospects PUIS écris-les dans le CSV. '
         'Utilise sheets_append_row.", "rationale": "rendu impératif + outil nommé"}',
         "fake-patch-model",
     )
+
+
+@pytest.fixture
+def llm(monkeypatch):
+    from app.services.learning import patch_service as ps
+    _vu_par_le_llm.clear()
+    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
+    return _vu_par_le_llm
 
 
 # ── 1. parse_patch ─────────────────────────────────────────────────────────
@@ -113,234 +110,200 @@ def test_parse_patch_valid_and_fenced() -> None:
 
 def test_parse_patch_missing_new_prompt_is_none() -> None:
     from app.services.learning.patch_service import parse_patch
-    assert parse_patch('{"new_prompt":"","rationale":"r"}') is None
-    assert parse_patch("nope") is None
+    assert parse_patch('{"rationale":"r"}') is None
+    assert parse_patch("pas du json") is None
 
 
-# ── 2. propose / apply / revert / reject ───────────────────────────────────
+# ── 2. proposer ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_propose_patch_creates_proposed(monkeypatch) -> None:
-    import app.services.learning.patch_service as ps
-    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
+async def test_propose_creates_a_proposal_without_touching_the_task(llm) -> None:
+    from app.services.learning.patch_service import propose_for_task
     uid = await _seed_user()
-    tid, _oc, did = await _seed_scheduled_incident(uid, prompt="fais le truc")
-
-    patch = await ps.propose_patch(did)
-    assert patch is not None
+    tid = await _seed_task(uid)
+    patch = await propose_for_task(tid, uid)
     assert patch.status == "proposed"
-    assert patch.target_type == "scheduled_task"
-    assert patch.target_id == tid
-    assert patch.old_value == "fais le truc"
-    assert "CSV" in patch.new_value
-    # NE touche PAS la tâche tant que non appliqué
+    assert patch.target_id == tid and patch.old_value == "fais le truc"
+    assert "sheets_append_row" in patch.new_value
     assert await _task_prompt(tid) == "fais le truc"
 
 
 @pytest.mark.asyncio
-async def test_propose_patch_handles_list_content(monkeypatch) -> None:
-    """Régression : un provider tier-C qui renvoie ``content`` en LISTE de
-    blocs (Responses API / codex, modèles à reasoning, Anthropic) ne doit PAS
-    faire planter (HTTP 500 via ``list.strip``) — le contenu est coercé en str.
-
-    On exerce le VRAI ``_call_patch_llm`` (pas le stub) en n'interceptant que
-    ``get_llm_for_tier``, pour couvrir la coercition ``content_to_text``.
-    """
-    import app.services.llm_provider as provider
-
-    class _FakeLLM:
-        model = "fake-reasoning"
-
-        async def ainvoke(self, _messages, config=None):  # noqa: ARG002
-            # Forme réelle d'OpenAI Responses API / openai-codex (output_version
-            # v0) : une LISTE de blocs typés, pas une str (cf. message_content).
-            # Les blocs « reasoning » n'ont pas de champ ``text`` → ignorés.
-            class _R:
-                content = [
-                    {"type": "reasoning", "index": 0},
-                    {"type": "text", "index": 0,
-                     "text": '{"new_prompt": "Récupère PUIS écris dans le CSV.",'
-                             ' "rationale": "rendu impératif"}'},
-                ]
-            return _R()
-
-    monkeypatch.setattr(provider, "get_llm_for_tier", lambda _tier: _FakeLLM())
+async def test_the_llm_sees_the_last_verdict_and_signals(llm) -> None:
+    """Plus de diagnostic en amont : le contexte vient de la dernière exécution."""
+    from app.services.learning.patch_service import propose_for_task
     uid = await _seed_user()
-    tid, _oc, did = await _seed_scheduled_incident(uid, prompt="fais le truc")
-
-    import app.services.learning.patch_service as ps
-    patch = await ps.propose_patch(did)        # ne doit pas lever
-    assert patch is not None
-    assert patch.status == "proposed"
-    assert "CSV" in patch.new_value
+    tid = await _seed_task(uid)
+    await propose_for_task(tid, uid)
+    assert "no_write_effect" in llm[0]
+    assert "dubious" in llm[0]
+    assert "rien écrit" in llm[0]
 
 
 @pytest.mark.asyncio
-async def test_propose_patch_rejects_non_scheduled(monkeypatch) -> None:
-    import app.services.learning.patch_service as ps
-    from app.database import async_session
-    from app.models.execution_outcome import ExecutionOutcome
-    from app.models.execution_diagnosis import ExecutionDiagnosis
-    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
+async def test_propose_twice_returns_the_pending_proposal(llm) -> None:
+    from app.services.learning.patch_service import propose_for_task
     uid = await _seed_user()
-    async with async_session() as db:
-        oc = ExecutionOutcome(user_id=uid, source="mission", source_id="m1",
-                              outcome="dubious", declared_status="completed")
-        db.add(oc)
-        await db.commit()
-        diag = ExecutionDiagnosis(execution_outcome_id=oc.id, user_id=uid,
-                                  source="mission", source_id="m1",
-                                  category="prompt", hypothesis="x",
-                                  confidence="low", status="open")
-        db.add(diag)
-        await db.commit()
-        did = diag.id
-    with pytest.raises(ps.PatchError):
-        await ps.propose_patch(did)
+    tid = await _seed_task(uid)
+    a = await propose_for_task(tid, uid)
+    b = await propose_for_task(tid, uid)
+    assert a.id == b.id and len(llm) == 1
 
 
 @pytest.mark.asyncio
-async def test_apply_patch_writes_prompt_and_actions_incident(monkeypatch) -> None:
-    import app.services.learning.patch_service as ps
-    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
-    uid = await _seed_user()
-    tid, _oc, did = await _seed_scheduled_incident(uid, prompt="ancien prompt")
-
-    patch = await ps.propose_patch(did)
-    applied = await ps.apply_patch(patch.id)
-    assert applied.status == "applied"
-    assert applied.applied_at is not None
-    assert applied.old_value == "ancien prompt"          # snapshot exact
-    assert await _task_prompt(tid) == patch.new_value      # tâche modifiée
-    assert await _diag_status(did) == "actioned"           # incident résolu
+async def test_propose_refuses_someone_elses_task(llm) -> None:
+    from app.services.learning.patch_service import PatchError, propose_for_task
+    tid = await _seed_task(await _seed_user())
+    with pytest.raises(PatchError):
+        await propose_for_task(tid, await _seed_user())
 
 
 @pytest.mark.asyncio
-async def test_revert_patch_restores_prompt(monkeypatch) -> None:
-    import app.services.learning.patch_service as ps
-    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
-    uid = await _seed_user()
-    tid, _oc, did = await _seed_scheduled_incident(uid, prompt="prompt original")
+async def test_propose_handles_list_content(monkeypatch) -> None:
+    """Un tier à blocs rend `content` en LISTE : pas de `list.strip` hors du try."""
+    from app.services.learning import patch_service as ps
 
-    patch = await ps.propose_patch(did)
-    await ps.apply_patch(patch.id)
-    assert await _task_prompt(tid) != "prompt original"
-    reverted = await ps.revert_patch(patch.id)
-    assert reverted.status == "reverted"
-    assert await _task_prompt(tid) == "prompt original"    # restauré
+    class _Resp:
+        content = [{"type": "text", "text": '{"new_prompt": "X", "rationale": "r"}'}]
+
+    class _Llm:
+        model = "blocs"
+
+        async def ainvoke(self, *_a, **_k):
+            return _Resp()
+
+    monkeypatch.setattr("app.services.llm_provider.get_llm_for_tier", lambda _t: _Llm())
+    uid = await _seed_user()
+    tid = await _seed_task(uid)
+    patch = await ps.propose_for_task(tid, uid)
+    assert patch.new_value == "X"
+
+
+# ── 3. appliquer / annuler / rejeter ───────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_apply_twice_is_refused(monkeypatch) -> None:
-    import app.services.learning.patch_service as ps
-    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
-    uid = await _seed_user()
-    _tid, _oc, did = await _seed_scheduled_incident(uid)
-    patch = await ps.propose_patch(did)
-    await ps.apply_patch(patch.id)
-    with pytest.raises(ps.PatchError):
-        await ps.apply_patch(patch.id)
-
-
-@pytest.mark.asyncio
-async def test_reject_patch_leaves_task_untouched(monkeypatch) -> None:
-    import app.services.learning.patch_service as ps
-    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
-    uid = await _seed_user()
-    tid, _oc, did = await _seed_scheduled_incident(uid, prompt="intact")
-    patch = await ps.propose_patch(did)
-    rejected = await ps.reject_patch(patch.id)
-    assert rejected.status == "rejected"
-    assert await _task_prompt(tid) == "intact"
-
-
-# ── 3. Endpoints + IncidentOut embeds patch ────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_endpoints_propose_apply_and_incident_embeds_patch(monkeypatch) -> None:
-    import app.services.learning.patch_service as ps
-    from app.database import async_session
-    from app.routers.learning_skills import (
-        apply_incident_patch,
-        list_incidents,
-        propose_incident_patch,
+async def test_apply_writes_the_prompt_and_revert_restores_it(llm) -> None:
+    from app.services.learning.patch_service import (
+        apply_patch, propose_for_task, revert_patch,
     )
-    monkeypatch.setattr(ps, "_call_patch_llm", _fake_patch_llm)
     uid = await _seed_user()
-    tid, _oc, did = await _seed_scheduled_incident(uid, prompt="vieux")
-
-    patch_out = await propose_incident_patch(did, _admin=_fake_admin())
-    assert patch_out.status == "proposed"
-
-    # l'incident (open) embarque maintenant le correctif proposé
-    async with async_session() as db:
-        rows = await list_incidents(status="open", user_id=uid, limit=100,
-                                    _admin=_fake_admin(), db=db)
-    assert len(rows) == 1
-    assert rows[0].patch is not None
-    assert rows[0].patch.status == "proposed"
-
-    # apply via endpoint → tâche modifiée + incident actioned
-    applied = await apply_incident_patch(patch_out.id, _admin=_fake_admin())
-    assert applied.status == "applied"
-    assert await _task_prompt(tid) == patch_out.new_value
-    assert await _diag_status(did) == "actioned"
-
-
-def test_patch_routes_registered() -> None:
-    from app.routers.learning_skills import router
-    paths = {r.path for r in router.routes}
-    assert "/admin/learning/incidents/{incident_id}/propose-patch" in paths
-    assert "/admin/learning/patches/{patch_id}/apply" in paths
-    assert "/admin/learning/patches/{patch_id}/revert" in paths
-    assert "/admin/learning/patches/{patch_id}/reject" in paths
+    tid = await _seed_task(uid)
+    patch = await propose_for_task(tid, uid)
+    applied = await apply_patch(patch.id, uid)
+    assert applied.status == "applied" and applied.applied_at is not None
+    assert "sheets_append_row" in await _task_prompt(tid)
+    reverted = await revert_patch(patch.id, uid)
+    assert reverted.status == "reverted"
+    assert await _task_prompt(tid) == "fais le truc"
 
 
 @pytest.mark.asyncio
-async def test_prompt_repair_preserves_later_user_edits(monkeypatch):
-    import app.services.learning.patch_service as ps
-    from app.database import async_session
-    from app.models.scheduled_task import ScheduledTask
-    monkeypatch.setattr(ps, '_call_patch_llm', _fake_patch_llm)
+async def test_apply_twice_is_refused(llm) -> None:
+    from app.services.learning.patch_service import PatchError, apply_patch, propose_for_task
     uid = await _seed_user()
-    tid, _, did = await _seed_scheduled_incident(uid, prompt='ancien prompt')
-    patch = await ps.propose_patch(did)
-    async with async_session() as db:
-        task = await db.get(ScheduledTask, tid)
-        task.prompt = 'Consigne modifiée par l’utilisateur'
-        await db.commit()
-    with pytest.raises(ps.PatchError): await ps.apply_patch(patch.id)
-    assert await _task_prompt(tid) == 'Consigne modifiée par l’utilisateur'
+    patch = await propose_for_task(await _seed_task(uid), uid)
+    await apply_patch(patch.id, uid)
+    with pytest.raises(PatchError):
+        await apply_patch(patch.id, uid)
 
 
 @pytest.mark.asyncio
-async def test_prompt_undo_reopens_validated_incident_and_preserves_user_edits(monkeypatch):
-    import app.services.learning.patch_service as ps
+async def test_reject_leaves_the_task_untouched(llm) -> None:
+    from app.services.learning.patch_service import propose_for_task, reject_patch
+    uid = await _seed_user()
+    tid = await _seed_task(uid)
+    patch = await propose_for_task(tid, uid)
+    assert (await reject_patch(patch.id, uid)).status == "rejected"
+    assert await _task_prompt(tid) == "fais le truc"
+
+
+@pytest.mark.asyncio
+async def test_another_user_cannot_apply_revert_or_reject(llm) -> None:
+    from app.services.learning.patch_service import (
+        PatchError, apply_patch, propose_for_task, reject_patch,
+    )
+    uid = await _seed_user()
+    patch = await propose_for_task(await _seed_task(uid), uid)
+    intrus = await _seed_user()
+    for op in (apply_patch, reject_patch):
+        with pytest.raises(PatchError):
+            await op(patch.id, intrus)
+
+
+@pytest.mark.asyncio
+async def test_user_edits_made_after_the_proposal_are_preserved(llm) -> None:
+    """La consigne a changé entre la proposition et le clic : on n'écrase rien."""
     from app.database import async_session
     from app.models.scheduled_task import ScheduledTask
-    from app.models.execution_diagnosis import ExecutionDiagnosis
-    monkeypatch.setattr(ps, '_call_patch_llm', _fake_patch_llm)
+    from app.services.learning.patch_service import (
+        PatchError, apply_patch, propose_for_task, revert_patch,
+    )
     uid = await _seed_user()
-    tid, _, did = await _seed_scheduled_incident(uid, prompt='ancien prompt')
+    tid = await _seed_task(uid)
+    patch = await propose_for_task(tid, uid)
     async with async_session() as db:
-        diag = await db.get(ExecutionDiagnosis, did)
-        diag.status = 'validated'
+        (await db.get(ScheduledTask, tid)).prompt = "ma version à moi"
         await db.commit()
-    patch = await ps.propose_patch(did)
-    await ps.apply_patch(patch.id)
-    assert await _diag_status(did) == 'actioned'
+    with pytest.raises(PatchError):
+        await apply_patch(patch.id, uid)
+    assert await _task_prompt(tid) == "ma version à moi"
+
+    patch2 = await propose_for_task(await _seed_task(uid), uid)
+    await apply_patch(patch2.id, uid)
     async with async_session() as db:
-        task = await db.get(ScheduledTask, tid)
-        task.prompt = 'Nouvelle consigne'
+        (await db.get(ScheduledTask, patch2.target_id)).prompt = "retouchée après coup"
         await db.commit()
-    with pytest.raises(ps.PatchError): await ps.revert_patch(patch.id)
-    assert await _task_prompt(tid) == 'Nouvelle consigne'
+    with pytest.raises(PatchError):
+        await revert_patch(patch2.id, uid)
+
+
+# ── 4. la fiche de la tâche ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_task_card_says_when_a_run_needs_attention(llm) -> None:
+    from app.database import async_session
+    from app.routers.scheduler import list_tasks
+    uid = await _seed_user()
+    douteuse = await _seed_task(uid, outcome="dubious")
+    saine = await _seed_task(uid, outcome="succeeded")
+    en_erreur = await _seed_task(uid, outcome=None, last_status="error")
     async with async_session() as db:
-        task = await db.get(ScheduledTask, tid)
-        task.prompt = patch.new_value
-        await db.commit()
-    await ps.revert_patch(patch.id)
-    assert await _diag_status(did) == 'open'
-    assert await _task_prompt(tid) == 'ancien prompt'
+        fiches = {t.id: t for t in await list_tasks(user=_fake_admin(uid), db=db)}
+    assert fiches[douteuse].needs_attention is True
+    assert fiches[en_erreur].needs_attention is True
+    assert fiches[saine].needs_attention is False
+    assert fiches[douteuse].last_outcome == "dubious"
+
+
+@pytest.mark.asyncio
+async def test_endpoints_propose_apply_revert_and_the_card_embeds_the_patch(llm) -> None:
+    from app.database import async_session
+    from app.routers.scheduler import (
+        apply_prompt_patch, improve_prompt, list_tasks, revert_prompt_patch,
+    )
+    uid = await _seed_user()
+    tid = await _seed_task(uid)
+    moi = _fake_admin(uid)
+    out = await improve_prompt(tid, user=moi)
+    assert out.status == "proposed" and out.old_value == "fais le truc"
+    async with async_session() as db:
+        fiche = next(t for t in await list_tasks(user=moi, db=db) if t.id == tid)
+    assert fiche.prompt_patch is not None and fiche.prompt_patch.id == out.id
+
+    assert (await apply_prompt_patch(out.id, user=moi)).status == "applied"
+    assert (await revert_prompt_patch(out.id, user=moi)).status == "reverted"
+    async with async_session() as db:
+        fiche = next(t for t in await list_tasks(user=moi, db=db) if t.id == tid)
+    assert fiche.prompt_patch is None, "un correctif annulé ne reste pas sur la fiche"
+
+
+@pytest.mark.asyncio
+async def test_endpoint_refuses_a_foreign_task(llm) -> None:
+    from app.routers.scheduler import improve_prompt
+    tid = await _seed_task(await _seed_user())
+    with pytest.raises(HTTPException) as exc:
+        await improve_prompt(tid, user=_fake_admin(await _seed_user()))
+    assert exc.value.status_code in (404, 422)

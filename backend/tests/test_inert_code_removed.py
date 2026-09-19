@@ -23,7 +23,7 @@ Trois cibles, et une correction de l'audit.
 
 **⚠️ Correction de l'audit** : ``learning/prompt_version.py`` n'est PAS inerte.
 Cinq modules de production en dépendent (``signals``, ``mission_critic``,
-``user_state``, ``diagnostician``, ``patch_service``) pour estampiller la
+``user_state``, ``patch_service``) pour estampiller la
 version et l'empreinte du prompt sur les signaux d'apprentissage. L'audit
 comptait « ab_testing + prompt_version = 452 lignes inertes » : l'addition est
 juste (381 + 71), la conclusion ne l'est pas. Ce fichier reste.
@@ -92,7 +92,6 @@ def test_prompt_version_is_still_live():
     "app.services.learning.signals",
     "app.services.learning.mission_critic",
     "app.services.learning.user_state",
-    "app.services.learning.diagnostician",
     "app.services.learning.patch_service",
 ])
 def test_prompt_version_consumers_still_import(module_name):

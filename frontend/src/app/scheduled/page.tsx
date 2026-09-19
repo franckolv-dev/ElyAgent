@@ -19,6 +19,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import {
   Clock, Loader2, AlertCircle, Trash2, Play, Power, RefreshCw, X, Lightbulb, Plus, Target,
+  FilePen, Undo2, Check,
 } from "lucide-react";
 import {
   schedulerApi, describeCron, cadenceToCron, type ScheduledTask,
@@ -161,6 +162,35 @@ export default function ScheduledTasksPage() {
     try {
       const r = await schedulerApi.runNow(task.id);
       flash("ok", r.message || t("toastRun"));
+    } catch (e) {
+      flash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // « Améliorer la consigne » (19/09/2026) — ce qui reste de l'ancienne page
+  // Incidents : une réécriture demandée ici, avec son avant / après.
+  const onImprove = async (task: ScheduledTask) => {
+    setBusyId(task.id);
+    try {
+      await schedulerApi.improvePrompt(task.id);
+      flash("ok", t("improveProposed"));
+      await fetchAll();
+    } catch (e) {
+      flash("err", e instanceof Error ? e.message : t("actionError"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onPatch = async (task: ScheduledTask, action: "apply" | "revert" | "reject") => {
+    if (!task.prompt_patch) return;
+    setBusyId(task.id);
+    try {
+      await schedulerApi.patchAction(task.prompt_patch.id, action);
+      flash("ok", t(action === "apply" ? "improveApplied" : action === "revert" ? "improveReverted" : "improveRejected"));
+      await fetchAll();
     } catch (e) {
       flash("err", e instanceof Error ? e.message : t("actionError"));
     } finally {
@@ -334,6 +364,56 @@ export default function ScheduledTasksPage() {
                           }`}>
                             {task.last_status === "error" ? "⚠ " : ""}{task.last_result}
                           </p>
+                        )}
+                        {task.needs_attention && !task.prompt_patch && task.last_status !== "running" && (
+                          <button
+                            onClick={() => onImprove(task)}
+                            disabled={busyId === task.id}
+                            className="mt-2 flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/10 transition-colors disabled:opacity-50"
+                            title={t("improveHint")}
+                          >
+                            {busyId === task.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FilePen className="w-3 h-3" />}
+                            {busyId === task.id ? t("improveBusy") : t("improve")}
+                          </button>
+                        )}
+                        {task.prompt_patch && (
+                          <div className="mt-2 rounded border border-border-dim bg-bg-primary p-2">
+                            <p className="text-[11px] text-text-secondary">
+                              {t(task.prompt_patch.status === "applied" ? "improveStateApplied" : "improveStateProposed")}
+                            </p>
+                            {task.prompt_patch.rationale && (
+                              <p className="text-[11px] text-text-muted mt-1">{task.prompt_patch.rationale}</p>
+                            )}
+                            <div className="mt-2 grid gap-2 md:grid-cols-2">
+                              <div className="min-w-0">
+                                <p className="text-[10px] text-text-muted mb-1">{t("improveBefore")}</p>
+                                <pre className="text-[10px] whitespace-pre-wrap break-words max-h-40 overflow-y-auto rounded border border-red-500/20 bg-red-500/5 p-2 text-text-secondary">{task.prompt_patch.old_value}</pre>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[10px] text-text-muted mb-1">{t("improveAfter")}</p>
+                                <pre className="text-[10px] whitespace-pre-wrap break-words max-h-40 overflow-y-auto rounded border border-emerald-500/20 bg-emerald-500/5 p-2 text-text-secondary">{task.prompt_patch.new_value}</pre>
+                              </div>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {task.prompt_patch.status === "proposed" ? (
+                                <>
+                                  <button onClick={() => onPatch(task, "apply")} disabled={busyId === task.id}
+                                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 transition-colors disabled:opacity-50">
+                                    <Check className="w-3 h-3" />{t("improveApply")}
+                                  </button>
+                                  <button onClick={() => onPatch(task, "reject")} disabled={busyId === task.id}
+                                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border-dim text-text-muted hover:text-red-300 hover:border-red-500/30 transition-colors disabled:opacity-50">
+                                    <X className="w-3 h-3" />{t("improveReject")}
+                                  </button>
+                                </>
+                              ) : (
+                                <button onClick={() => onPatch(task, "revert")} disabled={busyId === task.id}
+                                  className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 transition-colors disabled:opacity-50">
+                                  <Undo2 className="w-3 h-3" />{t("improveRevert")}
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </div>
 

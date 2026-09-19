@@ -128,7 +128,7 @@ async def test_a_think_block_never_reaches_the_json_parser():
 @pytest.mark.asyncio
 async def test_reasoning_can_be_requested_explicitly():
     """Toutes les tâches de fond ne se valent pas : un juge (mission_critic,
-    diagnostician) peut légitimement vouloir raisonner. L'appelant décide."""
+    réécriture de consigne) peut légitimement vouloir raisonner. L'appelant décide."""
     from app.services.background_llm import ainvoke_background
 
     llm = _FakeLocalQwen()

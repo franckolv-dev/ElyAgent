@@ -789,15 +789,6 @@ def create_agent_node():
         # première ne s'exécute pas.
         _a_router = _derniere_demande_humaine(messages, user_query)
 
-        # Applied incident repairs survive new conversations and service restarts.
-        # These only add schemas; both paths still apply user preferences below.
-        _repair_tools = []
-        try:
-            from app.services.learning.binding_repair import tools_for_request
-            _repair_tools = await tools_for_request(user_id, _a_router, registry.all_tools)
-        except Exception as exc:
-            logger.warning("Incident binding unavailable: %s", type(exc).__name__)
-
         # Hot-reload: clear tier cache when tool registry OR tier routing config changes
         from app.services.llm_provider import get_tier_config_version
         current_version = registry.tools_version
@@ -1174,7 +1165,7 @@ def create_agent_node():
                     # dans l'interface ne doit pas revenir par la voie locale
                     # — ce serait un demi-interrupteur, pire qu'aucun.
                     _slm_outils = appliquer_preferences(
-                        list({t.name: t for t in _slm_toolset(registry, _a_router) + _slm_extras + _repair_tools}.values()),
+                        list({t.name: t for t in _slm_toolset(registry, _a_router) + _slm_extras}.values()),
                         await disabled_tool_names(user_id),
                         contexte="slm",
                     )
@@ -1710,7 +1701,6 @@ def create_agent_node():
                 #
                 # APRÈS les outils appris, délibérément : l'utilisateur doit
                 # pouvoir couper aussi ce qu'Ely s'est créé.
-                _filtered_tools = list({t.name: t for t in _filtered_tools + _repair_tools}.values())
                 _desactives = await disabled_tool_names(user_id)
                 _filtered_tools = appliquer_preferences(
                     _filtered_tools, _desactives, contexte=f"tier-{_tier_key}",
@@ -1741,7 +1731,7 @@ def create_agent_node():
                 _core_missing = [t for t in registry.all_tools if t.name in _MEMORY_CORE and t.name not in {x.name for x in _filtered_tools}]
                 _filtered_tools = fit_tool_schemas(
                     _filtered_tools + _core_missing, _a_router,
-                    set(_discovered) | {t.name for t in _repair_tools} | set(state.get("mission_tools") or []),
+                    set(_discovered) | set(state.get("mission_tools") or []),
                 )
                 _filtered_tools = appliquer_preferences(_filtered_tools, _desactives, contexte="budget-mémoire")
 

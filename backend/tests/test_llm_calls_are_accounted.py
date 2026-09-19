@@ -108,7 +108,6 @@ def test_the_audit_actually_finds_something():
     "services/learning/tool_or_skill.py",
     "services/learning/skill_from_success.py",
     "services/learning/user_state.py",
-    "services/learning/diagnostician.py",
     "services/learning/mission_critic.py",
     "services/learning/patch_service.py",
     "agent/escalation.py",

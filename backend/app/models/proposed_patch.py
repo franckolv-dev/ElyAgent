@@ -53,10 +53,12 @@ class ProposedPatch(Base):
     __tablename__ = "proposed_patches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    execution_diagnosis_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("execution_diagnoses.id", ondelete="CASCADE"),
-        index=True,
+    # Lien HISTORIQUE (19/09/2026) : les correctifs naissaient d'un incident
+    # diagnostiqué. La boucle de diagnostic est retirée ; un correctif se
+    # demande depuis la fiche de la tâche et n'a plus d'incident. La colonne
+    # reste pour les lignes d'avant, sans clé étrangère côté modèle.
+    execution_diagnosis_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, index=True,
     )
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
 

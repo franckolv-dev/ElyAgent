@@ -49,6 +49,25 @@ class TaskUpdate(BaseModel):
     as_mission: bool | None = None
 
 
+class PromptPatchOut(BaseModel):
+    """Une réécriture de consigne, proposée ou appliquée, avec son avant/après."""
+
+    id: int
+    status: str            # proposed | applied | rejected | reverted
+    old_value: str | None
+    new_value: str
+    rationale: str | None
+    applied_at: str | None
+
+
+def _patch_out(p) -> PromptPatchOut:
+    return PromptPatchOut(
+        id=p.id, status=p.status, old_value=p.old_value, new_value=p.new_value,
+        rationale=p.rationale,
+        applied_at=p.applied_at.isoformat() if p.applied_at else None,
+    )
+
+
 class TaskResponse(BaseModel):
     id: str
     name: str
@@ -66,6 +85,13 @@ class TaskResponse(BaseModel):
     as_mission: bool = False
     last_run_started_at: str | None
     created_at: str
+    # Verdict de la dernière exécution jugée : "succeeded" | "dubious" | "failed".
+    # Une tâche peut se déclarer « success » et n'avoir rien écrit.
+    last_outcome: str | None = None
+    # La fiche propose « Améliorer la consigne » quand la dernière exécution
+    # est en erreur, ou jugée douteuse / échouée.
+    needs_attention: bool = False
+    prompt_patch: PromptPatchOut | None = None
 
     model_config = {"from_attributes": True}
 
@@ -81,7 +107,35 @@ async def list_tasks(
         .order_by(ScheduledTask.created_at.desc())
     )
     tasks = result.scalars().all()
-    return [_to_response(t) for t in tasks]
+
+    from app.models.execution_outcome import ExecutionOutcome
+    from app.services.learning.patch_service import patches_for_tasks
+
+    ids = [t.id for t in tasks]
+    verdicts: dict[str, str] = {}
+    if ids:
+        lignes = (await db.execute(
+            select(ExecutionOutcome.source_id, ExecutionOutcome.outcome)
+            .where(
+                ExecutionOutcome.user_id == user.id,
+                ExecutionOutcome.source == "scheduled",
+                ExecutionOutcome.source_id.in_(ids),
+            )
+            .order_by(ExecutionOutcome.created_at.desc(), ExecutionOutcome.id.desc())
+        )).all()
+        for source_id, outcome in lignes:  # premier vu = le plus récent
+            verdicts.setdefault(source_id, outcome)
+    correctifs = await patches_for_tasks(db, user.id, ids)
+    # Un correctif appliqué puis retouché à la main n'est plus annulable : il
+    # quitte la fiche au lieu d'y rester sans action possible.
+    return [
+        _to_response(
+            t, last_outcome=verdicts.get(t.id),
+            patch=(p if (p := correctifs.get(t.id)) is not None and (
+                p.status == "proposed" or t.prompt == p.new_value) else None),
+        )
+        for t in tasks
+    ]
 
 
 @router.post("/", response_model=TaskResponse)
@@ -220,8 +274,62 @@ async def delete_task(
     return {"message": f"Tâche '{task.name}' supprimée"}
 
 
-def _to_response(task: ScheduledTask) -> TaskResponse:
+# ──────────────────────────────────────────────────────────────────────
+# « Améliorer la consigne » — à la demande, depuis la fiche de la tâche
+# ──────────────────────────────────────────────────────────────────────
+#
+# C'est ce qui reste de la page « Incidents & propositions » (19/09/2026) :
+# plus de diagnostic systématique ni de liste à trancher, une réécriture que
+# l'on demande quand une tâche ne fait pas ce qu'on attend, avec son avant /
+# après, applicable et annulable.
+
+
+async def _appeler(operation, *args):
+    from app.services.learning.patch_service import PatchError
+
+    try:
+        return _patch_out(await operation(*args))
+    except PatchError as exc:
+        introuvable = "introuvable" in str(exc)
+        raise HTTPException(404 if introuvable else 409, str(exc))
+
+
+@router.post("/{task_id}/improve-prompt", response_model=PromptPatchOut)
+async def improve_prompt(task_id: str, user: User = Depends(get_current_user)):
+    """Propose une réécriture de la consigne. N'applique rien."""
+    from app.services.learning.patch_service import propose_for_task
+
+    return await _appeler(propose_for_task, task_id, user.id)
+
+
+@router.post("/prompt-patches/{patch_id}/apply", response_model=PromptPatchOut)
+async def apply_prompt_patch(patch_id: int, user: User = Depends(get_current_user)):
+    from app.services.learning.patch_service import apply_patch
+
+    return await _appeler(apply_patch, patch_id, user.id)
+
+
+@router.post("/prompt-patches/{patch_id}/revert", response_model=PromptPatchOut)
+async def revert_prompt_patch(patch_id: int, user: User = Depends(get_current_user)):
+    from app.services.learning.patch_service import revert_patch
+
+    return await _appeler(revert_patch, patch_id, user.id)
+
+
+@router.post("/prompt-patches/{patch_id}/reject", response_model=PromptPatchOut)
+async def reject_prompt_patch(patch_id: int, user: User = Depends(get_current_user)):
+    from app.services.learning.patch_service import reject_patch
+
+    return await _appeler(reject_patch, patch_id, user.id)
+
+
+def _to_response(task: ScheduledTask, *, last_outcome: str | None = None,
+                 patch=None) -> TaskResponse:
     return TaskResponse(
+        last_outcome=last_outcome,
+        needs_attention=(task.last_status == "error"
+                         or last_outcome in ("dubious", "failed")),
+        prompt_patch=_patch_out(patch) if patch is not None else None,
         id=task.id,
         name=task.name,
         prompt=task.prompt,
