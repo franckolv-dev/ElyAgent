@@ -49,8 +49,9 @@ logger = logging.getLogger(__name__)
 #     description. Catches the obvious cases the embedder misses ("sheet" ⊂
 #     "spreadsheet"/"sheets"). Works everywhere — no FastEmbed dependency.
 #   - SEMANTIC (best-effort): cosine on FastEmbed vectors, for paraphrases the
-#     lexical misses. MiniLM-L6 is small + English-leaning, so it can't carry
-#     French queries alone — it's an *enhancement*, not the backbone. If the
+#     lexical misses. Encoder = `EMBEDDING_MODEL` (memory/_constants.py),
+#     multilingual since 24/09/2026: the English-only MiniLM-L6 put the right
+#     tool first 4 times out of 78 real calls, the multilingual one 25. If the
 #     encoder is unavailable (env), we degrade to lexical-only.
 _catalog_sig: frozenset[str] | None = None
 _tool_text_norm: dict[str, str] = {}      # name -> normalized "name + description"
