@@ -6,6 +6,8 @@
 local, la puissance vient du cloud, et rien d'irréversible ne se fait sans
 votre accord.
 
+![L'espace de travail d'Ely : une question, une tâche ou une mission](docs/images/ely_chat.png)
+
 Ely est un **projet personnel non commercial**, publié sous licence **MIT**.
 Faites-en ce que vous voulez ; gardez simplement la notice de copyright.
 

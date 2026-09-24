@@ -15,8 +15,8 @@
 Ingests documents (PDF, TXT, MD, CSV, JSON, DOCX) into a dedicated Qdrant
 collection ``knowledge``, chunked with overlap for semantic retrieval.
 
-Reuses the same fastembed embedding model (all-MiniLM-L6-v2, 384 dims) and
-Qdrant client as ``memory_manager.py``.
+Reuses the same fastembed embedding model (``EMBEDDING_MODEL``, ``VECTOR_DIM``
+dims — see ``memory/_constants.py``) and Qdrant client as ``memory_manager.py``.
 """
 from __future__ import annotations
 

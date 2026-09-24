@@ -6,6 +6,8 @@
 power comes from the cloud, and nothing irreversible happens without your
 approval.
 
+![Ely's workspace: a question, a task, or a mission](docs/images/ely_chat.png)
+
 Ely is a **non-commercial personal project**, published under the **MIT**
 licence. Do what you like with it; just keep the copyright notice.
 
