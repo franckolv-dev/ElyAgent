@@ -30,7 +30,20 @@ COLLECTION_PREFERENCES = "user_profile"
 # écrire ni y lire. Si la voie procédurale reprend un jour un vrai magasin,
 # c'est une décision d'architecture, pas une constante à remettre ici.
 
-# all-MiniLM-L6-v2 output dimension — fastembed default
+# L'encodeur de TOUT ce qui est vectorisé : souvenirs, interactions, profil,
+# base de connaissances, et l'annuaire d'outils de `find_tool`.
+#
+# ⚠️ CE QUE ÇA CORRIGE (24/09/2026) : c'était `all-MiniLM-L6-v2`, un modèle
+# ANGLAIS, devant des souvenirs et des demandes écrits en français. Mesuré :
+# « prévisions météo pour demain à Nantes » ressemblait à `session_todo` (0,40)
+# bien avant `weather_get` (0,14) ; la même phrase en anglais sortait
+# `weather_get` premier. Sur 78 vrais appels de `find_tool`, le repli
+# sémantique plaçait le bon outil en tête 4 fois ; le multilingue, 25 fois.
+#
+# Changer ce nom rend illisibles les vecteurs déjà en base : lancer ensuite
+# `scripts/reindex_embeddings.py` dans le conteneur. Même dimension (384),
+# donc les collections n'ont pas à être recréées.
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 VECTOR_DIM = 384
 
 # French + English stop-words — ignored during keyword overlap scoring.

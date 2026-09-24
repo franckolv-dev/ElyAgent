@@ -27,12 +27,12 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 
+from app.services.memory._constants import VECTOR_DIM
 from app.services.memory_manager import get_memory_manager
 
 logger = logging.getLogger(__name__)
 
 _COLLECTION_KNOWLEDGE = "knowledge"
-_VECTOR_DIM = 384  # all-MiniLM-L6-v2
 
 # Chunking parameters
 _CHUNK_SIZE = 1800       # ~512 tokens in chars
@@ -308,7 +308,7 @@ class RAGService:
                     self.client.create_collection,
                     _COLLECTION_KNOWLEDGE,
                     vectors_config=VectorParams(
-                        size=_VECTOR_DIM, distance=Distance.COSINE
+                        size=VECTOR_DIM, distance=Distance.COSINE
                     ),
                 )
                 logger.info("Qdrant collection '%s' created", _COLLECTION_KNOWLEDGE)

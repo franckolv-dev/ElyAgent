@@ -67,14 +67,14 @@ RUN adduser --system --no-create-home --uid 1001 appuser \
 USER appuser
 RUN uv run --no-sync playwright install --force chromium
 
-# Pre-download fastembed ONNX model (~90 MB) so first embed doesn't need network
+# Pre-download fastembed ONNX model (~220 MB) so first embed doesn't need network
 # and doesn't hit HF Hub permission edge cases at runtime.
 RUN uv pip uninstall hf_xet 2>/dev/null || true
-RUN uv run --no-sync python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/all-MiniLM-L6-v2', cache_dir='/app/.cache/fastembed')" \
+RUN uv run --no-sync python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/app/.cache/fastembed')" \
     || echo "WARNING: fastembed pre-download failed, will retry at runtime"
 
 # ── Application code — copied LAST for layer caching ──────────────────
-# Everything above (Chromium ~150 MB download, fastembed ~90 MB) is
+# Everything above (Chromium ~150 MB download, fastembed ~220 MB) is
 # independent of the app source: a code-only change must rebuild ONLY the
 # COPY layers below, not the heavy RUN layers. `--chown=appuser` because
 # the recursive `chown -R appuser /app` above ran before these files
