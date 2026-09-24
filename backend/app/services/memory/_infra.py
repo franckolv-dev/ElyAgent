@@ -32,6 +32,7 @@ from collections import OrderedDict
 from functools import lru_cache
 
 from app.config import get_settings
+from app.services.memory._constants import EMBEDDING_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ class MemoryInfra:
             cache_dir = os.environ.get("FASTEMBED_CACHE_DIR", "/app/.cache/fastembed")
             os.makedirs(cache_dir, exist_ok=True)
             self._encoder = TextEmbedding(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_name=EMBEDDING_MODEL,
                 cache_dir=cache_dir,
             )
         return self._encoder
