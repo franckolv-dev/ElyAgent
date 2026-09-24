@@ -475,6 +475,12 @@ _MENTIONS_BALISEES_RE = (
         r'<(?:tool_call|function_call)[^>]*>\s*\{[^{}]*?"name"\s*:\s*"([\w.-]+)"',
         re.IGNORECASE | re.DOTALL,
     ),
+    # <tool_call>\nadd_calendar_event(start_time="…")\n</tool_call> — l'appel
+    # « à la python » dans une balise, vu avec gemma-4-E4B le 23/09/2026.
+    re.compile(
+        r'<(?:tool_call|function_call)[^>]*>\s*`?([a-z][\w.-]{1,63})`?\s*\(',
+        re.IGNORECASE,
+    ),
 )
 
 
@@ -561,10 +567,15 @@ def looks_like_an_unexecuted_tool_call(
     for m in _MENTION_APPEL_RE.finditer(content):
         if m.group(1) in real_tool_names:
             return m.group(1)
+    # Une BALISE d'appel n'est jamais une réponse, quel que soit le nom
+    # qu'elle porte. Le 23/09/2026, gemma a écrit `<tool_call>
+    # add_calendar_event(…)</tool_call>` — un nom inventé — et, faute d'un
+    # nom réel, rien ne rougissait : ni récupération, ni bascule, le texte
+    # partait à l'écran et dans l'historique.
     for motif in _MENTIONS_BALISEES_RE:
-        for m in motif.finditer(content):
-            if m.group(1) in real_tool_names:
-                return m.group(1)
+        m = motif.search(content)
+        if m:
+            return m.group(1)
     return None
 
 

@@ -590,6 +590,36 @@ def _derniere_demande_humaine(messages, defaut: str = "") -> str:
     return defaut
 
 
+def _demandes_humaines_recentes(messages, n: int = 4) -> str:
+    """Les ``n`` dernières demandes de l'utilisateur, de la plus ancienne à
+    la plus récente, pour LIER les outils de la voie locale.
+
+    ⚠️ LE DÉFAUT QUE ÇA CORRIGE (23/09/2026, conversation 2918577f). La
+    liaison lisait la seule dernière demande. « Ajoute un rendez-vous à mon
+    agenda … » liait `calendar_create_event` ; la réponse « 30mn » à la
+    question « quelle durée ? » ne réclamait plus rien, et le modèle, sans
+    outil calendrier, a inventé `add_calendar_event` en texte. Une demande se
+    poursuit sur plusieurs messages ; ses outils aussi.
+
+    Le routeur, lui, garde `_derniere_demande_humaine` : un score de
+    complexité porte sur UNE demande (décision du 23/08).
+    """
+    textes: list[str] = []
+    for message in reversed(list(messages or ())):
+        role = (
+            message.get("role") or message.get("type")
+            if isinstance(message, dict)
+            else getattr(message, "type", "")
+        )
+        if role in ("human", "user"):
+            texte = _contenu_texte(message)
+            if texte:
+                textes.append(texte)
+            if len(textes) >= n:
+                break
+    return "\n".join(reversed(textes))
+
+
 def _premier_parametre_de(registry):
     """``nom d'outil -> nom de son premier paramètre``, lu sur le schéma réel.
 
@@ -795,6 +825,7 @@ def create_agent_node():
         # liée dans une branche et lue dans une autre ne lève que le jour où la
         # première ne s'exécute pas.
         _a_router = _derniere_demande_humaine(messages, user_query)
+        _fil_humain = _demandes_humaines_recentes(messages) or user_query
 
         # Hot-reload: clear tier cache when tool registry OR tier routing config changes
         from app.services.llm_provider import get_tier_config_version
@@ -1165,14 +1196,14 @@ def create_agent_node():
                 # option de plus dans un choix qu'il fait mal. On lie donc le
                 # socle plus ce que la DEMANDE réclame — et le coût est un
                 # `bind_tools` local, sans réseau, sur trois à cinq schémas.
-                _slm_extras = _slm_discovered_extras(registry, _conv_id_fb, _a_router)
+                _slm_extras = _slm_discovered_extras(registry, _conv_id_fb, _fil_humain)
                 _slm_runtime = _slm_with_tools
                 try:
                     # Les préférences valent AUSSI ici. Une compétence coupée
                     # dans l'interface ne doit pas revenir par la voie locale
                     # — ce serait un demi-interrupteur, pire qu'aucun.
                     _slm_outils = appliquer_preferences(
-                        list({t.name: t for t in _slm_toolset(registry, _a_router) + _slm_extras}.values()),
+                        list({t.name: t for t in _slm_toolset(registry, _fil_humain) + _slm_extras}.values()),
                         await disabled_tool_names(user_id),
                         contexte="slm",
                     )

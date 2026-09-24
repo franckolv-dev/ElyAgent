@@ -40,13 +40,16 @@ _NOMS = {"weather_get", "find_tool", "gmail_send_email"}
     ('<tool_call>{"name": "find_tool", "arguments": {"q": "x"}}</tool_call>', "find_tool"),
     ('<function_call>{"name":"gmail_send_email","arguments":"{}"}</function_call>', "gmail_send_email"),
     ("Je regarde.\n<function name=\'weather_get\'>\n</function>", "weather_get"),
+    # Un nom INVENTÉ dans une balise reste un appel manqué (23/09/2026 : gemma
+    # a écrit `<tool_call>add_calendar_event(…)</tool_call>`, nom inexistant,
+    # et le texte est parti tel quel à l'écran faute d'un nom réel).
+    ('<function name="outil_inconnu"><param name="x">1</param></function>', "outil_inconnu"),
 ])
 def test_a_tagged_call_is_detected_as_unexecuted(texte, attendu):
     assert looks_like_an_unexecuted_tool_call(texte, _NOMS) == attendu
 
 
 @pytest.mark.parametrize("texte", [
-    '<function name="outil_inconnu"><param name="x">1</param></function>',
     "La météo à Poitiers est douce.",
     "",
 ])
